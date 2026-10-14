@@ -1,0 +1,554 @@
+# PAVILLION_PLAN.md — Build Spec
+
+Status: draft v0.1 (2026-10-14). Implementer: Grok Build. Reviewer: Andrew Simard.
+
+## 1. Name, purpose, goals, non-goals
+
+**Pavillion** is a personal Linux desktop app for mail, contacts and calendar. It replaces
+Betterbird (mail), CardBook (contacts) and Omacal (calendar) for one user, Andrew Simard.
+
+Goals:
+- JMAP-first client for self-hosted Stalwart (tenants 500foods.com, 500courses.com, 500nodes.com).
+- Handle ~20 accounts/identities comfortably: unified views, fast switching, per-account identities.
+- Offline-capable local store (SQLite) with fast local search (FTS5).
+- Safe HTML mail rendering (sandboxed, remote content blocked by default).
+- One app, one process, one config. Wayland-friendly. 24h clock, America/Vancouver default.
+- Small enough that every subsystem is understandable and testable.
+
+Non-goals (do not build):
+- Gmail, OAuth2 flows, Exchange/EWS/Graph, POP3.
+- Multi-user, sync of app settings across machines, cloud services of any kind.
+- Plugin/add-on system (add-ons caused the CardBook mess; the app stays closed).
+- RSS, chat, newsgroups, PGP/S-MIME (S/MIME and PGP may be an open question later).
+- Auto-update channel. Builds are local.
+- Windows/macOS support.
+
+## 2. Architecture
+
+```
++--------------------------- Tauri 2 app ----------------------------+
+| Frontend (WebView: WebKitGTK)                                       |
+|   Svelte 5 + TypeScript, CSS variables                              |
+|   app UI  <--invoke/events-->  Rust core                            |
+|   message view: sandboxed <iframe srcdoc> (no bridge, no scripts)   |
++---------------------------------------------------------------------+
+| Rust core (tokio)                                                    |
+|   accounts   jmap (client)   sync (engine)   store (SQLite+FTS5)     |
+|   search     sender (outbox) contacts   calendar   notify   secrets  |
+|   adapters:  JmapAdapter (P0..P5)  ImapDavAdapter (P6, optional)     |
++---------------------------------------------------------------------+
+```
+
+### 2.1 Rust crates (workspace)
+- `pavillion-core` (lib): all logic, no Tauri dependency, unit-testable.
+  - `accounts` — config load/save, account registry.
+  - `secrets` — `keyring` crate (Secret Service / libsecret).
+  - `jmap` — session discovery, request batching, method calls, blob upload/download, EventSource.
+  - `sync` — per-account tasks: initial sync, `/changes` deltas, push handling, mutation queue.
+  - `store` — `rusqlite` (bundled, FTS5 enabled), migrations via `refinery` or hand-rolled `user_version`.
+  - `search` — FTS5 queries + server `Email/query` merge.
+  - `sender` — outbox, `Email/set` + `EmailSubmission/set`.
+  - `mime` — `mail-parser` (parse), `mail-builder` (compose); both Stalwart crates.
+  - `sanitize` — `ammonia` HTML sanitizer with custom policy.
+  - `contacts` — JSContact/vCard mapping (`calcard` crate from Stalwart if suitable, else `vcard` parsing by hand).
+  - `calendar` — JSCalendar/iCalendar mapping (`calcard` or `icalendar`), `rrule`, `chrono-tz`.
+  - `backend` trait — the internal interface both adapters implement (see 2.4).
+- `pavillion-app` (bin): Tauri 2 shell, command handlers, event emitters, plugins:
+  `tauri-plugin-notification`, `tauri-plugin-deep-link` (mailto:), `tauri-plugin-dialog`,
+  `tauri-plugin-opener`, `tauri-plugin-autostart` (optional), `tauri-plugin-single-instance`.
+- Common: `tokio`, `reqwest` (rustls, http2, stream), `serde`/`serde_json`, `thiserror`, `tracing`,
+  `uuid`, `chrono`, `chrono-tz`, `futures`, `eventsource-stream` (or hand-parsed SSE over reqwest).
+
+Verify current crate names/versions at build time; do not pin from this document.
+
+### 2.2 Frontend choice: Svelte 5 + TypeScript (Vite)
+Why: compiles to small vanilla JS, no virtual DOM, reactive stores fit an event-driven backend,
+minimal runtime, easy for an agent to write and for Andrew to read. Vanilla+lit is the fallback if
+Svelte tooling becomes a problem. No CSS framework; hand-written CSS with variables.
+Virtualized lists (own small implementation or `svelte-virtual-list`-style) are required for
+message lists of 50k+ items.
+
+Frontend layout:
+```
+ui/src/
+  lib/api.ts          typed wrappers for every invoke + event listener
+  lib/types.ts        mirrors Rust DTOs (generate with `specta`/`tauri-specta` if practical)
+  stores/             accounts, mailboxes, messageList, selection, compose, calendar, settings
+  components/mail/    Sidebar, MessageList, MessageView, ThreadView, Composer
+  components/contacts/ BookList, ContactList, ContactEditor
+  components/calendar/ MonthView, WeekView, DayView, AgendaView, EventEditor
+  components/common/  Toolbar, Dialog, Toast, Shortcuts
+  styles/             theme.css (variables), light.css, dark.css
+```
+
+### 2.3 Tauri bridge API
+All commands are `async`, return `Result<T, ApiError>` where
+`ApiError = { code: string, message: string, retryable: bool }`. IDs are local string IDs
+(`acct:…`, server IDs kept as-is plus `account_id`).
+
+Accounts:
+| Command | Request | Response |
+|---|---|---|
+| `account_list` | `{}` | `Account[]` |
+| `account_add` | `{ name, session_url, username, auth: "basic"\|"bearer", secret }` | `Account` |
+| `account_update` | `{ id, patch: Partial<Account> }` | `Account` |
+| `account_remove` | `{ id, purge_local: bool }` | `{}` |
+| `account_test` | `{ session_url, username, auth, secret }` | `{ ok, capabilities: string[], error? }` |
+| `identity_list` | `{ account_id? }` | `Identity[]` |
+
+Mail:
+| Command | Request | Response |
+|---|---|---|
+| `mailbox_list` | `{ account_id? }` | `Mailbox[]` (tree via `parent_id`) |
+| `mailbox_create` / `_rename` / `_delete` | `{ account_id, name, parent_id? }` / `{ id, name }` / `{ id }` | `Mailbox` / `{}` |
+| `message_list` | `{ view: {kind:"mailbox",id}\|{kind:"unified",role}\|{kind:"search",query}, offset, limit, threaded: bool }` | `{ total, items: MessageSummary[] }` |
+| `thread_get` | `{ thread_id }` | `MessageSummary[]` |
+| `message_get` | `{ id, allow_remote: bool }` | `MessageDetail` (`html_sanitized?`, `text?`, `attachments`, headers) |
+| `message_set_flags` | `{ ids[], seen?, flagged?, answered?, keywords?: {add[],remove[]} }` | `{}` |
+| `message_move` | `{ ids[], to_mailbox_id }` | `{}` |
+| `message_archive` / `message_delete` | `{ ids[] }` / `{ ids[], permanent: bool }` | `{}` |
+| `message_raw` | `{ id }` | `{ path }` (writes .eml to cache) |
+| `attachment_save` | `{ message_id, part_id, dest_path? }` | `{ path }` |
+| `attachment_open` | `{ message_id, part_id }` | `{}` (xdg-open via opener) |
+| `search` | `{ query, scope: {account_id?, mailbox_id?}, server: bool, limit }` | `{ local: MessageSummary[], server_pending: bool }` |
+| `sender_allow_remote` | `{ address\|domain, allow: bool }` | `{}` |
+| `retention_get` / `retention_set` | `{ mailbox_id }` / `{ mailbox_id, keep_newest: number\|null, max_age_days?: number\|null }` | `RetentionRule` |
+
+Compose:
+| Command | Request | Response |
+|---|---|---|
+| `draft_new` | `{ mode: "new"\|"reply"\|"reply_all"\|"forward", source_id?, identity_id? }` | `Draft` |
+| `draft_save` | `{ draft: Draft }` | `Draft` (synced to Drafts mailbox) |
+| `draft_attach` | `{ draft_id, path, inline: bool }` | `{ part_id, cid? }` |
+| `draft_send` | `{ draft_id, send_at?: iso8601 }` | `{ outbox_id }` |
+| `draft_discard` | `{ draft_id }` | `{}` |
+| `signature_list` / `signature_set` | `{ identity_id }` / `{ identity_id, html, text, inline_images: [{cid, path}] }` | `Signature` |
+
+Contacts:
+| `addressbook_list` | `{ account_id? }` | `AddressBook[]` |
+|---|---|---|
+| `contact_list` | `{ book_id?, query?, offset, limit }` | `{ total, items: ContactSummary[] }` |
+| `contact_get` / `contact_save` / `contact_delete` | `{ id }` / `{ contact: Contact }` / `{ id }` | `Contact` / `Contact` / `{}` |
+| `contact_autocomplete` | `{ prefix, limit }` | `{ name, email, source: "contact"\|"recent" }[]` |
+| `contact_import` / `contact_export` | `{ book_id, path }` / `{ book_id\|ids, path, format: "vcard"\|"jscontact" }` | `{ count }` |
+
+Calendar:
+| `calendar_list` | `{ account_id? }` | `Calendar[]` |
+|---|---|---|
+| `event_range` | `{ calendar_ids[], start, end, tz }` | `EventOccurrence[]` (expanded) |
+| `event_get` / `event_save` / `event_delete` | `{ id }` / `{ event, scope: "this"\|"following"\|"all", occurrence_start? }` / same scope | `Event` / `Event` / `{}` |
+| `event_import` / `event_export` | `{ calendar_id, path }` / `{ ids\|calendar_id, path }` (.ics) | `{ count }` |
+
+System:
+| `settings_get` / `settings_set` | `{}` / `{ patch }` | `Settings` |
+| `sync_now` | `{ account_id? }` | `{}` |
+| `status` | `{}` | `{ accounts: [{id, state, last_sync, queue_len, error?}] }` |
+| `open_external_link` | `{ url }` | `{}` (frontend confirms first) |
+
+Events (backend → frontend, `emit`):
+- `sync://state` `{ account_id, state: "idle"|"syncing"|"offline"|"error", detail? }`
+- `mail://mailboxes-changed` `{ account_id, mailbox_ids[] }`
+- `mail://messages-changed` `{ account_id, created[], updated[], destroyed[] }`
+- `mail://new-mail` `{ account_id, mailbox_id, summaries: MessageSummary[] }` (also drives notifications)
+- `outbox://update` `{ outbox_id, state: "queued"|"sending"|"sent"|"failed", error? }`
+- `queue://conflict` `{ op_id, kind, detail }`
+- `contacts://changed` `{ account_id, book_ids[] }`
+- `calendar://changed` `{ account_id, calendar_ids[] }`
+- `calendar://reminder` `{ event_id, occurrence_start, title, location? }`
+- `app://mailto` `{ url }` (from deep-link handler)
+
+### 2.4 Backend trait (adapter boundary)
+```rust
+#[async_trait]
+pub trait Backend: Send + Sync {
+    async fn connect(&self) -> Result<Capabilities>;
+    async fn sync_mailboxes(&self, store: &Store) -> Result<Changes>;
+    async fn sync_emails(&self, store: &Store, opts: SyncOpts) -> Result<Changes>;
+    async fn fetch_body(&self, email: &EmailRef) -> Result<BlobPath>;
+    async fn fetch_blob(&self, blob: &BlobRef) -> Result<BlobPath>;
+    async fn apply(&self, op: &QueuedOp) -> Result<OpResult>;      // flags, move, delete, set
+    async fn submit(&self, msg: &Outgoing) -> Result<SubmitResult>;
+    async fn query_server(&self, q: &SearchQuery) -> Result<Vec<RemoteId>>;
+    async fn sync_contacts(&self, store: &Store) -> Result<Changes>;
+    async fn sync_calendars(&self, store: &Store) -> Result<Changes>;
+    fn push(&self) -> Option<BoxStream<'static, PushEvent>>;
+}
+```
+UI and sync engine only ever talk to `Backend`. `JmapBackend` is the only implementation until P6.
+
+## 3. Accounts & auth
+
+- Config: `~/.config/pavillion/config.toml` (XDG_CONFIG_HOME respected). No secrets in it.
+- Data: `~/.local/share/pavillion/` → `pavillion.sqlite`, `blobs/` (content-addressed by blobId hash),
+  `logs/`. Cache: `~/.cache/pavillion/` (rendered/temp files, safe to delete).
+- Each account entry:
+```toml
+[[account]]
+id = "a-500foods-andrew"
+name = "andrew@500foods.com"
+session_url = "https://mail.500foods.com/.well-known/jmap"
+username = "andrew@500foods.com"
+auth = "basic"            # "basic" (password/app-password) | "bearer" (API token)
+color = "#2a7"
+enabled = true
+sync_mail = true
+sync_contacts = true
+sync_calendars = true
+fetch_bodies = "recent"   # "none" | "recent" (last 30 days) | "all"
+```
+- Secrets: `keyring` entry service=`pavillion`, user=`<account id>`. If Secret Service is unavailable,
+  refuse to save and prompt per session; never fall back to a file.
+- Session discovery: GET `session_url` (follow `/.well-known/jmap` redirect), cache the Session
+  object, use `apiUrl`, `downloadUrl`, `uploadUrl`, `eventSourceUrl`, `primaryAccounts`.
+  A single login may expose several JMAP accounts (shared mailboxes/calendars): model each
+  JMAP `accountId` under the login as a sub-account (`remote_account` table).
+- Identities: `Identity/get` per account; stored locally; compose chooses identity by
+  (1) the address the original was sent to, (2) mailbox/account default, (3) global default.
+- Auth failure (401): mark account `error:auth`, stop that account's loops, show one banner with
+  "Re-enter password". Never loop prompts (this is the Betterbird/iCloud failure mode).
+- 20+ accounts: one tokio task per login, shared reqwest client (connection pooling per host),
+  global concurrency cap (default 6 in-flight requests).
+
+## 4. Data model (SQLite)
+
+PRAGMAs: `journal_mode=WAL`, `foreign_keys=ON`, `synchronous=NORMAL`. Schema versioned with
+`user_version`. All times stored as UTC ISO-8601 text or unix ms integers (pick one: unix ms).
+
+```sql
+CREATE TABLE account (id TEXT PRIMARY KEY, name TEXT, session_url TEXT, username TEXT,
+  auth TEXT, session_json TEXT, session_state TEXT, enabled INT DEFAULT 1);
+CREATE TABLE remote_account (id TEXT PRIMARY KEY, account_id TEXT REFERENCES account ON DELETE CASCADE,
+  jmap_account_id TEXT, name TEXT, is_personal INT, caps TEXT);  -- caps: JSON list
+CREATE TABLE identity (id TEXT, ra_id TEXT REFERENCES remote_account ON DELETE CASCADE,
+  name TEXT, email TEXT, reply_to TEXT, bcc TEXT, sig_html TEXT, sig_text TEXT,
+  PRIMARY KEY (ra_id, id));
+CREATE TABLE mailbox (id TEXT, ra_id TEXT REFERENCES remote_account ON DELETE CASCADE,
+  parent_id TEXT, name TEXT, role TEXT, sort_order INT, total INT, unread INT,
+  total_threads INT, unread_threads INT, my_rights TEXT, is_subscribed INT,
+  PRIMARY KEY (ra_id, id));
+CREATE TABLE email (rowid INTEGER PRIMARY KEY, id TEXT, ra_id TEXT REFERENCES remote_account ON DELETE CASCADE,
+  thread_id TEXT, blob_id TEXT, message_id TEXT, in_reply_to TEXT, refs TEXT,
+  subject TEXT, from_json TEXT, to_json TEXT, cc_json TEXT, bcc_json TEXT, reply_to_json TEXT,
+  sent_at INT, received_at INT, size INT, preview TEXT, has_attachment INT,
+  seen INT, flagged INT, answered INT, draft INT, keywords TEXT,
+  body_state TEXT DEFAULT 'none',   -- none|fetched|failed
+  UNIQUE (ra_id, id));
+CREATE INDEX email_thread ON email(ra_id, thread_id);
+CREATE INDEX email_recv ON email(received_at DESC);
+CREATE TABLE email_mailbox (email_rowid INT REFERENCES email ON DELETE CASCADE, mailbox_id TEXT,
+  PRIMARY KEY (email_rowid, mailbox_id));
+CREATE INDEX em_mbx ON email_mailbox(mailbox_id, email_rowid);
+CREATE TABLE thread (ra_id TEXT, id TEXT, email_ids TEXT, PRIMARY KEY (ra_id, id));
+CREATE TABLE body_cache (email_rowid INT PRIMARY KEY REFERENCES email ON DELETE CASCADE,
+  text_plain TEXT, html_raw_path TEXT, html_sanitized TEXT, has_remote INT, fetched_at INT);
+CREATE TABLE attachment (email_rowid INT REFERENCES email ON DELETE CASCADE, part_id TEXT,
+  blob_id TEXT, name TEXT, mime TEXT, size INT, cid TEXT, disposition TEXT, local_path TEXT,
+  PRIMARY KEY (email_rowid, part_id));
+CREATE VIRTUAL TABLE email_fts USING fts5(subject, from_text, to_text, body,
+  content='', tokenize='unicode61 remove_diacritics 2');  -- rowid = email.rowid
+CREATE TABLE remote_allow (pattern TEXT PRIMARY KEY, kind TEXT);  -- address|domain
+CREATE TABLE retention_rule (ra_id TEXT, mailbox_id TEXT, keep_newest INT, max_age_days INT,
+  last_run INT, PRIMARY KEY (ra_id, mailbox_id));
+
+CREATE TABLE addressbook (ra_id TEXT, id TEXT, name TEXT, is_default INT, my_rights TEXT,
+  PRIMARY KEY (ra_id, id));
+CREATE TABLE contact (rowid INTEGER PRIMARY KEY, ra_id TEXT, id TEXT, book_ids TEXT,
+  uid TEXT, full_name TEXT, sort_name TEXT, emails_json TEXT, card_json TEXT, updated INT,
+  UNIQUE (ra_id, id));
+CREATE VIRTUAL TABLE contact_fts USING fts5(full_name, emails, org, notes, content='');
+CREATE TABLE recent_address (email TEXT PRIMARY KEY, name TEXT, last_used INT, count INT);
+
+CREATE TABLE calendar (ra_id TEXT, id TEXT, name TEXT, color TEXT, tz TEXT, is_visible INT,
+  is_default INT, my_rights TEXT, PRIMARY KEY (ra_id, id));
+CREATE TABLE event (rowid INTEGER PRIMARY KEY, ra_id TEXT, id TEXT, calendar_ids TEXT, uid TEXT,
+  title TEXT, start_utc INT, end_utc INT, tz TEXT, all_day INT, rrule_json TEXT,
+  overrides_json TEXT, alerts_json TEXT, raw_json TEXT, updated INT, UNIQUE (ra_id, id));
+CREATE TABLE event_instance (event_rowid INT REFERENCES event ON DELETE CASCADE,
+  start_utc INT, end_utc INT, PRIMARY KEY (event_rowid, start_utc));  -- expansion cache, ±18 months
+
+CREATE TABLE sync_state (ra_id TEXT, type TEXT, state TEXT, updated INT,
+  PRIMARY KEY (ra_id, type));   -- type: Mailbox|Email|Thread|Identity|AddressBook|ContactCard|Calendar|CalendarEvent
+CREATE TABLE op_queue (id INTEGER PRIMARY KEY, ra_id TEXT, kind TEXT, payload TEXT,
+  base_state TEXT, created INT, attempts INT DEFAULT 0, last_error TEXT, status TEXT);
+CREATE TABLE outbox (id INTEGER PRIMARY KEY, ra_id TEXT, identity_id TEXT, draft_email_id TEXT,
+  mime_path TEXT, envelope_json TEXT, send_at INT, status TEXT, attempts INT, last_error TEXT);
+CREATE TABLE draft_local (id TEXT PRIMARY KEY, ra_id TEXT, json TEXT, server_email_id TEXT, updated INT);
+CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+```
+FTS5 is contentless: insert rows when bodies are fetched (headers-only rows first, body appended
+on fetch via delete+reinsert). Rebuild command available in settings.
+
+## 5. Sync engine
+
+Per login, a supervisor task runs:
+1. **Session**: fetch Session; if `state` changed since last run, refresh caps and remote accounts.
+2. **Initial sync** (empty `sync_state`):
+   - `Identity/get`, `Mailbox/get` (all).
+   - `Email/query` per mailbox sorted `receivedAt desc`, limit 500 for first page, then backfill in
+     pages of 500 in the background (newest first, Inbox and Sent first).
+   - `Email/get` with header properties only (`id, threadId, mailboxIds, keywords, size, receivedAt,
+     sentAt, messageId, inReplyTo, references, subject, from, to, cc, bcc, replyTo, preview,
+     hasAttachment, blobId`). Use back-references (`#ids`) in one request.
+   - Record `state` from each `/get` into `sync_state`.
+3. **Delta sync**: `Mailbox/changes`, `Email/changes`, `Thread/changes` with `maxChanges=500`,
+   loop while `hasMoreChanges`. Fetch created/updated headers; delete destroyed. If server returns
+   `cannotCalculateChanges`, drop that type's local data for the account and re-run initial sync for it.
+4. **Push**: open EventSource (`eventSourceUrl` with `types=*&closeafter=no&ping=60`). On `StateChange`
+   for an account, run the matching `/changes`. Debounce 500 ms. Reconnect with exponential backoff
+   1 s → 5 min, jitter ±20%. If push unavailable, poll every 2 min (configurable). Network change
+   (NetworkManager D-Bus, optional) or resume-from-suspend triggers immediate delta sync.
+5. **Bodies**: fetched lazily on open (`Email/get` with `bodyValues`, `fetchHTMLBodyValues`,
+   `fetchTextBodyValues`, `maxBodyValueBytes` 2 MB) or prefetched for messages within
+   `fetch_bodies` policy when idle. Full raw .eml via `downloadUrl` only on demand.
+6. **Attachments**: downloaded only on save/open/inline display; stored in `blobs/` by blobId.
+7. **Mutation queue** (`op_queue`): UI ops apply optimistically to the local store, then enqueue.
+   Worker sends `Email/set` with `ifInState` = last known Email state where sensible.
+   - `stateMismatch`: run delta sync, re-apply op if still meaningful (flags/moves are idempotent:
+     patch keywords/mailboxIds rather than replacing), else drop and emit `queue://conflict`.
+   - `notFound` on an email: drop silently (already deleted elsewhere).
+   - Network errors: keep, retry with backoff; queue survives restarts.
+   - Ordering per account is FIFO; coalesce consecutive flag ops on the same email.
+8. **Sending**: outbox worker: upload MIME blob → `Email/import` into Drafts (or `Email/set` create),
+   then `EmailSubmission/set` with `onSuccessUpdateEmail` moving to Sent and removing `$draft`.
+   Status via `outbox://update`. Failed sends stay in outbox with visible error; never silently drop.
+9. **Retention** (see 6.10).
+10. **Contacts/Calendars**: same pattern with `AddressBook`, `ContactCard`, `Calendar`, `CalendarEvent`
+    types — gated on capability presence in the Session (see 8, 9).
+
+Bandwidth rules: headers first, bodies lazy, attachments on demand, batch method calls (≤ server
+`maxCallsInRequest`, ≤ `maxObjectsInGet`), respect `maxSizeRequest`.
+
+## 6. Mail features (MVP)
+
+6.1 Views: Unified Inbox / Unread / Flagged / Drafts / Sent (role-based, across accounts) plus
+per-account mailbox tree. Unread counts in sidebar. Accounts collapsible; order and hide in settings.
+6.2 Mailboxes: create/rename/delete/move (`Mailbox/set`); subscribe toggle; role mapping from server.
+6.3 Threading: server `threadId`; thread view shows conversation oldest→newest, collapsed read items.
+Toggle threaded/flat per view.
+6.4 Flags: read/unread, flagged, answered/forwarded (`$answered`, `$forwarded`), junk (`$junk`, move
+to Junk role). Mark-read-on-open after 1 s (configurable).
+6.5 Move / delete / archive: delete moves to Trash; delete in Trash = permanent (`Email/set destroy`)
+with confirm. Archive = move to Archive role mailbox (create if missing, ask first).
+Undo toast (5 s) for move/delete/archive before op is flushed.
+6.6 Search: instant local FTS5 over headers+fetched bodies; "Search server" expands with `Email/query`
+filters (`text`, `from`, `to`, `subject`, `before`, `after`, `hasAttachment`, `inMailbox`).
+Query syntax: `from:x to:x subject:x has:attachment is:unread is:flagged before:2026-10-01 after:… in:mailbox`.
+6.7 Compose: new/reply/reply-all/forward (inline or as attachment); identity picker (default by
+rules in 3); To/Cc/Bcc with autocomplete; plain text or HTML (simple editor: bold/italic/link/list/
+quote, contenteditable with sanitized output); quoted original with attribution line using 24h time.
+6.8 Drafts: autosave locally every 5 s, to server every 30 s and on close (`Email/set` replace in Drafts).
+6.9 Attachments: drag-drop or picker; inline images get `Content-ID` and `cid:` references;
+size warning > 20 MB; open/save received attachments.
+6.10 **Folder retention**: per mailbox rule "keep newest N" and/or "older than D days".
+Enforced by the app via JMAP: `Email/query` on the mailbox sorted `receivedAt desc` with
+`position=N`, then move results to Trash or destroy (rule option). Runs after each delta sync for that
+mailbox at most once per hour. Clearly labeled "enforced while Pavillion is running" — it is
+client-side logic over JMAP, not a server policy. (Use case: willard@500foods.com report folders.
+If Stalwart gains/has a server-side per-folder retention feature, prefer it; verify.)
+6.11 Signatures: per identity, HTML + text alternatives, inline images stored locally and attached as
+`multipart/related` with `cid:` on send (Andrew's bots use cid images; must round-trip correctly).
+6.12 Notifications: desktop notification per new message in Inbox (role inbox, or flagged mailboxes),
+grouped when > 3 in 10 s; per-account mute; clicking focuses the message. Skip messages already seen.
+6.13 Keyboard shortcuts (all remappable in settings later; defaults):
+
+| Key | Action | Key | Action |
+|---|---|---|---|
+| `j` / `k` | next / previous message | `Enter` / `o` | open |
+| `n` / `p` | next / previous thread item | `u` / `Esc` | back to list |
+| `c` | compose | `r` | reply |
+| `a` | reply all | `f` | forward |
+| `e` | archive | `#` / `Del` | delete |
+| `m` | move (picker) | `l` | label/keyword (later) |
+| `s` / `*` | toggle flag | `Shift+U` / `Shift+I` | mark unread / read |
+| `/` | search | `g i` / `g s` / `g d` | go inbox / sent / drafts |
+| `g c` / `g a` | go calendar / contacts | `Ctrl+Enter` | send |
+| `Ctrl+S` | save draft | `?` | shortcut help |
+| `Ctrl+1/2/3` | mail / contacts / calendar | `F5` | sync now |
+
+## 7. HTML mail safety
+
+- Sanitize in Rust with `ammonia`: allowlist of tags/attributes for email layout (tables, inline
+  styles via filtered `style`, `img`, fonts); strip `script`, `iframe`, `object`, `embed`, `form`,
+  `input`, `base`, `meta refresh`, event handlers, `javascript:`/`data:` URLs except `data:image/*`.
+- Rewrite remote resources (`img src`, CSS `url()`, `background`) to a placeholder unless the
+  sender/domain is in `remote_allow` or the user clicks "Load remote content" for this message.
+  Track `has_remote` to show the banner.
+- `cid:` references rewritten to a Tauri custom protocol `pav-cid://<email_rowid>/<cid>` served from
+  local blobs (protocol handler checks the cid belongs to that email).
+- Render in `<iframe sandbox srcdoc=…>` with **no** `allow-scripts`, no `allow-same-origin`, no
+  `allow-forms`, no `allow-popups`. Inject a CSP meta into srcdoc:
+  `default-src 'none'; img-src pav-cid: data: [https: only when allowed]; style-src 'unsafe-inline'; font-src data:`.
+- The iframe never gets the Tauri IPC; enforce with Tauri capability config (IPC only for the main
+  window origin) and verify in tests that `window.__TAURI__` is undefined inside the frame.
+- Links: the parent intercepts clicks via a transparent overlay technique or by rewriting `href` to
+  `pav-link://` handled by the protocol handler, which emits an event; the UI shows a confirm dialog
+  with the real URL (highlight when display text and target domain differ), then opens via opener.
+- Plain-text view toggle always available; default to plain for messages from unknown senders
+  optional setting.
+- Never auto-open attachments; warn on executable types.
+
+## 8. Contacts
+
+- Requires JMAP for Contacts (RFC 9610, `urn:ietf:params:jmap:contacts`). **Verify that the running
+  Stalwart version advertises this capability and which JSContact properties round-trip.** If absent,
+  contacts stay local-only until P6 CardDAV adapter.
+- Address books: list, create, rename, delete, default book per account.
+- Contact CRUD with editor: name parts, nicknames, emails (typed), phones, addresses, org/title,
+  notes, birthday, photo (blob). Store full JSContact in `card_json`; edit known fields, preserve unknown.
+- Search: FTS over name/emails/org/notes.
+- Compose autocomplete: contacts + `recent_address` (populated from sent mail), ranked by
+  frequency × recency, shows account color.
+- Import: `.vcf` (vCard 3/4, multi-card files), JSContact JSON. Export same. Use Stalwart `calcard`
+  crate for vCard↔JSContact if it fits.
+- Migration: import CardBook/Betterbird exports (vCard) into a chosen book.
+
+## 9. Calendar
+
+- Requires JMAP Calendars (`urn:ietf:params:jmap:calendars`, IETF draft). **Verify Stalwart support and
+  draft revision; property names may differ between revisions. Isolate mapping in one module.**
+  If unsupported, calendars are local-only until the CalDAV adapter (P6), or move CalDAV earlier.
+- Calendars: list, color, visibility toggle, default calendar; shared calendars from other accounts
+  (e.g. work@/home@) shown when exposed as separate JMAP accounts or shared calendars.
+- Views: month, week (default), day, agenda (next 30 days). Week starts Monday (setting).
+  24h clock. Default tz `America/Vancouver`; per-event tz shown when different.
+- Event CRUD: title, location, description, start/end or all-day, tz, calendar, alerts, recurrence.
+  Drag to create/move/resize in week/day views.
+- Recurrence: RRULE via `rrule` crate, EXDATE, RDATE, overridden instances (`recurrenceOverrides`).
+  Edit scope: this / this and following / all. Expansion cached in `event_instance` for a rolling
+  window (−6 / +18 months), recomputed on change.
+- Timezones: `chrono-tz`; store UTC + IANA tz; handle DST gaps/overlaps; floating times for all-day.
+- Reminders: scheduler in Rust wakes for next alert, emits `calendar://reminder` + desktop notification;
+  snooze 5/10/30 min. Only while app runs (autostart recommended).
+- Import/export `.ics`. Migration from Omacal: import its .ics export or its data source (open question).
+- Later (P6): iTIP invitations — show REQUEST in mail with Accept/Tentative/Decline, send REPLY via
+  JMAP (or `CalendarEvent/participantReply` if supported); update attendee status.
+
+## 10. UI / UX
+
+- Shell: left nav rail (Mail / Contacts / Calendar / Settings), status dot per account.
+- Mail: 3-pane (sidebar mailboxes | message list | reading pane); toggle to wide list + bottom pane.
+  Message list row: account color bar, from, subject, preview, 24h time or date, flags, attachment icon.
+- Contacts: books | list | detail. Calendar: mini-month + calendar list | main view.
+- Theming: CSS variables in `theme.css` (`--bg`, `--fg`, `--accent`, `--muted`, `--border`, spacing,
+  font sizes); light, dark, follow-system (`prefers-color-scheme`). Fonts: system UI font, monospace for
+  headers view. Density setting (compact/comfortable).
+- Times: 24h default everywhere (`HH:mm`), dates ISO-ish (`2026-10-14`) or short `Oct 14`; setting.
+- Accessibility: full keyboard navigation, visible focus rings, ARIA roles on lists/trees/grid,
+  contrast ≥ 4.5:1 in both themes, respect `prefers-reduced-motion`, font scaling via settings.
+- Single instance; window state remembered; tray icon optional (Wayland support varies).
+
+## 11. Security
+
+- Credentials only in the Secret Service keyring; never in config, SQLite, logs, crash output or
+  frontend memory beyond the add-account form (cleared after submit).
+- TLS required (rustls, system roots via `rustls-native-certs`); no "accept invalid cert" toggle.
+  Optional per-account pinned CA path for internal endpoints.
+- App CSP (tauri.conf): `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
+  img-src 'self' pav-cid: data:; frame-src 'self'; connect-src ipc: http://ipc.localhost`.
+  No remote origins in the app window. Tauri capabilities: least privilege per window.
+- No auto-update, no telemetry, no outbound requests except configured JMAP endpoints and
+  user-approved remote images/links.
+- Logging: `tracing` to `~/.local/share/pavillion/logs/` (rotated, 7 days). Redact `Authorization`
+  headers, passwords, tokens, message bodies; log IDs and sizes, not content. Debug log level opt-in.
+- SQLite file mode 0600; blobs dir 0700.
+- Temp files for opened attachments in `$XDG_RUNTIME_DIR/pavillion/`, removed on exit.
+
+## 12. Packaging
+
+- Build: `cargo tauri build` (Tauri CLI 2). Targets: `rpm` (Fedora 43, angrin), AppImage, and an Arch
+  `PKGBUILD` (Omarchy) built from source. `.deb` not required.
+- Runtime deps: `webkit2gtk-4.1`, `libsecret`/a Secret Service provider (gnome-keyring or KeePassXC),
+  `libayatana-appindicator` only if tray enabled.
+- Desktop file `com.500nodes.Pavillion.desktop`: `MimeType=x-scheme-handler/mailto;text/calendar;text/vcard;`
+  plus `Categories=Network;Email;Calendar;ContactManagement;`.
+- mailto: register via `tauri-plugin-deep-link`; document `xdg-mime default com.500nodes.Pavillion.desktop
+  x-scheme-handler/mailto`. Single-instance forwards `mailto:` to running app → opens composer.
+- Autostart: optional via `tauri-plugin-autostart` (XDG autostart), off by default; start minimized option.
+- Wayland: no X11-only APIs; test under GNOME (Fedora) and Hyprland (Omarchy). Set
+  `WEBKIT_DISABLE_DMABUF_RENDERER=1` fallback documented if rendering glitches.
+- `make dev`, `make build`, `make test` (or `just`) wrappers in repo root.
+
+## 13. Testing
+
+- Rust unit tests: MIME parse/build round-trip, sanitizer policy, query parser, RRULE expansion incl.
+  DST transitions in America/Vancouver, identity selection rules, queue coalescing, retention selection.
+- JMAP mock server (`axum` in `tests/support/`): recorded fixtures for Session, Mailbox/Email/Thread
+  get/changes/query/set, `cannotCalculateChanges`, `stateMismatch`, 401, 429/503 with retry,
+  EventSource stream with drops. Sync engine tested end-to-end against it.
+- Integration (opt-in, `PAVILLION_IT=1`): a dedicated test account on Stalwart (to be created by
+  Andrew; e.g. a 500nodes test mailbox). Tests create/delete their own mailbox `pavillion-it-*`;
+  never touch other folders. Covers send-to-self, drafts, move, flags, contacts/calendar if supported.
+- Sample corpus `tests/corpus/`: plain, multipart/alternative, HTML newsletters, cid-image signatures
+  (copy pattern from Andrew's bot reports), huge attachments, malformed MIME, non-UTF-8 charsets,
+  and nasty HTML (script, `onerror`, CSS `url()` tracking, `<base>`, `<meta refresh>`, SVG with script,
+  `javascript:` links, look-alike link text). Assertion: nothing executes, no network request made.
+- Frontend: Vitest for stores/utils; Playwright (optional) against `tauri dev` or a mock-API web build
+  for keyboard flows, compose, iframe isolation check.
+- Performance budgets: cold start < 1.5 s with 20 accounts cached; list scroll 60 fps at 100k messages;
+  local search < 100 ms on 200k messages.
+
+## 14. Phased plan
+
+Effort is rough focused agent time with Andrew review; adjust after P1.
+
+**P0 — Skeleton + login + mailbox list (2–3 days)**
+- Tauri 2 + Svelte app, workspace crates, config, keyring, SQLite migrations, logging.
+- Add account (Basic/bearer), session discovery, `Mailbox/get`, sidebar tree with counts.
+- Accept: add 3 Stalwart accounts across 2 tenants; mailbox trees and unread counts match the server;
+  password stored in keyring only (grep data dirs: no secret); bad password shows one error, no loop.
+
+**P1 — Read mail (4–6 days)**
+- Initial + delta sync of headers, message list (virtualized), thread view, lazy bodies, sanitizer,
+  sandboxed iframe, remote-image blocking + allowlist, attachments save/open, flags, move/delete/archive
+  (online), unified views.
+- Accept: all ~20 accounts synced; reading a bot report with cid images renders inline images;
+  corpus nasty-HTML suite passes; changes made in another client appear within one poll/push cycle.
+
+**P2 — Compose, send, drafts (4–5 days)**
+- Composer, identity selection, reply/forward quoting, attachments, inline images, HTML signatures,
+  drafts autosave/server sync, outbox + EmailSubmission, mailto handler.
+- Accept: send from 3 identities on different tenants; recipients receive correct From, threading
+  headers, signature with cid image intact; draft survives app kill; failed send visible and retryable.
+
+**P3 — Search, offline queue, push (4–5 days)**
+- FTS5 index + query syntax, server search merge, op_queue with conflict handling, EventSource push
+  with backoff, retention rules, notifications, keyboard shortcuts complete.
+- Accept: offline: flag/move/delete 20 messages, reconnect, server matches; conflicting change from
+  another client resolved without data loss; new mail notification < 5 s with push; retention keeps
+  exactly N newest in a willard@ folder.
+
+**P4 — Contacts (3–4 days)**
+- Verify JMAP Contacts on Stalwart first. Address books, CRUD, search, autocomplete, vCard import/export.
+- Accept: import a CardBook/Betterbird vCard export; edit on server reflects locally and vice versa;
+  autocomplete ranks frequent recipients first.
+
+**P5 — Calendar (8–12 days)**
+- Verify JMAP Calendars on Stalwart first (go/no-go; else pull CalDAV adapter forward).
+- Calendars, 4 views, CRUD, recurrence with exceptions, timezones, reminders, .ics import/export.
+- Accept: weekly recurring event with one moved and one cancelled instance displays correctly across
+  the Nov DST change; reminder fires on time; Omacal data imported.
+
+**P6 — Polish + optional fallback (open-ended; 1–3 weeks)**
+- iTIP invitations, IMAP/SMTP + CalDAV/CardDAV adapter behind `Backend`, shortcut remapping, density
+  options, Betterbird mail import (mbox/Maildir) if wanted, packaging for Arch/AppImage.
+- Accept: per-feature, agreed with Andrew at the start of P6.
+
+Total to daily-driver mail (P0–P3): ~3 weeks. Full replacement (P0–P5): ~5–6 weeks.
+
+## 15. Open questions for Andrew
+
+1. Which accounts first (P0/P1 set)? Andrew@500foods.com + which 500nodes/500courses accounts?
+2. Exact JMAP session URLs per tenant, and does each tenant use its own Stalwart instance/hostname?
+3. Which Stalwart version is running, and does it advertise `urn:ietf:params:jmap:contacts` and
+   `urn:ietf:params:jmap:calendars`? (Decides P4/P5 vs pulling the DAV adapter forward.)
+4. Shared calendars (work@ / home@): separate logins, or shared into one account? Needed in P5?
+5. Notification style: every message, Inbox only, or per-folder opt-in? Quiet hours?
+6. Migration: import existing mail history (or rely on server-side only)? CardBook/Betterbird
+   vCard export available? How does Omacal store data (local .ics, CalDAV, other)?
+7. Retention: move trimmed messages to Trash or destroy permanently? Same rule for all willard@ folders?
+8. Should a server-side retention in Stalwart be preferred if available (the Willard watcher spec also
+   proposes trimming)? Avoid two trimmers on the same folders.
+9. App-password vs. main password per account; any accounts using bearer/API tokens?
+10. Need PGP or S/MIME at any point?
+11. Repo location and name (e.g. `/mnt/extra/Projects/Pavillion`, GitHub/origin remote)?
+12. Fedora rpm only to start, or also Omarchy build from day one?
