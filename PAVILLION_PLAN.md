@@ -1,6 +1,50 @@
-# PAVILLION_PLAN.md — Build Spec
+# Pavillion — table of contents
 
-Status: draft v0.1 (2026-10-14). Implementer: Grok Build. Reviewer: Andrew Simard.
+Status: draft v0.4 (2026-10-14). Implementer: Grok Build. Reviewer: Andrew Simard.
+
+**Resume:** B-2 is complete. B-3 is next.
+
+This file is the map. A new session reads Resume, the sequence table, and then only the named phase. One phase per session. The next session starts fresh. Phases are not worked in parallel.
+
+A phase id is a letter and a number. The letter is the document. The number starts at 1 inside that document. B-3 is the third phase of CONFIG. A-12 would be the twelfth phase of INIT. The letters are not worked as four stacks at once. The sequence below is the only order.
+
+| Doc | File | What it decides |
+| --- | --- | --- |
+| A | [docs/A-INIT.md](docs/A-INIT.md) | The executable, the window, Unity, linking the C library |
+| B | [docs/B-CONFIG.md](docs/B-CONFIG.md) | `Pavillion.json`, profiles, paths, the `engine` field |
+| C | [docs/C-CORE.md](docs/C-CORE.md) | Threads, the loop, logging, the SQLite open |
+| D | [docs/D-UI.md](docs/D-UI.md) | The shell, `api.js`, the first frame |
+
+| | Phase | What | Kind |
+| --- | --- | --- | --- |
+| 1 | A-1 | C library skeleton and Makefile | Easy |
+| 2 | A-2 | Unity harness | Easy |
+| 3 | A-3 | Tauri and Vite window | Medium |
+| 4 | A-6 | `--help` and `--version` | Easy |
+| 5 | D-1 | Frame and theme variables | Easy |
+| 6 | A-4 | Link the C library into the shell | Hard |
+| 7 | D-2 | `api.js` and status text | Easy |
+| 8 | C-1 | Log function | Easy |
+| 9 | C-2 | Log thread and the line format | Medium |
+| 10 | B-1 | Parse the index and a profile | Easy |
+| 11 | B-2 | First-run files | Easy |
+| 12 | B-3 | Scan, kind, and a broken active profile | Medium |
+| 13 | B-4 | Paths and file modes | Medium |
+| 14 | B-5 | An unknown engine is an error | Easy |
+| 15 | C-3 | Core thread and the command queue | Medium |
+| 16 | C-4 | SQLite open and close | Medium |
+| 17 | C-5 | Stop | Easy |
+| 18 | C-6 | Start loads a profile | Medium |
+| 19 | A-5 | Working directory and a real start | Medium |
+| 20 | D-3 | The error state | Easy |
+
+**Easy** is one module and a test, or a static page. **Medium** crosses one boundary. **Hard** is the first join of the two build systems. That is A-4.
+
+How a phase is closed, in the document that owns it: Status, Accomplished, Lessons learned, Handoff, then a Working log line. Then stop. A sitting that ends early marks that phase in progress and does not open the next one. The steps are restated at the top of each lettered document.
+
+Recorded, and not in the sequence yet: a Settings screen (zoom first, then per-panel zoom, window placement, hidden chrome), an Activity view of the log, UPX on the release binary, and a dnf repository as the update path. Also waiting: CodeMirror 6 for HTML and Lua source, SunEditor as the mail composer, Font Awesome Pro (Duotone, Sharp, Thin), and a Lithium-style theme layer after the hello frame. Lua and a second database driver wait there too. §14 below is the product roadmap (P0 through P6). It is not this session list. It gets its own letters when A through D are done.
+
+The feature sections under §3 onward stay the spec for mail and sync until those letters exist. Where a topic has moved, the lettered document wins.
 
 ## 1. Name, purpose, goals, non-goals
 
@@ -12,15 +56,16 @@ Goals:
 - Handle ~20 accounts/identities comfortably: unified views, fast switching, per-account identities.
 - Offline-capable local store (SQLite) with fast local search (FTS5).
 - Safe HTML mail rendering (sandboxed, remote content blocked by default).
-- One app, one process, one config. Wayland-friendly. 24h clock, America/Vancouver default.
+- One app, one process, one active profile. Wayland-friendly. 24h clock, America/Vancouver default.
 - Small enough that every subsystem is understandable and testable.
 
 Non-goals (do not build):
-- Gmail, OAuth2 flows, Exchange/EWS/Graph, POP3.
+- Gmail and Microsoft OAuth, Exchange/EWS/Graph, POP3. Generic OpenID Connect
+  (authorization code + PKCE, bearer token to the server) is in scope; see §2 and §3.
 - Multi-user, sync of app settings across machines, cloud services of any kind.
 - Plugin/add-on system (add-ons caused the CardBook mess; the app stays closed).
 - RSS, chat, newsgroups, PGP/S-MIME (S/MIME and PGP may be an open question later).
-- Auto-update channel. Builds are local.
+- An in-app self-updater. Updates are a package the system already installs. Development builds stay local.
 - Windows/macOS support.
 
 ## 2. Architecture
@@ -28,56 +73,78 @@ Non-goals (do not build):
 ```
 +--------------------------- Tauri 2 app ----------------------------+
 | Frontend (WebView: WebKitGTK)                                       |
-|   Svelte 5 + TypeScript, CSS variables                              |
-|   app UI  <--invoke/events-->  Rust core                            |
+|   Vanilla JS, HTML, CSS. Vite. Tabulator where the screen is a table|
+|   app UI  <--invoke/events-->  thin Rust shell                      |
 |   message view: sandboxed <iframe srcdoc> (no bridge, no scripts)   |
 +---------------------------------------------------------------------+
-| Rust core (tokio)                                                    |
-|   accounts   jmap (client)   sync (engine)   store (SQLite+FTS5)     |
-|   search     sender (outbox) contacts   calendar   notify   secrets  |
-|   adapters:  JmapAdapter (P0..P5)  ImapDavAdapter (P6, optional)     |
+| Rust shell (Tauri only): commands, events, window, dialogs,         |
+|   single-instance, mailto. No mail logic.                           |
++---------------------------------------------------------------------+
+| C core (library, no Tauri)                                           |
+|   accounts   jmap   imap/smtp   sync   store (SQLite+FTS5)           |
+|   search   sender   contacts   calendar   files   notify   secrets   |
+|   backends:  JmapBackend (full account)   ImapBackend (mail only)    |
 +---------------------------------------------------------------------+
 ```
 
-### 2.1 Rust crates (workspace)
-- `pavillion-core` (lib): all logic, no Tauri dependency, unit-testable.
-  - `accounts` — config load/save, account registry.
-  - `secrets` — `keyring` crate (Secret Service / libsecret).
-  - `jmap` — session discovery, request batching, method calls, blob upload/download, EventSource.
-  - `sync` — per-account tasks: initial sync, `/changes` deltas, push handling, mutation queue.
-  - `store` — `rusqlite` (bundled, FTS5 enabled), migrations via `refinery` or hand-rolled `user_version`.
-  - `search` — FTS5 queries + server `Email/query` merge.
-  - `sender` — outbox, `Email/set` + `EmailSubmission/set`.
-  - `mime` — `mail-parser` (parse), `mail-builder` (compose); both Stalwart crates.
-  - `sanitize` — `ammonia` HTML sanitizer with custom policy.
-  - `contacts` — JSContact/vCard mapping (`calcard` crate from Stalwart if suitable, else `vcard` parsing by hand).
-  - `calendar` — JSCalendar/iCalendar mapping (`calcard` or `icalendar`), `rrule`, `chrono-tz`.
-  - `backend` trait — the internal interface both adapters implement (see 2.4).
-- `pavillion-app` (bin): Tauri 2 shell, command handlers, event emitters, plugins:
-  `tauri-plugin-notification`, `tauri-plugin-deep-link` (mailto:), `tauri-plugin-dialog`,
-  `tauri-plugin-opener`, `tauri-plugin-autostart` (optional), `tauri-plugin-single-instance`.
-- Common: `tokio`, `reqwest` (rustls, http2, stream), `serde`/`serde_json`, `thiserror`, `tracing`,
-  `uuid`, `chrono`, `chrono-tz`, `futures`, `eventsource-stream` (or hand-parsed SSE over reqwest).
+### 2.1 C core, thin Rust shell
 
-Verify current crate names/versions at build time; do not pin from this document.
+`pavillion-core` is a C library. It has no Tauri dependency. Unity tests link it
+directly. `pavillion-app` is the Tauri 2 binary: command handlers, event emitters,
+and the plugins (`tauri-plugin-notification`, `tauri-plugin-deep-link` for mailto,
+`tauri-plugin-dialog`, `tauri-plugin-opener`, `tauri-plugin-autostart` optional,
+`tauri-plugin-single-instance`). The shell translates invoke calls into C calls and
+emits events. Mail, sync, storage, and authentication do not live in Rust.
 
-### 2.2 Frontend choice: Svelte 5 + TypeScript (Vite)
-Why: compiles to small vanilla JS, no virtual DOM, reactive stores fit an event-driven backend,
-minimal runtime, easy for an agent to write and for Andrew to read. Vanilla+lit is the fallback if
-Svelte tooling becomes a problem. No CSS framework; hand-written CSS with variables.
-Virtualized lists (own small implementation or `svelte-virtual-list`-style) are required for
-message lists of 50k+ items.
+C modules: `accounts`, `secrets`, `jmap`, `imap`, `smtp`, `sync`, `store`, `search`,
+`sender`, `mime`, `sanitize`, `contacts`, `calendar`, `files`, `backend`.
 
-Frontend layout:
+Libraries already used in Philement, kept because they are small and the build is fast:
+
+- **Jansson** for every JSON document, including JMAP request and response bodies.
+- **libcurl** for HTTPS, HTTP/2, the session, the API, upload, download, and EventSource.
+- **SQLite** with FTS5 for the local store. Schema version is `user_version`, migrations
+  hand-rolled. Link the system library; do not bring over Hydrogen's database-engine dlopen layer.
+- **OpenSSL** for TLS through curl and SHA-256 for PKCE.
+- **libuuid** for ids.
+
+Added because Hydrogen does not do this job:
+
+- **GMime** to parse and build MIME.
+- **libical** for iCalendar and RRULE expansion when calendars land. Timezones come from
+  the system zoneinfo data (`America/Vancouver` and the rest).
+- **libsecret** for the Secret Service (gnome-keyring or KeePassXC).
+
+Left behind on purpose: libmicrohttpd, libwebsockets, Lua, MagickWand, Brotli. Those
+belong to the server. JMAP over HTTP does not need them.
+
+Concurrency is the Hydrogen shape, not an async runtime: one worker thread per login,
+a shared curl multi handle, a global cap on in-flight requests (default 6).
+
+Build the core with CMake. `make dev`, `make build`, and `make test` at the repo root
+drive both the C core and the Tauri shell. `make build` copies the release binary to
+`dist/pavillion`. Do not pin library versions in this document.
+
+### 2.2 Frontend: vanilla JS, Vite, Tabulator
+
+ES modules, HTML, and CSS variables. No framework and no CSS library. Vite builds and
+serves the UI, the same role it has in Lithium. Vitest covers JS modules that do not
+need a window.
+
+**Tabulator** is the table. Use it for the message list, contacts, files, and the
+account and mailbox lists, with its virtual DOM so a list of 100k rows stays inside
+the frame budget. The reading pane, the composer, and the calendar views are plain
+DOM. They are not tables.
+
 ```
-ui/src/
-  lib/api.ts          typed wrappers for every invoke + event listener
-  lib/types.ts        mirrors Rust DTOs (generate with `specta`/`tauri-specta` if practical)
-  stores/             accounts, mailboxes, messageList, selection, compose, calendar, settings
-  components/mail/    Sidebar, MessageList, MessageView, ThreadView, Composer
-  components/contacts/ BookList, ContactList, ContactEditor
-  components/calendar/ MonthView, WeekView, DayView, AgendaView, EventEditor
-  components/common/  Toolbar, Dialog, Toast, Shortcuts
+ui/
+  index.html
+  src/api.js          the only module that calls Tauri
+  src/mail/           sidebar, message list, thread, composer
+  src/contacts/
+  src/calendar/       month, week, day, agenda, event editor
+  src/files/
+  src/common/         dialog, toast, shortcuts
   styles/             theme.css (variables), light.css, dark.css
 ```
 
@@ -157,47 +224,14 @@ Events (backend → frontend, `emit`):
 - `calendar://reminder` `{ event_id, occurrence_start, title, location? }`
 - `app://mailto` `{ url }` (from deep-link handler)
 
-### 2.4 Backend trait (adapter boundary)
-```rust
-#[async_trait]
-pub trait Backend: Send + Sync {
-    async fn connect(&self) -> Result<Capabilities>;
-    async fn sync_mailboxes(&self, store: &Store) -> Result<Changes>;
-    async fn sync_emails(&self, store: &Store, opts: SyncOpts) -> Result<Changes>;
-    async fn fetch_body(&self, email: &EmailRef) -> Result<BlobPath>;
-    async fn fetch_blob(&self, blob: &BlobRef) -> Result<BlobPath>;
-    async fn apply(&self, op: &QueuedOp) -> Result<OpResult>;      // flags, move, delete, set
-    async fn submit(&self, msg: &Outgoing) -> Result<SubmitResult>;
-    async fn query_server(&self, q: &SearchQuery) -> Result<Vec<RemoteId>>;
-    async fn sync_contacts(&self, store: &Store) -> Result<Changes>;
-    async fn sync_calendars(&self, store: &Store) -> Result<Changes>;
-    fn push(&self) -> Option<BoxStream<'static, PushEvent>>;
-}
-```
-UI and sync engine only ever talk to `Backend`. `JmapBackend` is the only implementation until P6.
+### 2.4 Backend boundary
+
+The runtime, the threads, and the store function table are in [docs/C-CORE.md](docs/C-CORE.md). The mail and calendar operations that used to be sketched here as a Rust trait (connect, sync, fetch, apply, submit, query, push) still describe the work. They will be a C function table in the sync document, with two implementations: `JmapBackend` for a full account, and `ImapBackend` for mail only. The UI talks to the core, and the core talks to that table. Nothing in the UI calls JMAP or IMAP itself.
 
 ## 3. Accounts & auth
 
-- Config: `~/.config/pavillion/config.toml` (XDG_CONFIG_HOME respected). No secrets in it.
-- Data: `~/.local/share/pavillion/` → `pavillion.sqlite`, `blobs/` (content-addressed by blobId hash),
-  `logs/`. Cache: `~/.cache/pavillion/` (rendered/temp files, safe to delete).
-- Each account entry:
-```toml
-[[account]]
-id = "a-500foods-andrew"
-name = "andrew@500foods.com"
-session_url = "https://mail.500foods.com/.well-known/jmap"
-username = "andrew@500foods.com"
-auth = "basic"            # "basic" (password/app-password) | "bearer" (API token)
-color = "#2a7"
-enabled = true
-sync_mail = true
-sync_contacts = true
-sync_calendars = true
-fetch_bodies = "recent"   # "none" | "recent" (last 30 days) | "all"
-```
-- Secrets: `keyring` entry service=`pavillion`, user=`<account id>`. If Secret Service is unavailable,
-  refuse to save and prompt per session; never fall back to a file.
+The files, the profile schema, the account object, and the keyring entry are in [docs/B-CONFIG.md](docs/B-CONFIG.md). This section is the behavior of an account once it is loaded.
+
 - Session discovery: GET `session_url` (follow `/.well-known/jmap` redirect), cache the Session
   object, use `apiUrl`, `downloadUrl`, `uploadUrl`, `eventSourceUrl`, `primaryAccounts`.
   A single login may expose several JMAP accounts (shared mailboxes/calendars): model each
@@ -206,8 +240,8 @@ fetch_bodies = "recent"   # "none" | "recent" (last 30 days) | "all"
   (1) the address the original was sent to, (2) mailbox/account default, (3) global default.
 - Auth failure (401): mark account `error:auth`, stop that account's loops, show one banner with
   "Re-enter password". Never loop prompts (this is the Betterbird/iCloud failure mode).
-- 20+ accounts: one tokio task per login, shared reqwest client (connection pooling per host),
-  global concurrency cap (default 6 in-flight requests).
+- 20+ accounts: one worker thread per login, a shared curl multi handle (connection pooling
+  per host), global concurrency cap (default 6 in-flight requests). See §2.1.
 
 ## 4. Data model (SQLite)
 
@@ -367,7 +401,7 @@ grouped when > 3 in 10 s; per-account mute; clicking focuses the message. Skip m
 
 ## 7. HTML mail safety
 
-- Sanitize in Rust with `ammonia`: allowlist of tags/attributes for email layout (tables, inline
+- Sanitize in the C core with an allowlist of tags and attributes for email layout (tables, inline
   styles via filtered `style`, `img`, fonts); strip `script`, `iframe`, `object`, `embed`, `form`,
   `input`, `base`, `meta refresh`, event handlers, `javascript:`/`data:` URLs except `data:image/*`.
 - Rewrite remote resources (`img src`, CSS `url()`, `background`) to a placeholder unless the
@@ -398,8 +432,8 @@ grouped when > 3 in 10 s; per-account mute; clicking focuses the message. Skip m
 - Search: FTS over name/emails/org/notes.
 - Compose autocomplete: contacts + `recent_address` (populated from sent mail), ranked by
   frequency × recency, shows account color.
-- Import: `.vcf` (vCard 3/4, multi-card files), JSContact JSON. Export same. Use Stalwart `calcard`
-  crate for vCard↔JSContact if it fits.
+- Import: `.vcf` (vCard 3/4, multi-card files), JSContact JSON. Export same. Map vCard with
+  the C core (libical's vCard support, or a small parser in that module if the mapping is awkward).
 - Migration: import CardBook/Betterbird exports (vCard) into a chosen book.
 
 ## 9. Calendar
@@ -413,11 +447,11 @@ grouped when > 3 in 10 s; per-account mute; clicking focuses the message. Skip m
   24h clock. Default tz `America/Vancouver`; per-event tz shown when different.
 - Event CRUD: title, location, description, start/end or all-day, tz, calendar, alerts, recurrence.
   Drag to create/move/resize in week/day views.
-- Recurrence: RRULE via `rrule` crate, EXDATE, RDATE, overridden instances (`recurrenceOverrides`).
+- Recurrence: RRULE via libical, EXDATE, RDATE, overridden instances (`recurrenceOverrides`).
   Edit scope: this / this and following / all. Expansion cached in `event_instance` for a rolling
   window (−6 / +18 months), recomputed on change.
-- Timezones: `chrono-tz`; store UTC + IANA tz; handle DST gaps/overlaps; floating times for all-day.
-- Reminders: scheduler in Rust wakes for next alert, emits `calendar://reminder` + desktop notification;
+- Timezones: system zoneinfo via libical; store UTC + IANA tz; handle DST gaps/overlaps; floating times for all-day.
+- Reminders: a scheduler in the C core wakes for the next alert, emits `calendar://reminder` + desktop notification;
   snooze 5/10/30 min. Only while app runs (autostart recommended).
 - Import/export `.ics`. Migration from Omacal: import its .ics export or its data source (open question).
 - Later (P6): iTIP invitations — show REQUEST in mail with Accept/Tentative/Decline, send REPLY via
@@ -425,38 +459,51 @@ grouped when > 3 in 10 s; per-account mute; clicking focuses the message. Skip m
 
 ## 10. UI / UX
 
-- Shell: left nav rail (Mail / Contacts / Calendar / Settings), status dot per account.
+The first window, `api.js`, and the rule that screens do not call Tauri themselves are in [docs/D-UI.md](docs/D-UI.md). The notes below are the later screens.
+
+- Shell: left nav rail (Mail / Contacts / Calendar / Files / Settings), status dot per account.
+  Settings is a screen with sections, not a popup. Activity sits on the rail footer and is always reachable.
+  The first settings control is shell zoom (50–300%, steps of 25%). Each later panel stores its own zoom.
+  Window placement and maximized state are restored on launch. Chrome may be the system frame or hidden,
+  in which case the page header is the drag region.
 - Mail: 3-pane (sidebar mailboxes | message list | reading pane); toggle to wide list + bottom pane.
   Message list row: account color bar, from, subject, preview, 24h time or date, flags, attachment icon.
 - Contacts: books | list | detail. Calendar: mini-month + calendar list | main view.
-- Theming: CSS variables in `theme.css` (`--bg`, `--fg`, `--accent`, `--muted`, `--border`, spacing,
-  font sizes); light, dark, follow-system (`prefers-color-scheme`). Fonts: system UI font, monospace for
-  headers view. Density setting (compact/comfortable).
+- Theming: dark first. The hello frame in [docs/D-UI.md](docs/D-UI.md) keeps its five variables and does not read `preferences.theme`. The later theme layer follows Lithium (`docs/Li/LITHIUM-CSS.md`): semantic custom properties, dark defaults, and a theme is an override of those properties. No UI framework, no hardcoded colors in components, and no import of Lithium's stylesheets or fonts. Light and follow-system (`prefers-color-scheme`) are choices on that layer. Fonts: system UI font, monospace for the headers view. Density setting (compact/comfortable).
+- Editors: CodeMirror 6 for HTML source and for Lua source, the generation Lithium already uses. SunEditor is the rich mail composer. Neither is a dependency until that screen exists.
+- Icons: Font Awesome Duotone, Sharp, and Thin. Those families are Pro. They are not loaded from a CDN, and they are not added until a license or kit is in the repo.
 - Times: 24h default everywhere (`HH:mm`), dates ISO-ish (`2026-10-14`) or short `Oct 14`; setting.
 - Accessibility: full keyboard navigation, visible focus rings, ARIA roles on lists/trees/grid,
   contrast ≥ 4.5:1 in both themes, respect `prefers-reduced-motion`, font scaling via settings.
-- Single instance; window state remembered; tray icon optional (Wayland support varies).
+- Single instance. Window state is the profile's `preferences.window`. Tray icon optional (Wayland support varies).
 
 ## 11. Security
 
-- Credentials only in the Secret Service keyring; never in config, SQLite, logs, crash output or
-  frontend memory beyond the add-account form (cleared after submit).
-- TLS required (rustls, system roots via `rustls-native-certs`); no "accept invalid cert" toggle.
+- Credentials only in the Secret Service keyring; never in a profile, SQLite, logs, crash output or
+  frontend memory beyond the add-account form (cleared after submit). See [docs/B-CONFIG.md](docs/B-CONFIG.md).
+- TLS required (libcurl with the system trust store); no "accept invalid cert" toggle.
   Optional per-account pinned CA path for internal endpoints.
 - App CSP (tauri.conf): `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
   img-src 'self' pav-cid: data:; frame-src 'self'; connect-src ipc: http://ipc.localhost`.
   No remote origins in the app window. Tauri capabilities: least privilege per window.
-- No auto-update, no telemetry, no outbound requests except configured JMAP endpoints and
-  user-approved remote images/links.
-- Logging: `tracing` to `~/.local/share/pavillion/logs/` (rotated, 7 days). Redact `Authorization`
+- No in-app updater and no telemetry. No outbound requests except configured JMAP endpoints and
+  user-approved remote images/links. Package updates come from the system repo in §12.
+- Logging: the core logger in [docs/C-CORE.md](docs/C-CORE.md). Redact `Authorization`
   headers, passwords, tokens, message bodies; log IDs and sizes, not content. Debug log level opt-in.
 - SQLite file mode 0600; blobs dir 0700.
 - Temp files for opened attachments in `$XDG_RUNTIME_DIR/pavillion/`, removed on exit.
 
 ## 12. Packaging
 
-- Build: `cargo tauri build` (Tauri CLI 2). Targets: `rpm` (Fedora 43, angrin), AppImage, and an Arch
-  `PKGBUILD` (Omarchy) built from source. `.deb` not required.
+- One executable, `pavillion`. `make build` builds the release binary and copies it to `dist/pavillion`. That is the file you run. Cargo still writes `src-tauri/target/release/pavillion` on the way there. `build/` is the C library and the Unity test. `ui/dist/` is the page Tauri embeds. None of those three is the program.
+- The binary links WebKitGTK from the system (`webkit2gtk-4.1`). It does not contain Chromium, and it does not contain WebKit. Tauri's AppImage copies those libraries into the image and grows from a few megabytes into the tens. `bundle.active` is false, so `make build` does not produce an AppImage, a deb, or an rpm. The rpm remains the Fedora package, and when it is built it will depend on the system WebKitGTK package. An AppImage is not a target while it would vendor that library. `.deb` stays out. Arch is a `PKGBUILD` that links the system library.
+- Release compile is already LTO, opt-level 3, `panic = abort`, and strip. When `upx` is on the path, the release binary is packed afterwards. If the packed binary does not start, the unpacked binary ships and the pack failure is logged. UPX is not required to build. Packing does not swallow WebKitGTK, because WebKitGTK is not in the file.
+- `cargo tauri build` embeds `ui/dist` in that binary, and the WebView loads it through Tauri's custom protocol. Dev keeps using the Vite URL and does not embed. The UI is not a Hydrogen payload. Hydrogen appends an encrypted archive after the executable because the C program serves Swagger. Pavillion has no HTTP server for its own window.
+- `pavillion --help` and `pavillion --version` are A-6. They print the version and the release date
+  without opening a window.
+- Updates are a dnf repository fed by the rpm this build produces. That repo is a packaging priority
+  once A through D are done, ahead of an in-app updater. The rpm depends on system WebKitGTK. An Arch
+  `PKGBUILD` (Omarchy) builds from source and links the same system library. `.deb` is not required.
 - Runtime deps: `webkit2gtk-4.1`, `libsecret`/a Secret Service provider (gnome-keyring or KeePassXC),
   `libayatana-appindicator` only if tray enabled.
 - Desktop file `com.500nodes.Pavillion.desktop`: `MimeType=x-scheme-handler/mailto;text/calendar;text/vcard;`
@@ -466,15 +513,18 @@ grouped when > 3 in 10 s; per-account mute; clicking focuses the message. Skip m
 - Autostart: optional via `tauri-plugin-autostart` (XDG autostart), off by default; start minimized option.
 - Wayland: no X11-only APIs; test under GNOME (Fedora) and Hyprland (Omarchy). Set
   `WEBKIT_DISABLE_DMABUF_RENDERER=1` fallback documented if rendering glitches.
-- `make dev`, `make build`, `make test` (or `just`) wrappers in repo root.
+- `make dev`, `make build`, and `make test` at the repo root. `make build` publishes `dist/pavillion`. `make clean` removes `build/` and `dist/`.
 
 ## 13. Testing
 
-- Rust unit tests: MIME parse/build round-trip, sanitizer policy, query parser, RRULE expansion incl.
-  DST transitions in America/Vancouver, identity selection rules, queue coalescing, retention selection.
-- JMAP mock server (`axum` in `tests/support/`): recorded fixtures for Session, Mailbox/Email/Thread
-  get/changes/query/set, `cannotCalculateChanges`, `stateMismatch`, 401, 429/503 with retry,
-  EventSource stream with drops. Sync engine tested end-to-end against it.
+- C unit tests use the Unity framework, the same ThrowTheSwitch Unity Hydrogen uses, vendored
+  under `tests/` without Hydrogen's mock set. Cover MIME parse/build round-trip, sanitizer policy,
+  query parser, RRULE expansion including DST transitions in America/Vancouver, identity selection,
+  queue coalescing, and retention selection.
+- JMAP fixtures in `tests/support/`: recorded Session, Mailbox/Email/Thread get/changes/query/set,
+  `cannotCalculateChanges`, `stateMismatch`, 401, 429/503 with retry, and an EventSource stream
+  with drops. The sync engine runs against those fixtures. A tiny local HTTP server is enough;
+  do not take on libmicrohttpd for the product.
 - Integration (opt-in, `PAVILLION_IT=1`): a dedicated test account on Stalwart (to be created by
   Andrew; e.g. a 500nodes test mailbox). Tests create/delete their own mailbox `pavillion-it-*`;
   never touch other folders. Covers send-to-self, drafts, move, flags, contacts/calendar if supported.
@@ -482,7 +532,7 @@ grouped when > 3 in 10 s; per-account mute; clicking focuses the message. Skip m
   (copy pattern from Andrew's bot reports), huge attachments, malformed MIME, non-UTF-8 charsets,
   and nasty HTML (script, `onerror`, CSS `url()` tracking, `<base>`, `<meta refresh>`, SVG with script,
   `javascript:` links, look-alike link text). Assertion: nothing executes, no network request made.
-- Frontend: Vitest for stores/utils; Playwright (optional) against `tauri dev` or a mock-API web build
+- Frontend: Vitest, as in Lithium, for modules that do not need a window. Playwright (optional) against `tauri dev` or a mock-API web build
   for keyboard flows, compose, iframe isolation check.
 - Performance budgets: cold start < 1.5 s with 20 accounts cached; list scroll 60 fps at 100k messages;
   local search < 100 ms on 200k messages.
@@ -492,7 +542,7 @@ grouped when > 3 in 10 s; per-account mute; clicking focuses the message. Skip m
 Effort is rough focused agent time with Andrew review; adjust after P1.
 
 **P0 — Skeleton + login + mailbox list (2–3 days)**
-- Tauri 2 + Svelte app, workspace crates, config, keyring, SQLite migrations, logging.
+- Tauri 2 shell, C core, Vite UI, config, libsecret, SQLite migrations, logging.
 - Add account (Basic/bearer), session discovery, `Mailbox/get`, sidebar tree with counts.
 - Accept: add 3 Stalwart accounts across 2 tenants; mailbox trees and unread counts match the server;
   password stored in keyring only (grep data dirs: no secret); bad password shows one error, no loop.
@@ -528,9 +578,10 @@ Effort is rough focused agent time with Andrew review; adjust after P1.
 - Accept: weekly recurring event with one moved and one cancelled instance displays correctly across
   the Nov DST change; reminder fires on time; Omacal data imported.
 
-**P6 — Polish + optional fallback (open-ended; 1–3 weeks)**
-- iTIP invitations, IMAP/SMTP + CalDAV/CardDAV adapter behind `Backend`, shortcut remapping, density
-  options, Betterbird mail import (mbox/Maildir) if wanted, packaging for Arch/AppImage.
+**P6 — Polish (open-ended; 1–3 weeks)**
+- iTIP invitations, shortcut remapping, density options, Betterbird mail import (mbox/Maildir)
+  if wanted, an Arch package. AppImage stays out while it would vendor WebKitGTK (§12). IMAP/SMTP mail is a backend from the start (§2.1),
+  not a P6 feature. CalDAV and CardDAV stay out until a later decision.
 - Accept: per-feature, agreed with Andrew at the start of P6.
 
 Total to daily-driver mail (P0–P3): ~3 weeks. Full replacement (P0–P5): ~5–6 weeks.
