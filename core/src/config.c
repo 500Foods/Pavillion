@@ -358,6 +358,12 @@ static const char k_default_profile[] =
     "      \"x\": null,\n"
     "      \"y\": null,\n"
     "      \"chrome\": \"system\"\n"
+    "    },\n"
+    "    \"ui\": {\n"
+    "      \"nav\": { \"width\": 320, \"min\": 200, \"max\": 500 },\n"
+    "      \"mail\": { \"split\": 0.5, \"min\": 0.25, \"max\": 0.75 },\n"
+    "      \"contacts\": { \"split\": 0.5, \"min\": 0.25, \"max\": 0.75 },\n"
+    "      \"files\": { \"split\": 0.5, \"min\": 0.25, \"max\": 0.75 }\n"
     "    }\n"
     "  }\n"
     "}\n";
@@ -400,6 +406,469 @@ static int write_new_file(const char *path, const char *text, char *err, size_t 
         set_err(err, err_len, "cannot write %s", path);
         return -1;
     }
+    return 0;
+}
+
+static int write_replacing(const char *path, const char *text, char *err, size_t err_len) {
+    char tmp[4104];
+    size_t path_len;
+    size_t len;
+    size_t off;
+    int fd;
+    int need_nl;
+
+    path_len = strlen(path);
+    if (path_len + 5 > sizeof(tmp)) {
+        set_err(err, err_len, "path is too long");
+        return -1;
+    }
+    memcpy(tmp, path, path_len);
+    memcpy(tmp + path_len, ".tmp", 5);
+    fd = open(tmp, O_CREAT | O_TRUNC | O_WRONLY, 0600);
+    if (fd < 0) {
+        set_err(err, err_len, "cannot write %s", path);
+        return -1;
+    }
+    if (fchmod(fd, 0600) != 0) {
+        close(fd);
+        unlink(tmp);
+        set_err(err, err_len, "cannot set mode on %s", path);
+        return -1;
+    }
+    len = strlen(text);
+    off = 0;
+    while (off < len) {
+        ssize_t wrote = write(fd, text + off, len - off);
+        if (wrote < 0) {
+            close(fd);
+            unlink(tmp);
+            set_err(err, err_len, "cannot write %s", path);
+            return -1;
+        }
+        off += (size_t)wrote;
+    }
+    need_nl = len == 0 || text[len - 1] != '\n';
+    if (need_nl && write(fd, "\n", 1) != 1) {
+        close(fd);
+        unlink(tmp);
+        set_err(err, err_len, "cannot write %s", path);
+        return -1;
+    }
+    if (fsync(fd) != 0 || close(fd) != 0) {
+        unlink(tmp);
+        set_err(err, err_len, "cannot write %s", path);
+        return -1;
+    }
+    if (rename(tmp, path) != 0) {
+        unlink(tmp);
+        set_err(err, err_len, "cannot write %s", path);
+        return -1;
+    }
+    return 0;
+}
+
+static double clamp_double(double value, double lo, double hi) {
+    if (value < lo) {
+        return lo;
+    }
+    if (value > hi) {
+        return hi;
+    }
+    return value;
+}
+
+static int clamp_int(int value, int lo, int hi) {
+    if (value < lo) {
+        return lo;
+    }
+    if (value > hi) {
+        return hi;
+    }
+    return value;
+}
+
+static int json_set_new(json_t *obj, const char *key, json_t *value, char *err, size_t err_len) {
+    if (value == NULL || json_object_set_new(obj, key, value) != 0) {
+        set_err(err, err_len, "out of memory");
+        return -1;
+    }
+    return 0;
+}
+
+static json_t *number_value(double value, int as_int) {
+    if (as_int) {
+        return json_integer((json_int_t)value);
+    }
+    return json_real(value);
+}
+
+static int need_number(json_t *obj, const char *key, double fallback, int as_int, int *added,
+                       char *err, size_t err_len) {
+    json_t *cur = json_object_get(obj, key);
+    double ignored;
+
+    if (cur == NULL) {
+        if (json_set_new(obj, key, number_value(fallback, as_int), err, err_len) != 0) {
+            return -1;
+        }
+        *added = 1;
+        return 0;
+    }
+    if (read_number(cur, &ignored) != 0) {
+        set_err(err, err_len, "missing %s", key);
+        return -1;
+    }
+    return 0;
+}
+
+static json_t *make_nav(void) {
+    json_t *obj = json_object();
+
+    if (obj == NULL) {
+        return NULL;
+    }
+    if (json_object_set_new(obj, "width", json_integer(320)) != 0 ||
+        json_object_set_new(obj, "min", json_integer(200)) != 0 ||
+        json_object_set_new(obj, "max", json_integer(500)) != 0) {
+        json_decref(obj);
+        return NULL;
+    }
+    return obj;
+}
+
+static json_t *make_split(void) {
+    json_t *obj = json_object();
+
+    if (obj == NULL) {
+        return NULL;
+    }
+    if (json_object_set_new(obj, "split", json_real(0.5)) != 0 ||
+        json_object_set_new(obj, "min", json_real(0.25)) != 0 ||
+        json_object_set_new(obj, "max", json_real(0.75)) != 0) {
+        json_decref(obj);
+        return NULL;
+    }
+    return obj;
+}
+
+static int ensure_pane(json_t *ui, const char *name, int pixels, int *added, char *err, size_t err_len) {
+    json_t *pane = json_object_get(ui, name);
+
+    if (pane == NULL) {
+        pane = pixels ? make_nav() : make_split();
+        if (json_set_new(ui, name, pane, err, err_len) != 0) {
+            return -1;
+        }
+        *added = 1;
+        return 0;
+    }
+    if (!json_is_object(pane)) {
+        set_err(err, err_len, "preferences.ui is not an object");
+        return -1;
+    }
+    if (pixels) {
+        if (need_number(pane, "width", 320, 1, added, err, err_len) != 0 ||
+            need_number(pane, "min", 200, 1, added, err, err_len) != 0 ||
+            need_number(pane, "max", 500, 1, added, err, err_len) != 0) {
+            return -1;
+        }
+        return 0;
+    }
+    if (need_number(pane, "split", 0.5, 0, added, err, err_len) != 0 ||
+        need_number(pane, "min", 0.25, 0, added, err, err_len) != 0 ||
+        need_number(pane, "max", 0.75, 0, added, err, err_len) != 0) {
+        return -1;
+    }
+    return 0;
+}
+
+int pav_profile_ensure_ui(PavProfile *profile, int *added, char *err, size_t err_len) {
+    json_t *prefs;
+    json_t *ui;
+
+    if (added != NULL) {
+        *added = 0;
+    }
+    if (profile == NULL || profile->doc == NULL || added == NULL) {
+        set_err(err, err_len, "missing profile");
+        return -1;
+    }
+    prefs = json_object_get(profile->doc, "preferences");
+    if (!json_is_object(prefs)) {
+        set_err(err, err_len, "missing profile fields");
+        return -1;
+    }
+    ui = json_object_get(prefs, "ui");
+    if (ui == NULL) {
+        ui = json_object();
+        if (json_set_new(prefs, "ui", ui, err, err_len) != 0) {
+            return -1;
+        }
+        *added = 1;
+    } else if (!json_is_object(ui)) {
+        set_err(err, err_len, "preferences.ui is not an object");
+        return -1;
+    }
+    if (ensure_pane(ui, "nav", 1, added, err, err_len) != 0 ||
+        ensure_pane(ui, "mail", 0, added, err, err_len) != 0 ||
+        ensure_pane(ui, "contacts", 0, added, err, err_len) != 0 ||
+        ensure_pane(ui, "files", 0, added, err, err_len) != 0) {
+        return -1;
+    }
+    return 0;
+}
+
+static int prefs_objects(const PavProfile *profile, json_t **prefs, json_t **zoom, json_t **window,
+                         json_t **ui, char *err, size_t err_len) {
+    if (profile == NULL || profile->doc == NULL) {
+        set_err(err, err_len, "missing profile");
+        return -1;
+    }
+    *prefs = json_object_get(profile->doc, "preferences");
+    if (!json_is_object(*prefs)) {
+        set_err(err, err_len, "missing profile fields");
+        return -1;
+    }
+    *zoom = json_object_get(*prefs, "zoom");
+    *window = json_object_get(*prefs, "window");
+    *ui = json_object_get(*prefs, "ui");
+    if (!json_is_object(*zoom) || !json_is_object(*window) || !json_is_object(*ui)) {
+        set_err(err, err_len, "missing profile fields");
+        return -1;
+    }
+    return 0;
+}
+
+static int read_limits(json_t *pane, double *lo, double *hi, int pixels, char *err, size_t err_len) {
+    if (read_number(json_object_get(pane, "min"), lo) != 0 ||
+        read_number(json_object_get(pane, "max"), hi) != 0) {
+        set_err(err, err_len, "missing limits");
+        return -1;
+    }
+    if (*lo != *lo || *hi != *hi || *lo > *hi) {
+        set_err(err, err_len, "invalid limits");
+        return -1;
+    }
+    if (pixels) {
+        if (*lo < 0.0 || *hi > 10000.0) {
+            set_err(err, err_len, "invalid limits");
+            return -1;
+        }
+        return 0;
+    }
+    if (*lo < 0.0 || *hi > 1.0) {
+        set_err(err, err_len, "invalid limits");
+        return -1;
+    }
+    return 0;
+}
+
+static int whole_int(double value, int *out) {
+    if (value < 0.0 || value > 1000000.0) {
+        return -1;
+    }
+    *out = (int)(value + 0.5);
+    return 0;
+}
+
+static int read_px(json_t *ui, const char *name, int *width, int *min, int *max, char *err, size_t err_len) {
+    json_t *pane = json_object_get(ui, name);
+    double lo;
+    double hi;
+    double value;
+    int lo_i;
+    int hi_i;
+    int value_i;
+
+    if (!json_is_object(pane) || read_limits(pane, &lo, &hi, 1, err, err_len) != 0 ||
+        read_number(json_object_get(pane, "width"), &value) != 0 ||
+        whole_int(lo, &lo_i) != 0 || whole_int(hi, &hi_i) != 0 || whole_int(value, &value_i) != 0) {
+        if (err != NULL && err_len > 0 && err[0] == '\0') {
+            set_err(err, err_len, "missing %s", name);
+        }
+        return -1;
+    }
+    *min = lo_i;
+    *max = hi_i;
+    *width = clamp_int(value_i, lo_i, hi_i);
+    return 0;
+}
+
+static int read_split(json_t *ui, const char *name, double *split, double *min, double *max,
+                      char *err, size_t err_len) {
+    json_t *pane = json_object_get(ui, name);
+    double value;
+
+    if (!json_is_object(pane) || read_limits(pane, min, max, 0, err, err_len) != 0 ||
+        read_number(json_object_get(pane, "split"), &value) != 0) {
+        if (err != NULL && err_len > 0 && err[0] == '\0') {
+            set_err(err, err_len, "missing %s", name);
+        }
+        return -1;
+    }
+    *split = clamp_double(value, *min, *max);
+    return 0;
+}
+
+int pav_profile_read_shell(const PavProfile *profile, PavShellPrefs *out, char *err, size_t err_len) {
+    json_t *prefs;
+    json_t *zoom;
+    json_t *window;
+    json_t *ui;
+
+    if (out == NULL) {
+        set_err(err, err_len, "missing prefs");
+        return -1;
+    }
+    memset(out, 0, sizeof(*out));
+    if (prefs_objects(profile, &prefs, &zoom, &window, &ui, err, err_len) != 0) {
+        return -1;
+    }
+    out->zoom_shell = clamp_double(profile->zoom_shell, 0.5, 3.0);
+    out->window_maximized = profile->window_maximized ? 1 : 0;
+    out->window_width = profile->window_width;
+    out->window_height = profile->window_height;
+    out->window_x_set = profile->window_x_set;
+    out->window_y_set = profile->window_y_set;
+    out->window_x = profile->window_x;
+    out->window_y = profile->window_y;
+    memcpy(out->chrome, profile->chrome, sizeof(out->chrome));
+    if (read_px(ui, "nav", &out->nav_width, &out->nav_min, &out->nav_max, err, err_len) != 0 ||
+        read_split(ui, "mail", &out->mail_split, &out->mail_min, &out->mail_max, err, err_len) != 0 ||
+        read_split(ui, "contacts", &out->contacts_split, &out->contacts_min, &out->contacts_max, err, err_len) != 0 ||
+        read_split(ui, "files", &out->files_split, &out->files_min, &out->files_max, err, err_len) != 0) {
+        return -1;
+    }
+    return 0;
+}
+
+static int write_px(json_t *ui, const char *name, int width, char *err, size_t err_len) {
+    json_t *pane = json_object_get(ui, name);
+    double lo;
+    double hi;
+    int lo_i;
+    int hi_i;
+    int clamped;
+
+    if (!json_is_object(pane) || read_limits(pane, &lo, &hi, 1, err, err_len) != 0 ||
+        whole_int(lo, &lo_i) != 0 || whole_int(hi, &hi_i) != 0) {
+        if (err != NULL && err_len > 0 && err[0] == '\0') {
+            set_err(err, err_len, "missing %s", name);
+        }
+        return -1;
+    }
+    clamped = clamp_int(width, lo_i, hi_i);
+    return json_set_new(pane, "width", json_integer(clamped), err, err_len);
+}
+
+static int write_split(json_t *ui, const char *name, double split, char *err, size_t err_len) {
+    json_t *pane = json_object_get(ui, name);
+    double lo;
+    double hi;
+
+    if (!json_is_object(pane) || read_limits(pane, &lo, &hi, 0, err, err_len) != 0) {
+        if (err != NULL && err_len > 0 && err[0] == '\0') {
+            set_err(err, err_len, "missing %s", name);
+        }
+        return -1;
+    }
+    if (split != split) {
+        set_err(err, err_len, "missing %s", name);
+        return -1;
+    }
+    return json_set_new(pane, "split", json_real(clamp_double(split, lo, hi)), err, err_len);
+}
+
+int pav_profile_write_shell(PavProfile *profile, const PavShellPrefs *in, unsigned mask,
+                            char *err, size_t err_len) {
+    json_t *prefs;
+    json_t *zoom;
+    json_t *window;
+    json_t *ui;
+    double zoom_shell;
+
+    if (in == NULL) {
+        set_err(err, err_len, "missing prefs");
+        return -1;
+    }
+    if ((mask & (PAV_PREFS_ZOOM | PAV_PREFS_WINDOW | PAV_PREFS_UI)) == 0) {
+        set_err(err, err_len, "nothing to save");
+        return -1;
+    }
+    if (prefs_objects(profile, &prefs, &zoom, &window, &ui, err, err_len) != 0) {
+        return -1;
+    }
+    if ((mask & PAV_PREFS_ZOOM) != 0) {
+        if (in->zoom_shell != in->zoom_shell) {
+            set_err(err, err_len, "missing shell");
+            return -1;
+        }
+        zoom_shell = clamp_double(in->zoom_shell, 0.5, 3.0);
+        if (json_set_new(zoom, "shell", json_real(zoom_shell), err, err_len) != 0) {
+            return -1;
+        }
+        profile->zoom_shell = zoom_shell;
+    }
+    if ((mask & PAV_PREFS_WINDOW) != 0) {
+        if (strcmp(in->chrome, "system") != 0 && strcmp(in->chrome, "hidden") != 0) {
+            set_err(err, err_len, "chrome must be system or hidden");
+            return -1;
+        }
+        if (in->window_width < 200 || in->window_width > 10000 ||
+            in->window_height < 200 || in->window_height > 10000) {
+            set_err(err, err_len, "window size is out of range");
+            return -1;
+        }
+        if ((in->window_x_set && (in->window_x < -32000 || in->window_x > 32000)) ||
+            (in->window_y_set && (in->window_y < -32000 || in->window_y > 32000))) {
+            set_err(err, err_len, "window position is out of range");
+            return -1;
+        }
+        if (json_set_new(window, "maximized", json_boolean(in->window_maximized ? 1 : 0), err, err_len) != 0 ||
+            json_set_new(window, "width", json_integer(in->window_width), err, err_len) != 0 ||
+            json_set_new(window, "height", json_integer(in->window_height), err, err_len) != 0 ||
+            json_set_new(window, "x", in->window_x_set ? json_integer(in->window_x) : json_null(), err, err_len) != 0 ||
+            json_set_new(window, "y", in->window_y_set ? json_integer(in->window_y) : json_null(), err, err_len) != 0 ||
+            json_set_new(window, "chrome", json_string(in->chrome), err, err_len) != 0) {
+            return -1;
+        }
+        profile->window_maximized = in->window_maximized ? 1 : 0;
+        profile->window_width = in->window_width;
+        profile->window_height = in->window_height;
+        profile->window_x_set = in->window_x_set ? 1 : 0;
+        profile->window_y_set = in->window_y_set ? 1 : 0;
+        profile->window_x = in->window_x_set ? in->window_x : 0;
+        profile->window_y = in->window_y_set ? in->window_y : 0;
+        memset(profile->chrome, 0, sizeof(profile->chrome));
+        memcpy(profile->chrome, in->chrome, strlen(in->chrome));
+    }
+    if ((mask & PAV_PREFS_UI) != 0) {
+        if (write_px(ui, "nav", in->nav_width, err, err_len) != 0 ||
+            write_split(ui, "mail", in->mail_split, err, err_len) != 0 ||
+            write_split(ui, "contacts", in->contacts_split, err, err_len) != 0 ||
+            write_split(ui, "files", in->files_split, err, err_len) != 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+int pav_profile_store(const char *path, const PavProfile *profile, char *err, size_t err_len) {
+    char *text = NULL;
+
+    if (path == NULL || path[0] == '\0') {
+        set_err(err, err_len, "missing profile");
+        return -1;
+    }
+    if (pav_profile_rewrite(profile, &text) != 0) {
+        set_err(err, err_len, "cannot write profile");
+        return -1;
+    }
+    if (write_replacing(path, text, err, err_len) != 0) {
+        free(text);
+        return -1;
+    }
+    free(text);
     return 0;
 }
 
@@ -500,7 +969,7 @@ static void load_error(PavConfigLoad *load, const char *fmt, const char *detail)
 }
 
 static void consider_file(const char *dir, const char *name, const char *active,
-                          PavProfile **found, int *broken) {
+                          PavProfile **found, int *broken, char *path_out, size_t path_out_len) {
     char path[4096];
     char stem[64];
     char err[256];
@@ -559,6 +1028,14 @@ static void consider_file(const char *dir, const char *name, const char *active,
     }
     pav_profile_free(*found);
     *found = profile;
+    if (path_out != NULL && path_out_len > 0) {
+        size_t n = strlen(path);
+        if (n >= path_out_len) {
+            n = path_out_len - 1;
+        }
+        memcpy(path_out, path, n);
+        path_out[n] = '\0';
+    }
 }
 
 int pav_config_load(const char *workdir, PavConfigLoad **out, char *err, size_t err_len) {
@@ -620,7 +1097,8 @@ int pav_config_load(const char *workdir, PavConfigLoad **out, char *err, size_t 
             if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) {
                 continue;
             }
-            consider_file(scan_dir, ent->d_name, index->active, &load->profile, &broken);
+            consider_file(scan_dir, ent->d_name, index->active, &load->profile, &broken,
+                          load->profile_path, sizeof(load->profile_path));
         }
         closedir(dir);
         if (load->profile == NULL) {

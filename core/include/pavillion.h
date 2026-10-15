@@ -10,6 +10,37 @@ typedef struct PavillionStatus {
     char error[512];
 } PavillionStatus;
 
+/* Layout, zoom, and the OS window. Doubles are first so the Rust shell can
+   match this layout with repr(C). */
+typedef struct PavShellPrefs {
+    double zoom_shell;
+    double mail_split;
+    double mail_min;
+    double mail_max;
+    double contacts_split;
+    double contacts_min;
+    double contacts_max;
+    double files_split;
+    double files_min;
+    double files_max;
+    int window_maximized;
+    int window_width;
+    int window_height;
+    int window_x_set;
+    int window_y_set;
+    int window_x;
+    int window_y;
+    int nav_width;
+    int nav_min;
+    int nav_max;
+    char chrome[16];
+} PavShellPrefs;
+
+/* Bits for pavillion_prefs_apply. A field outside the mask is left as stored. */
+#define PAV_PREFS_ZOOM   1u
+#define PAV_PREFS_WINDOW 2u
+#define PAV_PREFS_UI     4u
+
 /* Starts the core thread and returns after it has published state "ready"
    or "error". Returns 0, or -1 when the core is already running, the path
    does not fit, or the thread cannot be created. */
@@ -20,6 +51,14 @@ void pavillion_stop(void);
 
 /* Copies the status under a lock. Returns 0, or -1 when out is NULL. */
 int pavillion_status(PavillionStatus *out);
+
+/* Copies the shell preferences. Returns 0, or -1 when out is NULL or the
+   profile is not ready. */
+int pavillion_prefs_get(PavShellPrefs *out);
+
+/* Asks the core thread to store the masked fields and waits until that write
+   finishes. Returns 0, or -1. On failure err receives a short reason. */
+int pavillion_prefs_apply(const PavShellPrefs *in, unsigned mask, char *err, size_t err_len);
 
 /* Test-only. 1 while the core thread is inside its loop, otherwise 0. */
 int pav_core_thread_alive(void);

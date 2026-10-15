@@ -16,11 +16,12 @@
         "title": "Pavillion",
         "width": 1200,
         "height": 800,
-        "resizable": true
+        "resizable": true,
+        "visible": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self' https://kit.fontawesome.com https://ka-p.fontawesome.com; style-src 'self' 'unsafe-inline'; img-src 'self' pav-cid: data:; frame-src 'self'; connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhost:1420"
     }
   },
   "bundle": {

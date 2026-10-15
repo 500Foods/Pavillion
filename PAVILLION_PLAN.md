@@ -2,7 +2,7 @@
 
 Status: draft v0.4 (2026-10-14). Implementer: Grok Build. Reviewer: Andrew Simard.
 
-**Resume:** D-3 is complete. The hello-world sequence A-1 through D-3 is finished. Font Awesome is the Pro Plus 7.3.1 SVG kit (`45801522ef`); its hosts are on the §11 CSP allowlist. Bundling the icons the UI actually uses comes later.
+**Resume:** D-3 is complete. The hello-world sequence A-1 through D-3 is finished. No phase is open. §10 is the shell, and a preview of it is in the UI. Andrew likes the direction. The preview is not a closed phase. Nav width, the three splits, shell zoom, and the window are stored on the profile through the core and restored on the next launch. `chrome` is stored. Hidden chrome does not turn the decorations off. Font Awesome is the Pro Plus 7.3.1 SVG kit (`45801522ef`), used as-is. Its hosts are on the §11 CSP allowlist. Pro files stay out of the tree. Lessons from the preview are in [docs/D-UI.md](docs/D-UI.md).
 
 This file is the map. A new session reads Resume, the sequence table, and then only the named phase. One phase per session. The next session starts fresh. Phases are not worked in parallel.
 
@@ -42,7 +42,7 @@ A phase id is a letter and a number. The letter is the document. The number star
 
 How a phase is closed, in the document that owns it: Status, Accomplished, Lessons learned, Handoff, then a Working log line. Then stop. A sitting that ends early marks that phase in progress and does not open the next one. The steps are restated at the top of each lettered document.
 
-Recorded, and not in the sequence yet: a Settings screen (zoom first, then per-panel zoom, window placement, hidden chrome), an Activity view of the log, UPX on the release binary, and a dnf repository as the update path. Also waiting: CodeMirror 6 for HTML and Lua source, SunEditor as the mail composer, the Font Awesome Pro Plus 7.3.1 SVG kit on the first screen that uses icons (Duotone, Sharp, and Thin; Mail keeps the roof mark), and a Lithium-style theme layer after the hello frame. Lua and a second database driver wait there too. §14 below is the product roadmap (P0 through P6). It is not this session list. It gets its own letters when A through D are done.
+Recorded, and not in the sequence yet: an Activity view that reads the core log, and real mail, contacts, calendars, and files behind the preview. Nav width, the splits, zoom, and window placement are already saved. Hidden chrome is stored, and the decorations stay the system frame. Also waiting: CodeMirror 6 for HTML and Lua source, SunEditor as the mail composer, `light.css`, UPX on the release binary, and a dnf repository as the update path. Lua and a second database driver wait there too. §14 below is the product roadmap (P0 through P6). It is not this session list. It gets its own letters when a new document is opened. The shell preview and the kit are already in the tree. They are described in §10, §11, and [docs/D-UI.md](docs/D-UI.md).
 
 The feature sections under §3 onward stay the spec for mail and sync until those letters exist. Where a topic has moved, the lettered document wins.
 
@@ -461,17 +461,28 @@ grouped when > 3 in 10 s; per-account mute; clicking focuses the message. Skip m
 
 The first window, `api.js`, and the rule that screens do not call Tauri themselves are in [docs/D-UI.md](docs/D-UI.md). The notes below are the later screens.
 
-- Shell: left nav rail (Mail / Contacts / Calendar / Files / Settings), status dot per account.
-  Settings is a screen with sections, not a popup. Activity sits on the rail footer and is always reachable.
-  The first settings control is shell zoom (50–300%, steps of 25%). Each later panel stores its own zoom.
-  Window placement and maximized state are restored on launch. Chrome may be the system frame or hidden,
-  in which case the page header is the drag region.
-- Mail: 3-pane (sidebar mailboxes | message list | reading pane); toggle to wide list + bottom pane.
+- Shell: full-height nav on the left, tabbed workspace on the right. The nav's right edge sets its width. Four icon buttons on top and four on the bottom. Cells are equal, with no borders, and the icon is centered. The selected cell takes a background. Hover is `filter: drop-shadow` on the icon, with a focus ring for the keyboard. `prefers-reduced-motion` drops motion on that shadow and on the update spin. Each button has an accessible name.
+  Top: Mail (the roof mark), Contacts `fa-sharp fa-thin fa-address-book`, Calendars `fa-sharp fa-thin fa-calendar-days`, Files `fa-sharp fa-thin fa-folder`.
+  Bottom: Activity `fa-sharp fa-thin fa-list-timeline`, Settings `fa-sharp fa-thin fa-gear`, Update `fa-sharp fa-thin fa-arrows-rotate`, Help `fa-sharp fa-thin fa-circle-question`.
+  A top button swaps the nav body and focuses that section's home tab. Home tabs stay put. Settings, from the bottom, does the same: the nav lists settings sections and its tab focuses. Activity and Help open their tabs and leave the nav body as it is. Update starts a sync and spins while work is in progress. It is not a tab.
+  Mail's nav is the mailbox tree. Contacts' nav is a letter rolodex, a search field, then accounts and recents. Calendars' nav is a continuous mini-calendar scroller, opening on the week before the current month through the week after, then the calendars grouped by account with a color swatch beside each. Files' nav is the folder tree. An IMAP account still shows Files, and that tree is empty.
+  Settings is a screen, not a popup. Its nav is a list of headings. Theme is one heading. The shell has no theme control and no light/dark icon. The first control is shell zoom (50–300%, steps of 25%). Each later panel stores its own zoom. Window placement and maximized state are restored on launch. Chrome may be the system frame or hidden. Hidden chrome uses the empty part of the tab strip as the drag region, and the icon buttons stay clickable. Per-account status dots are not placed. Indicators of that kind wait.
+- Workspace: Mail's home tab is the message list beside the open message. The divider moves and starts in the middle. A message may open as its own tab, titled by subject. That tab closes. The home tab does not. Contacts' home tab is the same kind of split, with a larger rolodex beside the open contact. Calendars' home tab is the month. Files' home tab is the folder contents beside a large preview. Settings' home tab is the chosen section. Activity's home tab is the log.
   Message list row: account color bar, from, subject, preview, 24h time or date, flags, attachment icon.
-- Contacts: books | list | detail. Calendar: mini-month + calendar list | main view.
+- Layout the user can change is stored on the profile as `preferences.ui`. The app reads it on load, including the minimums and maximums, and clamps to those. Schema stays 1. New profiles include the object. A profile that lacks it gains the object the next time it loads. The page does not read `Pavillion.json`. `preferences.window` stays the OS window and is applied on launch. `preferences.zoom` stays the scales.
+
+```json
+"ui": {
+  "nav": { "width": 320, "min": 200, "max": 500 },
+  "mail": { "split": 0.5, "min": 0.25, "max": 0.75 },
+  "contacts": { "split": 0.5, "min": 0.25, "max": 0.75 },
+  "files": { "split": 0.5, "min": 0.25, "max": 0.75 }
+}
+```
 - Theming: dark first. The hello frame in [docs/D-UI.md](docs/D-UI.md) keeps its five variables and does not read `preferences.theme`. The later theme layer follows Lithium (`docs/Li/LITHIUM-CSS.md`): semantic custom properties, dark defaults, and a theme is an override of those properties. No UI framework, no hardcoded colors in components, and no import of Lithium's stylesheets or fonts. Light and follow-system (`prefers-color-scheme`) are choices on that layer. Fonts: system UI font, monospace for the headers view. Density setting (compact/comfortable).
+  `preferences.theme` names the theme file: `dark`, `light`, or `system`. The control for it is the Theme heading under Settings. `system` stays dark until follow-system exists. `ui/styles/theme.css` holds the rules and only references variables. `dark.css` and `light.css` assign the same names. A surface is a custom property whose value may be a gradient: one angle, black in one corner, a very dark red in the other, taken from the roof mark. Panels and buttons differ by how far that red reaches. Active and inactive are two variables, and the stylesheet picks one. `preferences.ui` stores layout only. It does not store backgrounds.
 - Editors: CodeMirror 6 for HTML source and for Lua source, the generation Lithium already uses. SunEditor is the rich mail composer. Neither is a dependency until that screen exists.
-- Icons: Font Awesome Pro Plus 7.3.1, the standard SVG kit (method `js`), embed `https://kit.fontawesome.com/45801522ef.js`. Duotone, Sharp, and Thin are the families the UI uses. Mail uses the roof mark. The loader comes from `kit.fontawesome.com`; `pro-plus.min.js`, the shims, and each icon SVG come from `ka-p.fontawesome.com`. Those hosts are the §11 CSP exception. The hello page does not load the kit. A later pass can ship only the icons the UI references and drop the hosts. That subset has its own costs, so it waits until the set is real.
+- Icons: Font Awesome Pro Plus 7.3.1, the standard SVG kit (method `js`), embed `https://kit.fontawesome.com/45801522ef.js`. Duotone, Sharp, and Thin are the families the UI uses. Mail uses the roof mark. The loader comes from `kit.fontawesome.com`; `pro-plus.min.js`, the shims, and each icon SVG come from `ka-p.fontawesome.com`. Those hosts are the §11 CSP exception. The hello page does not load the kit. Pro files stay out of the repo and the binary. The kit's domain list stays open: `make dev` is `http://localhost:1420`, and the packaged window is `http://tauri.localhost`, which a domain-limited kit rejects and will not let you add. Loads count as pageviews on that subscription. Revisit if the app is widely used or the embed is misused.
 - Times: 24h default everywhere (`HH:mm`), dates ISO-ish (`2026-10-14`) or short `Oct 14`; setting.
 - Accessibility: full keyboard navigation, visible focus rings, ARIA roles on lists/trees/grid,
   contrast ≥ 4.5:1 in both themes, respect `prefers-reduced-motion`, font scaling via settings.
@@ -484,7 +495,7 @@ The first window, `api.js`, and the rule that screens do not call Tauri themselv
 - TLS required (libcurl with the system trust store); no "accept invalid cert" toggle.
   Optional per-account pinned CA path for internal endpoints.
 - App CSP (tauri.conf): `default-src 'self'; script-src 'self' https://kit.fontawesome.com https://ka-p.fontawesome.com; style-src 'self' 'unsafe-inline'; img-src 'self' pav-cid: data:; frame-src 'self'; connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com`.
-  `https://ka-p.fontawesome.com` is on `connect-src` because the SVG kit loads each icon with `fetch()`. `font-src` is left unset, so a webfont from the v5 shim is refused. `kit-uploads.fontawesome.com` is not allowed. The HTML mail iframe keeps the CSP in §7 and does not gain these hosts. `security.csp` in tauri.conf is still `null` until the shell that loads the kit. Tauri capabilities: least privilege per window.
+  `https://ka-p.fontawesome.com` is on `connect-src` because the SVG kit loads each icon with `fetch()`. `font-src` is left unset, so a webfont from the v5 shim is refused. `kit-uploads.fontawesome.com` is not allowed. The HTML mail iframe keeps the CSP in §7 and does not gain these hosts. `security.csp` in tauri.conf is that string, plus `ws://localhost:1420` on `connect-src` so the dev server can refresh. Tauri capabilities: least privilege per window.
 - No in-app updater and no telemetry. No outbound requests except configured JMAP endpoints,
   user-approved remote images/links, and the Font Awesome hosts named above. Package updates come from the system repo in §12.
 - Logging: the core logger in [docs/C-CORE.md](docs/C-CORE.md). Redact `Authorization`

@@ -4,14 +4,122 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pavillion</title>
+    <link rel="stylesheet" href="/styles/dark.css" />
     <link rel="stylesheet" href="/styles/theme.css" />
+    <script src="https://kit.fontawesome.com/45801522ef.js" crossorigin="anonymous"></script>
   </head>
   <body>
-    <header class="title">
-      <span>Pavillion</span>
-      <span id="profile-name"></span>
-    </header>
-    <main id="status"></main>
+    <div class="shell">
+      <nav class="nav" id="nav" aria-label="Sections">
+        <div class="nav-buttons" role="toolbar" aria-label="Sections">
+          <button type="button" data-section="mail" aria-pressed="true" aria-label="Mail">
+            <img class="icon" src="/mark.png" alt="" />
+          </button>
+          <button type="button" data-section="contacts" aria-pressed="false" aria-label="Contacts">
+            <i class="icon fa-sharp fa-thin fa-address-book" aria-hidden="true"></i>
+          </button>
+          <button type="button" data-section="calendars" aria-pressed="false" aria-label="Calendars">
+            <i class="icon fa-sharp fa-thin fa-calendar-days" aria-hidden="true"></i>
+          </button>
+          <button type="button" data-section="files" aria-pressed="false" aria-label="Files">
+            <i class="icon fa-sharp fa-thin fa-folder" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div class="nav-body">
+          <div data-nav="mail">
+            <ul class="tree">
+              <li><button type="button" aria-current="true">Inbox</button></li>
+              <li><button type="button">Drafts</button></li>
+              <li><button type="button">Sent</button></li>
+              <li><button type="button">Archive</button></li>
+            </ul>
+          </div>
+          <div data-nav="contacts" hidden>
+            <div class="letters" id="letters-nav"></div>
+            <input class="search" type="search" aria-label="Search contacts" />
+            <p class="group-label">Accounts</p>
+            <p class="empty">None</p>
+            <p class="group-label">Recents</p>
+            <p class="empty">None</p>
+          </div>
+          <div data-nav="calendars" hidden>
+            <div class="weeks" id="mini-cal" aria-label="Calendar"></div>
+            <p class="group-label">Account</p>
+            <label class="swatch-row"><input type="checkbox" checked /> <span class="swatch swatch-1"></span> Personal</label>
+            <label class="swatch-row"><input type="checkbox" checked /> <span class="swatch swatch-2"></span> Shared</label>
+          </div>
+          <div data-nav="files" hidden>
+            <p class="empty">No folders.</p>
+          </div>
+          <div data-nav="settings" hidden>
+            <div class="heading-list" role="list">
+              <button type="button" data-heading="zoom" aria-current="true">Zoom</button>
+              <button type="button" data-heading="theme">Theme</button>
+            </div>
+          </div>
+        </div>
+        <div class="nav-buttons" role="toolbar" aria-label="Tools">
+          <button type="button" data-section="activity" aria-pressed="false" aria-label="Activity">
+            <i class="icon fa-sharp fa-thin fa-list-timeline" aria-hidden="true"></i>
+          </button>
+          <button type="button" data-section="settings" aria-pressed="false" aria-label="Settings">
+            <i class="icon fa-sharp fa-thin fa-gear" aria-hidden="true"></i>
+          </button>
+          <button type="button" id="update" aria-label="Update">
+            <i class="icon fa-sharp fa-thin fa-arrows-rotate" aria-hidden="true"></i>
+          </button>
+          <button type="button" data-section="help" aria-pressed="false" aria-label="Help">
+            <i class="icon fa-sharp fa-thin fa-circle-question" aria-hidden="true"></i>
+          </button>
+        </div>
+        <button type="button" class="nav-resize" id="nav-resize" aria-label="Resize navigation"></button>
+      </nav>
+      <div class="workspace">
+        <div class="tabs" role="tablist" aria-label="Open views">
+          <div id="tablist"></div>
+          <div class="tabs-spacer" data-tauri-drag-region></div>
+        </div>
+        <p class="banner" id="banner" hidden></p>
+        <div class="panel split" id="panel-mail" role="tabpanel">
+          <div class="pane pane-list" id="mail-list"></div>
+          <button type="button" class="split-resize" data-split="mail" aria-label="Resize mail panes"></button>
+          <div class="pane pane-detail"></div>
+        </div>
+        <div class="panel split" id="panel-contacts" role="tabpanel" hidden>
+          <div class="pane pane-list rolodex">
+            <div class="letters letters-large" id="letters-main"></div>
+          </div>
+          <button type="button" class="split-resize" data-split="contacts" aria-label="Resize contact panes"></button>
+          <div class="pane pane-detail"></div>
+        </div>
+        <div class="panel" id="panel-calendars" role="tabpanel" hidden>
+          <div class="month" id="month"></div>
+        </div>
+        <div class="panel split" id="panel-files" role="tabpanel" hidden>
+          <div class="pane pane-list"></div>
+          <button type="button" class="split-resize" data-split="files" aria-label="Resize file panes"></button>
+          <div class="pane pane-detail"></div>
+        </div>
+        <div class="panel settings" id="panel-settings" role="tabpanel" hidden>
+          <div data-settings="zoom">
+            <h2>Zoom</h2>
+            <label class="zoom">Shell
+              <input id="zoom" type="range" min="0.5" max="3" step="0.25" value="1" />
+              <span id="zoom-value">100%</span>
+            </label>
+            <p class="muted" id="profile-name"></p>
+          </div>
+          <div data-settings="theme" hidden>
+            <h2>Theme</h2>
+            <p>System. Dark is the theme in use.</p>
+          </div>
+        </div>
+        <div class="panel log" id="panel-activity" role="tabpanel" hidden></div>
+        <div class="panel settings" id="panel-help" role="tabpanel" hidden>
+          <p class="empty">Help is not written yet.</p>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
