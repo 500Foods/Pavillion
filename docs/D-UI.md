@@ -3,7 +3,7 @@
 **Status:** D-3 complete (2026-10-14). No further phase in this document. The shell preview below is not a phase.
 **Resume:** No phase is open. Read the shell preview at the bottom of this file, then §10 and §11 in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md). Do not start a phase from here.
 
-The shell. Mail, contacts, calendar, and files stay in `PAVILLION_PLAN.md` until they get their own letters.
+The shell. Mail, contacts, calendar, and files stay in `PAVILLION_PLAN.md` until they get their own letters. The tree behind the mail and files navs is [E-TREE.md](E-TREE.md).
 
 ## Phases
 
