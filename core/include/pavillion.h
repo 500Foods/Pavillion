@@ -10,15 +10,19 @@ typedef struct PavillionStatus {
     char error[512];
 } PavillionStatus;
 
-/* A-1 stub. workdir and err are ignored. Returns 0. */
+/* Starts the core thread and returns after it has published state "ready"
+   or "error". Returns 0, or -1 when the core is already running, the path
+   does not fit, or the thread cannot be created. */
 int pavillion_start(const char *workdir, char *err, size_t err_len);
 
-/* Safe to call more than once. Does nothing in A-1. */
+/* Pushes stop and joins the core thread. A second call does nothing. */
 void pavillion_stop(void);
 
-/* Fills out with state "ready" and empty name, id, and error. Returns 0,
-   or -1 when out is NULL. */
+/* Copies the status under a lock. Returns 0, or -1 when out is NULL. */
 int pavillion_status(PavillionStatus *out);
+
+/* Test-only. 1 while the core thread is inside its loop, otherwise 0. */
+int pav_core_thread_alive(void);
 
 /* A line numerically above the current level is dropped. Default level is info. */
 #define PAV_ERROR 0

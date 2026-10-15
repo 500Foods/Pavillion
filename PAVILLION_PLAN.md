@@ -2,7 +2,7 @@
 
 Status: draft v0.4 (2026-10-14). Implementer: Grok Build. Reviewer: Andrew Simard.
 
-**Resume:** B-2 is complete. B-3 is next.
+**Resume:** D-3 is complete. The hello-world sequence A-1 through D-3 is finished.
 
 This file is the map. A new session reads Resume, the sequence table, and then only the named phase. One phase per session. The next session starts fresh. Phases are not worked in parallel.
 

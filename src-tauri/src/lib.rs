@@ -1,3 +1,9 @@
+use std::ffi::{CStr, CString};
+use std::fs;
+use std::os::raw::c_char;
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
+
 use serde::Serialize;
 
 #[repr(C)]
@@ -9,6 +15,8 @@ struct PavillionStatus {
 }
 
 unsafe extern "C" {
+    fn pavillion_start(workdir: *const c_char, err: *mut c_char, err_len: usize) -> i32;
+    fn pavillion_stop();
     fn pavillion_status(out: *mut PavillionStatus) -> i32;
 }
 
@@ -46,10 +54,48 @@ fn status() -> Result<StatusReply, String> {
     })
 }
 
+fn ensure_workdir(workdir: &str) {
+    let path = Path::new(workdir);
+    if path.exists() {
+        return;
+    }
+    if let Err(err) = fs::create_dir_all(path) {
+        eprintln!("cannot create {}: {err}", path.display());
+        return;
+    }
+    let mode = fs::Permissions::from_mode(0o700);
+    if let Err(err) = fs::set_permissions(path, mode) {
+        eprintln!("cannot set mode on {}: {err}", path.display());
+    }
+}
+
+fn start_core(workdir: &str) {
+    let path = match CString::new(workdir) {
+        Ok(path) => path,
+        Err(_) => {
+            eprintln!("workdir contains a NUL");
+            std::process::exit(1);
+        }
+    };
+    ensure_workdir(workdir);
+    let mut err = [0u8; 512];
+    let rc = unsafe { pavillion_start(path.as_ptr(), err.as_mut_ptr() as *mut c_char, err.len()) };
+    if rc != 0 {
+        let message = unsafe { CStr::from_ptr(err.as_ptr() as *const c_char) };
+        eprintln!("pavillion_start failed: {}", message.to_string_lossy());
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
+pub fn run(workdir: &str) {
+    start_core(workdir);
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![status])
-        .run(tauri::generate_context!())
-        .expect("error while running pavillion");
+        .build(tauri::generate_context!())
+        .expect("error while building pavillion")
+        .run(|_app, event| {
+            if let tauri::RunEvent::Exit = event {
+                unsafe { pavillion_stop() };
+            }
+        });
 }

@@ -43,11 +43,14 @@ fn main() {
     println!("cargo:rustc-link-lib=static=pavillion_core");
     println!("cargo:rustc-link-lib=pthread");
     println!("cargo:rustc-link-lib=jansson");
+    println!("cargo:rustc-link-lib=sqlite3");
     println!("cargo:rerun-if-changed=../core/CMakeLists.txt");
     println!("cargo:rerun-if-changed=../core/include/pavillion.h");
     println!("cargo:rerun-if-changed=../core/src/pavillion.c");
     println!("cargo:rerun-if-changed=../core/src/config.c");
     println!("cargo:rerun-if-changed=../core/include/pav_config.h");
+    println!("cargo:rerun-if-changed=../core/src/store.c");
+    println!("cargo:rerun-if-changed=../core/include/pav_store.h");
 
     let attributes = tauri_build::Attributes::new()
         .app_manifest(tauri_build::AppManifest::new().commands(&["status"]));

@@ -1,6 +1,6 @@
 # C — CORE
 
-**Status:** C-2 complete (2026-10-14). Next phase in this document is C-3. The sequence runs B-1 before that.
+**Status:** C-6 complete (2026-10-14). No further phase in this document. The sequence runs A-5 next.
 **Resume:** The table of contents names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Threads, the loop, logging, and the store. Protocol work (JMAP, IMAP, the mail tables) is not in this document.
@@ -13,10 +13,10 @@ One phase is one session. Do not start the next one in the same conversation.
 | --- | --- | --- | --- |
 | C-1 | Log function | Easy | Complete |
 | C-2 | Log thread and the line format | Medium | Complete |
-| C-3 | Core thread and the command queue | Medium | Not started |
-| C-4 | SQLite open and close | Medium | Not started |
-| C-5 | Stop | Easy | Not started |
-| C-6 | Start loads a profile | Medium | Not started |
+| C-3 | Core thread and the command queue | Medium | Complete |
+| C-4 | SQLite open and close | Medium | Complete |
+| C-5 | Stop | Easy | Complete |
+| C-6 | Start loads a profile | Medium | Complete |
 
 Kind: **Easy** is one module and a Unity test. **Medium** is a thread or the database driver. **Hard** is unused in this document.
 
@@ -160,7 +160,7 @@ SQLite is the only driver in this document. `open` takes a filesystem path and c
 ## C-3: Core thread and the command queue
 
 **Kind:** Medium
-**Status:** Not started
+**Status:** Complete (2026-10-14). No variances.
 
 **Goal:** `pavillion_start` returns only after the core thread has set a state, and status is readable from another thread.
 
@@ -168,18 +168,24 @@ SQLite is the only driver in this document. `open` takes a filesystem path and c
 
 **Work items:**
 
-- [ ] Start the core thread. It sets state `ready` and signals. `pavillion_start` then returns `0`.
-- [ ] `pavillion_status` copies the struct under a lock.
-- [ ] A stop command makes the core thread exit. This phase may join it directly. Idempotent stop is C-5.
+- [x] Start the core thread. It sets state `ready` and signals. `pavillion_start` then returns `0`.
+- [x] `pavillion_status` copies the struct under a lock.
+- [x] A stop command makes the core thread exit. This phase may join it directly. Idempotent stop is C-5.
 
 **Done means:** A Unity test sees `ready` only after start has returned, and the thread is joined.
 
-**Exit gate:** `make test` exits 0.
+**Exit gate:** `make test` exits 0. Passed: 17 tests, 0 failures. After `pavillion_start` returns, status is `ready` and `pav_core_thread_alive` is 1. A second thread copies that status. After `pavillion_stop`, the thread is joined and status is still readable. The older test still calls stop twice.
+
+**Accomplished:** `pavillion_start` creates the core thread and waits until that thread publishes state `ready`. Stop pushes `CORE_CMD_STOP` and joins the thread. Status copies `PavillionStatus` under the core lock. `workdir` is still ignored.
+
+**Lessons learned:** Start already returns -1 with `already running` if the thread is alive, so a second call cannot leak a thread. C-5 is the test of that refusal and of start after stop. A second stop sees the thread gone and returns. Status before the first start stays `ready` with an empty name, which is what the shell shows until A-5 calls start. This phase does not start or join the log thread, and it does not log `core ready`.
+
+**Handoff:** C-4 adds the SQLite vtable: open, close, and exec. Do not open a database from `pavillion_start`. C-5 joins the log thread from `pavillion_stop`.
 
 ## C-4: SQLite open and close
 
 **Kind:** Medium
-**Status:** Not started
+**Status:** Complete (2026-10-14). No variances.
 
 **Goal:** The vtable opens an empty SQLite file at a path and closes it. No mail schema.
 
@@ -187,19 +193,25 @@ SQLite is the only driver in this document. `open` takes a filesystem path and c
 
 **Work items:**
 
-- [ ] Implement the SQLite row of `PavStoreVtable`: `open`, `close`, and `exec`.
-- [ ] `open` creates the file mode `0600` and can `exec` a `SELECT 1`.
-- [ ] `close` leaves the file on disk. A second `open` on the same path works.
-- [ ] No other database client is linked.
+- [x] Implement the SQLite row of `PavStoreVtable`: `open`, `close`, and `exec`.
+- [x] `open` creates the file mode `0600` and can `exec` a `SELECT 1`.
+- [x] `close` leaves the file on disk. A second `open` on the same path works.
+- [x] No other database client is linked.
 
 **Done means:** A Unity test asserts the mode, `SELECT 1`, and a successful second open.
 
-**Exit gate:** `make test` exits 0.
+**Exit gate:** `make test` exits 0. Passed: 18 tests, 0 failures. The file is mode `0600`. `SELECT 1` returns 0. A second open on the same path works. `ldd` shows `libsqlite3.so.0` and no other database client.
+
+**Accomplished:** `pav_store_open`, `pav_store_exec`, and `pav_store_close` dispatch through `PavStoreVtable`. The SQLite row uses `sqlite3_open_v2` and `sqlite3_exec`. `db2` fails before SQLite is called.
+
+**Lessons learned:** `sqlite3_open` creates the file with the process umask, so a successful open then `chmod`s it to `0600`. A failed open removes the file only when that call created it. `exec` does not return rows. Open does not create mail tables. The shell link in `src-tauri/build.rs` includes `sqlite3` so the archive can resolve those symbols.
+
+**Handoff:** C-5 makes `pavillion_stop` join the log thread after the core thread. Do not open a database from anywhere but the core thread.
 
 ## C-5: Stop
 
 **Kind:** Easy
-**Status:** Not started
+**Status:** Complete (2026-10-14). No variances.
 
 **Goal:** Stop joins the core thread and the log thread, and a second stop does nothing.
 
@@ -207,18 +219,24 @@ SQLite is the only driver in this document. `open` takes a filesystem path and c
 
 **Work items:**
 
-- [ ] `pavillion_stop` pushes stop, joins the core thread, and joins the log thread after the core has finished.
-- [ ] A second `pavillion_stop` returns without error.
-- [ ] `pavillion_start` after a stop succeeds. `pavillion_start` without a stop, while running, returns an error.
+- [x] `pavillion_stop` pushes stop, joins the core thread, and joins the log thread after the core has finished.
+- [x] A second `pavillion_stop` returns without error.
+- [x] `pavillion_start` after a stop succeeds. `pavillion_start` without a stop, while running, returns an error.
 
 **Done means:** A Unity test covers stop, double stop, restart, and a refused double start.
 
-**Exit gate:** `make test` exits 0.
+**Exit gate:** `make test` exits 0. Passed: 19 tests, 0 failures. A second start while running returns -1 and the error contains `already running`. After stop, `pav_log_thread_start` succeeds, and a later start reaches `ready` again. A second stop does not crash.
+
+**Accomplished:** Stop enqueues `CORE_CMD_STOP`, joins the core thread, then calls `pav_log_thread_shutdown`. The line logged before stop is in the file, so the queue was drained.
+
+**Lessons learned:** The log thread is joined only after the core thread has returned, so a line the core queued is not left behind. A second stop finds the core already stopped and still calls log shutdown, which does nothing when that thread is already down. The refused second start was already returned by C-3. This phase is the test of it.
+
+**Handoff:** C-6 runs the B loader on the core thread, opens SQLite, and publishes the profile name. Stop already joins both threads.
 
 ## C-6: Start loads a profile
 
 **Kind:** Medium
-**Status:** Not started
+**Status:** Complete (2026-10-14). No variances.
 
 **Goal:** The hello-world core: load the profile, open SQLite, log `core ready`, fill status.
 
@@ -226,16 +244,26 @@ SQLite is the only driver in this document. `open` takes a filesystem path and c
 
 **Work items:**
 
-- [ ] `pavillion_start` runs the B loader. First run creates the default profile. A broken active profile sets state `error` and does not exit the process.
-- [ ] On success, open the SQLite path from the profile and log subsystem `core`, level `info`, message `core ready`.
-- [ ] Status carries the profile `name` and `id`. For the default profile the name is `Default`.
-- [ ] An engine other than `sqlite` is state `error` and the error text contains the engine name.
+- [x] `pavillion_start` runs the B loader. First run creates the default profile. A broken active profile sets state `error` and does not exit the process.
+- [x] On success, open the SQLite path from the profile and log subsystem `core`, level `info`, message `core ready`.
+- [x] Status carries the profile `name` and `id`. For the default profile the name is `Default`.
+- [x] An engine other than `sqlite` is state `error` and the error text contains the engine name.
 
 **Done means:** On a fresh temp directory, status name is `Default`, state is `ready`, the log contains `core ready`, and the SQLite file exists mode `0600`.
 
-**Exit gate:** `make test` exits 0.
+**Exit gate:** `make test` exits 0. Passed: 21 tests, 0 failures. A fresh directory comes back `Default`, `default`, `ready`, with `default.sqlite` mode `0600` and the line `INFO  core  core ready`. A missing workdir, a file used as a directory, a profile that is `{`, and engine `db2` all leave the core thread alive with state `error`. `db2` does not create a SQLite file. The `{` profile is not replaced.
+
+**Accomplished:** The core thread calls `pav_config_ensure`, `pav_config_load`, `pav_profile_check_engine`, `pav_config_prepare`, and `pav_store_open`. Start returns 0 after that thread publishes `ready` or `error`. The earlier start tests now pass a fresh directory.
+
+**Lessons learned:** The engine check runs before prepare, so `db2` does not create the log directory or the database file. NULL workdir publishes `missing workdir` and creates nothing. `core ready` is logged only after SQLite is open. The Unity test captures that line through its own output file. A-5 opens the profile log for append when no output is set, so a normal launch writes the same line to `logs/default.log`.
+
+**Handoff:** A-5 passes the working directory into `pavillion_start` and calls `pavillion_stop` when the window quits. The Unity test already expects `Default` and `core ready`.
 
 ## Working log
 
 - 2026-10-14 C-1: `pav_log` writes one millisecond-UTC line under a mutex. Debug is dropped at the default info level. A bad `num_args` logs an error and does not format the call.
 - 2026-10-14 C-2: The log thread writes queued lines in call order. Shutdown flushes the queue and joins. A line before the thread starts is written by the caller.
+- 2026-10-14 C-3: `pavillion_start` returns after the core thread publishes `ready`. Status is copied under a lock. Stop pushes a command and joins. A second stop does nothing.
+- 2026-10-14 C-4: The SQLite vtable opens a file mode 0600, runs `SELECT 1`, and opens the same path again. No other database client is linked.
+- 2026-10-14 C-5: Stop joins the core thread, then the log thread. A second stop does nothing. Start after stop works. A second start while running is refused.
+- 2026-10-14 C-6: Start loads the profile on the core thread, opens SQLite, and logs `core ready`. A broken profile or `db2` sets state `error` and leaves the thread alive.

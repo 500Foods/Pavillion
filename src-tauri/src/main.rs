@@ -45,9 +45,29 @@ fn cli_exit_code() -> Option<i32> {
     Some(1)
 }
 
+fn default_workdir() -> String {
+    match std::env::var("HOME") {
+        Ok(home) if !home.is_empty() => format!("{home}/.local/share/pavillion"),
+        _ => {
+            eprintln!("HOME is not set");
+            std::process::exit(1);
+        }
+    }
+}
+
 fn main() {
     if let Some(code) = cli_exit_code() {
         std::process::exit(code);
     }
-    pavillion_lib::run()
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.len() > 1 {
+        eprint!("{}", help_text());
+        std::process::exit(1);
+    }
+    let workdir = if args.len() == 1 {
+        args[0].clone()
+    } else {
+        default_workdir()
+    };
+    pavillion_lib::run(&workdir);
 }

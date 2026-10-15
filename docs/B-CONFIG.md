@@ -1,6 +1,6 @@
 # B — CONFIG
 
-**Status:** B-2 complete (2026-10-14). Next phase in this document is B-3.
+**Status:** B-5 complete (2026-10-14). No further phase in this document. The sequence runs C-3 next.
 **Resume:** The table of contents names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The working directory, `Pavillion.json`, and profile files. The loader is C, called from the core. The shell never reads these files.
@@ -13,9 +13,9 @@ One phase is one session. Do not start the next one in the same conversation.
 | --- | --- | --- | --- |
 | B-1 | Parse the index and a profile | Easy | Complete |
 | B-2 | First-run files | Easy | Complete |
-| B-3 | Scan, kind, and a broken active profile | Medium | Not started |
-| B-4 | Paths and file modes | Medium | Not started |
-| B-5 | An unknown engine is an error | Easy | Not started |
+| B-3 | Scan, kind, and a broken active profile | Medium | Complete |
+| B-4 | Paths and file modes | Medium | Complete |
+| B-5 | An unknown engine is an error | Easy | Complete |
 
 Kind: **Easy** is one module and a Unity test. **Medium** is the filesystem rules. **Hard** is unused in this document.
 
@@ -196,7 +196,7 @@ The core is the only writer. Hand-edits are allowed while the process is stopped
 ## B-3: Scan, kind, and a broken active profile
 
 **Kind:** Medium
-**Status:** Not started
+**Status:** Complete (2026-10-14). No variances.
 
 **Goal:** The scan rules and the "do not invent a profile" rule are tested.
 
@@ -204,19 +204,25 @@ The core is the only writer. Hand-edits are allowed while the process is stopped
 
 **Work items:**
 
-- [ ] Scan `profile_dir`. Ignore a file whose `kind` is wrong. Ignore the index if it appears in that directory.
-- [ ] Skip a profile whose `id` does not match its filename, and record a warning the test can see.
-- [ ] When `active` names a missing or unparsable file, return state `error` and do not create a file.
-- [ ] `profile_dir` omitted means `profiles`. An absolute `profile_dir` is used as given.
+- [x] Scan `profile_dir`. Ignore a file whose `kind` is wrong. Ignore the index if it appears in that directory.
+- [x] Skip a profile whose `id` does not match its filename, and record a warning the test can see.
+- [x] When `active` names a missing or unparsable file, return state `error` and do not create a file.
+- [x] `profile_dir` omitted means `profiles`. An absolute `profile_dir` is used as given.
 
 **Done means:** Unity fixtures cover a stray JSON file, an id mismatch, a missing active file, and an absolute profile directory.
 
-**Exit gate:** `make test` exits 0.
+**Exit gate:** `make test` exits 0. Passed: 14 tests, 0 failures. A stray `notes.json` is warned and kept. `Pavillion.json` inside the profile directory is skipped with no warning. An id mismatch warns and is not loaded. A missing active file and a file that is `{` both come back `error` and are not replaced. An omitted `profile_dir` reads `profiles`. An absolute `profile_dir` is used as given.
+
+**Accomplished:** `pav_config_load` reads the index, scans the directory, and returns the active profile or `state` `error`. It does not create files. Warnings go through `pav_log` at `warn` with subsystem `config`. A missing `profile_dir` key fills the C field `profiles` and is not written back into the JSON object.
+
+**Lessons learned:** Directories in the profile folder are skipped without a warning. Other files that are not profiles are warned. The index is recognized by the filename `Pavillion.json`, so a copy of it in the profile directory does not become a profile.
+
+**Handoff:** B-4 resolves `logs`, `blobs`, `cache`, and `storage.path`, creates the directories and the log file, and does not create the SQLite file. Call it only after a ready load. A broken active profile stays a load error and does not reach path creation.
 
 ## B-4: Paths and file modes
 
 **Kind:** Medium
-**Status:** Not started
+**Status:** Complete (2026-10-14). No variances.
 
 **Goal:** Relative paths resolve under the working directory, and the directories exist with the lock's modes.
 
@@ -224,19 +230,25 @@ The core is the only writer. Hand-edits are allowed while the process is stopped
 
 **Work items:**
 
-- [ ] Resolve `logs`, `blobs`, `cache`, and `storage.path` against the working directory. A path beginning with `/` stays absolute.
-- [ ] Create those directories. `blobs` is `0700`. The log file is created `0600`.
-- [ ] Do not create the SQLite file. [C-CORE.md](C-CORE.md) C-4 opens it.
-- [ ] A path that cannot be created becomes state `error` and names the path.
+- [x] Resolve `logs`, `blobs`, `cache`, and `storage.path` against the working directory. A path beginning with `/` stays absolute.
+- [x] Create those directories. `blobs` is `0700`. The log file is created `0600`.
+- [x] Do not create the SQLite file. [C-CORE.md](C-CORE.md) C-4 opens it.
+- [x] A path that cannot be created becomes state `error` and names the path.
 
 **Done means:** A Unity test asserts the resolved paths and the modes, and asserts that no `*.sqlite` file was created.
 
-**Exit gate:** `make test` exits 0.
+**Exit gate:** `make test` exits 0. Passed: 16 tests, 0 failures. Relative paths resolve under the working directory. The log file is mode `0600` and `blobs` is mode `0700`. No `*.sqlite` file is created. An absolute log path is created at that path. A parent that is a file returns -1 and the error names the resolved log path.
+
+**Accomplished:** `pav_config_prepare` resolves the four paths onto the profile and creates the log file and the blobs and cache directories. It does not create the SQLite file. A failure returns -1 with `cannot create` and the resolved path. C-6 is what copies that into status state `error`.
+
+**Lessons learned:** An existing directory is not chmod'd. `ensure_dir` returns success when `stat` already finds a directory, so an absolute path does not change the mode of `/tmp`. Cache is created mode `0700`. The lock names that mode for `blobs`; cache uses it for the same reason `profiles/` did in B-2. The error names the log, blobs, or cache path that was requested, not an intermediate component.
+
+**Handoff:** B-5 reads `storage.engine` and does not open a database. Call `pav_config_prepare` only after a ready load.
 
 ## B-5: An unknown engine is an error
 
 **Kind:** Easy
-**Status:** Not started
+**Status:** Complete (2026-10-14). No variances.
 
 **Goal:** A profile whose `storage.engine` is not `sqlite` fails with an error that names the engine. No driver is loaded.
 
@@ -244,15 +256,24 @@ The core is the only writer. Hand-edits are allowed while the process is stopped
 
 **Work items:**
 
-- [ ] `sqlite` is accepted, including when the key is omitted (default `sqlite`).
-- [ ] Any other string returns an error that contains that string.
-- [ ] The test links no database client other than SQLite, and this phase does not call SQLite.
+- [x] `sqlite` is accepted, including when the key is omitted (default `sqlite`).
+- [x] Any other string returns an error that contains that string.
+- [x] The test links no database client other than SQLite, and this phase does not call SQLite.
 
 **Done means:** Unity covers the default, an explicit `sqlite`, and `db2`.
 
-**Exit gate:** `make test` exits 0.
+**Exit gate:** `make test` exits 0. Passed: 16 tests, 0 failures. An omitted engine and an explicit `sqlite` pass `pav_profile_check_engine`. `db2` parses, and the check returns -1 with `db2` in the error. `nm -u build/core_test` shows no `sqlite3` symbol.
+
+**Accomplished:** `pav_profile_parse` fills `engine` with `sqlite` when the key is omitted. `pav_profile_check_engine` accepts `sqlite` and rejects any other name. Nothing in this phase calls a database.
+
+**Lessons learned:** The default is stored on the C struct only. The missing key is not written back into the JSON object. An empty engine string is treated as `sqlite` by the check. This phase does not link SQLite either. Linking nothing satisfies "no database client other than SQLite" by linking no database client at all.
+
+**Handoff:** C-3 is next in the sequence. C-6 calls `pav_profile_check_engine` and, on a ready load, `pav_config_prepare`. An unknown engine stays a check error and does not open a store.
 
 ## Working log
 
 - 2026-10-14 B-1: Jansson parses the lock's index and profile. Schema other than 1, a missing kind, and a forbidden key are rejected. Unknown keys survive a rewrite. Empty `accounts` is an empty list.
 - 2026-10-14 B-2: A missing index creates `Pavillion.json` and `profiles/default.json`, both mode 0600. A second call leaves the profile file untouched.
+- 2026-10-14 B-3: The scan ignores a stray JSON file and a copied index, warns on an id mismatch, and returns error for a missing or unparsable active profile without creating a file. An omitted profile_dir means profiles. An absolute profile_dir is used as given.
+- 2026-10-14 B-4: `pav_config_prepare` resolves logs, blobs, cache, and the SQLite path. It creates the log file mode 0600 and the blobs and cache directories. It does not create the SQLite file. A blocked parent names the resolved path.
+- 2026-10-14 B-5: An omitted engine is sqlite. `db2` parses and fails the check with that name in the error. The test binary does not link SQLite.
