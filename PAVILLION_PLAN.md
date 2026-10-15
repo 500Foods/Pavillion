@@ -2,7 +2,7 @@
 
 Status: draft v0.4 (2026-10-14). Implementer: Grok Build. Reviewer: Andrew Simard.
 
-**Resume:** D-3 is complete. The hello-world sequence A-1 through D-3 is finished. No phase is open. §10 is the shell, and a preview of it is in the UI. Andrew likes the direction. The preview is not a closed phase. Nav width, the three splits, shell zoom, and the window are stored on the profile through the core and restored on the next launch. `chrome` is stored. Hidden chrome does not turn the decorations off. Font Awesome is the Pro Plus 7.3.1 SVG kit (`45801522ef`), used as-is. Its hosts are on the §11 CSP allowlist. Pro files stay out of the tree. Lessons from the preview are in [docs/D-UI.md](docs/D-UI.md).
+**Resume:** D-3 is complete. The hello-world sequence A-1 through D-3 is finished. No phase is open. §10 is the shell, and a preview of it is in the UI. Andrew likes the direction. The preview is not a closed phase. Nav width, the three splits, shell zoom, and the window are stored on the profile through the core and restored on the next launch. `chrome` is stored. Hidden chrome does not turn the decorations off. Font Awesome is the Pro Plus 7.3.1 SVG kit (`45801522ef`), used as-is. Its hosts are on the §11 CSP allowlist. Pro files stay out of the tree. Lessons from the preview are in [docs/D-UI.md](docs/D-UI.md). The tree design for the section navs — mail first, then files, calendars, and contacts — is recorded in [docs/E-TREE.md](docs/E-TREE.md). It is not a phase, its phases are not in the sequence, and nothing is built.
 
 This file is the map. A new session reads Resume, the sequence table, and then only the named phase. One phase per session. The next session starts fresh. Phases are not worked in parallel.
 
@@ -14,6 +14,7 @@ A phase id is a letter and a number. The letter is the document. The number star
 | B | [docs/B-CONFIG.md](docs/B-CONFIG.md) | `Pavillion.json`, profiles, paths, the `engine` field |
 | C | [docs/C-CORE.md](docs/C-CORE.md) | Threads, the loop, logging, the SQLite open |
 | D | [docs/D-UI.md](docs/D-UI.md) | The shell, `api.js`, the first frame |
+| E | [docs/E-TREE.md](docs/E-TREE.md) | The tree engine behind the section navs |
 
 | | Phase | What | Kind |
 | --- | --- | --- | --- |
@@ -42,7 +43,7 @@ A phase id is a letter and a number. The letter is the document. The number star
 
 How a phase is closed, in the document that owns it: Status, Accomplished, Lessons learned, Handoff, then a Working log line. Then stop. A sitting that ends early marks that phase in progress and does not open the next one. The steps are restated at the top of each lettered document.
 
-Recorded, and not in the sequence yet: an Activity view that reads the core log, and real mail, contacts, calendars, and files behind the preview. Nav width, the splits, zoom, and window placement are already saved. Hidden chrome is stored, and the decorations stay the system frame. Also waiting: CodeMirror 6 for HTML and Lua source, SunEditor as the mail composer, `light.css`, UPX on the release binary, and a dnf repository as the update path. Lua and a second database driver wait there too. §14 below is the product roadmap (P0 through P6). It is not this session list. It gets its own letters when a new document is opened. The shell preview and the kit are already in the tree. They are described in §10, §11, and [docs/D-UI.md](docs/D-UI.md).
+Recorded, and not in the sequence yet: an Activity view that reads the core log, and real mail, contacts, calendars, and files behind the preview. Nav width, the splits, zoom, and window placement are already saved. Hidden chrome is stored, and the decorations stay the system frame. Also waiting: CodeMirror 6 for HTML and Lua source, SunEditor as the mail composer, `light.css`, UPX on the release binary, and a dnf repository as the update path. Lua and a second database driver wait there too. §14 below is the product roadmap (P0 through P6). It is not this session list. It gets its own letters when a new document is opened. The shell preview and the kit are already in the tree. They are described in §10, §11, and [docs/D-UI.md](docs/D-UI.md). The tree engine and its phases wait in [docs/E-TREE.md](docs/E-TREE.md), until mail is real.
 
 The feature sections under §3 onward stay the spec for mail and sync until those letters exist. Where a topic has moved, the lettered document wins.
 
@@ -131,10 +132,11 @@ ES modules, HTML, and CSS variables. No framework and no CSS library. Vite build
 serves the UI, the same role it has in Lithium. Vitest covers JS modules that do not
 need a window.
 
-**Tabulator** is the table. Use it for the message list, contacts, files, and the
-account and mailbox lists, with its virtual DOM so a list of 100k rows stays inside
-the frame budget. The reading pane, the composer, and the calendar views are plain
-DOM. They are not tables.
+**Tabulator** is the table. Use it for the message list, contacts, and files, with its
+virtual DOM so a list of 100k rows stays inside the frame budget. The reading pane, the
+composer, and the calendar views are plain DOM. They are not tables. The account and
+mailbox lists are trees, built with the engine in [docs/E-TREE.md](docs/E-TREE.md), not
+with Tabulator.
 
 ```
 ui/
@@ -145,6 +147,7 @@ ui/
   src/calendar/       month, week, day, agenda, event editor
   src/files/
   src/common/         dialog, toast, shortcuts
+  src/tree/           the tree engine behind the section navs (docs/E-TREE.md)
   styles/             theme.css (variables), light.css, dark.css
 ```
 
@@ -166,7 +169,7 @@ Accounts:
 Mail:
 | Command | Request | Response |
 |---|---|---|
-| `mailbox_list` | `{ account_id? }` | `Mailbox[]` (tree via `parent_id`) |
+| `mailbox_list` | `{ account_id? }` | `Mailbox[]` (tree via `parent_id`, rendered by [docs/E-TREE.md](docs/E-TREE.md)) |
 | `mailbox_create` / `_rename` / `_delete` | `{ account_id, name, parent_id? }` / `{ id, name }` / `{ id }` | `Mailbox` / `{}` |
 | `message_list` | `{ view: {kind:"mailbox",id}\|{kind:"unified",role}\|{kind:"search",query}, offset, limit, threaded: bool }` | `{ total, items: MessageSummary[] }` |
 | `thread_get` | `{ thread_id }` | `MessageSummary[]` |
@@ -356,6 +359,8 @@ Bandwidth rules: headers first, bodies lazy, attachments on demand, batch method
 
 6.1 Views: Unified Inbox / Unread / Flagged / Drafts / Sent (role-based, across accounts) plus
 per-account mailbox tree. Unread counts in sidebar. Accounts collapsible; order and hide in settings.
+The tree's expansion presets, the three collapse behaviors, row metadata, and drag-and-drop are
+in [docs/E-TREE.md](docs/E-TREE.md).
 6.2 Mailboxes: create/rename/delete/move (`Mailbox/set`); subscribe toggle; role mapping from server.
 6.3 Threading: server `threadId`; thread view shows conversation oldest→newest, collapsed read items.
 Toggle threaded/flat per view.
@@ -465,7 +470,7 @@ The first window, `api.js`, and the rule that screens do not call Tauri themselv
   Top: Mail (the roof mark), Contacts `fa-sharp fa-thin fa-address-book`, Calendars `fa-sharp fa-thin fa-calendar-days`, Files `fa-sharp fa-thin fa-folder`.
   Bottom: Activity `fa-sharp fa-thin fa-list-timeline`, Settings `fa-sharp fa-thin fa-gear`, Update `fa-sharp fa-thin fa-arrows-rotate`, Help `fa-sharp fa-thin fa-circle-question`.
   A top button swaps the nav body and focuses that section's home tab. Home tabs stay put. Settings, from the bottom, does the same: the nav lists settings sections and its tab focuses. Activity and Help open their tabs and leave the nav body as it is. Update starts a sync and spins while work is in progress. It is not a tab.
-  Mail's nav is the mailbox tree. Contacts' nav is a letter rolodex, a search field, then accounts and recents. Calendars' nav is a continuous mini-calendar scroller, opening on the week before the current month through the week after, then the calendars grouped by account with a color swatch beside each. Files' nav is the folder tree. An IMAP account still shows Files, and that tree is empty.
+  Mail's nav is the mailbox tree, the engine in [docs/E-TREE.md](docs/E-TREE.md). Contacts' nav is a letter rolodex, a search field, then accounts and recents. Calendars' nav is a continuous mini-calendar scroller, opening on the week before the current month through the week after, then the calendars grouped by account with a color swatch beside each. Files' nav is the folder tree, on the same engine. An IMAP account still shows Files, and that tree is empty. The calendar groups and the contacts lists are flat: they use the tree's row renderer and view state without nesting.
   Settings is a screen, not a popup. Its nav is a list of headings. Theme is one heading. The shell has no theme control and no light/dark icon. The first control is shell zoom (50–300%, steps of 25%). Each later panel stores its own zoom. Window placement and maximized state are restored on launch. Chrome may be the system frame or hidden. Hidden chrome uses the empty part of the tab strip as the drag region, and the icon buttons stay clickable. Per-account status dots are not placed. Indicators of that kind wait.
 - Workspace: Mail's home tab is the message list beside the open message. The divider moves and starts in the middle. A message may open as its own tab, titled by subject. That tab closes. The home tab does not. Contacts' home tab is the same kind of split, with a larger rolodex beside the open contact. Calendars' home tab is the month. Files' home tab is the folder contents beside a large preview. Settings' home tab is the chosen section. Activity's home tab is the log.
   Message list row: account color bar, from, subject, preview, 24h time or date, flags, attachment icon.
@@ -553,7 +558,7 @@ Effort is rough focused agent time with Andrew review; adjust after P1.
 
 **P0 — Skeleton + login + mailbox list (2–3 days)**
 - Tauri 2 shell, C core, Vite UI, config, libsecret, SQLite migrations, logging.
-- Add account (Basic/bearer), session discovery, `Mailbox/get`, sidebar tree with counts.
+- Add account (Basic/bearer), session discovery, `Mailbox/get`, sidebar tree with counts (the tree engine is [docs/E-TREE.md](docs/E-TREE.md)).
 - Accept: add 3 Stalwart accounts across 2 tenants; mailbox trees and unread counts match the server;
   password stored in keyring only (grep data dirs: no secret); bad password shows one error, no loop.
 
