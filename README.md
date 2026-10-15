@@ -9,7 +9,7 @@ While this project is currently under active development, feel free to give it a
 [![Count Lines of Code](https://github.com/500Foods/Template/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Template/actions/workflows/main.yml)
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-15 00:16:22 UTC
+Last updated at 2026-10-15 00:25:36 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
@@ -29,13 +29,12 @@ CMake                            1              2              0             10
 -------------------------------------------------------------------------------
 SUM:                            34           1238            479           9148
 -------------------------------------------------------------------------------
-23 Files were skipped (duplicate, binary, or without source code):
+22 Files were skipped (duplicate, binary, or without source code):
   png: 16
   gitignore: 2
   gitattributes: 1
   icns: 1
   ico: 1
-  license: 1
   lock: 1
 ```
 <!--CLOC-END-->
