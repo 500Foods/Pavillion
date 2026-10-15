@@ -78,7 +78,7 @@ Settings is a screen on the rail, with its own sections. It is not a popup. The 
 
 Activity is always reachable, from the rail footer, including while Settings is open. It is a read-only view of the core log: refresh, scroll to the newest line on open, monospace, and a font size for that view. Times on screen are local `HH:mm:ss.mmm`. The file format stays the millisecond UTC line in [C-CORE.md](C-CORE.md). The view asks the core for the text. It does not open the log file itself.
 
-CodeMirror 6 is the source editor for HTML and for Lua. SunEditor is the rich mail composer. Neither is installed in this document. Icons are Font Awesome Duotone, Sharp, and Thin. Those families are Pro, so they wait for a license or kit and are not loaded from a CDN.
+CodeMirror 6 is the source editor for HTML and for Lua. SunEditor is the rich mail composer. Neither is installed in this document. Icons are the Font Awesome Pro Plus 7.3.1 SVG kit (`https://kit.fontawesome.com/45801522ef.js`). Duotone, Sharp, and Thin are the families to use. Mail keeps the roof mark. The kit hosts are allowed by the CSP in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md) §11. This document does not load the kit.
 
 D-1 keeps the five variables in the lock above. A later theme phase follows Lithium: dark-first semantic custom properties, and a theme is an override of those properties. Pavillion does not import Lithium's stylesheets or fonts. The hello frame stays dark and does not read `preferences.theme`.
 
