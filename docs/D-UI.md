@@ -166,6 +166,7 @@ D-1 keeps the five variables in the lock above. A later theme phase follows Lith
 - 2026-10-14 D-3: A file used as the working directory shows `error` and a blank name. A normal directory still shows Default and ready.
 - 2026-10-14 Shell preview: nav, tabs, gradients, and the kit are on screen. Not a phase. Width, zoom, and the window are not saved.
 - 2026-10-14 Shell preferences: nav width, the splits, zoom, and the window are saved through the core and restored on launch. Not a phase. Hidden chrome is stored and not applied.
+- 2026-10-15 Per-pane zoom: `preferences.zoom` gained `navButtons`, `navBody`, `mailList`, and `mailDetail` beside `shell`. The Zoom section has one slider per pane, the shell scale multiplies each pane, `save_layout` carries the zoom object, and a profile missing the keys gains them on the next load. Not a phase.
 
 ## Shell preview
 

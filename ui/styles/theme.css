@@ -348,6 +348,12 @@ input:focus-visible {
   gap: 0.8rem;
 }
 
+.zoom-list {
+  display: grid;
+  gap: 0.4rem;
+  margin-bottom: 0.8rem;
+}
+
 .zoom input {
   flex: 1;
 }

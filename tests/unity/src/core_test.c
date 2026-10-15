@@ -361,7 +361,13 @@ static const char k_profile[] =
     "    \"time_format\": \"24h\",\n"
     "    \"theme\": \"system\",\n"
     "    \"density\": \"comfortable\",\n"
-    "    \"zoom\": { \"shell\": 1 },\n"
+    "    \"zoom\": {\n"
+    "      \"shell\": 1,\n"
+    "      \"navButtons\": 1,\n"
+    "      \"navBody\": 1,\n"
+    "      \"mailList\": 1,\n"
+    "      \"mailDetail\": 1\n"
+    "    },\n"
     "    \"window\": {\n"
     "      \"maximized\": false,\n"
     "      \"width\": 1200,\n"
@@ -506,7 +512,13 @@ static const char k_default_profile[] =
     "    \"time_format\": \"24h\",\n"
     "    \"theme\": \"system\",\n"
     "    \"density\": \"comfortable\",\n"
-    "    \"zoom\": { \"shell\": 1 },\n"
+    "    \"zoom\": {\n"
+    "      \"shell\": 1,\n"
+    "      \"navButtons\": 1,\n"
+    "      \"navBody\": 1,\n"
+    "      \"mailList\": 1,\n"
+    "      \"mailDetail\": 1\n"
+    "    },\n"
     "    \"window\": {\n"
     "      \"maximized\": false,\n"
     "      \"width\": 1200,\n"
@@ -1086,6 +1098,10 @@ void test_prefs_round_trip_clamp_and_mask(void) {
     TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
     TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_get(&prefs));
     TEST_ASSERT_EQUAL_DOUBLE(1.0, prefs.zoom_shell);
+    TEST_ASSERT_EQUAL_DOUBLE(1.0, prefs.zoom_nav_buttons);
+    TEST_ASSERT_EQUAL_DOUBLE(1.0, prefs.zoom_nav_body);
+    TEST_ASSERT_EQUAL_DOUBLE(1.0, prefs.zoom_mail_list);
+    TEST_ASSERT_EQUAL_DOUBLE(1.0, prefs.zoom_mail_detail);
     TEST_ASSERT_EQUAL_INT(320, prefs.nav_width);
     TEST_ASSERT_EQUAL_INT(200, prefs.nav_min);
     TEST_ASSERT_EQUAL_INT(500, prefs.nav_max);
@@ -1102,6 +1118,10 @@ void test_prefs_round_trip_clamp_and_mask(void) {
     TEST_ASSERT_EQUAL_STRING("system", prefs.chrome);
 
     prefs.zoom_shell = 1.25;
+    prefs.zoom_nav_buttons = 1.5;
+    prefs.zoom_nav_body = 1.25;
+    prefs.zoom_mail_list = 2.0;
+    prefs.zoom_mail_detail = 0.75;
     prefs.nav_width = 400;
     prefs.mail_split = 0.75;
     prefs.contacts_split = 0.25;
@@ -1119,6 +1139,10 @@ void test_prefs_round_trip_clamp_and_mask(void) {
     memset(&prefs, 0, sizeof(prefs));
     TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_get(&prefs));
     TEST_ASSERT_EQUAL_DOUBLE(1.25, prefs.zoom_shell);
+    TEST_ASSERT_EQUAL_DOUBLE(1.5, prefs.zoom_nav_buttons);
+    TEST_ASSERT_EQUAL_DOUBLE(1.25, prefs.zoom_nav_body);
+    TEST_ASSERT_EQUAL_DOUBLE(2.0, prefs.zoom_mail_list);
+    TEST_ASSERT_EQUAL_DOUBLE(0.75, prefs.zoom_mail_detail);
     TEST_ASSERT_EQUAL_INT(400, prefs.nav_width);
     TEST_ASSERT_EQUAL_DOUBLE(0.75, prefs.mail_split);
     TEST_ASSERT_EQUAL_DOUBLE(0.25, prefs.contacts_split);
@@ -1133,21 +1157,26 @@ void test_prefs_round_trip_clamp_and_mask(void) {
     prefs.nav_width = 1;
     prefs.mail_split = 0.0;
     prefs.zoom_shell = 9.0;
+    prefs.zoom_nav_body = 9.0;
     TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_apply(&prefs, PAV_PREFS_ZOOM | PAV_PREFS_UI, err, sizeof(err)));
     TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_get(&prefs));
     TEST_ASSERT_EQUAL_INT(200, prefs.nav_width);
     TEST_ASSERT_EQUAL_DOUBLE(0.25, prefs.mail_split);
     TEST_ASSERT_EQUAL_DOUBLE(3.0, prefs.zoom_shell);
+    TEST_ASSERT_EQUAL_DOUBLE(3.0, prefs.zoom_nav_body);
     TEST_ASSERT_EQUAL_INT(1500, prefs.window_width);
 
     prefs.nav_width = 900;
     prefs.mail_split = 0.9;
     prefs.zoom_shell = 0.1;
+    prefs.zoom_mail_list = 0.1;
     TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_apply(&prefs, PAV_PREFS_ZOOM | PAV_PREFS_UI, err, sizeof(err)));
     TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_get(&prefs));
     TEST_ASSERT_EQUAL_INT(500, prefs.nav_width);
     TEST_ASSERT_EQUAL_DOUBLE(0.75, prefs.mail_split);
     TEST_ASSERT_EQUAL_DOUBLE(0.5, prefs.zoom_shell);
+    TEST_ASSERT_EQUAL_DOUBLE(0.5, prefs.zoom_mail_list);
+    TEST_ASSERT_EQUAL_DOUBLE(1.5, prefs.zoom_nav_buttons);
 
     prefs.nav_width = 400;
     prefs.window_width = 111;
@@ -1247,6 +1276,49 @@ void test_missing_ui_is_inserted(void) {
     pavillion_stop();
 }
 
+void test_missing_zoom_keys_are_inserted(void) {
+    char path[160];
+    PavShellPrefs prefs;
+    struct stat st;
+    char *text;
+
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/profiles", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(0, mkdir(path, 0700));
+    snprintf(path, sizeof(path), "%s/Pavillion.json", g_cfg_dir);
+    write_index(path, "default.json", "profiles");
+    snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
+    write_text(path,
+        "{\"kind\":\"pavillion-profile\",\"schema\":1,\"id\":\"default\",\"name\":\"Default\","
+        "\"note\":\"keep-me\","
+        "\"storage\":{\"engine\":\"sqlite\",\"path\":\"default.sqlite\"},"
+        "\"logs\":\"logs/default.log\",\"blobs\":\"blobs/default\",\"cache\":\"cache/default\","
+        "\"accounts\":[],"
+        "\"preferences\":{\"timezone\":\"America/Vancouver\",\"week_start\":\"monday\","
+        "\"time_format\":\"24h\",\"theme\":\"system\",\"density\":\"comfortable\","
+        "\"zoom\":{\"shell\":1},"
+        "\"window\":{\"maximized\":false,\"width\":1200,\"height\":800,"
+        "\"x\":null,\"y\":null,\"chrome\":\"system\"}}}");
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_get(&prefs));
+    TEST_ASSERT_EQUAL_DOUBLE(1.0, prefs.zoom_nav_buttons);
+    TEST_ASSERT_EQUAL_DOUBLE(1.0, prefs.zoom_nav_body);
+    TEST_ASSERT_EQUAL_DOUBLE(1.0, prefs.zoom_mail_list);
+    TEST_ASSERT_EQUAL_DOUBLE(1.0, prefs.zoom_mail_detail);
+    text = slurp(path);
+    TEST_ASSERT_NOT_NULL(strstr(text, "keep-me"));
+    TEST_ASSERT_NOT_NULL(strstr(text, "\"navButtons\": 1"));
+    TEST_ASSERT_NOT_NULL(strstr(text, "\"navBody\": 1"));
+    TEST_ASSERT_NOT_NULL(strstr(text, "\"mailList\": 1"));
+    TEST_ASSERT_NOT_NULL(strstr(text, "\"mailDetail\": 1"));
+    TEST_ASSERT_NOT_NULL(strstr(text, "\"shell\": 1"));
+    free(text);
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
+    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    pavillion_stop();
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_start_reports_ready_and_stop_is_repeatable);
@@ -1272,5 +1344,6 @@ int main(void) {
     RUN_TEST(test_start_errors_leave_the_thread_up);
     RUN_TEST(test_prefs_round_trip_clamp_and_mask);
     RUN_TEST(test_missing_ui_is_inserted);
+    RUN_TEST(test_missing_zoom_keys_are_inserted);
     return UNITY_END();
 }

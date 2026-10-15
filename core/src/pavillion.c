@@ -139,20 +139,26 @@ static void core_boot(void) {
     pthread_mutex_unlock(&g_core_mu);
 }
 
-/* Inserts preferences.ui when it is missing and publishes the snapshot.
-   The caller is the core thread and does not hold g_core_mu. */
+/* Inserts missing preferences.zoom keys and preferences.ui when it is missing,
+   then publishes the snapshot. The caller is the core thread and does not hold
+   g_core_mu. */
 static int core_prepare_prefs(char *err, size_t err_len) {
     PavShellPrefs snap;
-    int added = 0;
+    int added_zoom = 0;
+    int added_ui = 0;
 
     if (g_load == NULL || g_load->profile == NULL || g_load->profile_path[0] == '\0') {
         set_start_err(err, err_len, "missing profile");
         return -1;
     }
-    if (pav_profile_ensure_ui(g_load->profile, &added, err, err_len) != 0) {
+    if (pav_profile_ensure_zoom(g_load->profile, &added_zoom, err, err_len) != 0) {
         return -1;
     }
-    if (added && pav_profile_store(g_load->profile_path, g_load->profile, err, err_len) != 0) {
+    if (pav_profile_ensure_ui(g_load->profile, &added_ui, err, err_len) != 0) {
+        return -1;
+    }
+    if ((added_zoom || added_ui) &&
+        pav_profile_store(g_load->profile_path, g_load->profile, err, err_len) != 0) {
         return -1;
     }
     if (pav_profile_read_shell(g_load->profile, &snap, err, err_len) != 0) {

@@ -350,7 +350,13 @@ static const char k_default_profile[] =
     "    \"time_format\": \"24h\",\n"
     "    \"theme\": \"system\",\n"
     "    \"density\": \"comfortable\",\n"
-    "    \"zoom\": { \"shell\": 1 },\n"
+    "    \"zoom\": {\n"
+    "      \"shell\": 1,\n"
+    "      \"navButtons\": 1,\n"
+    "      \"navBody\": 1,\n"
+    "      \"mailList\": 1,\n"
+    "      \"mailDetail\": 1\n"
+    "    },\n"
     "    \"window\": {\n"
     "      \"maximized\": false,\n"
     "      \"width\": 1200,\n"
@@ -503,7 +509,7 @@ static json_t *number_value(double value, int as_int) {
 }
 
 static int need_number(json_t *obj, const char *key, double fallback, int as_int, int *added,
-                       char *err, size_t err_len) {
+                        char *err, size_t err_len) {
     json_t *cur = json_object_get(obj, key);
     double ignored;
 
@@ -519,6 +525,32 @@ static int need_number(json_t *obj, const char *key, double fallback, int as_int
         return -1;
     }
     return 0;
+}
+
+/* A missing pane key reads as 1. A present key that is not a number is an
+   error, so a typo in the profile does not silently disable zoom. */
+static int read_zoom_key(json_t *zoom, const char *key, double *out, char *err, size_t err_len) {
+    json_t *value = json_object_get(zoom, key);
+    double parsed;
+
+    if (value == NULL) {
+        *out = 1.0;
+        return 0;
+    }
+    if (read_number(value, &parsed) != 0) {
+        set_err(err, err_len, "missing %s", key);
+        return -1;
+    }
+    *out = clamp_double(parsed, 0.5, 3.0);
+    return 0;
+}
+
+static int write_zoom_key(json_t *zoom, const char *key, double value, char *err, size_t err_len) {
+    if (value != value) {
+        set_err(err, err_len, "missing %s", key);
+        return -1;
+    }
+    return json_set_new(zoom, key, json_real(clamp_double(value, 0.5, 3.0)), err, err_len);
 }
 
 static json_t *make_nav(void) {
@@ -613,6 +645,43 @@ int pav_profile_ensure_ui(PavProfile *profile, int *added, char *err, size_t err
         ensure_pane(ui, "mail", 0, added, err, err_len) != 0 ||
         ensure_pane(ui, "contacts", 0, added, err, err_len) != 0 ||
         ensure_pane(ui, "files", 0, added, err, err_len) != 0) {
+        return -1;
+    }
+    return 0;
+}
+
+int pav_profile_ensure_zoom(PavProfile *profile, int *added, char *err, size_t err_len) {
+    json_t *prefs;
+    json_t *zoom;
+
+    if (added != NULL) {
+        *added = 0;
+    }
+    if (profile == NULL || profile->doc == NULL || added == NULL) {
+        set_err(err, err_len, "missing profile");
+        return -1;
+    }
+    prefs = json_object_get(profile->doc, "preferences");
+    if (!json_is_object(prefs)) {
+        set_err(err, err_len, "missing profile fields");
+        return -1;
+    }
+    zoom = json_object_get(prefs, "zoom");
+    if (zoom == NULL) {
+        zoom = json_object();
+        if (json_set_new(prefs, "zoom", zoom, err, err_len) != 0) {
+            return -1;
+        }
+        *added = 1;
+    } else if (!json_is_object(zoom)) {
+        set_err(err, err_len, "preferences.zoom is not an object");
+        return -1;
+    }
+    if (need_number(zoom, "shell", 1, 0, added, err, err_len) != 0 ||
+        need_number(zoom, "navButtons", 1, 0, added, err, err_len) != 0 ||
+        need_number(zoom, "navBody", 1, 0, added, err, err_len) != 0 ||
+        need_number(zoom, "mailList", 1, 0, added, err, err_len) != 0 ||
+        need_number(zoom, "mailDetail", 1, 0, added, err, err_len) != 0) {
         return -1;
     }
     return 0;
@@ -725,6 +794,12 @@ int pav_profile_read_shell(const PavProfile *profile, PavShellPrefs *out, char *
         return -1;
     }
     out->zoom_shell = clamp_double(profile->zoom_shell, 0.5, 3.0);
+    if (read_zoom_key(zoom, "navButtons", &out->zoom_nav_buttons, err, err_len) != 0 ||
+        read_zoom_key(zoom, "navBody", &out->zoom_nav_body, err, err_len) != 0 ||
+        read_zoom_key(zoom, "mailList", &out->zoom_mail_list, err, err_len) != 0 ||
+        read_zoom_key(zoom, "mailDetail", &out->zoom_mail_detail, err, err_len) != 0) {
+        return -1;
+    }
     out->window_maximized = profile->window_maximized ? 1 : 0;
     out->window_width = profile->window_width;
     out->window_height = profile->window_height;
@@ -808,6 +883,12 @@ int pav_profile_write_shell(PavProfile *profile, const PavShellPrefs *in, unsign
             return -1;
         }
         profile->zoom_shell = zoom_shell;
+        if (write_zoom_key(zoom, "navButtons", in->zoom_nav_buttons, err, err_len) != 0 ||
+            write_zoom_key(zoom, "navBody", in->zoom_nav_body, err, err_len) != 0 ||
+            write_zoom_key(zoom, "mailList", in->zoom_mail_list, err, err_len) != 0 ||
+            write_zoom_key(zoom, "mailDetail", in->zoom_mail_detail, err, err_len) != 0) {
+            return -1;
+        }
     }
     if ((mask & PAV_PREFS_WINDOW) != 0) {
         if (strcmp(in->chrome, "system") != 0 && strcmp(in->chrome, "hidden") != 0) {

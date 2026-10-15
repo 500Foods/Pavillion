@@ -88,6 +88,11 @@ int pav_profile_check_engine(const PavProfile *profile, char *err, size_t err_le
    an error. Returns 0, or -1. */
 int pav_profile_ensure_ui(PavProfile *profile, int *added, char *err, size_t err_len);
 
+/* Inserts preferences.zoom keys that are missing, each 1. shell is required by
+   pav_profile_parse, so this fills the pane keys only. *added is 1 when the
+   document changed. Returns 0, or -1. */
+int pav_profile_ensure_zoom(PavProfile *profile, int *added, char *err, size_t err_len);
+
 /* Reads zoom, the window, and preferences.ui. Width and the splits are clamped
    to the limits stored beside them. Returns 0, or -1. */
 int pav_profile_read_shell(const PavProfile *profile, PavShellPrefs *out, char *err, size_t err_len);

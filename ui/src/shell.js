@@ -5,7 +5,34 @@ const ui = {
   mail: { split: 0.5, min: 0.25, max: 0.75 },
   contacts: { split: 0.5, min: 0.25, max: 0.75 },
   files: { split: 0.5, min: 0.25, max: 0.75 },
+  zoom: { shell: 1, navButtons: 1, navBody: 1, mailList: 1, mailDetail: 1 },
 };
+
+/* shell is the master scale on the root; each pane multiplies on top of it. */
+const zoomPanes = {
+  navButtons: ".nav-buttons",
+  navBody: ".nav-body",
+  mailList: "#panel-mail .pane-list",
+  mailDetail: "#panel-mail .pane-detail",
+};
+
+function zoomClamp(value) {
+  const scale = Number(value);
+  return Number.isFinite(scale) ? clamp(scale, 0.5, 3) : 1;
+}
+
+function zoomLabel(scale) {
+  return `${Math.round(scale * 100)}%`;
+}
+
+function applyZoom() {
+  document.documentElement.style.fontSize = `${ui.zoom.shell * 100}%`;
+  for (const [key, selector] of Object.entries(zoomPanes)) {
+    for (const element of document.querySelectorAll(selector)) {
+      element.style.zoom = String(ui.zoom.shell * ui.zoom[key]);
+    }
+  }
+}
 
 let canSave = false;
 
@@ -26,9 +53,8 @@ function persistLayout() {
   if (!canSave) {
     return;
   }
-  const zoom = Number(document.querySelector("#zoom").value);
   saveLayout({
-    zoom,
+    zoom: { ...ui.zoom },
     navWidth: ui.nav.width,
     mailSplit: ui.mail.split,
     contactsSplit: ui.contacts.split,
@@ -44,11 +70,18 @@ async function loadPrefs() {
   ui.mail = stored.ui.mail;
   ui.contacts = stored.ui.contacts;
   ui.files = stored.ui.files;
-  const zoom = document.querySelector("#zoom");
-  const scale = clamp(Number(stored.zoom), 0.5, 3);
-  zoom.value = String(scale);
-  document.documentElement.style.fontSize = `${scale * 100}%`;
-  document.querySelector("#zoom-value").textContent = `${Math.round(scale * 100)}%`;
+  for (const key of Object.keys(ui.zoom)) {
+    ui.zoom[key] = zoomClamp(stored.zoom[key]);
+  }
+  for (const label of document.querySelectorAll("[data-zoom]")) {
+    const key = label.dataset.zoom;
+    if (!(key in ui.zoom)) {
+      continue;
+    }
+    label.querySelector("input").value = String(ui.zoom[key]);
+    label.querySelector("span").textContent = zoomLabel(ui.zoom[key]);
+  }
+  applyZoom();
   canSave = true;
 }
 
@@ -223,18 +256,24 @@ function bindSplit(name) {
 }
 
 function bindSettings() {
-  const zoom = document.querySelector("#zoom");
-  const zoomValue = document.querySelector("#zoom-value");
-  const showZoom = () => {
-    const scale = Number(zoom.value);
-    document.documentElement.style.fontSize = `${scale * 100}%`;
-    zoomValue.textContent = `${Math.round(scale * 100)}%`;
-  };
-  zoom.addEventListener("input", showZoom);
-  zoom.addEventListener("change", () => {
-    showZoom();
-    persistLayout();
-  });
+  for (const label of document.querySelectorAll("[data-zoom]")) {
+    const key = label.dataset.zoom;
+    if (!(key in ui.zoom)) {
+      continue;
+    }
+    const input = label.querySelector("input");
+    const value = label.querySelector("span");
+    const show = () => {
+      ui.zoom[key] = zoomClamp(input.value);
+      value.textContent = zoomLabel(ui.zoom[key]);
+      applyZoom();
+    };
+    input.addEventListener("input", show);
+    input.addEventListener("change", () => {
+      show();
+      persistLayout();
+    });
+  }
   for (const button of document.querySelectorAll("[data-heading]")) {
     button.addEventListener("click", () => {
       for (const other of document.querySelectorAll("[data-heading]")) {

@@ -11,9 +11,14 @@ typedef struct PavillionStatus {
 } PavillionStatus;
 
 /* Layout, zoom, and the OS window. Doubles are first so the Rust shell can
-   match this layout with repr(C). */
+   match this layout with repr(C). zoom_shell is the master scale; every pane
+   scale below it multiplies on top of it. */
 typedef struct PavShellPrefs {
     double zoom_shell;
+    double zoom_nav_buttons;
+    double zoom_nav_body;
+    double zoom_mail_list;
+    double zoom_mail_detail;
     double mail_split;
     double mail_min;
     double mail_max;

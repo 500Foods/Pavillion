@@ -25,6 +25,10 @@ struct PavillionStatus {
 #[repr(C)]
 struct PavShellPrefs {
     zoom_shell: f64,
+    zoom_nav_buttons: f64,
+    zoom_nav_body: f64,
+    zoom_mail_list: f64,
+    zoom_mail_detail: f64,
     mail_split: f64,
     mail_min: f64,
     mail_max: f64,
@@ -110,6 +114,10 @@ fn c_error(bytes: &[u8], rc: i32) -> String {
 fn read_prefs() -> Result<PavShellPrefs, String> {
     let mut out = PavShellPrefs {
         zoom_shell: 1.0,
+        zoom_nav_buttons: 1.0,
+        zoom_nav_body: 1.0,
+        zoom_mail_list: 1.0,
+        zoom_mail_detail: 1.0,
         mail_split: 0.5,
         mail_min: 0.25,
         mail_max: 0.75,
@@ -366,8 +374,18 @@ struct WindowReply {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ZoomReply {
+    shell: f64,
+    nav_buttons: f64,
+    nav_body: f64,
+    mail_list: f64,
+    mail_detail: f64,
+}
+
+#[derive(Serialize)]
 struct PrefsReply {
-    zoom: f64,
+    zoom: ZoomReply,
     window: WindowReply,
     ui: UiReply,
 }
@@ -376,7 +394,13 @@ struct PrefsReply {
 fn prefs() -> Result<PrefsReply, String> {
     let prefs = read_prefs()?;
     Ok(PrefsReply {
-        zoom: prefs.zoom_shell,
+        zoom: ZoomReply {
+            shell: prefs.zoom_shell,
+            nav_buttons: prefs.zoom_nav_buttons,
+            nav_body: prefs.zoom_nav_body,
+            mail_list: prefs.zoom_mail_list,
+            mail_detail: prefs.zoom_mail_detail,
+        },
         window: WindowReply {
             maximized: prefs.window_maximized != 0,
             width: prefs.window_width,
@@ -412,8 +436,18 @@ fn prefs() -> Result<PrefsReply, String> {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct ZoomSave {
+    shell: f64,
+    nav_buttons: f64,
+    nav_body: f64,
+    mail_list: f64,
+    mail_detail: f64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct LayoutSave {
-    zoom: f64,
+    zoom: ZoomSave,
     nav_width: i32,
     mail_split: f64,
     contacts_split: f64,
@@ -423,7 +457,11 @@ struct LayoutSave {
 #[tauri::command]
 fn save_layout(layout: LayoutSave) -> Result<(), String> {
     let mut prefs = read_prefs()?;
-    prefs.zoom_shell = layout.zoom;
+    prefs.zoom_shell = layout.zoom.shell;
+    prefs.zoom_nav_buttons = layout.zoom.nav_buttons;
+    prefs.zoom_nav_body = layout.zoom.nav_body;
+    prefs.zoom_mail_list = layout.zoom.mail_list;
+    prefs.zoom_mail_detail = layout.zoom.mail_detail;
     prefs.nav_width = layout.nav_width;
     prefs.mail_split = layout.mail_split;
     prefs.contacts_split = layout.contacts_split;

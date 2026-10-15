@@ -2,7 +2,7 @@
 
 Status: draft v0.4 (2026-10-14). Implementer: Grok Build. Reviewer: Andrew Simard.
 
-**Resume:** D-3 is complete. The hello-world sequence A-1 through D-3 is finished. No phase is open. §10 is the shell, and a preview of it is in the UI. Andrew likes the direction. The preview is not a closed phase. Nav width, the three splits, shell zoom, and the window are stored on the profile through the core and restored on the next launch. `chrome` is stored. Hidden chrome does not turn the decorations off. Font Awesome is the Pro Plus 7.3.1 SVG kit (`45801522ef`), used as-is. Its hosts are on the §11 CSP allowlist. Pro files stay out of the tree. Lessons from the preview are in [docs/D-UI.md](docs/D-UI.md). The tree design for the section navs — mail first, then files, calendars, and contacts — is recorded in [docs/E-TREE.md](docs/E-TREE.md). It is not a phase, its phases are not in the sequence, and nothing is built.
+**Resume:** D-3 is complete. The hello-world sequence A-1 through D-3 is finished. No phase is open. §10 is the shell, and a preview of it is in the UI. Andrew likes the direction. The preview is not a closed phase. Nav width, the three splits, shell zoom, and the window are stored on the profile through the core and restored on the next launch. `chrome` is stored. Hidden chrome does not turn the decorations off. Font Awesome is the Pro Plus 7.3.1 SVG kit (`45801522ef`), used as-is. Its hosts are on the §11 CSP allowlist. Pro files stay out of the tree. Lessons from the preview are in [docs/D-UI.md](docs/D-UI.md). The tree design for the section navs — mail first, then files, calendars, and contacts — is recorded in [docs/E-TREE.md](docs/E-TREE.md). It is not a phase, its phases are not in the sequence, and nothing is built. Per-pane zoom is in the tree: `shell` is the master scale, and the nav buttons, nav body, and the mail panes each have their own key on the profile. §16 below is the command line for AI agents. It is a section, not a phase.
 
 This file is the map. A new session reads Resume, the sequence table, and then only the named phase. One phase per session. The next session starts fresh. Phases are not worked in parallel.
 
@@ -43,7 +43,7 @@ A phase id is a letter and a number. The letter is the document. The number star
 
 How a phase is closed, in the document that owns it: Status, Accomplished, Lessons learned, Handoff, then a Working log line. Then stop. A sitting that ends early marks that phase in progress and does not open the next one. The steps are restated at the top of each lettered document.
 
-Recorded, and not in the sequence yet: an Activity view that reads the core log, and real mail, contacts, calendars, and files behind the preview. Nav width, the splits, zoom, and window placement are already saved. Hidden chrome is stored, and the decorations stay the system frame. Also waiting: CodeMirror 6 for HTML and Lua source, SunEditor as the mail composer, `light.css`, UPX on the release binary, and a dnf repository as the update path. Lua and a second database driver wait there too. §14 below is the product roadmap (P0 through P6). It is not this session list. It gets its own letters when a new document is opened. The shell preview and the kit are already in the tree. They are described in §10, §11, and [docs/D-UI.md](docs/D-UI.md). The tree engine and its phases wait in [docs/E-TREE.md](docs/E-TREE.md), until mail is real.
+Recorded, and not in the sequence yet: an Activity view that reads the core log, and real mail, contacts, calendars, and files behind the preview. Nav width, the splits, zoom, and window placement are already saved. Hidden chrome is stored, and the decorations stay the system frame. Also waiting: CodeMirror 6 for HTML and Lua source, SunEditor as the mail composer, `light.css`, UPX on the release binary, and a dnf repository as the update path. Lua and a second database driver wait there too. §14 below is the product roadmap (P0 through P6). It is not this session list. It gets its own letters when a new document is opened. The shell preview and the kit are already in the tree. They are described in §10, §11, and [docs/D-UI.md](docs/D-UI.md). The tree engine and its phases wait in [docs/E-TREE.md](docs/E-TREE.md), until mail is real. §16 records the command line for AI agents: the CLI is a client of the running app over a local socket, the app owns the store and the sync, sending goes only through an explicit draft, and per-bot keys scope what a bot may do. Its design waits with mail; its letter opens when the work does.
 
 The feature sections under §3 onward stay the spec for mail and sync until those letters exist. Where a topic has moved, the lettered document wins.
 
@@ -471,7 +471,8 @@ The first window, `api.js`, and the rule that screens do not call Tauri themselv
   Bottom: Activity `fa-sharp fa-thin fa-list-timeline`, Settings `fa-sharp fa-thin fa-gear`, Update `fa-sharp fa-thin fa-arrows-rotate`, Help `fa-sharp fa-thin fa-circle-question`.
   A top button swaps the nav body and focuses that section's home tab. Home tabs stay put. Settings, from the bottom, does the same: the nav lists settings sections and its tab focuses. Activity and Help open their tabs and leave the nav body as it is. Update starts a sync and spins while work is in progress. It is not a tab.
   Mail's nav is the mailbox tree, the engine in [docs/E-TREE.md](docs/E-TREE.md). Contacts' nav is a letter rolodex, a search field, then accounts and recents. Calendars' nav is a continuous mini-calendar scroller, opening on the week before the current month through the week after, then the calendars grouped by account with a color swatch beside each. Files' nav is the folder tree, on the same engine. An IMAP account still shows Files, and that tree is empty. The calendar groups and the contacts lists are flat: they use the tree's row renderer and view state without nesting.
-  Settings is a screen, not a popup. Its nav is a list of headings. Theme is one heading. The shell has no theme control and no light/dark icon. The first control is shell zoom (50–300%, steps of 25%). Each later panel stores its own zoom. Window placement and maximized state are restored on launch. Chrome may be the system frame or hidden. Hidden chrome uses the empty part of the tab strip as the drag region, and the icon buttons stay clickable. Per-account status dots are not placed. Indicators of that kind wait.
+   Settings is a screen, not a popup. Its nav is a list of headings. Theme is one heading. The shell has no theme control and no light/dark icon. The first control is shell zoom (50–300%, steps of 25%). Each later panel stores its own zoom, and the Zoom section now carries one slider per pane: `shell` is the master scale on the root, and `navButtons`, `navBody`, `mailList`, and `mailDetail` each multiply on top of it. Window placement and maximized state are restored on launch. Chrome may be the system frame or hidden. Hidden chrome uses the empty part of the tab strip as the drag region, and the icon buttons stay clickable. Per-account status dots are not placed. Indicators of that kind wait.
+   Accounts is a Settings heading, not a fifth section. Its panel is a split: the account tree on the left, the selected leaf's form on the right. The tree is the [docs/E-TREE.md](docs/E-TREE.md) engine's third consumer, three levels deep — account, section (Account / Mail / Calendar / Contacts / Files), page (Name and photo, Credentials, Server settings, Folder settings, Spam settings, Colors). Accounts are numbered at add time, zero-padded (`001`), never renumbered or reused, and the number appears in the mail tree, the CLI's `--account`, and the audit log, so one number is the same account everywhere. There is one global account list: the section navs are filtered views of it, and an account appears in a section's nav when it has that capability (an IMAP account still shows Files, empty). Order and hidden accounts are the same view state the tree already owns. The Credentials page stores and replaces a secret in the keyring and never renders one, the same rule as the add-account form. The right pane carries a header with the number, name, and section, because a leaf like Spam settings loses its context otherwise.
 - Workspace: Mail's home tab is the message list beside the open message. The divider moves and starts in the middle. A message may open as its own tab, titled by subject. That tab closes. The home tab does not. Contacts' home tab is the same kind of split, with a larger rolodex beside the open contact. Calendars' home tab is the month. Files' home tab is the folder contents beside a large preview. Settings' home tab is the chosen section. Activity's home tab is the log.
   Message list row: account color bar, from, subject, preview, 24h time or date, flags, attachment icon.
 - Layout the user can change is stored on the profile as `preferences.ui`. The app reads it on load, including the minimums and maximums, and clamps to those. Schema stays 1. New profiles include the object. A profile that lacks it gains the object the next time it loads. The page does not read `Pavillion.json`. `preferences.window` stays the OS window and is applied on launch. `preferences.zoom` stays the scales.
@@ -497,6 +498,9 @@ The first window, `api.js`, and the rule that screens do not call Tauri themselv
 
 - Credentials only in the Secret Service keyring; never in a profile, SQLite, logs, crash output or
   frontend memory beyond the add-account form (cleared after submit). See [docs/B-CONFIG.md](docs/B-CONFIG.md).
+- Bot keys and the command-line socket (§16) follow the same rule. A key's hash lives in SQLite;
+  the key itself, the audit trail, and the logs never hold one. The socket is a Unix domain socket
+  in the user's runtime directory, mode 0600, and it refuses every command while bots are paused.
 - TLS required (libcurl with the system trust store); no "accept invalid cert" toggle.
   Optional per-account pinned CA path for internal endpoints.
 - App CSP (tauri.conf): `default-src 'self'; script-src 'self' https://kit.fontawesome.com https://ka-p.fontawesome.com; style-src 'self' 'unsafe-inline'; img-src 'self' pav-cid: data:; frame-src 'self'; connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com`.
@@ -566,6 +570,8 @@ Effort is rough focused agent time with Andrew review; adjust after P1.
 - Initial + delta sync of headers, message list (virtualized), thread view, lazy bodies, sanitizer,
   sandboxed iframe, remote-image blocking + allowlist, attachments save/open, flags, move/delete/archive
   (online), unified views.
+- Command-line surface (§16): `status`, `mail list/get/search`, `draft create`, `send` behind the
+  two-step gate, `help --json`, and the exit-code table. Subcommands run headless on the same core.
 - Accept: all ~20 accounts synced; reading a bot report with cid images renders inline images;
   corpus nasty-HTML suite passes; changes made in another client appear within one poll/push cycle.
 
@@ -578,6 +584,8 @@ Effort is rough focused agent time with Andrew review; adjust after P1.
 **P3 — Search, offline queue, push (4–5 days)**
 - FTS5 index + query syntax, server search merge, op_queue with conflict handling, EventSource push
   with backoff, retention rules, notifications, keyboard shortcuts complete.
+- Command-line surface (§16): `watch --json` on the same events, `config get/list/set` with
+  validation and `--dry-run`, and the `cli_audit` trail with `--as`.
 - Accept: offline: flag/move/delete 20 messages, reconnect, server matches; conflicting change from
   another client resolved without data loss; new mail notification < 5 s with push; retention keeps
   exactly N newest in a willard@ folder.
@@ -618,3 +626,103 @@ Total to daily-driver mail (P0–P3): ~3 weeks. Full replacement (P0–P5): ~5�
 10. Need PGP or S/MIME at any point?
 11. Repo location and name (e.g. `/mnt/extra/Projects/Pavillion`, GitHub/origin remote)?
 12. Fedora rpm only to start, or also Omarchy build from day one?
+
+## 16. AI and command-line access
+
+Recorded now so the core, the outbox, and the store do not box a bot-driven interface out later.
+This is a section, not a phase. It gets its own lettered document when it opens, the way
+[D-UI.md](docs/D-UI.md) and [E-TREE.md](docs/E-TREE.md) did.
+
+The shape is a command line, not MCP. MCP is a wrapper with its own protocol, a process, and a
+transport to maintain; a comprehensive CLI is the contract any agent can already drive, and a
+thin MCP wrapper later only needs to read `help --json`. The sketch came out of two Grok Build
+sessions and is endorsed with the changes noted below.
+
+**One frontend, the same engine — and the app is the only writer.** The command line is a thin
+client. The running app owns SQLite, the EventSource connection, the op_queue, and the keyring;
+the command line never opens the database and never calls JMAP itself. A change made through the
+CLI shows up the moment the window is there to show it, and the window sees the CLI's drafts,
+sends, and audit entries because both transports end in the same core. There is one command
+implementation with two transports: Tauri `invoke` for the window, the socket for the CLI.
+
+**The concurrency answer: the CLI requires a running instance.** The app listens on a Unix domain
+socket in `$XDG_RUNTIME_DIR/pavillion/` (the folder §11 already reserves for attachments), file
+mode 0600 in the user's own 0700 runtime directory. Protocol is JSON-RPC, one JSON object per
+line. If the app is not running, every command fails immediately with exit code 6 — the CLI never
+launches the app and never works on its own. That is a deliberate safety property: with the app
+closed, no bot acts and no mail goes out. The known trade-off is laptop use, where the app is
+often closed; a later headless mode (`pavillion daemon`, same core, no window) keeps the same
+socket contract if that is wanted.
+
+**Same binary, subcommand mode.** `pavillion <cmd>` is the same executable, dispatched in
+`main.rs` beside the A-6 flags before the window exists. A separate client binary is lighter, but
+the shared binary is one file on the update path (§12) and the socket client is small; split it
+later if startup cost proves real. Dispatch order keeps the A-5 and A-6 contracts intact: a known
+flag prints and exits first, then a known subcommand, then exactly one positional argument is
+still the working directory that opens the window. The subcommand check comes before the
+workdir check, because `pavillion status` is one non-flag argument and A-5 reads that as a
+directory.
+
+The subcommand branch exits in `main.rs` before `pavillion_lib::run`: Tauri never builds, the
+WebView never starts, `pavillion_start` is never called, and `tauri-plugin-single-instance` never
+sees the process. A bot call cannot start a second core, open a window, or pull an existing window
+to the front. With the app closed it fails with exit code 6 like every other command. The socket
+path is the same for every caller in v1, since one process runs one active profile; encoding the
+profile id into the path is a later seam, not day-one scope.
+
+**A "bots paused" switch.** A toolbar toggle and a setting, the same value in both places. While
+it is on, the socket rejects every token with exit code 7 and only the human's own session works.
+Pausing on screen lock or idle is a later option, as is a tray state for it (§12 keeps tray
+optional).
+
+**Exit codes**, defined once and covered by tests: 0 ok, 1 generic failure, 2 usage error,
+3 credentials missing, 4 server or network failure that is retryable (`ApiError.retryable`),
+5 conflict such as `stateMismatch`, 6 app not running, 7 paused by the user, 8 permission denied
+(the token lacks the scope). Permission is split from credentials on purpose: a bot should be able
+to tell "my key cannot send" from "the keyring has no password" without reading the message.
+
+**Bot keys, not one shared token.** Each bot gets its own key in `PAVILLION_TOKEN`, and the key
+records its name (what the audit log shows), the accounts it may use (by number, id, or name), the
+actions it may take (`read`, `draft`, `send`, `calendar:write`, `contacts:write`, `config`,
+`delete`, `keys:issue`), an expiry, and the key that created it. `--account 001` is checked
+against what the key allows — the same number people see in the window (§10).
+
+- Only a hash of the key is stored, in the app's SQLite. The key itself is a secret: §11's
+  redaction covers the audit log, the core log, and every crash path. The log records the key's
+  name, never its value.
+- A key can only issue keys with a subset of its own permissions, and revoking a key revokes
+  everything it created.
+- Asking for more than a key has (`token request`) shows an approve or deny prompt in the app;
+  an unanswered request times out and the command exits 3.
+- The human's master key is unlocked by OS login or a passkey and is never an environment
+  variable. In v1, tokens are issued and revoked by the human in the app; delegation
+  (`keys:issue` through the CLI) and `token request` are the schema's seam for later, not day-one
+  scope. Escalation of `send`, `delete`, `config`, or `keys:issue` always needs a human.
+
+**Never send by default.** `draft create` writes a draft the user can see in the app; only
+`send <draft-id>` enqueues `EmailSubmission/set` through the outbox worker, and only with the
+`send` permission. The undo window applies, failed sends stay visible, and destructive commands
+(permanent delete, account removal, purge) refuse to run without `--yes`, matching §6.5.
+
+**Non-interactive by default.** Commands never prompt or open a dialog. Mail credentials stay in
+the Secret Service, one per account; the Credentials page stores and replaces them and shows
+nothing. When one is missing, the command fails with a JSON error and exit 3.
+
+**JSON first.** `--json` on every command, stable camelCase field names matching §2.3, `--quiet`
+for human use. `help --json` lists every command and option, one line each, so an agent learns the
+tool without a manual. Output is ids, sizes, and headers; a body is printed only with an explicit
+`--body`. The §11 redaction applies to CLI output and the audit trail alike.
+
+**A trail of what a bot did.** An `cli_audit` table in the app's store records the key name,
+command, target id, and time for every mutating command. A message a bot drafted or sent carries a
+**local** marker — not a JMAP keyword, because other clients must not see it — so the window can
+show what a bot touched.
+
+**`watch --json`** streams the §2.3 events from the app's own sync: there is no second EventSource
+connection and no polling. It lands with the push work (§5, P3).
+
+**Timing.** `status`, `help --json`, the socket, the token table, and the pause switch can land as
+soon as the command bridge exists, because the bridge already answers `status`. The mail commands
+wait for P0/P1 data; `watch`, `config`, contacts, and calendar follow their own features (§14).
+The A-6 flags stay in front of everything: `--help` and `--version` still print without a window,
+and a subcommand skips the window entirely.
