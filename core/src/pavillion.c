@@ -14,6 +14,7 @@
 
 #define CORE_QUEUE_CAP 8
 #define CORE_CMD_STOP 1
+#define CORE_CMD_PREFS 2
 
 static pthread_mutex_t g_core_mu = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t g_core_cv = PTHREAD_COND_INITIALIZER;
@@ -30,6 +31,14 @@ static PavillionStatus g_status = { .state = "ready" };
 static char g_core_workdir[4096];
 static PavConfigLoad *g_load;
 static PavStore *g_store;
+static PavShellPrefs g_prefs_snap;
+static PavShellPrefs g_prefs_req;
+static int g_prefs_ready;
+static int g_prefs_busy;
+static int g_prefs_done;
+static int g_prefs_rc;
+static unsigned g_prefs_mask;
+static char g_prefs_err[512];
 
 static void copy_field(char *dst, size_t dst_len, const char *src) {
     size_t n;
@@ -60,6 +69,9 @@ static void core_publish_unlocked(const char *state, const char *name, const cha
 }
 
 static void attach_profile_log(const char *path);
+static void set_start_err(char *err, size_t err_len, const char *msg);
+static int core_prepare_prefs(char *err, size_t err_len);
+static int core_apply_prefs(char *err, size_t err_len);
 
 static void core_release_profile(void) {
     pav_store_close(g_store);
@@ -115,10 +127,42 @@ static void core_boot(void) {
         return;
     }
     attach_profile_log(profile->resolved_logs);
+    if (core_prepare_prefs(err, sizeof(err)) != 0) {
+        pthread_mutex_lock(&g_core_mu);
+        core_publish_unlocked("error", profile->name, profile->id, err);
+        pthread_mutex_unlock(&g_core_mu);
+        return;
+    }
     pav_log("core", PAV_INFO, 0, "core ready");
     pthread_mutex_lock(&g_core_mu);
     core_publish_unlocked("ready", profile->name, profile->id, NULL);
     pthread_mutex_unlock(&g_core_mu);
+}
+
+/* Inserts preferences.ui when it is missing and publishes the snapshot.
+   The caller is the core thread and does not hold g_core_mu. */
+static int core_prepare_prefs(char *err, size_t err_len) {
+    PavShellPrefs snap;
+    int added = 0;
+
+    if (g_load == NULL || g_load->profile == NULL || g_load->profile_path[0] == '\0') {
+        set_start_err(err, err_len, "missing profile");
+        return -1;
+    }
+    if (pav_profile_ensure_ui(g_load->profile, &added, err, err_len) != 0) {
+        return -1;
+    }
+    if (added && pav_profile_store(g_load->profile_path, g_load->profile, err, err_len) != 0) {
+        return -1;
+    }
+    if (pav_profile_read_shell(g_load->profile, &snap, err, err_len) != 0) {
+        return -1;
+    }
+    pthread_mutex_lock(&g_core_mu);
+    g_prefs_snap = snap;
+    g_prefs_ready = 1;
+    pthread_mutex_unlock(&g_core_mu);
+    return 0;
 }
 
 static void set_start_err(char *err, size_t err_len, const char *msg) {
@@ -156,6 +200,16 @@ static int core_queue_pop_unlocked(int *cmd) {
     return 0;
 }
 
+static void core_fail_prefs_unlocked(const char *msg) {
+    if (!g_prefs_busy || g_prefs_done) {
+        return;
+    }
+    g_prefs_rc = -1;
+    copy_field(g_prefs_err, sizeof(g_prefs_err), msg);
+    g_prefs_done = 1;
+    pthread_cond_broadcast(&g_core_cv);
+}
+
 static void *core_thread_main(void *arg) {
     (void)arg;
     core_boot();
@@ -166,7 +220,7 @@ static void *core_thread_main(void *arg) {
         while (g_core_q_count == 0 && !g_core_stop) {
             pthread_cond_wait(&g_core_cv, &g_core_mu);
         }
-        if (g_core_stop) {
+        if (g_core_q_count == 0) {
             break;
         }
         if (core_queue_pop_unlocked(&cmd) != 0) {
@@ -175,11 +229,51 @@ static void *core_thread_main(void *arg) {
         if (cmd == CORE_CMD_STOP) {
             break;
         }
+        if (cmd == CORE_CMD_PREFS) {
+            pthread_mutex_unlock(&g_core_mu);
+            core_apply_prefs(g_prefs_err, sizeof(g_prefs_err));
+            pthread_mutex_lock(&g_core_mu);
+            g_prefs_done = 1;
+            pthread_cond_broadcast(&g_core_cv);
+        }
     }
     g_core_alive = 0;
+    core_fail_prefs_unlocked("core stopped");
     pthread_mutex_unlock(&g_core_mu);
     core_release_profile();
     return NULL;
+}
+
+/* The caller is the core thread and does not hold g_core_mu.
+   g_prefs_req and g_prefs_mask stay put until this returns: the next apply
+   waits on g_prefs_busy. */
+static int core_apply_prefs(char *err, size_t err_len) {
+    PavShellPrefs stored;
+    PavProfile *profile;
+
+    err[0] = '\0';
+    if (g_load == NULL || g_load->profile == NULL || g_load->profile_path[0] == '\0') {
+        set_start_err(err, err_len, "missing profile");
+        g_prefs_rc = -1;
+        return -1;
+    }
+    profile = g_load->profile;
+    if (pav_profile_write_shell(profile, &g_prefs_req, g_prefs_mask, err, err_len) != 0 ||
+        pav_profile_store(g_load->profile_path, profile, err, err_len) != 0 ||
+        pav_profile_read_shell(profile, &stored, err, err_len) != 0) {
+        g_prefs_rc = -1;
+        if (err[0] == '\0') {
+            set_start_err(err, err_len, "cannot write profile");
+        }
+        return -1;
+    }
+    pthread_mutex_lock(&g_core_mu);
+    g_prefs_snap = stored;
+    g_prefs_ready = 1;
+    g_prefs_rc = 0;
+    err[0] = '\0';
+    pthread_mutex_unlock(&g_core_mu);
+    return 0;
 }
 
 int pavillion_start(const char *workdir, char *err, size_t err_len) {
@@ -202,6 +296,9 @@ int pavillion_start(const char *workdir, char *err, size_t err_len) {
     }
     g_core_stop = 0;
     g_core_published = 0;
+    g_prefs_ready = 0;
+    g_prefs_busy = 0;
+    g_prefs_done = 1;
     core_queue_clear_unlocked();
     rc = pthread_create(&g_core_thread, NULL, core_thread_main, NULL);
     if (rc != 0) {
@@ -249,6 +346,62 @@ int pavillion_status(PavillionStatus *out) {
     *out = g_status;
     pthread_mutex_unlock(&g_core_mu);
     return 0;
+}
+
+int pavillion_prefs_get(PavShellPrefs *out) {
+    if (out == NULL) {
+        return -1;
+    }
+    pthread_mutex_lock(&g_core_mu);
+    if (!g_core_alive || !g_prefs_ready) {
+        pthread_mutex_unlock(&g_core_mu);
+        return -1;
+    }
+    *out = g_prefs_snap;
+    pthread_mutex_unlock(&g_core_mu);
+    return 0;
+}
+
+int pavillion_prefs_apply(const PavShellPrefs *in, unsigned mask, char *err, size_t err_len) {
+    int rc;
+
+    if (in == NULL) {
+        set_start_err(err, err_len, "missing prefs");
+        return -1;
+    }
+    pthread_mutex_lock(&g_core_mu);
+    while (g_prefs_busy && g_core_alive && !g_core_stop) {
+        pthread_cond_wait(&g_core_cv, &g_core_mu);
+    }
+    if (!g_core_alive || g_core_stop || !g_prefs_ready) {
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "core is not running");
+        return -1;
+    }
+    g_prefs_req = *in;
+    g_prefs_mask = mask;
+    g_prefs_done = 0;
+    g_prefs_rc = -1;
+    g_prefs_err[0] = '\0';
+    g_prefs_busy = 1;
+    if (core_queue_push_unlocked(CORE_CMD_PREFS) != 0) {
+        g_prefs_busy = 0;
+        g_prefs_done = 1;
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "core is busy");
+        return -1;
+    }
+    while (!g_prefs_done && g_core_alive) {
+        pthread_cond_wait(&g_core_cv, &g_core_mu);
+    }
+    rc = g_prefs_done ? g_prefs_rc : -1;
+    if (rc != 0) {
+        set_start_err(err, err_len, g_prefs_err[0] != '\0' ? g_prefs_err : "core stopped");
+    }
+    g_prefs_busy = 0;
+    pthread_cond_broadcast(&g_core_cv);
+    pthread_mutex_unlock(&g_core_mu);
+    return rc;
 }
 
 int pav_core_thread_alive(void) {

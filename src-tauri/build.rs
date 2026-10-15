@@ -53,7 +53,11 @@ fn main() {
     println!("cargo:rerun-if-changed=../core/include/pav_store.h");
 
     let attributes = tauri_build::Attributes::new()
-        .app_manifest(tauri_build::AppManifest::new().commands(&["status"]));
+        .app_manifest(tauri_build::AppManifest::new().commands(&[
+            "status",
+            "prefs",
+            "save_layout",
+        ]));
     if let Err(err) = tauri_build::try_build(attributes) {
         panic!("failed to run tauri-build: {err}");
     }

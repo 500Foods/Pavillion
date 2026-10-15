@@ -1,6 +1,8 @@
 #ifndef PAV_CONFIG_H
 #define PAV_CONFIG_H
 
+#include "pavillion.h"
+
 #include <stddef.h>
 
 typedef struct PavIndex {
@@ -62,6 +64,7 @@ int pav_config_ensure(const char *workdir, char *err, size_t err_len);
 typedef struct PavConfigLoad {
     char state[32]; /* "ready" or "error" */
     char error[512];
+    char profile_path[4096]; /* set when profile is set */
     PavProfile *profile; /* set only when state is ready */
 } PavConfigLoad;
 
@@ -79,5 +82,23 @@ int pav_config_prepare(const char *workdir, PavProfile *profile, char *err, size
 /* sqlite is accepted. A missing engine is sqlite. Any other engine is an
    error whose text contains that engine name. Does not call a database. */
 int pav_profile_check_engine(const PavProfile *profile, char *err, size_t err_len);
+
+/* Inserts preferences.ui when it is missing, and fills a pane that is missing.
+   *added is 1 when the document changed. A ui value that is not an object is
+   an error. Returns 0, or -1. */
+int pav_profile_ensure_ui(PavProfile *profile, int *added, char *err, size_t err_len);
+
+/* Reads zoom, the window, and preferences.ui. Width and the splits are clamped
+   to the limits stored beside them. Returns 0, or -1. */
+int pav_profile_read_shell(const PavProfile *profile, PavShellPrefs *out, char *err, size_t err_len);
+
+/* Writes the masked fields onto the document and the C fields. Clamps nav
+   width and the splits to the limits already stored. Does not write the file.
+   Returns 0, or -1. */
+int pav_profile_write_shell(PavProfile *profile, const PavShellPrefs *in, unsigned mask,
+                            char *err, size_t err_len);
+
+/* Rewrites the profile over path, mode 0600. Returns 0, or -1. */
+int pav_profile_store(const char *path, const PavProfile *profile, char *err, size_t err_len);
 
 #endif

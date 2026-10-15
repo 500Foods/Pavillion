@@ -1,7 +1,7 @@
 # D — UI
 
-**Status:** D-3 complete (2026-10-14). No further phase in this document.
-**Resume:** The table of contents names the one phase that may be worked. If that id is not in this file, do not start here.
+**Status:** D-3 complete (2026-10-14). No further phase in this document. The shell preview below is not a phase.
+**Resume:** No phase is open. Read the shell preview at the bottom of this file, then §10 and §11 in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md). Do not start a phase from here.
 
 The shell. Mail, contacts, calendar, and files stay in `PAVILLION_PLAN.md` until they get their own letters.
 
@@ -29,6 +29,8 @@ Kind: **Easy** is the static frame or one function in `api.js`. **Medium** and *
 Leave Accomplished, Lessons learned, and Handoff off a phase that has not started.
 
 A UI exit gate is the window, not a screenshot stored in the repo. `make test` must still pass if the phase touched the shell.
+
+The frame diagram below is the hello-world page. The shell preview replaced that page on the same day. §10 in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md) is the layout.
 
 ## Lock
 
@@ -70,17 +72,17 @@ Dark only, until a preferences screen exists. The OS window title is `Pavillion`
 
 Hello world exports `status()`, invoking the Tauri command `status` and returning `{ profileName, profileId, state, error }`. Wire names are camelCase. The C struct stays snake_case. Later functions are added to this module one at a time. A screen does not register its own Tauri listener. Event names already listed in the plan stay the names, and none are emitted in this document.
 
-The nav rail (Mail, Contacts, Calendar, Files, Settings) is a later document. Changing the active profile is a restart, as [B-CONFIG.md](B-CONFIG.md) says.
+The shell layout is in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md) §10. Changing the active profile is a restart, as [B-CONFIG.md](B-CONFIG.md) says.
 
 ### Later, not a phase in this document
 
-Settings is a screen on the rail, with its own sections. It is not a popup. The first control on it is zoom: one scale for the shell, 50% to 300%, detents every 25%, stored as `preferences.zoom.shell`. Each later panel gets its own key and its own scale. The window applies `preferences.window` on startup and writes it back on move, resize, and quit. `chrome: "hidden"` turns off the system decorations. The page header becomes the title bar and the drag region, which is the clean edge-to-edge window. Default remains `system` until that setting exists.
+Settings is a screen, not a popup. Its button sits on the bottom of the nav, with Activity, Update, and Help. The first control is zoom: one scale for the shell, 50% to 300%, detents every 25%, stored as `preferences.zoom.shell`. Each later panel gets its own key and its own scale. The window applies `preferences.window` on startup and writes it back on move, resize, and quit. `chrome: "hidden"` turns off the system decorations. The empty part of the tab strip is the drag region, and the icon buttons stay clickable. Default remains `system` until that setting exists. Layout the user can change is `preferences.ui` in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md) §10.
 
-Activity is always reachable, from the rail footer, including while Settings is open. It is a read-only view of the core log: refresh, scroll to the newest line on open, monospace, and a font size for that view. Times on screen are local `HH:mm:ss.mmm`. The file format stays the millisecond UTC line in [C-CORE.md](C-CORE.md). The view asks the core for the text. It does not open the log file itself.
+Activity is a tab opened from the bottom of the nav, including while Settings is open. It is a read-only view of the core log: refresh, scroll to the newest line on open, monospace, and a font size for that view. Times on screen are local `HH:mm:ss.mmm`. The file format stays the millisecond UTC line in [C-CORE.md](C-CORE.md). The view asks the core for the text. It does not open the log file itself.
 
-CodeMirror 6 is the source editor for HTML and for Lua. SunEditor is the rich mail composer. Neither is installed in this document. Icons are the Font Awesome Pro Plus 7.3.1 SVG kit (`https://kit.fontawesome.com/45801522ef.js`). Duotone, Sharp, and Thin are the families to use. Mail keeps the roof mark. The kit hosts are allowed by the CSP in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md) §11. This document does not load the kit.
+CodeMirror 6 is the source editor for HTML and for Lua. SunEditor is the rich mail composer. Neither is installed in this document. Icons are the Font Awesome Pro Plus 7.3.1 SVG kit (`https://kit.fontawesome.com/45801522ef.js`). Duotone, Sharp, and Thin are the families to use. Mail keeps the roof mark. The kit hosts are allowed by the CSP in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md) §11. The kit is used as-is, and Pro files are not vendored. The shell preview loads the kit. This phase did not.
 
-D-1 keeps the five variables in the lock above. A later theme phase follows Lithium: dark-first semantic custom properties, and a theme is an override of those properties. Pavillion does not import Lithium's stylesheets or fonts. The hello frame stays dark and does not read `preferences.theme`.
+D-1 keeps the five variables in the lock above. A later theme phase follows Lithium: dark-first semantic custom properties, and a theme is an override of those properties. `preferences.theme` names `dark.css` or `light.css`. The control is the Theme heading under Settings. The shell has no theme icon. Gradients live in those files. `preferences.ui` does not store backgrounds. Pavillion does not import Lithium's stylesheets or fonts. The shell preview links `dark.css` directly and does not read `preferences.theme`.
 
 ## D-1: Frame and theme variables
 
@@ -155,10 +157,40 @@ D-1 keeps the five variables in the lock above. A later theme phase follows Lith
 
 **Lessons learned:** The body shows the state word from the core. The longer message, such as `cannot create .../profiles`, stays in the status `error` field and is not drawn. A ready launch still shows the profile name.
 
-**Handoff:** The hello-world sequence is complete. Settings, the Activity log, and mail are recorded and not sequenced yet.
+**Handoff:** The hello-world sequence is complete. The page this phase drew was replaced the same day by the shell preview below. That preview is not a phase.
 
 ## Working log
 
 - 2026-10-14 D-1: Dark frame. `theme.css` has the five variables. Title row shows Pavillion. Profile slot and body are empty.
 - 2026-10-14 D-2: `api.js` calls `status()` once. The body shows `ready` and the profile name is blank.
 - 2026-10-14 D-3: A file used as the working directory shows `error` and a blank name. A normal directory still shows Default and ready.
+- 2026-10-14 Shell preview: nav, tabs, gradients, and the kit are on screen. Not a phase. Width, zoom, and the window are not saved.
+- 2026-10-14 Shell preferences: nav width, the splits, zoom, and the window are saved through the core and restored on launch. Not a phase. Hidden chrome is stored and not applied.
+
+## Shell preview
+
+**Status:** In the tree (2026-10-14). Not a phase. Andrew likes the direction. Do not mark it complete.
+
+**Accomplished:** `ui/index.html` is the shell. `ui/styles/dark.css` holds the colors and the gradients. `ui/styles/theme.css` holds the rules and only uses variables. `ui/src/shell.js` switches sections, keeps home tabs, and drags the nav and the splits. `ui/src/main.js` still calls `status()` once, through `api.js`. `ui/public/mark.png` is a copy of `src-tauri/icons/source.png` and is the Mail button. The other seven buttons are Sharp Thin from the kit. `security.csp` in `tauri.conf.json` is the §11 string, plus `ws://localhost:1420` for the dev server.
+
+On a normal launch the profile name is under Settings, on the Zoom heading. It read `Default`. The state word is not drawn. An error uses the banner and shows `result.error` when that field is set. The word `ready` is not in the HTML, CSS, or JS.
+
+The page also calls `prefs()` and `save_layout` through `api.js`. The core thread is the only writer. `pavillion_start`, `pavillion_stop`, and `pavillion_status` are unchanged. A profile without `preferences.ui` gains that object on load. Width and the splits clamp to the stored limits. Zoom clamps to `0.5`–`3`. The window is created hidden, then shown at the saved size and position. Move, resize, and quit write `preferences.window`. A drag writes the nav or the split when the pointer goes up. The zoom slider writes when the value is committed. `chrome` is left as stored. Decorations stay on.
+
+What the window showed: Mail's tree and a side-by-side split, Calendars' month with the mini calendar and two swatches, Contacts' letters and search, Settings with Zoom and Theme. The nav edge moved and was put back. Theme says System, and dark is the file in use. There is no light theme and no theme icon on the shell.
+
+A later check dragged the nav to 430, set zoom to 150%, moved the mail split, and resized the window to 1500×940. Quit and the next launch restored those values, including the split at the same pixel. The nav, the split, and the zoom were then put back. The window left on disk is 1500×940, with zoom at 100% and the nav at 320.
+
+**Variances:** The numbers from §10 are the defaults (`nav` 320 within 200–500, splits at half within a quarter and three quarters). The page reads them from the core and writes them back. Hidden chrome is stored and not turned on. The tab spacer has `data-tauri-drag-region`. Activity is an empty tab. Help is one sentence. Update spins for about a second and a half and does not sync. The mailbox names, the calendar rows, and the letter lists are placeholders. Week start is Monday in the preview and is not read from the profile. Files says there are no folders.
+
+**Lessons learned:** WebKit lets an author `display` override the `hidden` attribute. `[hidden] { display: none !important; }` is what made one section show at a time. Before that rule, every panel was stacked in the window.
+
+`.panel` is a column. A split that is also a panel stays a column, so the message sat under the list. `.panel.split { flex-direction: row; }` puts them side by side. The divider then sits at half the workspace.
+
+The SVG kit rendered with the §11 CSP. Sharp Thin and the roof mark both showed. The kit's own accessibility pass is off, so each button has its own accessible name. `font-src` was left unset and the SVG icons still appeared.
+
+`make test` was not run for the first preview. The preference save was tested after that: 23 tests, 0 failures. Two of those cover the round trip and a profile that was missing `ui`.
+
+The window is shown only after the saved rectangle is applied, so it does not flash the 1200×800 from `tauri.conf.json`. On this X11 session Tauri's position and the frame reported by the window manager differ by the decoration offset. Saving Tauri's position and setting that same position on the next launch comes back to the same place. `gen` is a keyword in Rust edition 2024, so the shell does not use it as a name.
+
+**Handoff:** No phase is open. Nav width, the splits, zoom, and the window are saved. The page does not read `Pavillion.json`. Hidden chrome is stored and the decorations stay on. Activity is still an empty tab. When that view is built, it asks the core for the log and does not open the file. Do not vendor the kit, and leave its domain list open. Do not put the word `ready` in the page. Placeholders stay until the screen they stand in for is real.
