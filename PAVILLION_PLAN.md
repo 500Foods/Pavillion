@@ -2,7 +2,7 @@
 
 Status: draft v0.4 (2026-10-14). Implementer: Grok Build. Reviewer: Andrew Simard.
 
-**Resume:** D-3 is complete. The hello-world sequence A-1 through D-3 is finished.
+**Resume:** D-3 is complete. The hello-world sequence A-1 through D-3 is finished. Font Awesome is the Pro Plus 7.3.1 SVG kit (`45801522ef`); its hosts are on the §11 CSP allowlist. Bundling the icons the UI actually uses comes later.
 
 This file is the map. A new session reads Resume, the sequence table, and then only the named phase. One phase per session. The next session starts fresh. Phases are not worked in parallel.
 
@@ -42,7 +42,7 @@ A phase id is a letter and a number. The letter is the document. The number star
 
 How a phase is closed, in the document that owns it: Status, Accomplished, Lessons learned, Handoff, then a Working log line. Then stop. A sitting that ends early marks that phase in progress and does not open the next one. The steps are restated at the top of each lettered document.
 
-Recorded, and not in the sequence yet: a Settings screen (zoom first, then per-panel zoom, window placement, hidden chrome), an Activity view of the log, UPX on the release binary, and a dnf repository as the update path. Also waiting: CodeMirror 6 for HTML and Lua source, SunEditor as the mail composer, Font Awesome Pro (Duotone, Sharp, Thin), and a Lithium-style theme layer after the hello frame. Lua and a second database driver wait there too. §14 below is the product roadmap (P0 through P6). It is not this session list. It gets its own letters when A through D are done.
+Recorded, and not in the sequence yet: a Settings screen (zoom first, then per-panel zoom, window placement, hidden chrome), an Activity view of the log, UPX on the release binary, and a dnf repository as the update path. Also waiting: CodeMirror 6 for HTML and Lua source, SunEditor as the mail composer, the Font Awesome Pro Plus 7.3.1 SVG kit on the first screen that uses icons (Duotone, Sharp, and Thin; Mail keeps the roof mark), and a Lithium-style theme layer after the hello frame. Lua and a second database driver wait there too. §14 below is the product roadmap (P0 through P6). It is not this session list. It gets its own letters when A through D are done.
 
 The feature sections under §3 onward stay the spec for mail and sync until those letters exist. Where a topic has moved, the lettered document wins.
 
@@ -471,7 +471,7 @@ The first window, `api.js`, and the rule that screens do not call Tauri themselv
 - Contacts: books | list | detail. Calendar: mini-month + calendar list | main view.
 - Theming: dark first. The hello frame in [docs/D-UI.md](docs/D-UI.md) keeps its five variables and does not read `preferences.theme`. The later theme layer follows Lithium (`docs/Li/LITHIUM-CSS.md`): semantic custom properties, dark defaults, and a theme is an override of those properties. No UI framework, no hardcoded colors in components, and no import of Lithium's stylesheets or fonts. Light and follow-system (`prefers-color-scheme`) are choices on that layer. Fonts: system UI font, monospace for the headers view. Density setting (compact/comfortable).
 - Editors: CodeMirror 6 for HTML source and for Lua source, the generation Lithium already uses. SunEditor is the rich mail composer. Neither is a dependency until that screen exists.
-- Icons: Font Awesome Duotone, Sharp, and Thin. Those families are Pro. They are not loaded from a CDN, and they are not added until a license or kit is in the repo.
+- Icons: Font Awesome Pro Plus 7.3.1, the standard SVG kit (method `js`), embed `https://kit.fontawesome.com/45801522ef.js`. Duotone, Sharp, and Thin are the families the UI uses. Mail uses the roof mark. The loader comes from `kit.fontawesome.com`; `pro-plus.min.js`, the shims, and each icon SVG come from `ka-p.fontawesome.com`. Those hosts are the §11 CSP exception. The hello page does not load the kit. A later pass can ship only the icons the UI references and drop the hosts. That subset has its own costs, so it waits until the set is real.
 - Times: 24h default everywhere (`HH:mm`), dates ISO-ish (`2026-10-14`) or short `Oct 14`; setting.
 - Accessibility: full keyboard navigation, visible focus rings, ARIA roles on lists/trees/grid,
   contrast ≥ 4.5:1 in both themes, respect `prefers-reduced-motion`, font scaling via settings.
@@ -483,11 +483,10 @@ The first window, `api.js`, and the rule that screens do not call Tauri themselv
   frontend memory beyond the add-account form (cleared after submit). See [docs/B-CONFIG.md](docs/B-CONFIG.md).
 - TLS required (libcurl with the system trust store); no "accept invalid cert" toggle.
   Optional per-account pinned CA path for internal endpoints.
-- App CSP (tauri.conf): `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
-  img-src 'self' pav-cid: data:; frame-src 'self'; connect-src ipc: http://ipc.localhost`.
-  No remote origins in the app window. Tauri capabilities: least privilege per window.
-- No in-app updater and no telemetry. No outbound requests except configured JMAP endpoints and
-  user-approved remote images/links. Package updates come from the system repo in §12.
+- App CSP (tauri.conf): `default-src 'self'; script-src 'self' https://kit.fontawesome.com https://ka-p.fontawesome.com; style-src 'self' 'unsafe-inline'; img-src 'self' pav-cid: data:; frame-src 'self'; connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com`.
+  `https://ka-p.fontawesome.com` is on `connect-src` because the SVG kit loads each icon with `fetch()`. `font-src` is left unset, so a webfont from the v5 shim is refused. `kit-uploads.fontawesome.com` is not allowed. The HTML mail iframe keeps the CSP in §7 and does not gain these hosts. `security.csp` in tauri.conf is still `null` until the shell that loads the kit. Tauri capabilities: least privilege per window.
+- No in-app updater and no telemetry. No outbound requests except configured JMAP endpoints,
+  user-approved remote images/links, and the Font Awesome hosts named above. Package updates come from the system repo in §12.
 - Logging: the core logger in [docs/C-CORE.md](docs/C-CORE.md). Redact `Authorization`
   headers, passwords, tokens, message bodies; log IDs and sizes, not content. Debug log level opt-in.
 - SQLite file mode 0600; blobs dir 0700.
