@@ -9,28 +9,28 @@ While this project is currently under active development, feel free to give it a
 [![Count Lines of Code](https://github.com/500Foods/Pavillion/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/main.yml)
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-15 00:27:45 UTC
+Last updated at 2026-10-15 21:19:52 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C                                5            515            188           4469
-C/C++ Header                     5            241            271           1616
-JSON                             4              0              0           1472
-Markdown                         7            430              2           1197
-Rust                             3             18              2            214
+C                                5            568            193           5224
+C/C++ Header                     5            250            287           1651
+JSON                             4              0              0           1473
+Markdown                         8            509              2           1379
+Rust                             3             42              2            593
+CSS                              2             61              0            346
+JavaScript                       4             27              0            319
+HTML                             1              0              0            125
 YAML                             2              8             13             37
-CSS                              1              5              0             34
-JavaScript                       3              4              0             30
 make                             1             11              3             30
 TOML                             1              4              0             20
-HTML                             1              0              0             17
 Text                             1              4              0             17
 CMake                            1              2              0             10
 -------------------------------------------------------------------------------
-SUM:                            35           1242            479           9163
+SUM:                            38           1486            500          11224
 -------------------------------------------------------------------------------
-22 Files were skipped (duplicate, binary, or without source code):
-  png: 16
+23 Files were skipped (duplicate, binary, or without source code):
+  png: 17
   gitignore: 2
   gitattributes: 1
   icns: 1
