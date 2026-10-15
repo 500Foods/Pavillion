@@ -1,5 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
+#include "pav_config.h"
+#include "pav_store.h"
 #include "pavillion.h"
 
 #include <ctype.h>
@@ -10,23 +12,252 @@
 #include <string.h>
 #include <time.h>
 
+#define CORE_QUEUE_CAP 8
+#define CORE_CMD_STOP 1
+
+static pthread_mutex_t g_core_mu = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t g_core_cv = PTHREAD_COND_INITIALIZER;
+static pthread_t g_core_thread;
+static int g_core_alive;
+static int g_core_published;
+static int g_core_stop;
+static int g_core_q[CORE_QUEUE_CAP];
+static int g_core_q_head;
+static int g_core_q_tail;
+static int g_core_q_count;
+/* Before the first start, status matches the old stub so the shell can read it. */
+static PavillionStatus g_status = { .state = "ready" };
+static char g_core_workdir[4096];
+static PavConfigLoad *g_load;
+static PavStore *g_store;
+
+static void copy_field(char *dst, size_t dst_len, const char *src) {
+    size_t n;
+
+    if (dst_len == 0) {
+        return;
+    }
+    if (src == NULL) {
+        dst[0] = '\0';
+        return;
+    }
+    n = strlen(src);
+    if (n >= dst_len) {
+        n = dst_len - 1;
+    }
+    memcpy(dst, src, n);
+    dst[n] = '\0';
+}
+
+static void core_publish_unlocked(const char *state, const char *name, const char *id, const char *error) {
+    memset(&g_status, 0, sizeof(g_status));
+    copy_field(g_status.state, sizeof(g_status.state), state != NULL ? state : "error");
+    copy_field(g_status.profile_name, sizeof(g_status.profile_name), name);
+    copy_field(g_status.profile_id, sizeof(g_status.profile_id), id);
+    copy_field(g_status.error, sizeof(g_status.error), error);
+    g_core_published = 1;
+    pthread_cond_broadcast(&g_core_cv);
+}
+
+static void attach_profile_log(const char *path);
+
+static void core_release_profile(void) {
+    pav_store_close(g_store);
+    g_store = NULL;
+    pav_config_load_free(g_load);
+    g_load = NULL;
+}
+
+/* Loads the profile and, on success, opens SQLite. Publishes ready or error.
+   Does not hold g_core_mu across the file and database calls. */
+static void core_boot(void) {
+    char err[512];
+    PavProfile *profile;
+
+    core_release_profile();
+    err[0] = '\0';
+    if (g_core_workdir[0] == '\0') {
+        pthread_mutex_lock(&g_core_mu);
+        core_publish_unlocked("error", NULL, NULL, "missing workdir");
+        pthread_mutex_unlock(&g_core_mu);
+        return;
+    }
+    if (pav_config_ensure(g_core_workdir, err, sizeof(err)) != 0) {
+        pthread_mutex_lock(&g_core_mu);
+        core_publish_unlocked("error", NULL, NULL, err[0] != '\0' ? err : "cannot create profile");
+        pthread_mutex_unlock(&g_core_mu);
+        return;
+    }
+    if (pav_config_load(g_core_workdir, &g_load, err, sizeof(err)) != 0 || g_load == NULL) {
+        pthread_mutex_lock(&g_core_mu);
+        core_publish_unlocked("error", NULL, NULL, err[0] != '\0' ? err : "missing index");
+        pthread_mutex_unlock(&g_core_mu);
+        return;
+    }
+    if (strcmp(g_load->state, "ready") != 0) {
+        pthread_mutex_lock(&g_core_mu);
+        core_publish_unlocked("error", NULL, NULL, g_load->error);
+        pthread_mutex_unlock(&g_core_mu);
+        return;
+    }
+    profile = g_load->profile;
+    if (pav_profile_check_engine(profile, err, sizeof(err)) != 0) {
+        pthread_mutex_lock(&g_core_mu);
+        core_publish_unlocked("error", profile->name, profile->id, err);
+        pthread_mutex_unlock(&g_core_mu);
+        return;
+    }
+    if (pav_config_prepare(g_core_workdir, profile, err, sizeof(err)) != 0 ||
+        pav_store_open(&g_store, profile->engine, profile->resolved_storage, err, sizeof(err)) != 0) {
+        pthread_mutex_lock(&g_core_mu);
+        core_publish_unlocked("error", profile->name, profile->id, err);
+        pthread_mutex_unlock(&g_core_mu);
+        return;
+    }
+    attach_profile_log(profile->resolved_logs);
+    pav_log("core", PAV_INFO, 0, "core ready");
+    pthread_mutex_lock(&g_core_mu);
+    core_publish_unlocked("ready", profile->name, profile->id, NULL);
+    pthread_mutex_unlock(&g_core_mu);
+}
+
+static void set_start_err(char *err, size_t err_len, const char *msg) {
+    if (err == NULL || err_len == 0) {
+        return;
+    }
+    snprintf(err, err_len, "%s", msg);
+}
+
+static void core_queue_clear_unlocked(void) {
+    g_core_q_head = 0;
+    g_core_q_tail = 0;
+    g_core_q_count = 0;
+}
+
+/* The caller holds g_core_mu. A full queue still wakes the thread via g_core_stop. */
+static int core_queue_push_unlocked(int cmd) {
+    if (g_core_q_count >= CORE_QUEUE_CAP) {
+        return -1;
+    }
+    g_core_q[g_core_q_tail] = cmd;
+    g_core_q_tail = (g_core_q_tail + 1) % CORE_QUEUE_CAP;
+    g_core_q_count++;
+    pthread_cond_broadcast(&g_core_cv);
+    return 0;
+}
+
+static int core_queue_pop_unlocked(int *cmd) {
+    if (g_core_q_count == 0) {
+        return -1;
+    }
+    *cmd = g_core_q[g_core_q_head];
+    g_core_q_head = (g_core_q_head + 1) % CORE_QUEUE_CAP;
+    g_core_q_count--;
+    return 0;
+}
+
+static void *core_thread_main(void *arg) {
+    (void)arg;
+    core_boot();
+    pthread_mutex_lock(&g_core_mu);
+    for (;;) {
+        int cmd = 0;
+
+        while (g_core_q_count == 0 && !g_core_stop) {
+            pthread_cond_wait(&g_core_cv, &g_core_mu);
+        }
+        if (g_core_stop) {
+            break;
+        }
+        if (core_queue_pop_unlocked(&cmd) != 0) {
+            continue;
+        }
+        if (cmd == CORE_CMD_STOP) {
+            break;
+        }
+    }
+    g_core_alive = 0;
+    pthread_mutex_unlock(&g_core_mu);
+    core_release_profile();
+    return NULL;
+}
+
 int pavillion_start(const char *workdir, char *err, size_t err_len) {
-    (void)workdir;
-    (void)err;
-    (void)err_len;
+    int rc;
+
+    pthread_mutex_lock(&g_core_mu);
+    if (g_core_alive) {
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "already running");
+        return -1;
+    }
+    if (workdir == NULL || workdir[0] == '\0') {
+        g_core_workdir[0] = '\0';
+    } else if (strlen(workdir) >= sizeof(g_core_workdir)) {
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "path is too long");
+        return -1;
+    } else {
+        memcpy(g_core_workdir, workdir, strlen(workdir) + 1);
+    }
+    g_core_stop = 0;
+    g_core_published = 0;
+    core_queue_clear_unlocked();
+    rc = pthread_create(&g_core_thread, NULL, core_thread_main, NULL);
+    if (rc != 0) {
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "cannot start core");
+        return -1;
+    }
+    g_core_alive = 1;
+    while (!g_core_published) {
+        pthread_cond_wait(&g_core_cv, &g_core_mu);
+    }
+    pthread_mutex_unlock(&g_core_mu);
     return 0;
 }
 
 void pavillion_stop(void) {
+    pthread_t thread;
+    int join = 0;
+
+    pthread_mutex_lock(&g_core_mu);
+    if (!g_core_alive) {
+        pthread_mutex_unlock(&g_core_mu);
+        pav_log_thread_shutdown();
+        return;
+    }
+    g_core_stop = 1;
+    if (core_queue_push_unlocked(CORE_CMD_STOP) != 0) {
+        pthread_cond_broadcast(&g_core_cv);
+    }
+    thread = g_core_thread;
+    join = 1;
+    pthread_mutex_unlock(&g_core_mu);
+    if (join) {
+        pthread_join(thread, NULL);
+    }
+    /* After the core thread has finished. A second stop joins nothing. */
+    pav_log_thread_shutdown();
 }
 
 int pavillion_status(PavillionStatus *out) {
     if (out == NULL) {
         return -1;
     }
-    memset(out, 0, sizeof(*out));
-    snprintf(out->state, sizeof(out->state), "ready");
+    pthread_mutex_lock(&g_core_mu);
+    *out = g_status;
+    pthread_mutex_unlock(&g_core_mu);
     return 0;
+}
+
+int pav_core_thread_alive(void) {
+    int alive;
+
+    pthread_mutex_lock(&g_core_mu);
+    alive = g_core_alive;
+    pthread_mutex_unlock(&g_core_mu);
+    return alive;
 }
 
 typedef struct LogNode {
@@ -242,6 +473,27 @@ void pav_log_thread_shutdown(void) {
     pthread_cond_broadcast(&g_log_cv);
     pthread_mutex_unlock(&g_log_mu);
     pthread_join(thread, NULL);
+}
+
+/* Opens the profile log for append when nothing else owns the output.
+   A test that already called pav_log_set_output keeps that file. */
+static void attach_profile_log(const char *path) {
+    FILE *file;
+
+    if (path == NULL || path[0] == '\0') {
+        return;
+    }
+    pthread_mutex_lock(&g_log_mu);
+    if (g_log_out != NULL) {
+        pthread_mutex_unlock(&g_log_mu);
+        return;
+    }
+    file = fopen(path, "a");
+    if (file != NULL) {
+        g_log_out = file;
+        g_log_own = 1;
+    }
+    pthread_mutex_unlock(&g_log_mu);
 }
 
 int pav_log_set_output(const char *path) {

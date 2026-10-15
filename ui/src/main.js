@@ -1,5 +1,6 @@
 import { status } from "./api.js";
 
 const result = await status();
-document.querySelector("#profile-name").textContent = result.profileName;
+const profileName = result.state === "error" ? "" : result.profileName;
+document.querySelector("#profile-name").textContent = profileName;
 document.querySelector("#status").textContent = result.state;

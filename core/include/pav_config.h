@@ -37,6 +37,10 @@ typedef struct PavProfile {
     int window_y;
     char chrome[16];
     size_t account_count;
+    char resolved_logs[4096];
+    char resolved_blobs[4096];
+    char resolved_cache[4096];
+    char resolved_storage[4096];
     void *doc;
 } PavProfile;
 
@@ -54,5 +58,26 @@ void pav_profile_free(PavProfile *profile);
 /* When Pavillion.json is missing, create it and profiles/default.json, mode 0600.
    When the index exists, leave the profile file alone. Returns 0, or -1. */
 int pav_config_ensure(const char *workdir, char *err, size_t err_len);
+
+typedef struct PavConfigLoad {
+    char state[32]; /* "ready" or "error" */
+    char error[512];
+    PavProfile *profile; /* set only when state is ready */
+} PavConfigLoad;
+
+/* Reads the index and the active profile. Does not create files.
+   Returns 0 when the index was read, including when state is error.
+   Returns -1 when the index itself cannot be read. */
+int pav_config_load(const char *workdir, PavConfigLoad **out, char *err, size_t err_len);
+void pav_config_load_free(PavConfigLoad *load);
+
+/* Resolves logs, blobs, cache, and storage.path. Creates the log file mode 0600
+   and the blobs and cache directories. blobs is 0700. Does not create the
+   SQLite file. Returns 0, or -1 and err names the path that failed. */
+int pav_config_prepare(const char *workdir, PavProfile *profile, char *err, size_t err_len);
+
+/* sqlite is accepted. A missing engine is sqlite. Any other engine is an
+   error whose text contains that engine name. Does not call a database. */
+int pav_profile_check_engine(const PavProfile *profile, char *err, size_t err_len);
 
 #endif

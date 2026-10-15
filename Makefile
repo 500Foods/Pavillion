@@ -18,18 +18,18 @@ all: lib
 lib: $(LIB)
 
 $(LIB): core/CMakeLists.txt core/include/pavillion.h core/include/pav_config.h \
-		core/src/pavillion.c core/src/config.c
+		core/include/pav_store.h core/src/pavillion.c core/src/config.c core/src/store.c
 	cmake -S core -B $(BUILD_DIR)
 	cmake --build $(BUILD_DIR)
 
 $(TEST_BIN): $(LIB) $(TEST_SRC) $(UNITY_DIR)/unity.c $(UNITY_DIR)/unity.h $(UNITY_DIR)/unity_internals.h
 	$(CC) -std=c11 -Wall -Wextra -Wpedantic -pthread -DUNITY_INCLUDE_DOUBLE \
 		-Icore/include -I$(UNITY_DIR) \
-		-o $@ $(TEST_SRC) $(UNITY_DIR)/unity.c $(LIB) -ljansson
+		-o $@ $(TEST_SRC) $(UNITY_DIR)/unity.c $(LIB) -ljansson -lsqlite3
 
 dev: lib
 	npm --prefix ui install
-	npm --prefix ui exec -- tauri dev
+	npm --prefix ui exec -- tauri dev $(if $(DEV_DIR),-- -- "$(DEV_DIR)",)
 
 build: lib
 	npm --prefix ui install

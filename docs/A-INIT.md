@@ -1,6 +1,6 @@
 # A — INIT
 
-**Status:** A-4 complete (2026-10-14). Next phase in this document is A-5. The sequence runs D-2 before that.
+**Status:** A-5 complete (2026-10-14). A-6 was already complete. No further phase in this document.
 **Resume:** The table of contents names the one phase that may be worked. If that id is not in this file, do not start here.
 
 A running Pavillion: one executable, one window, the C core started. JSON fields are the lock in [B-CONFIG.md](B-CONFIG.md). Threads and logging are the lock in [C-CORE.md](C-CORE.md). The frame is the lock in [D-UI.md](D-UI.md).
@@ -15,7 +15,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | A-2 | Unity harness | Easy | Complete |
 | A-3 | Tauri and Vite window | Medium | Complete |
 | A-4 | Link the C library into the shell | Hard | Complete |
-| A-5 | Working directory and a real start | Medium | Not started |
+| A-5 | Working directory and a real start | Medium | Complete |
 | A-6 | `--help` and `--version` | Easy | Complete |
 
 Kind: **Easy** is one module and a Unity test, or a static page. **Medium** crosses one boundary (the window, the filesystem, a thread). **Hard** is the first join of two build systems. A phase that does not finish is split, not carried into the next session as a second phase.
@@ -192,7 +192,7 @@ The shell owns the process and the window. The core owns the working directory. 
 ## A-5: Working directory and a real start
 
 **Kind:** Medium
-**Status:** Not started
+**Status:** Complete (2026-10-14). No variances.
 
 **Goal:** The stub is gone. Start loads a profile, and the window shows its name.
 
@@ -200,13 +200,19 @@ The shell owns the process and the window. The core owns the working directory. 
 
 **Work items:**
 
-- [ ] The shell passes no argument as `~/.local/share/pavillion`, one argument as the working directory, and rejects a second argument before calling the core.
-- [ ] Replace the A-1 stub with `pavillion_start` from C-6. The Unity test from A-2 is updated to the C-6 behavior: a temp directory, profile name `Default`, log line `core ready`.
-- [ ] Quitting the window calls `pavillion_stop`.
+- [x] The shell passes no argument as `~/.local/share/pavillion`, one argument as the working directory, and rejects a second argument before calling the core.
+- [x] Replace the A-1 stub with `pavillion_start` from C-6. The Unity test from A-2 is updated to the C-6 behavior: a temp directory, profile name `Default`, log line `core ready`.
+- [x] Quitting the window calls `pavillion_stop`.
 
 **Done means:** A first run on a fresh directory shows `Default` and `ready`, and `make test` passes the updated test.
 
-**Exit gate:** `make test` exits 0. `make dev` on a new directory shows `Default` and `ready`, and the log file contains `core ready`.
+**Exit gate:** `make test` exits 0. Passed: 21 tests, 0 failures. `make dev DEV_DIR=/tmp/pav-dev-W5Ep5Q` showed Pavillion, Default, and ready in a 1200×800 window. `logs/default.log` contained `INFO  core  core ready`. Closing the window made `make dev` exit 0. Two positional arguments and an unknown flag print help to stderr and exit 1. `--help` and `--version` still exit 0 before a window.
+
+**Accomplished:** `main.rs` resolves the working directory and `lib.rs` calls `pavillion_start` before the window exists. `RunEvent::Exit` calls `pavillion_stop`. A missing directory is created mode `0700`. The profile log is opened for append when no test output is set.
+
+**Lessons learned:** Tauri forwards application arguments only after a second `--`. `make dev DEV_DIR=<path>` runs `tauri dev -- -- <path>`. One `--` put the path in front of cargo's own flags, the binary treated those flags as unknown, and it exited before the window. The default directory is `$HOME/.local/share/pavillion`. A path on the command line is not tilde-expanded. The Unity start test was updated in C-6 and still passes.
+
+**Handoff:** D-3 clears the profile name when state is `error`. The page still calls `status()` once and does not call `pavillion_start`.
 
 ## A-6: `--help` and `--version`
 
@@ -240,3 +246,4 @@ The shell owns the process and the window. The core owns the working directory. 
 - 2026-10-14 A-3: Vite page and Tauri 2 shell. `make dev` opened a 1200 by 800 window titled Pavillion, the word was visible, and closing it exited the process. WebKit devel headers were required to compile.
 - 2026-10-14 A-6: `--help` and `--version` exit before the window. Version line is `pavillion 0.1.0 (2026-10-14)`. Unknown flags print that help on stderr and exit 1.
 - 2026-10-14 A-4: The shell links `libpavillion_core.a`. The window body shows `ready` from `pavillion_status`. The C objects are built position-independent.
+- 2026-10-14 A-5: The shell calls `pavillion_start` with the working directory and `pavillion_stop` on quit. A fresh directory showed Default and ready. The profile log contains `core ready`.

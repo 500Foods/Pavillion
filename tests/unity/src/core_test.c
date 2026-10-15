@@ -1,9 +1,13 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "pav_config.h"
+#include "pav_store.h"
 #include "pavillion.h"
 #include "unity.h"
 
+#include <sqlite3.h>
+
+#include <dirent.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -89,24 +93,48 @@ void setUp(void) {
 }
 
 static char g_cfg_dir[80];
+static char g_extra_dir[80];
 
-static void remove_cfg_dir(void) {
-    char path[160];
+static void rm_tree(const char *path) {
+    DIR *dir;
+    struct dirent *ent;
 
-    if (g_cfg_dir[0] == '\0') {
+    dir = opendir(path);
+    if (dir == NULL) {
+        unlink(path);
         return;
     }
-    snprintf(path, sizeof(path), "%s/Pavillion.json", g_cfg_dir);
-    unlink(path);
-    snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
-    unlink(path);
-    snprintf(path, sizeof(path), "%s/profiles", g_cfg_dir);
+    while ((ent = readdir(dir)) != NULL) {
+        char child[512];
+        struct stat st;
+
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) {
+            continue;
+        }
+        snprintf(child, sizeof(child), "%s/%s", path, ent->d_name);
+        if (lstat(child, &st) == 0 && S_ISDIR(st.st_mode)) {
+            rm_tree(child);
+        } else {
+            unlink(child);
+        }
+    }
+    closedir(dir);
     rmdir(path);
-    rmdir(g_cfg_dir);
-    g_cfg_dir[0] = '\0';
+}
+
+static void remove_cfg_dir(void) {
+    if (g_cfg_dir[0] != '\0') {
+        rm_tree(g_cfg_dir);
+        g_cfg_dir[0] = '\0';
+    }
+    if (g_extra_dir[0] != '\0') {
+        rm_tree(g_extra_dir);
+        g_extra_dir[0] = '\0';
+    }
 }
 
 void tearDown(void) {
+    pavillion_stop();
     pav_log_thread_shutdown();
     pav_log_set_output(NULL);
     if (g_log_path[0] != '\0') {
@@ -116,20 +144,96 @@ void tearDown(void) {
     remove_cfg_dir();
 }
 
+static void make_slot(char *slot, size_t slot_len);
+
 void test_start_reports_ready_and_stop_is_repeatable(void) {
     PavillionStatus status;
     int rc;
 
-    rc = pavillion_start(NULL, NULL, 0);
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    rc = pavillion_start(g_cfg_dir, NULL, 0);
     TEST_ASSERT_EQUAL_INT(0, rc);
 
     rc = pavillion_status(&status);
     TEST_ASSERT_EQUAL_INT(0, rc);
     TEST_ASSERT_EQUAL_STRING("ready", status.state);
-    TEST_ASSERT_EQUAL_STRING("", status.profile_name);
+    TEST_ASSERT_EQUAL_STRING("Default", status.profile_name);
+    TEST_ASSERT_EQUAL_STRING("default", status.profile_id);
 
     pavillion_stop();
     pavillion_stop();
+}
+
+static void *read_status(void *arg) {
+    PavillionStatus *out = arg;
+
+    if (pavillion_status(out) != 0) {
+        out->state[0] = '\0';
+    }
+    return NULL;
+}
+
+void test_core_thread_ready_after_start_and_joined_on_stop(void) {
+    PavillionStatus status;
+    PavillionStatus other;
+    pthread_t reader;
+
+    memset(&other, 0, sizeof(other));
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(1, pav_core_thread_alive());
+
+    TEST_ASSERT_EQUAL_INT(0, pavillion_status(&status));
+    TEST_ASSERT_EQUAL_STRING("ready", status.state);
+    TEST_ASSERT_EQUAL_STRING("Default", status.profile_name);
+    TEST_ASSERT_EQUAL_STRING("default", status.profile_id);
+    TEST_ASSERT_EQUAL_STRING("", status.error);
+
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&reader, NULL, read_status, &other));
+    TEST_ASSERT_EQUAL_INT(0, pthread_join(reader, NULL));
+    TEST_ASSERT_EQUAL_STRING("ready", other.state);
+    TEST_ASSERT_EQUAL_STRING("Default", other.profile_name);
+
+    pavillion_stop();
+    TEST_ASSERT_EQUAL_INT(0, pav_core_thread_alive());
+    TEST_ASSERT_EQUAL_INT(0, pavillion_status(&status));
+    TEST_ASSERT_EQUAL_STRING("ready", status.state);
+}
+
+void test_stop_joins_restarts_and_refuses_double_start(void) {
+    PavillionStatus status;
+    char err[64];
+    char *text;
+
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_log("core", PAV_INFO, 0, "before-stop");
+
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(-1, pavillion_start(g_cfg_dir, err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(err, "already running"));
+    TEST_ASSERT_EQUAL_INT(1, pav_core_thread_alive());
+
+    pavillion_stop();
+    TEST_ASSERT_EQUAL_INT(0, pav_core_thread_alive());
+    pavillion_stop();
+    TEST_ASSERT_EQUAL_INT(0, pav_core_thread_alive());
+    /* Stop joined the log thread, so a new one can start. */
+    TEST_ASSERT_EQUAL_INT(0, pav_log_thread_start());
+
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(1, pav_core_thread_alive());
+    TEST_ASSERT_EQUAL_INT(0, pavillion_status(&status));
+    TEST_ASSERT_EQUAL_STRING("ready", status.state);
+    TEST_ASSERT_EQUAL_STRING("Default", status.profile_name);
+    pavillion_stop();
+
+    text = read_log();
+    TEST_ASSERT_NOT_NULL(strstr(text, "before-stop"));
+    free(text);
 }
 
 void test_log_line_format_and_level_filter(void) {
@@ -475,9 +579,499 @@ void test_ensure_writes_defaults_once(void) {
     free(index_text);
 }
 
+static void make_slot(char *slot, size_t slot_len) {
+    char templ[] = "/tmp/pav-cfg-XXXXXX";
+
+    TEST_ASSERT_NOT_NULL(mkdtemp(templ));
+    TEST_ASSERT_TRUE(strlen(templ) < slot_len);
+    memcpy(slot, templ, strlen(templ) + 1);
+}
+
+static void write_text(const char *path, const char *text) {
+    FILE *f = fopen(path, "w");
+
+    TEST_ASSERT_NOT_NULL(f);
+    TEST_ASSERT_TRUE(fputs(text, f) >= 0);
+    TEST_ASSERT_EQUAL_INT(0, fclose(f));
+}
+
+static void write_profile_logs(const char *path, const char *id, const char *name, const char *logs) {
+    FILE *f = fopen(path, "w");
+
+    TEST_ASSERT_NOT_NULL(f);
+    TEST_ASSERT_TRUE(fprintf(f,
+        "{\"kind\":\"pavillion-profile\",\"schema\":1,\"id\":\"%s\",\"name\":\"%s\","
+        "\"storage\":{\"engine\":\"sqlite\",\"path\":\"default.sqlite\"},"
+        "\"logs\":\"%s\",\"blobs\":\"blobs/default\",\"cache\":\"cache/default\","
+        "\"accounts\":[],"
+        "\"preferences\":{\"timezone\":\"America/Vancouver\",\"week_start\":\"monday\","
+        "\"time_format\":\"24h\",\"theme\":\"system\",\"density\":\"comfortable\","
+        "\"zoom\":{\"shell\":1},"
+        "\"window\":{\"maximized\":false,\"width\":1200,\"height\":800,"
+        "\"x\":null,\"y\":null,\"chrome\":\"system\"}}}",
+        id, name, logs) > 0);
+    TEST_ASSERT_EQUAL_INT(0, fclose(f));
+}
+
+static void write_profile(const char *path, const char *id, const char *name) {
+    write_profile_logs(path, id, name, "logs/default.log");
+}
+
+static int tree_has_sqlite(const char *path) {
+    DIR *dir;
+    struct dirent *ent;
+    size_t n = strlen(path);
+
+    if (n >= 7 && strcmp(path + n - 7, ".sqlite") == 0) {
+        return 1;
+    }
+    dir = opendir(path);
+    if (dir == NULL) {
+        return 0;
+    }
+    while ((ent = readdir(dir)) != NULL) {
+        char child[512];
+        int found;
+
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) {
+            continue;
+        }
+        snprintf(child, sizeof(child), "%s/%s", path, ent->d_name);
+        found = tree_has_sqlite(child);
+        if (found) {
+            closedir(dir);
+            return 1;
+        }
+    }
+    closedir(dir);
+    return 0;
+}
+
+static void write_index(const char *path, const char *active, const char *profile_dir) {
+    FILE *f = fopen(path, "w");
+
+    TEST_ASSERT_NOT_NULL(f);
+    if (profile_dir == NULL) {
+        TEST_ASSERT_TRUE(fprintf(f,
+            "{\"kind\":\"pavillion-index\",\"schema\":1,\"active\":\"%s\",\"log_level\":\"info\"}",
+            active) > 0);
+    } else {
+        TEST_ASSERT_TRUE(fprintf(f,
+            "{\"kind\":\"pavillion-index\",\"schema\":1,\"active\":\"%s\","
+            "\"profile_dir\":\"%s\",\"log_level\":\"info\"}",
+            active, profile_dir) > 0);
+    }
+    TEST_ASSERT_EQUAL_INT(0, fclose(f));
+}
+
+void test_scan_ignores_stray_json_and_the_index(void) {
+    char path[160];
+    PavConfigLoad *load = NULL;
+    char err[128];
+    char *log;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/profiles", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(0, mkdir(path, 0700));
+    snprintf(path, sizeof(path), "%s/Pavillion.json", g_cfg_dir);
+    write_index(path, "default.json", "profiles");
+    snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
+    write_profile(path, "default", "Default");
+    snprintf(path, sizeof(path), "%s/profiles/notes.json", g_cfg_dir);
+    write_text(path, "{\"kind\":\"notes\",\"schema\":1}");
+    snprintf(path, sizeof(path), "%s/profiles/Pavillion.json", g_cfg_dir);
+    write_text(path, "{\"kind\":\"pavillion-index\",\"schema\":1}");
+
+    open_log();
+    TEST_ASSERT_EQUAL_INT(0, pav_config_load(g_cfg_dir, &load, err, sizeof(err)));
+    log = read_log();
+
+    TEST_ASSERT_EQUAL_STRING("ready", load->state);
+    TEST_ASSERT_EQUAL_STRING("Default", load->profile->name);
+    TEST_ASSERT_NOT_NULL(strstr(log, "notes.json"));
+    TEST_ASSERT_NULL(strstr(log, "Pavillion.json"));
+    TEST_ASSERT_EQUAL_INT(0, access(path, F_OK));
+
+    pav_config_load_free(load);
+    free(log);
+}
+
+void test_scan_warns_on_id_mismatch(void) {
+    char path[160];
+    PavConfigLoad *load = NULL;
+    char err[128];
+    char *log;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/profiles", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(0, mkdir(path, 0700));
+    snprintf(path, sizeof(path), "%s/Pavillion.json", g_cfg_dir);
+    write_index(path, "default.json", "profiles");
+    snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
+    write_profile(path, "default", "Default");
+    snprintf(path, sizeof(path), "%s/profiles/other.json", g_cfg_dir);
+    write_profile(path, "nope", "Other");
+
+    open_log();
+    TEST_ASSERT_EQUAL_INT(0, pav_config_load(g_cfg_dir, &load, err, sizeof(err)));
+    log = read_log();
+
+    TEST_ASSERT_EQUAL_STRING("ready", load->state);
+    TEST_ASSERT_EQUAL_STRING("default", load->profile->id);
+    TEST_ASSERT_NOT_NULL(strstr(log, "other.json"));
+    TEST_ASSERT_NOT_NULL(strstr(log, "id does not match filename"));
+    TEST_ASSERT_EQUAL_INT(0, access(path, F_OK));
+
+    pav_config_load_free(load);
+    free(log);
+}
+
+void test_broken_active_creates_nothing(void) {
+    char path[160];
+    PavConfigLoad *load = NULL;
+    char err[128];
+    char *text;
+    char *log;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/profiles", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(0, mkdir(path, 0700));
+    snprintf(path, sizeof(path), "%s/Pavillion.json", g_cfg_dir);
+    write_index(path, "missing.json", "profiles");
+    open_log();
+    TEST_ASSERT_EQUAL_INT(0, pav_config_load(g_cfg_dir, &load, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_STRING("error", load->state);
+    TEST_ASSERT_NOT_NULL(strstr(load->error, "missing.json"));
+    TEST_ASSERT_NULL(load->profile);
+    snprintf(path, sizeof(path), "%s/profiles/missing.json", g_cfg_dir);
+    TEST_ASSERT_TRUE(access(path, F_OK) != 0);
+    pav_config_load_free(load);
+    load = NULL;
+
+    snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
+    write_text(path, "{");
+    snprintf(path, sizeof(path), "%s/Pavillion.json", g_cfg_dir);
+    write_index(path, "default.json", "profiles");
+    TEST_ASSERT_EQUAL_INT(0, pav_config_load(g_cfg_dir, &load, err, sizeof(err)));
+    log = read_log();
+    TEST_ASSERT_EQUAL_STRING("error", load->state);
+    TEST_ASSERT_NOT_NULL(strstr(load->error, "default.json"));
+    TEST_ASSERT_NOT_NULL(strstr(log, "default.json"));
+    snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
+    text = slurp(path);
+    TEST_ASSERT_EQUAL_STRING("{", text);
+    free(text);
+    free(log);
+    pav_config_load_free(load);
+}
+
+void test_profile_dir_default_and_absolute(void) {
+    char path[160];
+    PavConfigLoad *load = NULL;
+    char err[128];
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/profiles", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(0, mkdir(path, 0700));
+    snprintf(path, sizeof(path), "%s/Pavillion.json", g_cfg_dir);
+    write_index(path, "default.json", NULL);
+    snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
+    write_profile(path, "default", "Default");
+    TEST_ASSERT_EQUAL_INT(0, pav_config_load(g_cfg_dir, &load, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_STRING("ready", load->state);
+    TEST_ASSERT_EQUAL_STRING("Default", load->profile->name);
+    pav_config_load_free(load);
+    load = NULL;
+    remove_cfg_dir();
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    make_slot(g_extra_dir, sizeof(g_extra_dir));
+    snprintf(path, sizeof(path), "%s/Pavillion.json", g_cfg_dir);
+    write_index(path, "default.json", g_extra_dir);
+    snprintf(path, sizeof(path), "%s/default.json", g_extra_dir);
+    write_profile(path, "default", "Default");
+    TEST_ASSERT_EQUAL_INT(0, pav_config_load(g_cfg_dir, &load, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_STRING("ready", load->state);
+    TEST_ASSERT_EQUAL_STRING("default", load->profile->id);
+    snprintf(path, sizeof(path), "%s/profiles", g_cfg_dir);
+    TEST_ASSERT_TRUE(access(path, F_OK) != 0);
+    pav_config_load_free(load);
+}
+
+void test_prepare_resolves_paths_and_skips_sqlite(void) {
+    char path[160];
+    char expect[160];
+    char absolute_log[160];
+    PavConfigLoad *load = NULL;
+    char err[256];
+    struct stat st;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/profiles", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(0, mkdir(path, 0700));
+    snprintf(path, sizeof(path), "%s/Pavillion.json", g_cfg_dir);
+    write_index(path, "default.json", "profiles");
+    snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
+    write_profile(path, "default", "Default");
+    TEST_ASSERT_EQUAL_INT(0, pav_config_load(g_cfg_dir, &load, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, pav_config_prepare(g_cfg_dir, load->profile, err, sizeof(err)));
+
+    snprintf(expect, sizeof(expect), "%s/logs/default.log", g_cfg_dir);
+    TEST_ASSERT_EQUAL_STRING(expect, load->profile->resolved_logs);
+    TEST_ASSERT_EQUAL_INT(0, stat(expect, &st));
+    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+
+    snprintf(expect, sizeof(expect), "%s/blobs/default", g_cfg_dir);
+    TEST_ASSERT_EQUAL_STRING(expect, load->profile->resolved_blobs);
+    TEST_ASSERT_EQUAL_INT(0, stat(expect, &st));
+    TEST_ASSERT_EQUAL_INT(0700, (int)(st.st_mode & 0777));
+
+    snprintf(expect, sizeof(expect), "%s/cache/default", g_cfg_dir);
+    TEST_ASSERT_EQUAL_STRING(expect, load->profile->resolved_cache);
+    TEST_ASSERT_EQUAL_INT(0, stat(expect, &st));
+    TEST_ASSERT_TRUE(S_ISDIR(st.st_mode));
+
+    snprintf(expect, sizeof(expect), "%s/default.sqlite", g_cfg_dir);
+    TEST_ASSERT_EQUAL_STRING(expect, load->profile->resolved_storage);
+    TEST_ASSERT_TRUE(access(expect, F_OK) != 0);
+    TEST_ASSERT_EQUAL_INT(0, tree_has_sqlite(g_cfg_dir));
+    pav_config_load_free(load);
+    load = NULL;
+    remove_cfg_dir();
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    make_slot(g_extra_dir, sizeof(g_extra_dir));
+    snprintf(absolute_log, sizeof(absolute_log), "%s/app.log", g_extra_dir);
+    snprintf(path, sizeof(path), "%s/profiles", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(0, mkdir(path, 0700));
+    snprintf(path, sizeof(path), "%s/Pavillion.json", g_cfg_dir);
+    write_index(path, "default.json", "profiles");
+    snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
+    write_profile_logs(path, "default", "Default", absolute_log);
+    TEST_ASSERT_EQUAL_INT(0, pav_config_load(g_cfg_dir, &load, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, pav_config_prepare(g_cfg_dir, load->profile, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_STRING(absolute_log, load->profile->resolved_logs);
+    TEST_ASSERT_EQUAL_INT(0, stat(absolute_log, &st));
+    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    snprintf(path, sizeof(path), "%s/logs/default.log", g_cfg_dir);
+    TEST_ASSERT_TRUE(access(path, F_OK) != 0);
+    pav_config_load_free(load);
+    load = NULL;
+    remove_cfg_dir();
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/blocked", g_cfg_dir);
+    write_text(path, "not a directory");
+    snprintf(path, sizeof(path), "%s/profiles", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(0, mkdir(path, 0700));
+    snprintf(path, sizeof(path), "%s/Pavillion.json", g_cfg_dir);
+    write_index(path, "default.json", "profiles");
+    snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
+    write_profile_logs(path, "default", "Default", "blocked/app.log");
+    TEST_ASSERT_EQUAL_INT(0, pav_config_load(g_cfg_dir, &load, err, sizeof(err)));
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(-1, pav_config_prepare(g_cfg_dir, load->profile, err, sizeof(err)));
+    snprintf(expect, sizeof(expect), "%s/blocked/app.log", g_cfg_dir);
+    TEST_ASSERT_NOT_NULL(strstr(err, expect));
+    TEST_ASSERT_TRUE(access(expect, F_OK) != 0);
+    TEST_ASSERT_EQUAL_INT(0, tree_has_sqlite(g_cfg_dir));
+    pav_config_load_free(load);
+}
+
+static void profile_text(char *dst, size_t dst_len, const char *storage) {
+    int wrote = snprintf(dst, dst_len,
+        "{\"kind\":\"pavillion-profile\",\"schema\":1,\"id\":\"default\",\"name\":\"Default\","
+        "\"storage\":{%s},"
+        "\"logs\":\"logs/default.log\",\"blobs\":\"blobs/default\",\"cache\":\"cache/default\","
+        "\"accounts\":[],"
+        "\"preferences\":{\"timezone\":\"America/Vancouver\",\"week_start\":\"monday\","
+        "\"time_format\":\"24h\",\"theme\":\"system\",\"density\":\"comfortable\","
+        "\"zoom\":{\"shell\":1},"
+        "\"window\":{\"maximized\":false,\"width\":1200,\"height\":800,"
+        "\"x\":null,\"y\":null,\"chrome\":\"system\"}}}",
+        storage);
+
+    TEST_ASSERT_TRUE(wrote > 0 && (size_t)wrote < dst_len);
+}
+
+static int user_table_count(const char *path) {
+    sqlite3 *db = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int count = -1;
+
+    if (sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, NULL) != SQLITE_OK) {
+        if (db != NULL) {
+            sqlite3_close(db);
+        }
+        return -1;
+    }
+    if (sqlite3_prepare_v2(db,
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+            -1, &stmt, NULL) == SQLITE_OK &&
+        sqlite3_step(stmt) == SQLITE_ROW) {
+        count = sqlite3_column_int(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+    return count;
+}
+
+void test_sqlite_open_exec_and_reopen(void) {
+    char path[160];
+    char err[256];
+    PavStore *store = NULL;
+    struct stat st;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/mail.sqlite", g_cfg_dir);
+
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(-1, pav_store_open(&store, "db2", path, err, sizeof(err)));
+    TEST_ASSERT_NULL(store);
+    TEST_ASSERT_NOT_NULL(strstr(err, "db2"));
+    TEST_ASSERT_TRUE(access(path, F_OK) != 0);
+
+    TEST_ASSERT_EQUAL_INT(0, pav_store_open(&store, "sqlite", path, err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(store);
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
+    TEST_ASSERT_TRUE(S_ISREG(st.st_mode));
+    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    TEST_ASSERT_EQUAL_INT(0, pav_store_exec(store, "SELECT 1", err, sizeof(err)));
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(-1, pav_store_exec(store, "SELECT", err, sizeof(err)));
+    TEST_ASSERT_TRUE(err[0] != '\0');
+    pav_store_close(store);
+    store = NULL;
+
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
+    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    TEST_ASSERT_EQUAL_INT(0, user_table_count(path));
+
+    TEST_ASSERT_EQUAL_INT(0, pav_store_open(&store, "sqlite", path, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, pav_store_exec(store, "SELECT 1", err, sizeof(err)));
+    pav_store_close(store);
+}
+
+void test_engine_sqlite_or_named_error(void) {
+    char text[1024];
+    char err[128];
+    PavProfile *profile = NULL;
+
+    profile_text(text, sizeof(text), "\"path\":\"default.sqlite\"");
+    TEST_ASSERT_EQUAL_INT(0, pav_profile_parse(text, &profile, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_STRING("sqlite", profile->engine);
+    TEST_ASSERT_EQUAL_INT(0, pav_profile_check_engine(profile, err, sizeof(err)));
+    pav_profile_free(profile);
+    profile = NULL;
+
+    profile_text(text, sizeof(text), "\"engine\":\"sqlite\",\"path\":\"default.sqlite\"");
+    TEST_ASSERT_EQUAL_INT(0, pav_profile_parse(text, &profile, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, pav_profile_check_engine(profile, err, sizeof(err)));
+    pav_profile_free(profile);
+    profile = NULL;
+
+    profile_text(text, sizeof(text), "\"engine\":\"db2\",\"path\":\"default.sqlite\"");
+    TEST_ASSERT_EQUAL_INT(0, pav_profile_parse(text, &profile, err, sizeof(err)));
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(-1, pav_profile_check_engine(profile, err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(err, "db2"));
+    pav_profile_free(profile);
+}
+
+void test_start_loads_default_profile(void) {
+    char path[160];
+    PavillionStatus status;
+    struct stat st;
+    char *text;
+
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_status(&status));
+    TEST_ASSERT_EQUAL_STRING("ready", status.state);
+    TEST_ASSERT_EQUAL_STRING("Default", status.profile_name);
+    TEST_ASSERT_EQUAL_STRING("default", status.profile_id);
+    TEST_ASSERT_EQUAL_STRING("", status.error);
+
+    snprintf(path, sizeof(path), "%s/default.sqlite", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
+    TEST_ASSERT_TRUE(S_ISREG(st.st_mode));
+    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+
+    pavillion_stop();
+    TEST_ASSERT_EQUAL_INT(0, pav_core_thread_alive());
+    text = read_log();
+    TEST_ASSERT_NOT_NULL(strstr(text, " INFO  core  core ready"));
+    free(text);
+}
+
+void test_start_errors_leave_the_thread_up(void) {
+    char path[160];
+    char text[1024];
+    PavillionStatus status;
+    char *body;
+
+    open_log();
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(NULL, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(1, pav_core_thread_alive());
+    TEST_ASSERT_EQUAL_INT(0, pavillion_status(&status));
+    TEST_ASSERT_EQUAL_STRING("error", status.state);
+    TEST_ASSERT_NOT_NULL(strstr(status.error, "missing workdir"));
+    pavillion_stop();
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/not-a-dir", g_cfg_dir);
+    write_text(path, "x");
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(path, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(1, pav_core_thread_alive());
+    TEST_ASSERT_EQUAL_INT(0, pavillion_status(&status));
+    TEST_ASSERT_EQUAL_STRING("error", status.state);
+    TEST_ASSERT_NOT_NULL(strstr(status.error, "cannot create"));
+    pavillion_stop();
+    remove_cfg_dir();
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/profiles", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(0, mkdir(path, 0700));
+    snprintf(path, sizeof(path), "%s/Pavillion.json", g_cfg_dir);
+    write_index(path, "default.json", "profiles");
+    snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
+    write_text(path, "{");
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(1, pav_core_thread_alive());
+    TEST_ASSERT_EQUAL_INT(0, pavillion_status(&status));
+    TEST_ASSERT_EQUAL_STRING("error", status.state);
+    TEST_ASSERT_NOT_NULL(strstr(status.error, "default.json"));
+    body = slurp(path);
+    TEST_ASSERT_EQUAL_STRING("{", body);
+    free(body);
+    TEST_ASSERT_EQUAL_INT(0, tree_has_sqlite(g_cfg_dir));
+    pavillion_stop();
+    remove_cfg_dir();
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/profiles", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(0, mkdir(path, 0700));
+    snprintf(path, sizeof(path), "%s/Pavillion.json", g_cfg_dir);
+    write_index(path, "default.json", "profiles");
+    snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
+    profile_text(text, sizeof(text), "\"engine\":\"db2\",\"path\":\"default.sqlite\"");
+    write_text(path, text);
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(1, pav_core_thread_alive());
+    TEST_ASSERT_EQUAL_INT(0, pavillion_status(&status));
+    TEST_ASSERT_EQUAL_STRING("error", status.state);
+    TEST_ASSERT_NOT_NULL(strstr(status.error, "db2"));
+    TEST_ASSERT_EQUAL_STRING("Default", status.profile_name);
+    TEST_ASSERT_EQUAL_INT(0, tree_has_sqlite(g_cfg_dir));
+    pavillion_stop();
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_start_reports_ready_and_stop_is_repeatable);
+    RUN_TEST(test_core_thread_ready_after_start_and_joined_on_stop);
+    RUN_TEST(test_stop_joins_restarts_and_refuses_double_start);
     RUN_TEST(test_log_line_format_and_level_filter);
     RUN_TEST(test_log_formats_args_and_literal_percent);
     RUN_TEST(test_log_two_threads_keep_call_order);
@@ -487,5 +1081,14 @@ int main(void) {
     RUN_TEST(test_reject_secret_keys);
     RUN_TEST(test_unknown_keys_survive_rewrite);
     RUN_TEST(test_ensure_writes_defaults_once);
+    RUN_TEST(test_scan_ignores_stray_json_and_the_index);
+    RUN_TEST(test_scan_warns_on_id_mismatch);
+    RUN_TEST(test_broken_active_creates_nothing);
+    RUN_TEST(test_profile_dir_default_and_absolute);
+    RUN_TEST(test_prepare_resolves_paths_and_skips_sqlite);
+    RUN_TEST(test_engine_sqlite_or_named_error);
+    RUN_TEST(test_sqlite_open_exec_and_reopen);
+    RUN_TEST(test_start_loads_default_profile);
+    RUN_TEST(test_start_errors_leave_the_thread_up);
     return UNITY_END();
 }

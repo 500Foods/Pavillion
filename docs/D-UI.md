@@ -1,6 +1,6 @@
 # D — UI
 
-**Status:** D-2 complete (2026-10-14). Next phase in this document is D-3. The sequence runs C-1 before that.
+**Status:** D-3 complete (2026-10-14). No further phase in this document.
 **Resume:** The table of contents names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The shell. Mail, contacts, calendar, and files stay in `PAVILLION_PLAN.md` until they get their own letters.
@@ -13,7 +13,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | --- | --- | --- | --- |
 | D-1 | Frame and theme variables | Easy | Complete |
 | D-2 | `api.js` and status text | Easy | Complete |
-| D-3 | The error state | Easy | Not started |
+| D-3 | The error state | Easy | Complete |
 
 Kind: **Easy** is the static frame or one function in `api.js`. **Medium** and **Hard** are unused. A later screen that adds Tabulator and a browser pass will be Medium in its own document.
 
@@ -135,7 +135,7 @@ D-1 keeps the five variables in the lock above. A later theme phase follows Lith
 ## D-3: The error state
 
 **Kind:** Easy
-**Status:** Not started
+**Status:** Complete (2026-10-14). No variances.
 
 **Goal:** A failed start shows the error string and a blank profile name.
 
@@ -143,15 +143,22 @@ D-1 keeps the five variables in the lock above. A later theme phase follows Lith
 
 **Work items:**
 
-- [ ] When `state` is `error`, the body is `error` and the profile name is cleared.
-- [ ] When `state` is `ready`, D-2's rendering is unchanged.
-- [ ] Confirm by pointing `make dev` at a working-directory path that is a file, which the core rejects.
+- [x] When `state` is `error`, the body is `error` and the profile name is cleared.
+- [x] When `state` is `ready`, D-2's rendering is unchanged.
+- [x] Confirm by pointing `make dev` at a working-directory path that is a file, which the core rejects.
 
 **Done means:** That launch shows the core's error text and does not show `ready`.
 
-**Exit gate:** The file-as-directory launch shows the error. A normal directory still shows `Default` and `ready`. `make test` exits 0.
+**Exit gate:** `make dev DEV_DIR=/tmp/pav-file-DnKIGI` showed Pavillion, a blank profile name, and `error`. The word ready was not on the page. The same build on `/tmp/pav-dev-W5Ep5Q` showed Default and ready. `make test` exits 0 (21 tests). Closing the window exited 0. The file used as a directory was left unchanged.
+
+**Accomplished:** `main.js` still calls `status()` once. When `state` is `error`, `#profile-name` is cleared and `#status` shows that state. The word `ready` is not in the HTML, CSS, or JS.
+
+**Lessons learned:** The body shows the state word from the core. The longer message, such as `cannot create .../profiles`, stays in the status `error` field and is not drawn. A ready launch still shows the profile name.
+
+**Handoff:** The hello-world sequence is complete. Settings, the Activity log, and mail are recorded and not sequenced yet.
 
 ## Working log
 
 - 2026-10-14 D-1: Dark frame. `theme.css` has the five variables. Title row shows Pavillion. Profile slot and body are empty.
 - 2026-10-14 D-2: `api.js` calls `status()` once. The body shows `ready` and the profile name is blank.
+- 2026-10-14 D-3: A file used as the working directory shows `error` and a blank name. A normal directory still shows Default and ready.
