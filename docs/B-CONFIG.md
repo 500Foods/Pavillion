@@ -1,6 +1,6 @@
 # B — CONFIG
 
-**Status:** B-5 complete (2026-10-14). No further phase in this document. The sequence runs C-3 next.
+**Status:** B-5 complete (2026-10-14). No further phase in this document. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The working directory, `Pavillion.json`, and profile files. The loader is C, called from the core. The shell never reads these files.

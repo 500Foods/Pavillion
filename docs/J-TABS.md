@@ -87,13 +87,13 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Goal:** Menu, tooltip, toast, and dialog exist and are used once each in the shell.
 
-**Entry gate:** G-4 and I-2 complete.
+**Entry gate:** G-4 and I-1 complete. Widgets do not wait on the activity view; I-2 uses these widgets.
 
 **Work items:**
 
 - [ ] The four modules in the Lock, with CSS in `ui/styles/widgets.css`.
-- [ ] Tab icons use registry keys `tab.kind.*` (F-7), not inline markup.
-- [ ] Use them: the Activity nav button's right-click menu (Activity, Log; H-2 Handoff), tooltips on the eight nav buttons, a toast on profile save failure, a dialog for the F-4 link confirm.
+- [ ] Tab icons use the shell's existing icon classes. F-7 moves them onto registry keys `tab.kind.*`. This phase does not take icon HTML.
+- [ ] Use them: the Activity nav button's right-click menu (Activity, Log). H-2 has already built the log view and the segmented control; this menu switches those views. I-2 fills the Activity side. Tooltips on the eight nav buttons, a toast on profile save failure, a dialog for the F-4 link confirm. F-4 has landed, so the dialog has a caller.
 - [ ] Vitest with jsdom: `menu.test.js` (keyboard navigation, Escape), `dialog.test.js` (resolve values), `toast.test.js` (action fires once, timeout).
 
 **Done means:** The four widgets work by mouse and keyboard and replace any ad hoc versions.
@@ -190,7 +190,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Goal:** Tabs come back after a restart.
 
-**Entry gate:** J-5 complete.
+**Entry gate:** J-3 complete. Restore does not need reorder or vertical tabs. Pins from J-3 are part of the saved set. J-4 and J-5 are milestone 6.
 
 **Work items:**
 

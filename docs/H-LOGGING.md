@@ -12,7 +12,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
 | H-1 | Log thread in production, a ring buffer, `log.tail`, and `log.lines` events | Medium | Not started |
-| H-2 | Log view: CodeMirror 6, read-only, highlighted, in the Activity tab | Medium | Not started |
+| H-2 | Log view: CodeMirror 6, live, in the Activity tab | Medium | Not started |
 | H-3 | Search, level and subsystem filters, follow, copy, save, print | Medium | Not started |
 
 Kind: **Easy** is one module and a test. **Medium** crosses one boundary.
@@ -46,9 +46,9 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - Log rotation: at start, a profile log over 10 MB is renamed `<id>.log.1` (one generation kept) before opening. No rotation while running.
 - Redaction (was plan §11): never log a password, token, `Authorization` header, cookie, message body, or bot key. Log ids, sizes, counts, durations, and HTTP status. `pav_log` callers pass ids, never content. A Unity test (`test_log_redacts_known_secret_shapes`) feeds a fixture `Authorization: Basic …` and `Bearer …` through the HTTP debug path (M-1) and asserts neither appears.
 - `log_level` stays on the index (`error`, `warn`, `info`, `debug`). The Log view can change it for the running session through `prefs.set {logLevel}`, which writes the index.
-- CodeMirror 6 is the viewer (it is already the planned HTML and Lua editor). Packages: `@codemirror/state`, `@codemirror/view`, `@codemirror/search`, `@codemirror/language`. The log language is a small `StreamLanguage` in `ui/src/log/loglang.js`. Font is `--pav-font-mono` (Vanadium Mono when installed, then `ui-monospace, monospace`).
-- Lithium's CodeMirror extensions: evaluate when the Lithium source is available; none are required for H.
-- The Activity button opens the Activity tab. The tab has two views, **Activity** and **Log**, as a segmented control at the top of the tab, plus a right-click menu on the Activity nav button with the same two items. Plain click opens the last view used (stored in `preferences.ui.activity.view`). I-2 adds the Activity view; until then the tab shows Log only.
+- The viewer is CodeMirror 6 (`@codemirror/view`, `@codemirror/state`, `@codemirror/search`), read-only, installed in H-2 and bundled by Vite. The same packages later edit HTML (F-8) and Lua (R-4). The document is plain text. Level color is a line decoration, not HTML in the document. Font is the monospace already used by the shell (Vanadium Mono when installed, then `ui-monospace, monospace`); G-4 and D-4 keep that choice when they name `--pav-font-mono`. A 10,000-line ring is the whole document. CodeMirror virtualizes the viewport. Copy and save use the UTC line from the ring, so the bytes match the file. The on-screen timestamp is local time.
+- H-2 creates the Log view and the `Activity | Log` segmented control on the Activity tab, before I-2 and before J-1. The Activity side stays empty until I-2. The right-click menu on the Activity nav button is J-1; it switches the two views H-2 already created. Plain click opens the last view used (`preferences.ui.activity.view`, default `log` until I-2).
+- H-2 runs before G-4. It adds `--pav-log-error`, `--pav-log-warn`, `--pav-log-info`, and `--pav-log-debug` to the current theme files and uses those names. G-4 keeps them when it renames the older properties. Do not wait on G-4 to show the log.
 
 ## H-1: Log thread, ring, `log.tail`, and `log.lines`
 
@@ -79,18 +79,18 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 **Kind:** Medium
 **Status:** Not started.
 
-**Goal:** The Activity tab shows the log, live, in CodeMirror.
+**Goal:** The Activity tab shows the log, live, in CodeMirror, before later phases need it for debugging.
 
 **Entry gate:** H-1 complete.
 
 **Work items:**
 
-- [ ] Add the CodeMirror packages to `ui/package.json`. Lazy-load them with `import()` when the Log view first opens, so startup does not pay for them.
-- [ ] `ui/src/log/view.js`: `createLogView(el, api)`. Read-only `EditorState`, line numbers, line wrapping off by default (toggle), the `loglang` highlighter with token classes `pav-log-ts`, `pav-log-level-ERROR|WARN|INFO|DEBUG`, `pav-log-sub`, `pav-log-msg`, colors from `--pav-log-*` variables.
-- [ ] Render timestamps in local time with a gutter or a decoration; the document text stays the UTC line so copy gives the file bytes.
+- [ ] Add `@codemirror/view`, `@codemirror/state`, and `@codemirror/search`. `ui/src/log/view.js`: `createLogView(el, api)`, a read-only EditorView over the ring. Line decorations `pav-log-level-ERROR|WARN|INFO|DEBUG`. The document is text. The view is not an HTML sink.
+- [ ] The timestamp decoration is local time. Copy and save use the UTC line from the ring, so the bytes match the file.
 - [ ] On open: `log.tail`, scroll to the end. Subscribe to `log.lines` and append while open. Unsubscribe on close.
-- [ ] Font size for the view is `preferences.ui.zoom.log` (a new pane key, default 1) with a slider in Settings → Zoom.
-- [ ] Segmented control `Activity | Log` at the top of the tab (Activity disabled until I-2). Right-click menu on the Activity nav button is J-1's menu component; until J-1, this phase adds the segmented control only and J-1's Handoff wires the menu.
+- [ ] Font size for the view is `preferences.ui.zoom.log` (a new pane key, default 1). The view has its own slider, stored through the F-2 blob. Wrapping is off by default.
+- [ ] `Activity | Log` segmented control at the top of `#panel-activity`. Log is this view. Activity is an empty panel until I-2. Plain click opens the last view (`preferences.ui.activity.view`, default `log`).
+- [ ] Record the gzipped size of `ui/dist` in Accomplished. The size is a record. It is not a reason to drop CodeMirror.
 
 **Done means:** Opening Activity shows the newest lines, and new lines appear without a refresh.
 
@@ -107,12 +107,12 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Work items:**
 
-- [ ] Toolbar above the editor: search field (CodeMirror search with match count, `Ctrl+F` focuses it), level checkboxes (ERROR, WARN, INFO, DEBUG), subsystem multi-select filled from the distinct subsystems seen, Follow toggle (on by default; scrolling up turns it off), Wrap toggle, Refresh, and the session log level select.
-- [ ] Filtering hides lines with a decoration-based fold (lines are not removed from the document); the match count and "showing N of M" are shown.
+- [ ] Toolbar above the view: search field (CodeMirror search over the loaded document, match count, `Ctrl+F` focuses it), level checkboxes (ERROR, WARN, INFO, DEBUG), subsystem multi-select filled from the distinct subsystems seen, Follow toggle (on by default; scrolling up turns it off), Wrap toggle, Refresh, and the session log level select.
+- [ ] Filtering changes which lines the editor shows. It does not drop them from the ring. Clearing the filter restores every loaded line. The match count and "showing N of M" are shown.
 - [ ] Copy visible lines; Save visible lines to a file through the host's save dialog (`dialog.save` host service, file written by the core with `log.export {path, filter}`); Print through `window.print()` on a print stylesheet that shows only the visible lines.
 - [ ] "Email this log" creates a draft with the log attached when O-1 exists; until then the item is absent. (Recorded; wired in O-5's Handoff.) `mailto:` bodies are not used: they truncate and leak to another client.
 - [ ] Filter, wrap, and follow state persist in `preferences.ui.log`.
-- [ ] Vitest: `loglang.test.js` tokenizes each level; `filter.test.js` for the level and subsystem predicate.
+- [ ] Vitest: `filter.test.js` for the level, subsystem, and text predicate.
 
 **Done means:** A user can find every WARN from `config` in the last hour and save exactly those lines.
 
@@ -127,3 +127,4 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 - 2026-10-16 Exploration written (what exists, a read API, the viewer, filters, print and email).
 - 2026-10-16 Scoped into H-1 to H-3. Decisions: ring buffer in the core instead of reading the file, events for live lines, client-side filtering, the log thread started in production, `mailto:` forwarding replaced by a draft with an attachment.
+- 2026-10-16 Andrew put H-2 and H-3 immediately after H-1 and restored CodeMirror 6 as the log viewer. The icon-kit failure had no in-app log. The view exists so the next failure has a cause.

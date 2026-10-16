@@ -13,7 +13,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | --- | --- | --- | --- |
 | N-1 | Body fetch and MIME with GMime; `message.get` text, parts, headers | Medium | Not started |
 | N-2 | The HTML sanitizer in the core and the hostile corpus | Hard | Not started |
-| N-3 | Message list with Tabulator: virtual rows, columns, selection | Medium | Not started |
+| N-3 | Message list: Tabulator, columns, selection | Medium | Not started |
 | N-4 | Reading pane: sanitized HTML in the sandbox, remote content, `cid:`, links, plain text | Medium | Not started |
 | N-5 | Flags, move, delete, archive, junk, undo toast, mailbox management | Medium | Not started |
 | N-6 | Threads, unified views, message sub-tabs | Medium | Not started |
@@ -50,8 +50,9 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
   - It's actively released, and it includes a CSS parser the `style` allowlist can use.
   - gumbo-parser, the only other C candidate the old plan named, is archived and unmaintained.
   - Nothing in these docs argues for another parser.
-- Allowlist of elements for email layout: `a abbr b blockquote br caption center code col colgroup dd del div dl dt em font h1-h6 hr i img ins li ol p pre q s small span strike strong sub sup table tbody td tfoot th thead tr tt u ul` plus `html head body style title` handled specially. Everything else is dropped; `script style(in body) iframe frame object embed applet form input button select textarea base meta link svg math template noscript` are removed with their content (except `noscript` content is kept as text).
-- Attributes: per-element allowlist (`href` on `a`; `src alt width height` on `img`; `align valign width height bgcolor border cellpadding cellspacing colspan rowspan` on table parts; `color face size` on `font`; `dir lang title class id style` globally). All `on*` attributes are removed.
+- Vendored under `third_party/lexbor/` at a tagged release (Apache-2.0), built by CMake into the core. Not a Fedora package and not linked statically from a system copy. N-2 records the tag.
+- Allowlist of elements for email layout: `a abbr b blockquote br caption center code col colgroup dd del div dl dt em font h1-h6 hr i img ins li ol p pre q s small span strike strong sub sup table tbody td tfoot th thead tr tt u ul` plus `html head body style title` handled specially. Everything else is dropped. `script iframe frame object embed applet form input button select textarea base meta link svg math template` are removed with their content. `noscript` content is kept as text. `<style>` is not dropped because of where it sat in the source: lexbor's tree construction moves style the way a browser does, and the filter runs on the tree after that. A style element that survives is parsed and kept only as the CSS rule below allows.
+- Attributes: per-element allowlist (`href` on `a`; `src alt width height` on `img`; `align valign width height bgcolor background border cellpadding cellspacing colspan rowspan` on table parts and `body`; `color face size` on `font`; `dir lang title class id style` globally). `background` is a remote URL under the URL rule, the same as a remote `src`. All `on*` attributes are removed.
 - URLs: `href` allows `http:`, `https:`, `mailto:`; `src` allows `cid:` and `data:image/(png|gif|jpeg|webp)`; `http:`/`https:` `src` and CSS `url()` are remote. `javascript:`, `vbscript:`, `data:` (non-image), and every other scheme are removed. Every `href` is rewritten to `pav-link://<emailRowid>/<n>` and the real URL list is returned beside the HTML.
 - CSS: `style` attributes and `<style>` blocks are parsed and filtered by property allowlist (box, color, font, text, table, list, `display` except `fixed` positioning; no `position: fixed`, no `behavior`, no `expression()`, no `@import`, no `-moz-binding`). `url()` follows the URL rule. Class and id names are prefixed `m-` so they cannot target the wrapper.
 - Remote content (images, CSS `url()`, `background`) is replaced with a 1×1 transparent `data:` placeholder and recorded (`hasRemote`) unless the sender address or domain is in `remote_allow` or the user chose "Load remote content" for this message. Loading remote content re-sanitizes with remote allowed and the pane's CSP adds `img-src https:` for that render only.
@@ -62,8 +63,8 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 ### Message list (was plan §6.1, §10)
 
-- Tabulator with its virtual DOM so 100k rows stay inside the frame budget (60 fps scroll at 100k). Remote pagination over `message.list` in pages of 200.
-- Row: account color bar, from (or to in Sent and Drafts), subject, preview, 24 h time today or `Oct 14` this year or `2026-10-14` older (`preferences.time_format`), flags (unread dot, flag, answered, forwarded), attachment icon. All formatters return text or icon class names, never outside HTML.
+- Tabulator (`tabulator-tables`), themed on `--pav-*`, with virtual row render so 100k messages stay inside the frame budget (60 fps scroll at 100k). The page does not keep a copy of the mailbox. Remote pagination over `message.list` in pages of 100 feeds the table as the user scrolls. Contacts (S) and files (U) use the same module (`ui/src/common/table.js`). No second table library.
+- Row: account color bar, from (or to in Sent and Drafts), subject, preview, 24 h time today or `Oct 14` this year or `2026-10-14` older (`preferences.time_format`), flags (unread dot, flag, answered, forwarded), attachment icon. Formatters return text, or set `textContent`. An icon is an element this module creates from a class name. A formatter that returns an HTML string is an HTML sink and is forbidden.
 - Threaded or flat per view (`ui.mail.threaded[viewKey]`). Sort by date desc default.
 - Mark read on open after 1 s (`preferences.mail.markReadMs`, 0 = never).
 
@@ -157,11 +158,12 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Work items:**
 
-- [ ] Add `tabulator-tables` to `ui/package.json`. `ui/src/mail/list.js` with the Lock's columns, text formatters, virtual rows, remote pagination over `message.list`.
+- [ ] Add `tabulator-tables`. `ui/src/common/table.js` and `ui/src/mail/list.js` with the Lock's columns, text-only formatters, virtual row render, and remote pagination over `message.list`.
 - [ ] `message.list` in the core with view kinds `mailbox` and `unified` (`search` in Q-1), offset, limit, and `threaded` (flat first; threaded in N-6).
 - [ ] Selection, keyboard focus, and the `list` shortcut scope (`j`/`k`, `Enter`).
 - [ ] Live updates from `mail.messages_changed` patch rows by id.
-- [ ] Theme: Tabulator's CSS replaced by `ui/styles/list.css` on `--pav-*` variables.
+- [ ] `ui/styles/list.css` themes Tabulator on `--pav-*` variables.
+- [ ] Record the gzipped size of `ui/dist` in Accomplished. The size is a record. It is not a reason to drop Tabulator.
 - [ ] A debug-only fixture generator `debug.seed_messages {count}` to test 100k rows.
 
 **Done means:** Clicking Inbox in the tree lists its messages; 100k seeded rows scroll smoothly.
@@ -259,7 +261,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Goal:** New mail is announced per the Lock and every mail shortcut works.
 
-**Entry gate:** Q-2 complete.
+**Entry gate:** N-7 complete. Search already exists (Q-2); `/` focuses that field. Notifications do not wait on search.
 
 **Work items:**
 
@@ -303,3 +305,4 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 - 2026-10-16 Opened from plan §6, §7, §10, §13. Decisions: a real HTML5 parser (lexbor) for the sanitizer, locked 2026-10-16 with reasons in the Lock, the element, attribute, URL, and CSS allowlists written down, `pav-link` rewriting, `sanitizer_version`, `pav-blob` for image previews, a Tabulator theme on `--pav-*`, `Ctrl+4` for Files, retention action column, notification grouping in the host.
 - 2026-10-16 N-7 extracts attachments with GMime streams from disk to disk, with a flat-memory test. Only capped render bodies are held in memory.
+- 2026-10-16 Andrew restored Tabulator for the message list, and for the contacts and files lists that share it. Virtual row render stays, so 100k messages do not become 100k DOM nodes.

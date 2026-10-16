@@ -188,7 +188,7 @@ The icon slot has its own sizing and color contract rather than letting icons di
 
 Hover, focus, selection, and drag-over are separate states. A selected row keeps its selected background when hovered, and keyboard focus does not depend on mouse-hover styling.
 
-The tree is not a table. It is not built with Tabulator or another table library; the message list makes that call the other way.
+The tree is not a table. It is not built with a table library. The message list is Tabulator (N-3).
 
 ## Brainstorming: candidates, not decisions
 
@@ -255,7 +255,7 @@ Container-level, interruptible transitions for collapse/expand and preset switch
 
 ## Lock
 
-- ES modules, HTML, and CSS variables. No framework, no CSS library. The tree is not a Tabulator screen.
+- ES modules, HTML, and CSS variables. No framework, no CSS library. The tree is not a table-library screen.
 - `ui/src/api.js` is the only module that imports Tauri. The tree asks it for nodes; it does not call `invoke`.
 - The tree owns view state only. It does not own mail, contact, or file data, and it does not compute counts.
 - Stable node IDs, and incremental row updates. No full rebuilds on count or sync changes.

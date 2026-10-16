@@ -3,6 +3,12 @@
 
 #include <stddef.h>
 
+/* Incompatible-change epoch. pavillion_api_version() returns this number.
+   build.rs copies it into the shell. Adding a command or an optional field
+   does not bump it. The line is a bare decimal integer so the shell and the
+   C compiler cannot disagree about its value. */
+#define PAVILLION_API_VERSION 1
+
 typedef struct PavillionStatus {
     char profile_name[256];
     char profile_id[64];
@@ -45,6 +51,10 @@ typedef struct PavShellPrefs {
 #define PAV_PREFS_ZOOM   1u
 #define PAV_PREFS_WINDOW 2u
 #define PAV_PREFS_UI     4u
+
+/* Returns PAVILLION_API_VERSION. Safe before pavillion_start. The shell
+   calls this symbol; it does not substitute the macro. */
+int pavillion_api_version(void);
 
 /* Starts the core thread and returns after it has published state "ready"
    or "error". Returns 0, or -1 when the core is already running, the path

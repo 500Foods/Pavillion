@@ -1,6 +1,6 @@
 # F — HARDEN
 
-**Status:** Not started (opened 2026-10-15 from a project review; scoped 2026-10-16). F-6 is superseded.
+**Status:** F-1 complete (2026-10-16). F-6 is superseded. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Structural fixes found after D-3. They go in before mail is real, because each gets more expensive once JMAP, accounts, and credentials sit on top of it. This document owns the main-window security rules: the CSP, the Font Awesome kit, and the rule that outside HTML never enters the main DOM.
@@ -11,16 +11,16 @@ One phase is one session. Do not start the next one in the same conversation.
 
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
-| F-1 | API version check (`pavillion_api_version`) | Medium | Not started |
+| F-1 | API version check (`pavillion_api_version`) | Medium | Complete |
 | F-5 | Trim `config.c` with a helper layer | Medium | Not started |
 | F-2 | UI preferences as an opaque JSON blob | Medium | Not started |
+| F-4 | Message pane isolation, proven before mail | Medium | Not started |
 | F-3 | Icon library sources: typed https URLs on an allowlist, presets | Medium | Not started |
 | F-7 | Shared icon HTML sanitizer, the icon registry, overrides in the UI blob | Medium | Not started |
 | F-8 | Icon settings: the icon tree and the three-preview editor | Medium | Not started |
-| F-4 | Message pane isolation, proven before mail | Medium | Not started |
 | F-6 | Decide where JMAP and sync live | Easy (decision) | Superseded (2026-10-16) |
 
-The table is in sequence order, not number order. F-5 runs before F-2 so the blob work lands on the new helpers. F-7 follows F-3 directly; F-8 waits for J-1's widgets.
+The table is in sequence order, not number order. F-5 runs before F-2 so the blob work lands on the new helpers. F-4 is index step 33. It follows G-8 and does not wait on the icon phases. F-3, F-7, and F-8 are milestone 6: no phase before F-3 adds a settings field that accepts icon HTML or a new script URL. The preview's existing kit field stays as it is until F-3 migrates it.
 
 Kind: **Easy** is one module and a test, or a static page. **Medium** crosses one boundary (the window, the filesystem, a thread, the FFI). **Hard** joins two build systems or two processes for the first time.
 
@@ -66,7 +66,7 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 
 ### Outside HTML never enters the main DOM
 
-- The main window can run inline script. So nothing untrusted may ever reach the main document as HTML. Mail bodies, subjects, addresses, contact notes, calendar descriptions, file names and previews, server error text, log lines, and settings values are inserted with `textContent` (or a library that renders text nodes, such as Tabulator formatters that return text, or CodeMirror) or rendered in the sandboxed pane.
+- The main window can run inline script. So nothing untrusted may ever reach the main document as HTML. Mail bodies, subjects, addresses, contact notes, calendar descriptions, file names and previews, server error text, log lines, and settings values are inserted with `textContent` or rendered in the sandboxed pane. Tabulator formatters return text or set `textContent`. The CodeMirror log is an editor of text, not an HTML sink. SunEditor runs only inside the sandboxed composer frame.
 - `innerHTML`, `outerHTML`, `insertAdjacentHTML`, and `document.write` with any outside data are a review failure. A test greps `ui/src` for those names; each use carries a `// html-ok: <reason>` comment naming the static string it inserts.
 - Icon libraries are typed https URLs on an allowlist, never free HTML. Icon overrides are HTML snippets that always pass the shared icon sanitizer (`ui/src/common/iconsan.js`) before they reach the DOM. See "Icons" below. (This replaces the earlier rule that the kit field takes an id only and icons are class strings.)
 
@@ -90,6 +90,7 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 - `style` filter: declarations only from `color`, `--fa-*` custom properties, `font-size`, `opacity`, `transform`, `rotate`, `scale`, `vertical-align`, `font-variation-settings`; values matching `^[#a-zA-Z0-9 .,%()+-]{1,120}$`.
 - Limits: 8 KB per snippet, depth 6, 64 elements. Over a limit is an error.
 - The sanitizer has a hostile-input test suite (`ui/test/iconsan.test.js`): `<script>`, `<img onerror>`, `<svg onload>`, `<svg><script>`, `<a href=javascript:>`, `<use href>`, `<foreignObject>`, `<style>`, `style="background:url(...)"`, entity-encoded `javascript:`, `<math>` and `<template>` mutation tricks, `<iframe>`, unclosed and nested comments, a 100 KB input, and deep nesting. Each must produce only allowed nodes and attributes (a checker walks the output).
+- The registry caches the sanitized fragment keyed by the snippet text. A list does not reparse the same icon on every row. An override change drops that key.
 
 **Icon registry and overrides.**
 
@@ -108,8 +109,8 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 ### FFI
 
 - **Decision (2026-10-16): an API version, not a struct check and not bindgen.**
-  - The core exports `int pavillion_api_version(void)`, which returns `PAVILLION_API_VERSION` from `pavillion.h`, starting at 1.
-  - The shell compiles in the value it was built against. At startup, before `pavillion_start`, it compares the two. On a mismatch it prints `API version mismatch: core=<n> shell=<m>` to stderr and exits 1 before the window.
+  - The core exports `int pavillion_api_version(void)`, which returns `PAVILLION_API_VERSION` from `pavillion.h`, starting at 1. The macro is one bare decimal integer on its own line. `build.rs` is the only reader. It rejects a leading zero, a second definition, and a value below 1.
+  - The shell compiles in the value it was built against. After the A-6 flags and before `pavillion_start`, it compares `pavillion_api_version()` with that number. On a mismatch it prints `API version mismatch: core=<n> shell=<m>` to stderr and exits 1 before the window. It does not call `pav_log`, and it does not create the working directory. `--help` and `--version` do not call the core.
 - **Why the size check was dropped:**
   - Its only targets, `PavillionStatus` and `PavShellPrefs`, are deleted in G-8. A size check for them would be built, tested, and then thrown away.
   - Sizes miss reordered or retyped fields of the same size anyway.
@@ -125,22 +126,28 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 ## F-1: API version check
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Complete (2026-10-16). Variance: the mismatch is not passed to `pav_log`. Andrew chose the named stderr line only, and no working-directory creation, because the profile log is not open before start.
 
 **Goal:** A shell and a core built from different contract versions refuse to start together, with a named error, instead of misbehaving.
 
-**Entry gate:** D-3 complete. `make test` passes (23 tests at the time of writing).
+**Entry gate:** D-3 complete. `make test` passes (27 Unity tests at the 2026-10-16 count).
 
 **Work items:**
 
-- [ ] `#define PAVILLION_API_VERSION 1` and `int pavillion_api_version(void);` in `core/include/pavillion.h`, implemented in `core/src/pavillion.c`.
-- [ ] Shell: before `pavillion_start` (after the A-6 flags), compare `pavillion_api_version()` with the compiled-in `PAVILLION_API_VERSION`. On a mismatch, print `API version mismatch: core=<n> shell=<m>` to stderr, log it, and exit 1 before the window. This is the only new Rust, one comparison.
-- [ ] Unity: `test_api_version_matches_header` (the function returns `PAVILLION_API_VERSION`, and it's ≥ 1).
-- [ ] Do not add bindgen, libclang, or struct-size checks (FFI Lock).
+- [x] `#define PAVILLION_API_VERSION 1` and `int pavillion_api_version(void);` in `core/include/pavillion.h`, implemented in `core/src/pavillion.c`.
+- [x] Shell: before `pavillion_start` (after the A-6 flags), compare `pavillion_api_version()` with `PAVILLION_API_VERSION` as read from this header by `build.rs`. On a mismatch, print `API version mismatch: core=<n> shell=<m>` to stderr and exit 1 before the window. Do not call `pav_log`. Do not create the working directory. `--help` and `--version` do not reach this check. The comparison in `lib.rs` is the only new shell logic.
+- [x] Unity: `test_api_version_matches_header` (the function returns `PAVILLION_API_VERSION`, and it's ≥ 1).
+- [x] Do not add bindgen, libclang, or struct-size checks (FFI Lock).
 
 **Done means:** A core whose version differs from the shell's stops the launch with a named error.
 
-**Exit gate:** `make test` exits 0. In a scratch change, set the core's return value to 2 without rebuilding the shell's constant: the launch prints the mismatch and exits 1. Revert it. `make build` still shows the icons.
+**Exit gate:** `make test` exits 0 (28 tests). A scratch `return 2`, with the macro left at 1, printed `API version mismatch: core=2 shell=1` and exited 1. The path argument was not created. `--help` and `--version` on that binary still exited 0. The scratch was reverted and both shells were rebuilt. `make build` still shows the icons: the release window drew the roof mark and the Sharp Thin rail icons.
+
+**Accomplished:** `pavillion_api_version` returns the header macro and takes no lock, so it is safe before `pavillion_start`. `src-tauri/build.rs` copies that macro into the shell. `require_api_version` runs at the top of `start_core`, before `ensure_workdir`. The number is written only in `pavillion.h`.
+
+**Lessons learned:** Before start, `pav_log` can only reach stderr. The log thread is not started in production until H-1, and the profile log is attached inside start, so a log call here would not have been a record. The shell's number has to come from the macro. If it came from the function body, a same-tree build could not fail the scratch test. Exact equality does not notice two builds that both say version 1 and differ by an added command. That remains a review rule.
+
+**Handoff:** W-1 is next. Do not bump `PAVILLION_API_VERSION` for an added command or an optional field. Bump it when a function, command, or event is removed, renamed, or given a different meaning. `build.rs` rejects a leading zero, a second definition, and a value below 1. The check does not run for `--help` or `--version`, and it does not call `pav_log`.
 
 ## F-5: Trim `config.c` with a helper layer
 
@@ -200,7 +207,7 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 - [ ] Add `https://fonts.googleapis.com` to `style-src` and `https://fonts.gstatic.com` to `font-src` in `tauri.conf.json` and this Lock.
 - [ ] Remove the raw-HTML branch of `loadFontAwesomeKit` in `ui/src/main.js` and the help text offering a `<script>` tag; replace with `loadIconLibraries(list)` that builds elements from URLs.
 - [ ] Settings → Icons gains a Libraries list: add (type, URL), enable, reorder, remove, presets; the note that a new host needs a rebuild.
-- [ ] Add Vitest to `ui/package.json`; `make test` runs `npm --prefix ui test`. Tests: `iconhosts.test.js` (both lists equal; each host in the CSP from `tauri.conf.json`), `iconlibs.test.js` (http refused, credentials refused, unknown host refused, `javascript:` refused, wrong type refused).
+- [ ] Vitest is already on `make test` (G-3). Add `iconhosts.test.js` (both lists equal; each host in the CSP from `tauri.conf.json`) and `iconlibs.test.js` (http refused, credentials refused, unknown host refused, `javascript:` refused, wrong type refused).
 - [ ] Add the HTML-sink grep test from the Lock as `ui/test/no-html-sinks.test.js`.
 - [ ] Unity: `test_icon_library_validation`.
 
@@ -237,7 +244,7 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 
 **Goal:** The sandboxed pane exists and is tested with hostile HTML in the release build before any real message is shown.
 
-**Entry gate:** F-7 and G-8 complete (`pav-link` lives in the C `pav_protocol` table).
+**Entry gate:** G-8 complete (`pav-link` lives in the C `pav_protocol` table). F-4 does not need the icon sanitizer.
 
 **Work items:**
 
@@ -246,7 +253,7 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 - [ ] Fixture `tests/corpus/hostile.html`: `<script>`, `onerror`, `javascript:` link, `<meta http-equiv=refresh>`, `<base href>`, remote `img` and CSS `url()`, `<form>`, SVG with script, `<iframe>`, `<object>`.
 - [ ] In the release build, from the frame: `window.__TAURI__`, `window.__TAURI_INTERNALS__`, and `parent.__TAURI__` are unreachable (no script runs, so the test is that nothing in the fixture changes the page title the parent watches, and that devtools' network panel shows zero requests). Record the steps in Accomplished.
 - [ ] `src-tauri/capabilities/default.json` keeps `"windows": ["main"]` and gains no `remote` entry. Add a Vitest test (`capabilities.test.js`) that parses the file and asserts that. This is not a Rust test, per the G L3 Lock.
-- [ ] Link clicks: the parent cannot see clicks in a script-free sandbox. N-2's core sanitizer will rewrite every `href` to `pav-link://<id>/<n>`. That URL shape is fixed here, and N-2 depends on it. This phase uses a hand-written fixture page that already carries such links; this phase adds `pav-link` to the C `pav_protocol` table under the scheme contract in the [G-LAYERS.md](G-LAYERS.md) L2 Lock. C emits `link.clicked` with the index and returns 204, and Rust only forwards, and the parent shows a confirm dialog. Prove it with a fixture link here.
+- [ ] Link clicks: the parent cannot see clicks in a script-free sandbox. N-2's core sanitizer will rewrite every `href` to `pav-link://<id>/<n>`. That URL shape is fixed here, and N-2 depends on it. This phase uses a hand-written fixture page that already carries such links; this phase adds `pav-link` to the C `pav_protocol` table under the scheme contract in the [G-LAYERS.md](G-LAYERS.md) L2 Lock. C emits `link.clicked` with the index and returns 204, and Rust only forwards, and the parent shows a plain `<dialog>`. J-1 replaces that dialog with the shared one. Prove it with a fixture link here.
 
 **Done means:** The fixture renders as inert text and layout in `make build`, makes no network request, and a link click raises the parent's confirm with the real URL.
 
@@ -259,12 +266,12 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 
 **Goal:** Andrew can find any icon by UI section, edit its HTML, compare it with the saved and default versions, and apply, revert, or cancel.
 
-**Entry gate:** J-1 complete (menus, dialogs, toasts).
+**Entry gate:** J-1 and E-7 complete (menus, dialogs, toasts, and the tree engine).
 
 **Work items:**
 
-- [ ] Settings → Icons: a tree of every registry entry grouped by `section` and labeled by `label`, with the current icon beside each label. A plain nested list with `role="tree"` now; it moves onto the E engine in E-7.
-- [ ] Picking an icon opens an editor: a `<textarea>` with the HTML (monospace; CodeMirror HTML mode if H-2 has already brought CodeMirror in), and three side-by-side previews labeled **Current** (saved), **Default**, and **Preview** (the edited HTML), each at three sizes (1rem, 2rem, 4rem) on the panel surface.
+- [ ] Settings → Icons: the E tree (E-7 has landed) of every registry entry grouped by `section` and labeled by `label`, with the current icon beside each label.
+- [ ] Picking an icon opens an editor: CodeMirror 6 in HTML mode (H-2 already installed it) with the HTML, and three side-by-side previews labeled **Current** (saved), **Default**, and **Preview** (the edited HTML), each at three sizes (1rem, 2rem, 4rem) on the panel surface. The editor's document is text. Preview goes through the icon sanitizer before it reaches the DOM.
 - [ ] Preview refreshes only when the user clicks **Preview**, never on keystrokes. A sanitizer error shows under the field and the Preview box says it was rejected; what the sanitizer removed is listed as text (e.g. `removed: onerror on img; img`).
 - [ ] Buttons: **Preview**; **Apply/Save** (sanitizes, stores the override through `prefs.ui.set`, updates every use of that icon live, toast with Undo); **Revert to default** (deletes the override, confirm); **Cancel** (discards edits, back to Current). Leaving with unsaved edits asks through the dialog.
 - [ ] Search box filtering the tree by label or key; a badge on overridden icons; "Revert all" with confirm.
@@ -277,7 +284,7 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 ## F-6: Decide where JMAP and sync live
 
 **Kind:** Easy (a written decision)
-**Status:** Superseded (2026-10-16). The decision is recorded in the [M-SYNC.md](M-SYNC.md) Lock: the C core owns JMAP and sync with libcurl and Jansson, on a network thread driving one curl multi handle, with the store on the core thread. Andrew can reopen it from the index's open questions.
+**Status:** Superseded (2026-10-16). The decision is the [M-SYNC.md](M-SYNC.md) Lock as revised the same day: the C core owns JMAP and sync with libcurl and Jansson; one net thread and its own curl multi per server endpoint; the store writer owns the only write connection. The earlier wording (one shared multi handle, the store on the core thread) is not the decision. Andrew can reopen it from the index's open questions.
 
 ## Working log
 
@@ -287,3 +294,4 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 - 2026-10-16 F-1 decided: the ABI check, not bindgen. With Rust minimized and G-8 deleting both structs, bindgen's libclang dependency isn't worth it. `pav-link` moves into C's `pav_protocol`.
 - 2026-10-16 Review fixes: added a standalone pinned-kit-version line; `preferences.cache` and `sync` listed as core-read; FFI and scheme contracts point to the G L2 Lock; F-4 no longer depends on N-2 code (it fixes the `pav-link` URL shape); capabilities check is Vitest, not Rust.
 - 2026-10-16 F-1 is now an API version check (`pavillion_api_version()` and `PAVILLION_API_VERSION`). The struct-size check was dropped because G-8 deletes both structs, and the bump rule is in the FFI Lock.
+- 2026-10-16 F-1: `build.rs` reads the macro. A mismatch prints `API version mismatch: core=<n> shell=<m>` and exits 1. No `pav_log`, no working directory. Scratch `return 2` proved it. `make test` is 28 tests. The release window still showed the rail icons.

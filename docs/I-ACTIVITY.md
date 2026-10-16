@@ -85,14 +85,14 @@ int     pav_activity_cancelled(int64_t id);   /* the operation polls this betwee
 
 **Goal:** The Activity tab shows live work with cancel, and the Update button reflects it.
 
-**Entry gate:** I-1 and H-2 complete.
+**Entry gate:** I-1 and J-1 complete. H-2 and H-3 have already landed. This phase does not build a log.
 
 **Work items:**
 
-- [ ] `ui/src/activity/view.js`: a plain DOM table (Tabulator is not needed for at most a few hundred rows), patched by id on `activity.changed`, never rebuilt.
-- [ ] Status colors from `--pav-status-running`, `-done`, `-failed`, `-cancelled`. Progress bar is a `<progress>` element. Cancel is a button with an accessible name `Cancel <title>`.
+- [ ] `ui/src/activity/view.js`: a plain DOM table (a few hundred rows, no table library), patched by id on `activity.changed`, never rebuilt. This is the activity registry, not the message list.
+- [ ] Status colors from `--pav-status-running`, `-done`, `-failed`, `-cancelled` (G-4 has landed). Progress bar is a `<progress>` element. Cancel is a button with an accessible name `Cancel <title>`.
 - [ ] History toggle and Dismiss on failed rows; state in `preferences.ui.activity`.
-- [ ] Enable the `Activity | Log` segmented control from H-2. Plain click on the Activity nav button opens the last view.
+- [ ] Fill the Activity side of the `Activity | Log` control H-2 created. Do not replace the CodeMirror log and do not add a `<pre>` tail. The J-1 right-click menu already switches the two views. Plain click on the Activity nav button opens the last view (`preferences.ui.activity.view`).
 - [ ] The Update button calls `sync.now` (a no-op returning `ok` until M-3) and spins while a `sync.*` activity runs, replacing the preview's 1.5 s fake spin. `prefers-reduced-motion` stops the spin and shows a static badge instead.
 - [ ] Debug-only Help item `Run demo activity` calls `debug.activity_demo`.
 
@@ -108,3 +108,4 @@ int     pav_activity_cancelled(int64_t id);   /* the operation polls this betwee
 
 - 2026-10-16 Exploration written (columns, behavior, a data model, push versus poll).
 - 2026-10-16 Scoped into I-1 and I-2. Decisions: registry in the core, push events with throttling, cooperative cancel, ETA in the core, closed kind list, session-only history, the Update button bound to sync activities.
+- 2026-10-16 H-2 now precedes I-2 and owns the CodeMirror log. I-2 fills the Activity side of that control and does not ship a log tail.

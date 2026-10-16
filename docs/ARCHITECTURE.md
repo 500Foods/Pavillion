@@ -41,17 +41,17 @@ flowchart LR
   CT <-->|requests / completions| N1
   CT <-->|requests / completions| N2
   CT <--> WP
-  CT <--> ST
+  CT <-->|jobs / intents| ST
   CT --> EV
   CT --> LT
   CT -->|pav_db_write jobs| SW
-  ST -->|intents as write jobs| SW
   CT -->|borrow| RP
 ```
 
 - One store writer thread owns the only write connection. Every mutation (sync, rules, UI, CLI) is a job on its serial write queue, batched per transaction. Reads use a read pool of 2, so writes never see `SQLITE_BUSY` ([L-STORE.md](L-STORE.md)). Only the core thread writes the profile. The other threads talk to it through queues ([C-CORE.md](C-CORE.md), [M-SYNC.md](M-SYNC.md)).
 - Each server endpoint has its own net thread and curl multi handle, and the accounts on that server are multiplexed on it. A slow server stalls only itself. Caps: 6 requests in flight per server, 2 per account, plus an optional overall cap.
-- The script worker runs Lua with time and memory caps. It reads mail only through the `P` API and returns intents, never writes ([R-RULES.md](R-RULES.md)).
+- The script worker runs Lua with time and memory caps. It reads mail only through the `P` API and returns intents. The core applies the intents. The script thread never writes and never calls `pav_db_write` ([R-RULES.md](R-RULES.md)). The core thread never blocks on it.
+- Every thread Pavillion creates uses a 512 KB stack ([C-CORE.md](C-CORE.md)).
 
 ## Data flow
 
@@ -64,19 +64,19 @@ sequenceDiagram
   participant R as Script worker (rules)
   participant UI as UI (L4)
   S->>N: push (EventSource) / poll
-  N->>C: changes, then headers (M-4, M-5)
-  C->>DB: one transaction per page
-  C->>R: new messages (arrival hook)
+  N->>C: reduced rows, not the JSON body (M-4, M-5)
+  C->>DB: store writer, one transaction per page
+  C->>R: page posted; core does not wait
   R-->>C: intents (move, flag, label)
-  C->>DB: apply intents locally
-  C-->>UI: mail.messages_changed (after rules)
+  C->>DB: store writer applies intents
+  C-->>UI: mail.messages_changed (after rules, or after the page budget)
   UI->>C: user action (flag, move, delete)
-  C->>DB: optimistic apply + op_queue row
+  C->>DB: store writer, optimistic apply + op_queue row
   C-->>UI: change event (instant)
   C->>N: op flush with ifInState (M-6)
   N->>S: Email/set
   UI->>C: draft.send
-  C->>DB: final draft.save op, outbox row
+  C->>DB: store writer, final draft.save op, outbox row
   C->>N: upload, Email/import, EmailSubmission/set (O-5)
   N->>S: send
   C-->>UI: outbox.update

@@ -51,7 +51,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 - **Protocol order:**
   1. JMAP accounts (K-2, M-1 to M-7)
-  2. IMAP/SMTP (M-8, right after daily-driver mail)
+  2. IMAP/SMTP (M-8, after the rpm and the mail CLI that follow daily-driver mail)
   3. CardDAV (S-5) and CalDAV (T-7), after the JMAP contacts and calendars phases
   4. OIDC (K-4), late
 - **v1 auth for every protocol is username and password.** That's HTTP Basic for JMAP and DAV, and SASL PLAIN (LOGIN as a fallback) for IMAP and SMTP. It always runs over verified TLS: HTTPS, implicit TLS, or STARTTLS. Nothing is ever sent in cleartext, and a server with no TLS is refused.

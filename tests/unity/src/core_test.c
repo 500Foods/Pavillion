@@ -1371,6 +1371,13 @@ void test_kit_and_icons_apply_round_trip(void) {
     pavillion_stop();
 }
 
+void test_api_version_matches_header(void) {
+    int version = pavillion_api_version();
+
+    TEST_ASSERT_EQUAL_INT(PAVILLION_API_VERSION, version);
+    TEST_ASSERT_TRUE(version >= 1);
+}
+
 void test_profile_read_kit_skips_zoom_window(void) {
     PavProfile *profile = NULL;
     char err[256];
@@ -1419,5 +1426,6 @@ int main(void) {
     RUN_TEST(test_kit_and_icons_read_after_start);
     RUN_TEST(test_kit_and_icons_apply_round_trip);
     RUN_TEST(test_profile_read_kit_skips_zoom_window);
+    RUN_TEST(test_api_version_matches_header);
     return UNITY_END();
 }

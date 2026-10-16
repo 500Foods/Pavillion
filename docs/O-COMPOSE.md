@@ -12,7 +12,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
 | O-1 | Draft model: `draft.new`, local autosave, server save to Drafts | Medium | Not started |
-| O-2 | Composer frame: SunEditor isolated in a sandboxed page, plain-text mode | Hard | Not started |
+| O-2 | Composer frame: SunEditor in a sandboxed page, plain-text mode | Hard | Not started |
 | O-3 | Identities, reply/reply-all/forward, quoting, address autocomplete | Medium | Not started |
 | O-4 | Attachments, inline images, HTML signatures with `cid:` images | Medium | Not started |
 | O-5 | Outbox and sending: MIME build, upload, `EmailSubmission/set`, undo send, retry | Hard | Not started |
@@ -41,9 +41,9 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 ### Composer isolation
 
-- The composer edits quoted outside HTML, so it may not run in the main DOM (F Lock). SunEditor runs in its own page, `ui/compose.html` (a second Vite entry), loaded in `<iframe sandbox="allow-scripts">` (no `allow-same-origin`, so it has an opaque origin, no storage, and no IPC). It talks to the parent only by `postMessage` with a fixed message schema (`init`, `content`, `command`, `ready`, `dirty`); the parent checks `event.source` is that frame and validates every message.
+- The composer edits quoted outside HTML, so it may not run in the main DOM (F Lock). It runs in its own page, `ui/compose.html` (a second Vite entry), loaded in `<iframe sandbox="allow-scripts">` (no `allow-same-origin`, so it has an opaque origin, no storage, and no IPC). The editor in that page is SunEditor, bundled by Vite into the frame, not loaded from a CDN. It talks to the parent only by `postMessage` with a fixed message schema (`init`, `content`, `command`, `ready`, `dirty`); the parent checks `event.source` is that frame and validates every message.
 - HTML going into the composer (quotes, signatures) passes the core sanitizer first. HTML coming out passes it again before it is saved or sent.
-- If O-2 proves SunEditor cannot run under these constraints in WebKitGTK, the fallback is a plain-text composer plus the same frame running a minimal `contenteditable` editor (bold, italic, link, list, quote) as plan §6.7 first described. The choice is recorded in O-2's Lessons.
+- O-2 installs SunEditor. The toolbar is bold, italic, underline, strike, font size, font color, highlight, link, lists, quote, alignment, and remove formatting. Image waits for O-4. A plain-text mode remains. The isolation checks do not wait on a smaller editor failing first.
 - Plain text or HTML per identity default (`preferences.mail.composeFormat`, default HTML); text alternative generated from HTML on send.
 
 ### Identities and quoting
@@ -99,9 +99,9 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Work items:**
 
-- [ ] `ui/compose.html` and `ui/src/compose/frame.js` (SunEditor; add `suneditor` to `ui/package.json`), the message schema, and `ui/src/compose/host.js` in the parent.
-- [ ] Verify in `make build`: the frame's origin is opaque, `__TAURI__` and `__TAURI_INTERNALS__` are undefined, `parent.document` throws, and the main CSP still lets SunEditor's own script load (it is a bundled file, not inline). If it cannot, take the Lock's fallback.
-- [ ] Toolbar: bold, italic, underline, link, lists, quote, font size, color, remove formatting, image (O-4), source view off.
+- [ ] Add `suneditor`. `ui/compose.html` and `ui/src/compose/frame.js` (SunEditor, bundled into the frame), the message schema, and `ui/src/compose/host.js` in the parent. Record the gzipped size of `ui/dist` in Accomplished. The size is a record. It is not a reason to drop SunEditor.
+- [ ] Verify in `make build`: the frame's origin is opaque, `__TAURI__` and `__TAURI_INTERNALS__` are undefined, `parent.document` throws, and the frame's script is a bundled file, not inline.
+- [ ] Toolbar: the Lock's set. Image is O-4.
 - [ ] Plain-text mode with a toggle (HTML to text conversion in the core).
 - [ ] `Ctrl+S` saves, `Ctrl+Enter` sends (O-5; until then disabled).
 - [ ] Vitest: message schema validation rejects unknown types and wrong sources.
@@ -199,3 +199,4 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 - 2026-10-16 Opened from plan §5.8, §6.7–§6.11, §10, §12. Decisions: the composer runs in a sandboxed `allow-scripts` page (resolving SunEditor against the F Lock), sanitize in and out, undo send and send later, draft replace by destroy-and-create, signatures sanitized and synced with `Identity/set`, `mailto:` parsed in the core.
 - 2026-10-16 The outbox builds MIME to a file with GMime streams and uploads it with curl's read callback, with a flat-memory test.
+- 2026-10-16 Andrew restored SunEditor as the O-2 composer. It still runs in the sandboxed frame. Isolation is unchanged. A plain-text mode remains.

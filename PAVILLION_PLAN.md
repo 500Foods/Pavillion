@@ -1,8 +1,8 @@
 # Pavillion — index
 
-Status: v0.5 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
+Status: v0.7 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 
-**Resume:** The hello-world sequence (steps 1–20) is complete, and the shell preview is in the tree. **Next: step 21, F-1 — API version check**, in [docs/F-HARDEN.md](docs/F-HARDEN.md). Read that document's Lock, then F-1 only.
+**Resume:** The hello-world sequence (steps 1–20) is complete, and the shell preview is in the tree. F-1 landed 2026-10-16: `pavillion_api_version()` returns `PAVILLION_API_VERSION` (1), `build.rs` copies that macro into the shell, and a mismatch prints `API version mismatch: core=<n> shell=<m>` to stderr and exits 1 before the window. It does not call `pav_log` and it does not create the working directory. v0.7 puts the CodeMirror log (H-2, H-3) immediately after H-1, and restores Tabulator and SunEditor in the phases that first need them. WebKit bytes stay out of both ELFs; only `pavillion-gui` dynamically needs the system library. **Next: step 22, W-1 — CI on GitHub Actions**, in [docs/W-SHIP.md](docs/W-SHIP.md). Read that document's Lock, then W-1 only.
 
 **Read first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), one page with diagrams of the layers, the threads, and the data flow.
 
@@ -10,7 +10,7 @@ Status: v0.5 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 
 Pavillion is a personal desktop app for mail, contacts, calendars, and files, for one user, Andrew Simard. It replaces Betterbird (mail), CardBook (contacts), and Omacal (calendar). It is a JMAP-first client for self-hosted Stalwart, then IMAP/SMTP and CalDAV/CardDAV, all with username and password over TLS and the password kept in the keyring (tenants 500foods.com, 500courses.com, 500nodes.com) and handles about 20 accounts and identities comfortably: unified views, fast switching, per-account identities. It keeps an offline-capable SQLite store with fast local search, renders HTML mail safely (sandboxed, remote content blocked by default), and runs as one app, one process, one active profile, Wayland-friendly, with a 24 h clock and `America/Vancouver` as the default zone. It is a Tauri 2 app: a portable C11 core library (all mail, sync, storage, and auth), a minimal Rust/Tauri shell that does only Tauri work (window, webview, dialogs, plugins, one forwarding command and event) so the app can later be built into Hydrogen (C), and a vanilla JS/Vite UI that can later be mounted inside Lithium. Lua 5.5 is embedded for mail rules and automation. Fedora Linux is the v1 platform; macOS, Windows, and iPad are deferred, not deleted. Every subsystem should stay small enough to understand and test. Pavillion is open source.
 
-**Non-goals (do not build):** Gmail and Microsoft OAuth, Exchange/EWS/Graph, POP3 (generic OpenID Connect with PKCE is in scope, K-4); multi-user; sync of app settings across machines; cloud services of any kind; a plugin or add-on system (add-ons caused the CardBook mess; Lua is a fixed API, not plugins); RSS, chat, newsgroups; PGP and S/MIME unless Andrew decides otherwise (N-Q5); an in-app self-updater (updates are a system package); telemetry; CalDAV and CardDAV (WebDAV for files is the one exception, U).
+**Non-goals (do not build):** Gmail and Microsoft OAuth, Exchange/EWS/Graph, POP3 (generic OpenID Connect with PKCE is in scope, K-4); multi-user; sync of app settings across machines; cloud services of any kind; a plugin or add-on system (add-ons caused the CardBook mess; Lua is a fixed API, not plugins); RSS, chat, newsgroups; PGP and S/MIME unless Andrew decides otherwise (N-Q5); an in-app self-updater (updates are a system package); telemetry. CalDAV and CardDAV are not a second PIM: JMAP writes the tables, and the adapters (S-5, T-7) write the same tables. WebDAV for files is U.
 
 ## How sessions work
 
@@ -77,69 +77,69 @@ Written later by phases (not plans): `docs/API.md` (G-2) and `docs/LUA_API.md` (
 | 19 | A-5 | Working directory and a real start | Medium | Done |
 | 20 | D-3 | The error state | Easy | Done |
 | | | *Milestone 0: hello world, plus the shell preview (not a phase)* | | Done |
-| 21 | **F-1** | **API version check (`pavillion_api_version`)** | Medium | **Next** |
-| 22 | W-1 | CI on GitHub Actions: `make test` and `make build` on Fedora | Medium | |
+| 21 | F-1 | API version check (`pavillion_api_version`) | Medium | Done |
+| 22 | **W-1** | **CI on GitHub Actions: `make test` and `make build` on Fedora** | Medium | **Next** |
 | 23 | F-5 | Trim `config.c` with a helper layer | Medium | |
 | 24 | F-2 | UI preferences as an opaque JSON blob (Fonts persisted) | Medium | |
-| 25 | F-3 | Icon library sources: typed https URLs, allowlist in the CSP, FA and Material presets; Vitest | Medium | |
-| 26 | F-7 | Shared icon HTML sanitizer, icon registry, overrides in the UI blob | Medium | |
-| 27 | G-1 | Platform layer and a test fake; macOS core CI job | Medium | |
-| 28 | G-2 | JSON command dispatcher, `pav_on_event`, `docs/API.md` | Medium | |
-| 29 | G-3 | Generic Tauri `core` command; transport-agnostic `api.js` | Medium | |
-| 30 | G-8 | Move the remaining `lib.rs` logic into C (window state, `pav_protocol`, workdir); Rust only does Tauri work | Medium | |
-| 31 | H-1 | Log thread in production, ring, `log.tail`, `log.lines` events | Medium | |
-| 32 | H-2 | Log view in the Activity tab (CodeMirror 6) | Medium | |
-| 33 | H-3 | Log search, filters, follow, copy, save, print | Medium | |
-| 34 | I-1 | Activity registry in the core, cancel, events | Medium | |
-| 35 | I-2 | Activity view and the Update button | Medium | |
-| 36 | F-4 | Message pane isolation, proven in `make build` | Medium | |
-| 37 | G-4 | Mountable UI for Lithium, `--pav-*`, harness | Medium | |
-| 38 | D-4 | Theme switch: semantic variables, dark, light, follow system | Medium | |
-| 39 | J-1 | Common widgets: menu, tooltip, toast, dialog | Medium | |
-| 40 | F-8 | Icon settings: icon tree and the three-preview editor | Medium | |
-| 41 | J-2 | Tab registry, icons and close, sub-tabs | Medium | |
-| 42 | J-3 | Shortcut registry, tab menu, pinned tabs | Medium | |
-| 43 | J-4 | Reorder, overflow, widths, file drop | Medium | |
-| 44 | J-5 | Vertical tabs and section colors | Medium | |
-| 45 | J-6 | Session restore | Medium | |
+| 25 | G-1 | Platform layer and a test fake; macOS core CI job | Medium | |
+| 26 | G-2 | JSON command dispatcher, `pav_on_event`, `docs/API.md` | Medium | |
+| 27 | G-3 | Generic Tauri `core` command; transport-agnostic `api.js`; Vitest on `make test` | Medium | |
+| 28 | G-8 | Move the remaining `lib.rs` logic into C (window state, `pav_protocol`, workdir); Rust only does Tauri work | Medium | |
+| 29 | H-1 | Log thread in production, ring, `log.tail`, `log.lines` events | Medium | |
+| 30 | H-2 | Log view: CodeMirror, live, in the Activity tab | Medium | |
+| 31 | H-3 | Log search, filters, follow, copy, save, print | Medium | |
+| 32 | I-1 | Activity registry in the core, cancel, events | Medium | |
+| 33 | F-4 | Message pane isolation, proven in `make build` | Medium | |
+| 34 | G-4 | Mountable UI for Lithium, `--pav-*`, harness | Medium | |
+| 35 | D-4 | Theme switch: semantic variables, dark, light, follow system | Medium | |
+| 36 | J-1 | Common widgets: menu, tooltip, toast, dialog | Medium | |
+| 37 | I-2 | Activity view and the Update button | Medium | |
+| 38 | J-2 | Tab registry, icons and close, sub-tabs | Medium | |
+| 39 | J-3 | Shortcut registry, tab menu, pinned tabs | Medium | |
+| 40 | J-6 | Session restore | Medium | |
 | | | *Milestone 1: foundation — layers, log, activity, tabs* | | |
-| 46 | L-1 | Migration runner, statement helpers, schema v1 | Medium | |
-| 47 | K-1 | Secrets through the platform (libsecret) | Medium | |
-| 48 | K-2 | Account model and commands, account numbers | Medium | |
-| 49 | W-2 | JMAP fixture server and the Stalwart container | Hard | |
-| 50 | M-1 | Per-server network threads (own curl multi each), caps, retries, redaction | Hard | |
-| 51 | M-2 | JMAP session discovery, `account.test`, remote accounts | Medium | |
-| 52 | K-3 | Settings → Accounts panel | Medium | |
-| 53 | E-1 | Tree tokens, skeleton, row regions | Easy | |
-| 54 | E-2 | Tree model, view state, three collapse behaviors | Medium | |
-| 55 | E-3 | Tree renderer states, badges, hover, menus | Medium | |
-| 56 | E-4 | Tree animation and the height test | Easy | |
-| 57 | M-3 | Sync supervisor, Identity and Mailbox sync, `mailbox.list` | Medium | |
-| 58 | E-7 | Real mailbox tree from `mailbox.list` | Hard | |
+| 41 | L-1 | Migration runner, statement helpers, schema v1 | Medium | |
+| 42 | K-1 | Secrets through the platform (libsecret) | Medium | |
+| 43 | K-2 | Account model and commands, account numbers | Medium | |
+| 44 | W-2 | JMAP fixture server and the Stalwart container | Hard | |
+| 45 | M-1 | Per-server network threads (own curl multi each), caps, retries, redaction | Hard | |
+| 46 | M-2 | JMAP session discovery, `account.test`, remote accounts | Medium | |
+| 47 | K-3 | Settings → Accounts panel | Medium | |
+| 48 | E-1 | Tree tokens, skeleton, row regions | Easy | |
+| 49 | E-2 | Tree model, view state, three collapse behaviors | Medium | |
+| 50 | E-3 | Tree renderer states, badges, hover, menus | Medium | |
+| 51 | E-4 | Tree animation and the height test | Easy | |
+| 52 | M-3 | Sync supervisor, Identity and Mailbox sync, `mailbox.list` | Medium | |
+| 53 | E-7 | Real mailbox tree from `mailbox.list` | Hard | |
 | | | *Milestone 2: real accounts and mailbox trees (old P0)* | | |
-| 59 | L-2 | Mail schema and the blob store | Medium | |
-| 60 | M-4 | Email initial sync | Medium | |
-| 61 | M-5 | Delta sync | Medium | |
-| 62 | N-1 | Body fetch and MIME (GMime) | Medium | |
-| 63 | N-2 | The HTML sanitizer and the hostile corpus | Hard | |
-| 64 | N-3 | Message list (Tabulator) | Medium | |
-| 65 | N-4 | Reading pane: sandbox, remote content, `cid:`, links | Medium | |
-| 66 | M-6 | Mutation queue, conflicts, undo | Hard | |
-| 67 | N-5 | Flags, move, delete, archive, mailbox management | Medium | |
-| 68 | N-6 | Threads, unified views, message tabs | Medium | |
-| 69 | N-7 | Attachments | Medium | |
-| 70 | M-7 | Push (EventSource), polling fallback | Medium | |
-| 71 | O-1 | Draft model | Medium | |
-| 72 | O-2 | Composer frame (SunEditor, sandboxed) | Hard | |
-| 73 | O-3 | Identities, reply, forward, autocomplete | Medium | |
-| 74 | O-4 | Attachments, inline images, signatures | Medium | |
-| 75 | O-5 | Outbox and sending | Hard | |
-| 76 | O-6 | `mailto:` and single instance | Medium | |
-| 77 | Q-1 | FTS5 indexing and local search | Medium | |
-| 78 | Q-2 | Search UI and server search | Medium | |
-| 79 | N-8 | Notifications and mail shortcuts | Medium | |
-| 80 | N-9 | Folder retention | Medium | |
+| 54 | L-2 | Mail schema and the blob store | Medium | |
+| 55 | M-4 | Email initial sync | Medium | |
+| 56 | M-5 | Delta sync | Medium | |
+| 57 | N-1 | Body fetch and MIME (GMime) | Medium | |
+| 58 | N-2 | The HTML sanitizer and the hostile corpus | Hard | |
+| 59 | Q-1 | FTS5 indexing and local search | Medium | |
+| 60 | N-3 | Message list (Tabulator) | Medium | |
+| 61 | Q-2 | Search UI and server search | Medium | |
+| 62 | N-4 | Reading pane: sandbox, remote content, `cid:`, links | Medium | |
+| 63 | M-6 | Mutation queue, conflicts, undo | Hard | |
+| 64 | N-5 | Flags, move, delete, archive, mailbox management | Medium | |
+| 65 | N-6 | Threads, unified views, message tabs | Medium | |
+| 66 | N-7 | Attachments | Medium | |
+| 67 | M-7 | Push (EventSource), polling fallback | Medium | |
+| 68 | O-1 | Draft model | Medium | |
+| 69 | O-2 | Composer frame (SunEditor) | Hard | |
+| 70 | O-3 | Identities, reply, forward, autocomplete | Medium | |
+| 71 | O-4 | Attachments, inline images, signatures | Medium | |
+| 72 | O-5 | Outbox and sending | Hard | |
+| 73 | O-6 | `mailto:` and single instance | Medium | |
+| 74 | N-8 | Notifications and mail shortcuts | Medium | |
+| 75 | N-9 | Folder retention | Medium | |
 | | | *Milestone 3: daily-driver mail (old P1–P3)* | | |
+| 76 | W-3 | rpm, dnf repository, desktop integration | Medium | |
+| 77 | W-4 | Arch `PKGBUILD` | Easy | |
+| 78 | V-1 | CLI socket, dispatch, `status`, `help --json` | Hard | |
+| 79 | V-2 | Bot keys, pause, audit | Medium | |
+| 80 | V-3 | CLI mail commands | Medium | |
 | 81 | M-8 | IMAP/SMTP backend (SASL PLAIN over TLS) | Hard | |
 | 82 | R-1 | Lua 5.5 in the core, sandboxed | Medium | |
 | 83 | R-2 | The `P` API and `docs/LUA_API.md` | Medium | |
@@ -161,23 +161,43 @@ Written later by phases (not plans): `docs/API.md` (G-2) and `docs/LUA_API.md` (
 | 99 | U-1 | Files: protocol and browse | Medium | |
 | 100 | U-2 | Files: transfer and manage | Medium | |
 | | | *Milestone 4: the initial working copy (old P4–P5 plus rules and files)* | | |
-| 101 | V-1 | CLI socket, dispatch, `status`, `help --json` | Hard | |
-| 102 | V-2 | Bot keys, pause, audit | Medium | |
-| 103 | V-3 | CLI mail commands | Medium | |
-| 104 | V-4 | `watch`, `config`, contacts and calendar commands | Medium | |
-| 105 | W-3 | rpm, dnf repository, desktop integration | Medium | |
-| 106 | D-5 | Theme extras: density, gradients, contrast audit | Medium | |
-| 107 | W-4 | Arch `PKGBUILD` | Easy | |
-| | | *Milestone 5: bots and packaging* | | |
-| 108 | E-5 | Tree presets | Medium | |
-| 109 | E-6 | Tree drag and drop | Hard | |
-| 110 | J-7 | The `+` tab: sandboxed browsing | Hard | |
-| 111 | K-4 | OpenID Connect sign-in | Hard | |
-| 112 | T-6 | iTIP invitations | Medium | |
+| 101 | V-4 | `watch`, `config`, contacts and calendar commands | Medium | |
+| | | *Milestone 5: the CLI covers mail, contacts, and calendars* | | |
+| 102 | F-3 | Icon library sources: typed https URLs, allowlist in the CSP, FA and Material presets | Medium | |
+| 103 | F-7 | Shared icon HTML sanitizer, icon registry, overrides in the UI blob | Medium | |
+| 104 | F-8 | Icon settings: icon tree and the three-preview editor | Medium | |
+| 105 | J-4 | Reorder, overflow, widths, file drop | Medium | |
+| 106 | J-5 | Vertical tabs and section colors | Medium | |
+| 107 | E-5 | Tree presets | Medium | |
+| 108 | E-6 | Tree drag and drop | Hard | |
+| 109 | J-7 | The `+` tab: sandboxed browsing | Hard | |
+| 110 | K-4 | OpenID Connect sign-in | Hard | |
+| 111 | T-6 | iTIP invitations | Medium | |
+| 112 | D-5 | Theme extras: density, gradients, contrast audit | Medium | |
 | 113 | G-6 | Second-platform smoke build | Hard | |
 | | | *Milestone 6: polish (old P6); further items are agreed with Andrew at that point* | | |
 
-Why this order: hardening and the layer contracts go first because mail would otherwise grow on the current Tauri-shaped boundary. Logging and the activity view come before tabs and mail so every later phase can be watched from inside the app. Tabs and the common widgets come before accounts because every screen after them opens tabs, menus, toasts, and dialogs. The fixture server and the Stalwart container come before the first network phase. Isolation (F-4) and the sanitizer (N-2) come before any real message is shown. IMAP/SMTP (M-8) follows daily-driver JMAP mail directly. Rules follow it because they hook into a working sync path. CardDAV (S-5) and CalDAV (T-7) follow their JMAP phases. G-8 empties the Rust shell right after G-3, before anything else is built on it. A phase whose entry gate names a phase later in this table is an error in the docs; fix the docs before starting it.
+Why this order: the command ABI (G-2, G-3, G-8) is in place before new commands proliferate. H-1, H-2, and H-3 land before the activity view and before accounts, so later phases can be watched from inside the app. The icon-kit failure was invisible without that view: the only report possible was that no icons were visible. The icon editor and tab polish stay at milestone 6 and are not on the path to mail. Tabs, menus, toasts, and dialogs (through J-3 and J-6) come before accounts because every screen after them uses them. The fixture server comes before the first network phase. Isolation (F-4) and the sanitizer (N-2) come before any real message is shown. Search (Q) comes as soon as bodies exist, before the composer. The rpm and the mail CLI follow milestone 3, so the Betterbird replacement is installable before calendars and files, and neither packaging nor `pavillion status` waits on U. IMAP/SMTP (M-8) follows that shippable mail client. Rules follow IMAP because they hook into a working sync path. CardDAV (S-5) and CalDAV (T-7) follow their JMAP phases. A phase whose entry gate names a phase later in this table is an error in the docs; fix the docs before starting it.
+
+## Review notes (2026-10-16, v0.7)
+
+Andrew put three libraries back the same day v0.6 had taken them out, and moved the log view back next to H-1. The icon-kit failure had no in-app log, so the only report possible was that no icons were visible. Logging early is how the next failure gets a cause instead of a symptom. The decisions live in the owning Lock; this list is the map.
+
+- **Log view.** H-2 and H-3 are steps 30 and 31, immediately after H-1 and before I-1. H-2 installs CodeMirror 6, shows the live log, and creates the Activity|Log control. I-2 fills the Activity side. It does not ship a `<pre>` tail for H-2 to replace.
+- **Lists and composer.** N-3 uses Tabulator for mail. Contacts (S) and files (U) share that table. O-2 uses SunEditor inside the existing sandbox, with a plain-text mode. None of the three waits on a smaller substitute failing. The mailbox tree (E) and the activity table (I-2) stay plain DOM. Calendar grids stay plain DOM.
+- **WebKit.** Neither ELF contains WebKit bytes. No static link, no vendored WebKit, no AppImage. Only `pavillion-gui` has a dynamic `NEEDED` entry for system `libwebkit2gtk`. The `pavillion` CLI does not link it. The rpm depends on the system package, so the GUI process maps that copy.
+- **Size.** `ui/dist` gzipped size is recorded when H-2, N-3, and O-2 land. That record is not a reason to drop Tabulator, CodeMirror, or SunEditor. A further UI library needs a Lock change. No UPX.
+
+## Review notes (2026-10-16, v0.6)
+
+A review of the v0.5 plan against the code and the locks. Still in force except where the v0.7 notes above say otherwise.
+
+- **Sequence.** Icon libraries and the icon editor (F-3, F-7, F-8) and tab chrome (J-4, J-5) are milestone 6. They do not sit in front of the platform layer. v0.6 also parked H-2 and H-3 there; v0.7 moved the log view back to steps 30 and 31. Search sits beside the message list. The rpm, the Arch package, and the mail CLI sit immediately after daily-driver mail.
+- **Store (L).** 16 MB page cache, 64 MB mmap, short read transactions, one checkpoint retry. `email_mailbox` carries `ra_id` and `received_at` so a folder listing does not sort the whole account. Keyword columns have one writer. Bodies and sanitized HTML are files under the cache budget, not SQLite text. Blob ids are encoded before they become paths.
+- **Network (M).** HTTP/2 is requested, with two connections per server so the EventSource does not block API calls. One EventSource per login, not per account. Responses are reduced on the net thread; the core queue never carries a multi-megabyte body. Header backfill stays complete (offline mail is the point) and yields while the user is waiting on a command.
+- **Threads (C, R).** Every thread Pavillion creates uses a 512 KB stack. The core thread never blocks on the script thread; a message stays unannounced until rules finish or the page budget expires.
+- **UI libraries (N, H, O, W).** Superseded by the v0.7 notes. v0.6 had banned Tabulator, a CodeMirror log, and a default SunEditor, and had capped `ui/dist` at 500 KB gzipped to keep them out. Andrew reversed that the same day. No UPX remains. The CLI binary must not map WebKitGTK (V), and neither ELF may contain WebKit bytes (W).
+- **Corrected contradictions.** CalDAV and CardDAV are in the sequence, not in the non-goals. F-6's "one curl multi, store on the core thread" was already superseded by M. The event name is `log.lines`. B and C no longer name a finished phase as next. F-1's test count is 27.
 
 Recorded and waiting beyond milestone 6: shortcut remapping UI (the J-3 registry is data-ready), rule-based tree presets, Betterbird mail import (mbox/Maildir, N-Q4), a headless `pavillion daemon` (V Lock), per-account status dots in the nav, the spacious density, pause-bots-on-lock, Windows and iPad builds.
 
@@ -198,9 +218,9 @@ Each is owned by the document named; the answer is written into that document's 
 | Id | Question | Needed before |
 | --- | --- | --- |
 | K-Q1 | Which two or three accounts to add first (two tenants), with their hostnames? | K-3 |
-| H-Q1 | Log ring 10,000 lines and rotation at 10 MB with one old file: OK? | H-1 |
+| H-Q1 | Log ring 10,000 lines and rotation at 10 MB with one old file. The H lock already uses these; confirm or correct before H-1. | H-1 |
 | H-Q2 | Per-subsystem debug level once sync exists? | M-1 |
-| I-Q1 | Persist finished activities across restarts, or session plus the log file? | I-1 |
+| I-Q1 | The I lock keeps finished activities in memory for the session and treats the log file as the record. Confirm, or ask for a SQLite history, before I-1. | I-1 |
 | J-Q1 | Restore sub-tabs on launch, or only home and pinned tabs? | J-6 |
 | J-Q2 | Single click shows in the reading pane and only Ctrl+Enter or double-click opens a sub-tab? | J-2 |
 | J-Q3 | A cap on open tabs? | J-2 |

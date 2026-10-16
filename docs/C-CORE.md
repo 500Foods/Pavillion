@@ -1,6 +1,6 @@
 # C — CORE
 
-**Status:** C-6 complete (2026-10-14). No further phase in this document. The sequence runs A-5 next.
+**Status:** C-6 complete (2026-10-14). No further phase in this document. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Threads, the loop, logging, and the store. Protocol work (JMAP, IMAP, the mail tables) is not in this document. Later additions to the thread table are the net threads (one per server endpoint) and work pool ([M-SYNC.md](M-SYNC.md)), the script thread ([R-RULES.md](R-RULES.md)), and the event thread ([G-LAYERS.md](G-LAYERS.md) G-2). Note (2026-10-16): the log thread is tested but not yet started in production; [H-LOGGING.md](H-LOGGING.md) H-1 starts it. Migrations and the schema are [L-STORE.md](L-STORE.md).
@@ -45,9 +45,11 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 Hello world starts the shell, the core thread, and the log thread. No workers. The core thread is the only thread that writes a profile. Until L-1 it is also the only thread that opens the database. From L-1, the store writer owns the only write connection and the core thread uses the read pool ([L-STORE.md](L-STORE.md) Lock). A worker never holds a `sqlite3 *`.
 
+Every thread Pavillion creates sets a 512 KB stack (`pthread_attr_setstacksize`) before `pthread_create`. The platform default (8 MB on Linux) is not used. Lua's cap is a heap cap ([R-RULES.md](R-RULES.md)), not a stack size. A Unity test in L-1 records the attribute the store writer was created with.
+
 ### Loop
 
-The shell pushes a command and, when it needs a result now, waits on that command's reply. The core thread pops, runs, and replies. Events the UI did not ask for go to an event queue. The shell callback only enqueues. It does not draw. Commands inside the core are structs, not JSON.
+The shell pushes a command and, when it needs a result now, waits on that command's reply. The core thread pops, runs, and replies. Events the UI did not ask for go to an event queue. The shell callback only enqueues. It does not draw. Until G-2 the queue carries struct commands. From G-2 the external contract is JSON (`pavillion_call`), and the core queue carries the command name plus a parsed `json_t *` that the dispatcher frees. Handlers do not grow a second struct ABI beside that. The hello-world structs (`PavillionStatus`, `PavShellPrefs`) stay until G-8 deletes them.
 
 `pavillion_stop` pushes stop and joins the core thread, which joins workers and then the log thread. Stop is idempotent. A second `pavillion_start` without a stop returns an error.
 

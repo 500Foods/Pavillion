@@ -54,6 +54,7 @@ struct PavShellPrefs {
 }
 
 unsafe extern "C" {
+    fn pavillion_api_version() -> i32;
     fn pavillion_start(workdir: *const c_char, err: *mut c_char, err_len: usize) -> i32;
     fn pavillion_stop();
     fn pavillion_status(out: *mut PavillionStatus) -> i32;
@@ -608,7 +609,19 @@ fn ensure_workdir(workdir: &str) {
     }
 }
 
+fn require_api_version() {
+    let core = unsafe { pavillion_api_version() };
+    let shell: i32 = env!("PAVILLION_API_VERSION")
+        .parse()
+        .expect("PAVILLION_API_VERSION from build.rs");
+    if core != shell {
+        eprintln!("API version mismatch: core={core} shell={shell}");
+        std::process::exit(1);
+    }
+}
+
 fn start_core(workdir: &str) {
+    require_api_version();
     let path = match CString::new(workdir) {
         Ok(path) => path,
         Err(_) => {

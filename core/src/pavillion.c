@@ -363,6 +363,10 @@ static int core_apply_kit(char *err, size_t err_len) {
     return 0;
 }
 
+int pavillion_api_version(void) {
+    return PAVILLION_API_VERSION;
+}
+
 int pavillion_start(const char *workdir, char *err, size_t err_len) {
     int rc;
 

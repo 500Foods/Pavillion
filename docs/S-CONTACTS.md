@@ -75,7 +75,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 **Work items:**
 
 - [ ] Rolodex letters, search, books and recents in the nav (tree renderer flat rows).
-- [ ] List (Tabulator) with name, email, org; contact view (text) with photo; open a contact in a sub-tab (J-2).
+- [ ] List on the shared Tabulator (`ui/src/common/table.js`, N-3) with name, email, org; contact view (text) with photo; open a contact in a sub-tab (J-2). Cells stay text.
 - [ ] Click an email to compose; click a phone to copy.
 
 **Done means:** Andrew's contacts browse by letter and search.

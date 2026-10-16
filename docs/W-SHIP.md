@@ -3,7 +3,7 @@
 **Status:** Not started (scoped 2026-10-16 from old plan §12, §13, and the 2026-10-15 suggestions).
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
-Continuous integration, the test fixtures every network phase depends on, the testing rules, and packaging. W-1 and W-2 come early; W-3 and W-4 come after the initial working copy.
+Continuous integration, the test fixtures every network phase depends on, the testing rules, and packaging. W-1 and W-2 come early. W-3 and W-4 come right after daily-driver mail (milestone 3), before calendars and files, so the Betterbird replacement is installable on its own.
 
 ## Phases
 
@@ -13,7 +13,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | --- | --- | --- | --- |
 | W-1 | CI on GitHub Actions: `make test` and `make build` on Fedora | Medium | Not started |
 | W-2 | JMAP fixtures: a recorded fixture server and a disposable Stalwart container with seeded accounts | Hard | Not started |
-| W-3 | Fedora rpm, the dnf repository, desktop file, UPX, autostart | Medium | Not started |
+| W-3 | Fedora rpm, the dnf repository, desktop file, autostart | Medium | Not started |
 | W-4 | Arch `PKGBUILD` (Omarchy) | Easy | Not started |
 
 Kind: **Easy** is one file and a check. **Medium** crosses one boundary. **Hard** is a new process the tests depend on.
@@ -33,7 +33,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 ### Tests (was old plan §13)
 
-- C unit tests use Unity, vendored under `tests/unity/framework` without Hydrogen's mock set. `make test` runs Unity, `cargo test` (from F-1), and Vitest (from F-3). It must pass at the end of every phase.
+- C unit tests use Unity, vendored under `tests/unity/framework` without Hydrogen's mock set. `make test` runs Unity, `cargo test` (from F-1), and Vitest (from G-3). It must pass at the end of every phase.
 - Unit coverage named across the docs: MIME parse and build round-trip, the sanitizer policy, the query parser, RRULE expansion including DST in America/Vancouver, identity selection, queue coalescing, retention selection, rule compilation, vCard mapping.
 - **Fixture server** (`tests/support/jmapfix.py`, Python 3 standard library only, started and stopped by `make test`): serves recorded JMAP responses from `tests/support/fixtures/*.json` keyed by method and arguments, and scripted cases: Session, Mailbox/Email/Thread get, changes, query, set, `cannotCalculateChanges`, `stateMismatch`, 401, 429 with `Retry-After`, 503, a slow response, an EventSource stream with drops, an upload, a download, and a proxy toggle that cuts the network. TLS with a test CA generated into `build/test-ca/` and passed as the account `ca_file`. Pavillion itself never ships an HTTP server.
 - **Stalwart container** (`tests/stalwart/`): `docker compose` running Stalwart **v0.16.26**. That's the latest release on GitHub `stalwartlabs/stalwart`, published 2026-10-11 10:33 PT and checked 2026-10-16. The tag is pinned in `tests/stalwart/VERSION` and is the image tag. Bump it on purpose, never with `latest`. Andrew's production is believed to be 0.16.x, so W-2 records the production version and flags a gap of more than one patch line, a config with two domains (`test-a.local`, `test-b.local`), five seeded accounts, seeded mailboxes and a message corpus (`tests/corpus/` including the hostile set), contacts, calendars, and files if supported. `make it-up`, `make it-seed`, `make it-down`. Integration tests run with `PAVILLION_IT=1 make test-it` and only against this container or Andrew's dedicated test mailbox.
@@ -50,11 +50,13 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 ### Packaging (was old plan §12)
 
-- One executable, `pavillion`. `make build` builds the release binary and copies it to `dist/pavillion`. That is the program. Cargo writes `src-tauri/target/release/pavillion` on the way. `build/` is the C library and tests. `ui/dist/` is the page Tauri embeds. `make clean` removes `build/` and `dist/`.
-- The binary links WebKitGTK from the system (`webkit2gtk-4.1`). It contains neither Chromium nor WebKit. `bundle.active` is false, so `make build` produces no AppImage, deb, or rpm. AppImage is not a target while it would vendor WebKitGTK (tens of MB). `.deb` stays out.
-- Release compile: LTO, opt-level 3, `panic = "abort"`, strip. When `upx` is on the path, the release binary is packed afterwards; if the packed binary fails `--version`, the unpacked one ships and the failure is logged. UPX is not required.
+- Until V-1, one executable, `pavillion`. `make build` builds the release binary and copies it to `dist/pavillion`. Cargo writes `src-tauri/target/release/pavillion` on the way. `build/` is the C library and tests. `ui/dist/` is the page Tauri embeds. `make clean` removes `build/` and `dist/`. V-1 splits that name: `pavillion` becomes the C client and `pavillion-gui` is the Tauri ELF, both in the same package. See the V Lock.
+- WebKit bytes are never inside either ELF. No static link, no vendored WebKit, no AppImage, and no other bundle that would copy the library in. `bundle.active` is false, so `make build` produces no AppImage, deb, or rpm. `.deb` stays out. Only `pavillion-gui` has a dynamic `NEEDED` entry for system `libwebkit2gtk-4.1` (and the GTK, JavaScriptCore, and libsoup libraries Tauri needs with it). The `pavillion` CLI ELF has no `NEEDED` entry for those libraries. The rpm depends on `webkit2gtk4.1`, so the GUI process maps the system copy. The bytes stay in that system package. The GUI binary contains neither Chromium nor a copy of WebKit.
+- Release compile: LTO, opt-level 3, `panic = "abort"`, strip. No UPX. The rpm is already compressed, UPX raises RSS and startup, and a packed ELF that fails `--version` is a second artifact to distrust. The size that matters for the window is the system WebKit, which stays a dependency and is not copied into the package.
+- `ui/dist` gzipped size is recorded in Accomplished when H-2 (CodeMirror), N-3 (Tabulator), and O-2 (SunEditor) land. Those three are accepted. A further UI library needs a Lock change first. The recorded size is not a reason to drop one of the three.
+- Dynamic link only, for curl, SQLite, OpenSSL (via curl), Jansson, GMime, libical, libsecret, and libuuid. Lua 5.5 and lexbor are the exceptions: they are vendored (R-1, N-2) so the version is pinned and there is no system package to depend on. Do not static-link the system libraries to "make one file".
 - `cargo tauri build` embeds `ui/dist`; the WebView loads it through Tauri's custom protocol. Dev uses the Vite URL. The UI is not a Hydrogen payload: Pavillion has no HTTP server for its own window.
-- Updates are a dnf repository fed by the rpm. No in-app updater and no telemetry. The rpm depends on `webkit2gtk4.1`, `libsecret`, `gmime30`, `libical`, `jansson`, `libcurl`, `sqlite-libs`, and a Secret Service provider (gnome-keyring or KeePassXC, as a weak dependency); `libayatana-appindicator-gtk3` only if the tray is enabled.
+- Updates are a dnf repository fed by the rpm. No in-app updater and no telemetry. The rpm depends on `webkit2gtk4.1`, `libsecret`, `gmime30`, `libical`, `jansson`, `libcurl`, `sqlite-libs`, `libuuid`, and a Secret Service provider (gnome-keyring or KeePassXC, as a weak dependency); `libayatana-appindicator-gtk3` only if the tray is enabled. Lua and lexbor are not dependencies; they are inside the core library.
 - Desktop file `com.500nodes.Pavillion.desktop` with `MimeType=x-scheme-handler/mailto;text/calendar;text/vcard;` and `Categories=Network;Email;Calendar;ContactManagement;`. Document `xdg-mime default com.500nodes.Pavillion.desktop x-scheme-handler/mailto`.
 - Autostart optional via `tauri-plugin-autostart` (XDG autostart), off by default, with a start-minimized option. Reminders and retention only run while the app runs, so Settings recommends autostart.
 - Wayland: no X11-only APIs; test under GNOME (Fedora) and Hyprland (Omarchy). Document `WEBKIT_DISABLE_DMABUF_RENDERER=1` as a fallback for rendering glitches. Tray optional (Wayland support varies).
@@ -107,12 +109,12 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Goal:** Pavillion installs and updates on Fedora with `dnf`.
 
-**Entry gate:** V-4 complete.
+**Entry gate:** N-9 complete. Milestone 3 includes the composer, so `mailto:` has somewhere to go. Packaging does not wait on files or on the CLI.
 
 **Work items:**
 
 - [ ] `packaging/rpm/pavillion.spec` building from a source tarball with `make build`, installing `/usr/bin/pavillion`, the desktop file, icons, and the metainfo file.
-- [ ] UPX step with the fallback.
+- [ ] No UPX step (Packaging Lock).
 - [ ] A dnf repository layout (`createrepo_c`), signing key, and a `.repo` file; where it is hosted is open question W-Q1.
 - [ ] Autostart setting through `tauri-plugin-autostart`.
 - [ ] The `mailto:` registration verified after install.

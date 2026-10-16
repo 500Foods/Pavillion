@@ -45,7 +45,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Goal:** A query in the syntax returns matching local messages quickly.
 
-**Entry gate:** O-6 complete.
+**Entry gate:** N-1 complete. Header rows already exist from M-4; this phase replaces that stub and indexes bodies once N-1 has fetched them. It does not wait on the composer.
 
 **Work items:**
 
@@ -65,7 +65,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Goal:** `/` focuses a search field, results show as a list, and the server can widen them.
 
-**Entry gate:** Q-1 complete.
+**Entry gate:** Q-1 and N-3 complete. The results use the message list.
 
 **Work items:**
 

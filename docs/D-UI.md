@@ -37,14 +37,14 @@ The frame diagram below is the hello-world page. The shell preview replaced that
 ## Lock
 
 - ES modules, HTML, and CSS variables. Vite serves them. No framework and no CSS library.
-- `ui/src/api.js` is the only module that imports Tauri. A screen calls functions in that file and does not call `invoke`.
+- `ui/src/api.js` is the only module that imports Tauri until G-3, which moves that import to `ui/src/transport/tauri.js`. A screen calls functions in `api.js` and does not call `invoke`.
 - The UI does not read `Pavillion.json`. Status comes from `pavillion_status`.
-- Tabulator is not a dependency until a screen is a table.
+- Mail, contacts, and files lists use Tabulator, themed on `--pav-*`, with text formatters (N-3, and the same module in S and U). The mailbox tree is hand-built (E). The activity table is a plain DOM table (I-2). Calendar grids stay plain DOM. No other table library.
 - The message pane, when it exists, is a sandboxed iframe with no script and no bridge. The shell does not put IPC on `window` inside a child frame.
 - One window. (A browse tab in [J-TABS.md](J-TABS.md) J-7 is a child webview inside it, not a second window.)
 - Times are 24 h (`HH:mm`) by default everywhere, dates `2026-10-14` or `Oct 14` (`preferences.time_format`). Default time zone `America/Vancouver`.
 - Accessibility: full keyboard navigation, visible focus rings, ARIA roles on lists, trees, and grids, contrast at least 4.5:1 in every theme, `prefers-reduced-motion` respected, font scaling through the zoom settings.
-- CodeMirror 6 is the source editor for HTML, Lua, and the log ([H-LOGGING.md](H-LOGGING.md)). SunEditor is the rich mail composer, isolated per [O-COMPOSE.md](O-COMPOSE.md). Each becomes a dependency in the phase that first uses it.
+- CodeMirror 6 is the log viewer ([H-LOGGING.md](H-LOGGING.md) H-2) and the source editor for HTML and Lua (F-8, R-4). The composer is SunEditor in the sandboxed frame ([O-COMPOSE.md](O-COMPOSE.md) O-2), plus a plain-text mode. H-2, N-3, and O-2 install those libraries. This document does not.
 - The main window runs the Font Awesome kit, which needs `'unsafe-inline'` scripts. Outside HTML never goes into the main DOM; use `textContent` or the message pane. Icon libraries are typed https URLs on an allowlist, and every icon snippet passes the shared icon sanitizer. See the Icons section of the [F-HARDEN.md](F-HARDEN.md) Lock.
 
 ### Frame
@@ -86,7 +86,7 @@ Settings is a screen, not a popup. Its button sits on the bottom of the nav, wit
 
 Activity is a tab opened from the bottom of the nav, including while Settings is open. It is a read-only view of the core log: refresh, scroll to the newest line on open, monospace, and a font size for that view. Times on screen are local `HH:mm:ss.mmm`. The file format stays the millisecond UTC line in [C-CORE.md](C-CORE.md). The view asks the core for the text. It does not open the log file itself.
 
-CodeMirror 6 is the source editor for HTML and for Lua. SunEditor is the rich mail composer. Neither is installed in this document. Icons are the Font Awesome Pro Plus 7.3.1 SVG kit (`https://kit.fontawesome.com/45801522ef.js`). Duotone, Sharp, and Thin are the families to use. Mail keeps the roof mark. The kit hosts are allowed by the CSP in the [F-HARDEN.md](F-HARDEN.md) Lock. The kit is used as-is, and Pro files are not vendored. The shell preview loads the kit. This phase did not.
+CodeMirror 6 is the log viewer (H-2) and the source editor for HTML and for Lua (F-8, R-4). The composer is SunEditor in the sandboxed frame (O-2), plus a plain-text mode. None of the three is installed in this document. Icons are the Font Awesome Pro Plus 7.3.1 SVG kit (`https://kit.fontawesome.com/45801522ef.js`). Duotone, Sharp, and Thin are the families to use. Mail keeps the roof mark. The kit hosts are allowed by the CSP in the [F-HARDEN.md](F-HARDEN.md) Lock. The kit is used as-is, and Pro files are not vendored. The shell preview loads the kit. This phase did not.
 
 D-1 keeps the five variables in the lock above. A later theme phase follows Lithium: dark-first semantic custom properties, and a theme is an override of those properties. `preferences.theme` names `dark.css` or `light.css`. The control is the Theme heading under Settings. The shell has no theme icon. Gradients live in those files. `preferences.ui` does not store backgrounds. Pavillion does not import Lithium's stylesheets or fonts. The shell preview links `dark.css` directly and does not read `preferences.theme`.
 
@@ -184,7 +184,7 @@ D-1 keeps the five variables in the lock above. A later theme phase follows Lith
 
 **Work items:**
 
-- [ ] Audit every color literal in `ui/styles` and `ui/src`; move each to a semantic variable.
+- [ ] Audit every color literal in `ui/styles` and `ui/src`; move each to a semantic variable. Keep `--pav-log-*` from H-2, and give light mode its own values for them.
 - [ ] `light.css` assigning the same names (a first pass. D-5 tunes it).
 - [ ] `preferences.theme` (`dark`, `light`, `system`) through `prefs.set`. The Theme setting in Settings now persists. `system` follows `prefers-color-scheme` live.
 - [ ] Vitest: `theme-vars.test.js` checks that `dark.css` and `light.css` define the same variable names.

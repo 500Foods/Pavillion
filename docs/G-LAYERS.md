@@ -90,8 +90,7 @@ const PavPlatform *pav_platform(void);
 
 | Surface | Functions |
 | --- | --- |
-| Today (before F-1) | `pavillion_start`, `pavillion_stop`, `pavillion_status` (`PavillionStatus`), `pavillion_prefs_get/apply` (`PavShellPrefs`), `pavillion_icons_get/apply`, `pavillion_kit_get/apply`, `pav_ui_log` |
-| After F-1 | the above plus `pavillion_api_version` (F Lock, FFI) |
+| Today (F-1) | `pavillion_start`, `pavillion_stop`, `pavillion_status` (`PavillionStatus`), `pavillion_prefs_get/apply` (`PavShellPrefs`), `pavillion_icons_get/apply`, `pavillion_kit_get/apply`, `pav_ui_log`, `pavillion_api_version` |
 | After G-3 | `pavillion_start`, `pavillion_stop`, `pavillion_call`, `pavillion_free`, `pav_on_event`, `pavillion_api_version`, and the two structs until G-8 (the per-command entry points become commands in G-2, and their callers are gone after G-3) |
 | After G-8 (target) | `pavillion_start`, `pavillion_stop`, `pavillion_call`, `pavillion_free`, `pav_on_event`, `pav_protocol`, `pav_cli_main`, `pavillion_api_version`. No struct except `PavBytes`. |
 
@@ -103,7 +102,7 @@ const PavPlatform *pav_platform(void);
 int  pavillion_call(const char *cmd, const char *args_json, char **result_json);
 void pavillion_free(void *p);
 
-/* One callback for every event. name is "sync.state", "log.line", ...;
+/* One callback for every event. name is "sync.state", "log.lines", ...;
    json is the payload. Called on a core-owned thread; the host only queues. */
 typedef void (*pav_event_cb)(const char *name, const char *json, void *user);
 void pav_on_event(pav_event_cb cb, void *user);
@@ -150,7 +149,7 @@ int pav_protocol(const char *req_json, PavBytes *out);
   - every decision a URI scheme makes
 - Window state: the host sends raw facts to the core with `window.report {x, y, w, h, maximized, monitors}` on move, resize, and maximize. Before showing the window it asks `window.initial`, then applies the rectangle the core returns. Rust holds no saved-state struct and no timer.
 - URI schemes (`pav-cid`, `pav-blob`, `pav-link`): Rust forwards each request to `pav_protocol` under the L2 scheme-handler contract and never parses the URL, checks ownership, or picks a MIME type.
-- The CLI socket listener and the CLI client are both C ([V-CLI.md](V-CLI.md)). `main.rs` calls `pav_cli_main(argc, argv)` before Tauri builds.
+- The CLI socket listener and the CLI client are both C ([V-CLI.md](V-CLI.md)). From V-1 the `pavillion` ELF is that C client and execs `pavillion-gui` only when there is no subcommand. `main.rs` does not grow a subcommand parser. G-8 may call a `pav_cli_main` stub from `main.rs` until V-1 moves the entry point. WebKit bytes are never inside either ELF. Only `pavillion-gui` dynamically needs system `libwebkit2gtk`. The CLI ELF does not link it.
 - Review rule: a Rust change that is not a Tauri API call, a plugin registration, or plain forwarding needs a reason recorded in this Lock. Target after G-8: `lib.rs` under 200 lines, with no `serde` structs other than the forwarded `Value`.
 - Per-command Rust handlers (`status`, `prefs`, `save_layout`, `save_icons`, `save_kit`, `ui_log`) are deleted in G-3. G-8 moves the rest of today's `lib.rs` logic (window state, prefs struct conversion, workdir) into C. The capability file then lists `allow-core` and the plugin permissions only.
 - Lithium (and later Hydrogen) is another host. It loads the same `ui/` and supplies its own transport. Hydrogen links the C core directly and needs nothing from `src-tauri`. Nothing in `ui/` may import `@tauri-apps/*` except `ui/src/transport/tauri.js`.
@@ -205,7 +204,7 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 
 **Goal:** Every OS call in the core goes through `pav_platform()`. Tests run on a fake platform.
 
-**Entry gate:** F-7 complete.
+**Entry gate:** F-2 complete. G-1 does not need the icon sanitizer. It needs the config split and the UI blob so profile writes go through the helpers and, from this phase, through `write_private`.
 
 **Work items:**
 
@@ -256,6 +255,7 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 - [ ] `src-tauri/src/lib.rs`: `#[tauri::command] async fn core(cmd: String, args: serde_json::Value) -> Result<Value, ApiError>` over `spawn_blocking` and `pavillion_call`. Register `pav_on_event` once; the callback pushes into a channel and a task emits `pav`.
 - [ ] Delete `status`, `prefs`, `save_layout`, `save_icons`, `save_kit`, `ui_log` and their permissions. Capability: `allow-core` plus plugin permissions.
 - [ ] `ui/src/transport/tauri.js` (the only `@tauri-apps` import) and `ui/src/transport/mock.js` (in-memory, for Vitest and the G-4 harness).
+- [ ] Add Vitest (`ui/package.json`) and make `make test` run `npm --prefix ui test`. This is the first phase that does; F-3 and later add tests, they do not add the runner again.
 - [ ] `ui/src/api.js` becomes `createApi(transport)` with namespaced methods for the real commands. `main.js` builds it with the Tauri transport.
 - [ ] Vitest: `api.test.js` runs the API over the mock transport; `no-tauri-imports.test.js` asserts only `transport/tauri.js` imports `@tauri-apps`.
 
@@ -300,7 +300,7 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 
 - [ ] `ui/src/index.js` exports `mount(el, api, opts)` and `unmount()`. `main.js` is the Tauri host page: it loads the kit, builds the API, and calls `mount(document.querySelector("#app"), api, { hostServices })`.
 - [ ] Move the static shell markup from `ui/index.html` into `ui/src/shell/template.js` built with DOM calls (no `innerHTML` of outside data; static markup may use a `// html-ok` template).
-- [ ] Rename every custom property to `--pav-*` and scope every rule under `.pav-root`. `dark.css` assigns only `--pav-*`.
+- [ ] Rename every custom property to `--pav-*` and scope every rule under `.pav-root`. `dark.css` assigns only `--pav-*`. Keep the `--pav-log-*` properties H-2 added. The rename covers the older names. It does not drop the log colors.
 - [ ] Global listeners (`keydown`, `resize`, `pointerup`) attach to the mount root or are removed on `unmount`.
 - [ ] `ui/harness.html` (not in the release bundle): mounts with the mock transport into a `div` inside a page that has its own conflicting `--bg` and `button` styles.
 - [ ] Vitest with jsdom: `mount.test.js` mounts, unmounts, and asserts no listeners or nodes remain outside `el`.

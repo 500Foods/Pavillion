@@ -33,7 +33,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 - **One engine, the app is the only writer.** CLI commands go through the dispatcher, so their writes reach SQLite only through the L Lock's write queue, the same path as the UI's. The CLI never opens SQLite, never calls JMAP, never reads the keyring. The running app owns the store, sync, the op queue, and the keyring. One command implementation (the G-2 dispatcher), two transports: Tauri for the window, the socket for the CLI. A change through the CLI shows in the window at once, and the window sees the CLI's drafts, sends, and audit entries.
 - **The CLI requires a running instance.** The app listens on a Unix domain socket `$XDG_RUNTIME_DIR/pavillion/cli.sock` (via `PAV_DIR_RUNTIME`), mode 0600 in a 0700 directory. Protocol: JSON-RPC 2.0, one JSON object per line. If the app is not running, every command fails at once with exit 6. The CLI never launches the app and never works on its own: with the app closed, no bot acts and no mail goes out. The trade-off is laptop use; a later `pavillion daemon` (same core, no window) may keep the same socket contract.
-- **Same binary, subcommand mode.** Dispatch order in `main.rs`: a known flag (`--help`, `--version`) prints and exits; then a known subcommand runs the socket client (C, `pav_cli_main`) and exits before `pavillion_lib::run`, so Tauri never builds, the WebView never starts, `pavillion_start` is never called, and single-instance never sees the process; then exactly one positional argument is the working directory (A-5). The subcommand check comes before the workdir check because `pavillion status` is one non-flag argument. A separate client binary is lighter, but one file is simpler on the update path; split later only if startup cost proves real.
+- **The CLI must not load WebKitGTK.** Returning before `gtk_init` is not enough: the dynamic linker maps every `NEEDED` library at process start, and a Tauri binary needs `libwebkit2gtk`. V-1 ships two ELFs in one package. `/usr/bin/pavillion` is the C client (`pav_cli_main`): flags, subcommands, and the socket. It links the core's client objects, Jansson, and nothing from GTK or WebKit. With no subcommand it execs `pavillion-gui` and does not open the socket. That is the only launch path. `/usr/bin/pavillion-gui` is the Tauri binary and the only ELF with a dynamic `NEEDED` entry for system `libwebkit2gtk`. WebKit bytes are never inside either ELF: no static link, no vendored WebKit, no AppImage. The desktop file runs `pavillion`, not the GUI ELF. The rpm installs both and depends on the system WebKit package; there is no second package. G-8's `pav_cli_main` stub is the interim; V-1 replaces it with this entry point.
 - One socket path for every caller in v1 (one process, one profile). The profile id in the path is a later seam.
 - **Bots paused:** a toolbar toggle and a setting, the same value. While on, the socket rejects every token with exit 7 and only the human's own session works. Pause on screen lock or idle, and a tray state, are later options.
 - **Handshake.** The first message on every socket connection is `handshake`. The client sends `{"jsonrpc":"2.0","method":"handshake","params":{"protocol":1,"apiVersion":<PAVILLION_API_VERSION built in>,"capabilities":["watch","json"]},"id":0}`. The app replies with its `protocol`, `apiVersion`, `appVersion`, and `capabilities` (the subset it supports).
@@ -49,7 +49,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - **JSON first.** `--json` on every command, stable camelCase fields matching `docs/API.md`, `--quiet` for people. `help --json` lists every command and option, one line each. Output is ids, sizes, and headers; a body only with `--body`. Redaction applies to output and audit alike.
 - **Audit:** `cli_audit` records key name, command, target id, time, and result for every mutating command. A message a bot drafted or sent carries a **local** marker (`email.local_marks.bot`), never a JMAP keyword because other clients must not see it, and the window shows it.
 - **`watch --json`** streams the core's events from the app's own sync; no second EventSource and no polling.
-- Timing: the socket, `status`, `help --json`, keys, and pause could land as soon as the dispatcher exists; they are sequenced after the initial working copy because nothing else depends on them. The A-6 flags stay in front of everything.
+- Timing: the socket, `status`, `help --json`, keys, and pause need the dispatcher and a running app. They are sequenced just after milestone 3 (V-1, V-2, V-3) so an agent can drive mail as soon as mail exists. V-4 (contacts, calendar, `watch`, `config`) waits until S-4 and T-5. The A-6 flags stay in front of everything and move into the C `pavillion` binary in V-1.
 
 ## V-1: Socket, dispatch, status, help
 
@@ -58,12 +58,12 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Goal:** `pavillion status --json` answers from the running app and exits 6 when it is not running.
 
-**Entry gate:** U-2 complete.
+**Entry gate:** N-9 complete. Mail exists, and the dispatcher has existed since G-2. Files are not a dependency.
 
 **Work items:**
 
 - [ ] Core: a socket listener thread in `core/src/cli_sock.c` (not `src-tauri`, per the G L3 Lock). It reads JSON-RPC lines and hands them to the dispatcher with a CLI caller identity, starting after `core ready`. The client is `pav_cli_main` in `core/src/cli_client.c`.
-- [ ] `main.rs` dispatch order per the Lock. The client is `pav_cli_main` in `core/src/cli_client.c`, with no Rust beyond the call (G L3 Lock).
+- [ ] `/usr/bin/pavillion` is `pav_cli_main` (C). No subcommand execs `pavillion-gui`. `main.rs` keeps no subcommand logic (G L3 Lock). `ldd` on the `pavillion` ELF lists no `libwebkit` and no `libgtk`. `readelf -d` on `pavillion-gui` shows `libwebkit2gtk-4.1.so` as `NEEDED`, and neither ELF contains a WebKit archive or a copied `.so`. `pavillion status` with the app closed exits 6 in under 100 ms.
 - [ ] The `handshake` per the Lock, done by the client before every command and checked by the listener.
 - [ ] `status`, `help --json`, `version`; the exit code table.
 - [ ] Tests: a Unity integration test starting the core on a temp workdir with the fake platform and a socket in a temp runtime dir: `test_cli_app_not_running_exit_6`, `test_cli_handshake_mismatch_exit_9` (a listener built with `apiVersion` + 1), `test_cli_method_before_handshake_rejected`, `test_cli_status_json`, `test_cli_subcommand_before_workdir`, `test_cli_never_starts_core`.
@@ -83,7 +83,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Work items:**
 
-- [ ] `bot_key` handling: create (shows the key once), list, revoke with cascade; Settings → Bots page; the pause toggle in the toolbar and in Settings.
+- [ ] Migration `003_cli.sql` (`bot_key`, `cli_audit`) applied by the L runner. L-3's PIM migration is numbered after this one and does not create these tables. Then `bot_key` handling: create (shows the key once), list, revoke with cascade; Settings → Bots page; the pause toggle in the toolbar and in Settings.
 - [ ] Scope and account checks in the socket path; exits 7 and 8.
 - [ ] `cli_audit` writes; an Audit view in Settings → Bots.
 - [ ] Tests: `test_key_hash_only_stored`, `test_scope_denied_exit_8`, `test_paused_exit_7`, `test_revoke_cascades`, `test_audit_has_no_key`.
@@ -118,7 +118,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Goal:** Bots can follow events and manage settings, contacts, and events within their scopes.
 
-**Entry gate:** V-3 complete.
+**Entry gate:** V-3, S-4, and T-5 complete. Contacts and calendar commands need those stores. `watch` and `config` can be the first work items; the PIM commands follow in the same phase only because the gate already holds.
 
 **Work items:**
 
