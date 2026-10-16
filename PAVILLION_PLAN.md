@@ -2,7 +2,7 @@
 
 Status: v0.7 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 
-**Resume:** The hello-world sequence (steps 1–20) is complete, and the shell preview is in the tree. F-1 landed 2026-10-16: `pavillion_api_version()` returns `PAVILLION_API_VERSION` (1), `build.rs` copies that macro into the shell, and a mismatch prints `API version mismatch: core=<n> shell=<m>` to stderr and exits 1 before the window. It does not call `pav_log` and it does not create the working directory. v0.7 puts the CodeMirror log (H-2, H-3) immediately after H-1, and restores Tabulator and SunEditor in the phases that first need them. WebKit bytes stay out of both ELFs; only `pavillion-gui` dynamically needs the system library. W-1 is complete. The Fedora job is green ([run 38961249214](https://github.com/500Foods/Pavillion/actions/runs/38961249214)), a deliberate Unity failure turned it red ([run 38962441480](https://github.com/500Foods/Pavillion/actions/runs/38962441480)), and the revert is green ([run 38962706169](https://github.com/500Foods/Pavillion/actions/runs/38962706169)). **Next: step 23, F-5 — trim `config.c` with a helper layer**, in [docs/F-HARDEN.md](docs/F-HARDEN.md). Read that document's Lock, then F-5 only.
+**Resume:** The hello-world sequence (steps 1–20) is complete, and the shell preview is in the tree. F-1 landed 2026-10-16: `pavillion_api_version()` returns `PAVILLION_API_VERSION` (1), `build.rs` copies that macro into the shell, and a mismatch prints `API version mismatch: core=<n> shell=<m>` to stderr and exits 1 before the window. It does not call `pav_log` and it does not create the working directory. v0.7 puts the CodeMirror log (H-2, H-3) immediately after H-1, and restores Tabulator and SunEditor in the phases that first need them. WebKit bytes stay out of both ELFs; only `pavillion-gui` dynamically needs the system library. W-1 is complete. The Fedora job is green ([run 38961249214](https://github.com/500Foods/Pavillion/actions/runs/38961249214)), a deliberate Unity failure turned it red ([run 38962441480](https://github.com/500Foods/Pavillion/actions/runs/38962441480)), and the revert is green ([run 38962706169](https://github.com/500Foods/Pavillion/actions/runs/38962706169)). F-5 landed 2026-10-16: config parse, preferences, and ensure/prepare sit on `pav_cfg.h`, split into `config.c`, `config_prefs.c`, and `config_fs.c` (1,414 lines together, under the old 1,493). `PAVILLION_API_VERSION` stays 1. **Next: step 24, F-2 — UI preferences as an opaque JSON blob**, in [docs/F-HARDEN.md](docs/F-HARDEN.md). Read that document's Lock, then F-2 only.
 
 **Read first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), one page with diagrams of the layers, the threads, and the data flow.
 
@@ -79,8 +79,8 @@ Written later by phases (not plans): `docs/API.md` (G-2) and `docs/LUA_API.md` (
 | | | *Milestone 0: hello world, plus the shell preview (not a phase)* | | Done |
 | 21 | F-1 | API version check (`pavillion_api_version`) | Medium | Done |
 | 22 | W-1 | CI on GitHub Actions: `make test` and `make build` on Fedora | Medium | Done |
-| 23 | **F-5** | **Trim `config.c` with a helper layer** | Medium | **Next** |
-| 24 | F-2 | UI preferences as an opaque JSON blob (Fonts persisted) | Medium | |
+| 23 | F-5 | Trim `config.c` with a helper layer | Medium | Done |
+| 24 | **F-2** | **UI preferences as an opaque JSON blob (Fonts persisted)** | Medium | **Next** |
 | 25 | G-1 | Platform layer and a test fake; macOS core CI job | Medium | |
 | 26 | G-2 | JSON command dispatcher, `pav_on_event`, `docs/API.md` | Medium | |
 | 27 | G-3 | Generic Tauri `core` command; transport-agnostic `api.js`; Vitest on `make test` | Medium | |

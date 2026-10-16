@@ -109,7 +109,12 @@ fn main() {
     println!("cargo:rerun-if-changed=../core/include/pavillion.h");
     println!("cargo:rerun-if-changed=../core/src/pavillion.c");
     println!("cargo:rerun-if-changed=../core/src/config.c");
+    println!("cargo:rerun-if-changed=../core/src/config_prefs.c");
+    println!("cargo:rerun-if-changed=../core/src/config_fs.c");
+    println!("cargo:rerun-if-changed=../core/src/config_internal.h");
+    println!("cargo:rerun-if-changed=../core/src/cfg.c");
     println!("cargo:rerun-if-changed=../core/include/pav_config.h");
+    println!("cargo:rerun-if-changed=../core/include/pav_cfg.h");
     println!("cargo:rerun-if-changed=../core/src/store.c");
     println!("cargo:rerun-if-changed=../core/include/pav_store.h");
 

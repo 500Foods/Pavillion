@@ -18,7 +18,9 @@ all: lib
 lib: $(LIB)
 
 $(LIB): core/CMakeLists.txt core/include/pavillion.h core/include/pav_config.h \
-		core/include/pav_store.h core/src/pavillion.c core/src/config.c core/src/store.c
+		core/include/pav_cfg.h core/include/pav_store.h core/src/pavillion.c \
+		core/src/cfg.c core/src/config.c core/src/config_prefs.c core/src/config_fs.c \
+		core/src/config_internal.h core/src/store.c
 	cmake -S core -B $(BUILD_DIR)
 	cmake --build $(BUILD_DIR)
 

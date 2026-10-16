@@ -1,9 +1,12 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "pav_config.h"
+#include "pav_cfg.h"
 #include "pav_store.h"
 #include "pavillion.h"
 #include "unity.h"
+
+#include <jansson.h>
 
 #include <sqlite3.h>
 
@@ -1378,6 +1381,195 @@ void test_api_version_matches_header(void) {
     TEST_ASSERT_TRUE(version >= 1);
 }
 
+void test_cfg_str_defaults_and_rejects_wrong_type(void) {
+    json_t *obj = json_object();
+    char out[16];
+    char err[64];
+
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, cfg_str(obj, "name", "fallback", out, sizeof(out), err, sizeof(err)));
+    TEST_ASSERT_EQUAL_STRING("fallback", out);
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_str(obj, "name", "kept", err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, cfg_str(obj, "name", "fallback", out, sizeof(out), err, sizeof(err)));
+    TEST_ASSERT_EQUAL_STRING("kept", out);
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_int(obj, "name", 1, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(-1, cfg_str(obj, "name", "fallback", out, sizeof(out), err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(err, "name"));
+
+    json_object_del(obj, "name");
+    TEST_ASSERT_EQUAL_INT(-1, cfg_str(obj, "name", NULL, out, sizeof(out), err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(err, "name"));
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_str(obj, "name", "this-value-is-too-long", err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(-1, cfg_str(obj, "name", NULL, out, sizeof(out), err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(err, "too long"));
+
+    json_decref(obj);
+}
+
+void test_cfg_num_range_clamps_and_steps(void) {
+    json_t *obj = json_object();
+    double out = -1;
+    double written = -1;
+    char err[64];
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_num_range(obj, "n", 0.5, 0.0, 1.0, 0.25, &out, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_DOUBLE(0.5, out);
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_num(obj, "n", 0.4, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, cfg_num_range(obj, "n", 0.5, 0.0, 1.0, 0, &out, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_DOUBLE(0.4, out);
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_num_range(obj, "n", 0.5, 0.0, 1.0, 0.25, &out, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_DOUBLE(0.5, out);
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_num(obj, "n", 2.0, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, cfg_num_range(obj, "n", 0.5, 0.0, 1.0, 0, &out, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_DOUBLE(1.0, out);
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_num(obj, "n", -1.0, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, cfg_num_range(obj, "n", 0.5, 0.0, 1.0, 0, &out, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, out);
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_str(obj, "n", "nope", err, sizeof(err)));
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(-1, cfg_num_range(obj, "n", 0.5, 0.0, 1.0, 0, &out, err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(err, "n"));
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_num(obj, "n", 0.4, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_DOUBLE(0.4, json_real_value(json_object_get(obj, "n")));
+
+    out = 0;
+    TEST_ASSERT_EQUAL_INT(-1, cfg_set_num_range(obj, "n", 0.0 / 0.0, 0.0, 1.0, 0, &out, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_DOUBLE(0.4, json_real_value(json_object_get(obj, "n")));
+    TEST_ASSERT_EQUAL_DOUBLE(0, out);
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_num_range(obj, "n", 0.4, 0.0, 1.0, 0.25, &written, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_DOUBLE(0.5, written);
+    TEST_ASSERT_EQUAL_DOUBLE(0.5, json_real_value(json_object_get(obj, "n")));
+
+    json_decref(obj);
+}
+
+void test_cfg_int_range_clamps_and_steps(void) {
+    json_t *obj = json_object();
+    int out = -1;
+    int written = -1;
+    char err[64];
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_int_range(obj, "n", 14, 0, 100, 10, &out, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(10, out);
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_int(obj, "n", 14, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, cfg_int_range(obj, "n", 0, 0, 100, 0, &out, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(14, out);
+    TEST_ASSERT_EQUAL_INT(0, cfg_int_range(obj, "n", 0, 0, 100, 10, &out, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(10, out);
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_int(obj, "n", 15, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, cfg_int_range(obj, "n", 0, 0, 100, 10, &out, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(20, out);
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_int(obj, "n", 250, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, cfg_int_range(obj, "n", 0, 0, 100, 0, &out, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(100, out);
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_num(obj, "n", 1.0, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(-1, cfg_int_range(obj, "n", 0, 0, 100, 0, &out, err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(err, "n"));
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_int_range(obj, "n", 14, 0, 100, 10, &written, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(10, written);
+    TEST_ASSERT_EQUAL_INT(10, (int)json_integer_value(json_object_get(obj, "n")));
+
+    json_decref(obj);
+}
+
+void test_cfg_bool_defaults_and_rejects_wrong_type(void) {
+    json_t *obj = json_object();
+    int out = -1;
+    char err[64];
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_bool(obj, "on", 1, &out, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(1, out);
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_bool(obj, "on", 0, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, cfg_bool(obj, "on", 1, &out, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, out);
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(obj, "on")));
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_str(obj, "on", "yes", err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(-1, cfg_bool(obj, "on", 1, &out, err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(err, "on"));
+    TEST_ASSERT_TRUE(json_is_string(json_object_get(obj, "on")));
+
+    json_decref(obj);
+}
+
+void test_cfg_enum_rejects_unknown(void) {
+    json_t *obj = json_object();
+    char out[16];
+    char err[80];
+    static const char *const allowed[] = {"system", "hidden", NULL};
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_enum(obj, "chrome", allowed, "system", out, sizeof(out), err, sizeof(err)));
+    TEST_ASSERT_EQUAL_STRING("system", out);
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_enum(obj, "chrome", "hidden", allowed, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, cfg_enum(obj, "chrome", allowed, "system", out, sizeof(out), err, sizeof(err)));
+    TEST_ASSERT_EQUAL_STRING("hidden", out);
+
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(-1, cfg_set_enum(obj, "chrome", "nope", allowed, err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(err, "chrome"));
+    TEST_ASSERT_EQUAL_STRING("hidden", json_string_value(json_object_get(obj, "chrome")));
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_int(obj, "chrome", 1, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(-1, cfg_enum(obj, "chrome", allowed, "system", out, sizeof(out), err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(err, "chrome"));
+
+    json_object_del(obj, "chrome");
+    TEST_ASSERT_EQUAL_INT(-1, cfg_enum(obj, "chrome", allowed, NULL, out, sizeof(out), err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(err, "chrome"));
+
+    json_decref(obj);
+}
+
+void test_cfg_obj_and_at_do_not_replace_or_create(void) {
+    json_t *root = json_object();
+    json_t *prefs;
+    json_t *ui;
+    json_t *nav;
+    char err[64];
+
+    TEST_ASSERT_NULL(cfg_at(root, "preferences.ui.nav"));
+    TEST_ASSERT_NULL(json_object_get(root, "preferences"));
+
+    prefs = cfg_obj(root, "preferences", 1);
+    TEST_ASSERT_TRUE(json_is_object(prefs));
+    TEST_ASSERT_EQUAL_PTR(prefs, cfg_obj(root, "preferences", 0));
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_str(prefs, "ui", "nope", err, sizeof(err)));
+    TEST_ASSERT_NULL(cfg_obj(prefs, "ui", 1));
+    TEST_ASSERT_TRUE(json_is_string(json_object_get(prefs, "ui")));
+
+    json_object_del(prefs, "ui");
+    ui = cfg_obj(prefs, "ui", 1);
+    nav = cfg_obj(ui, "nav", 1);
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_int(nav, "width", 320, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_PTR(nav, cfg_at(root, "preferences.ui.nav"));
+    TEST_ASSERT_EQUAL_INT(320, (int)json_integer_value(cfg_at(root, "preferences.ui.nav.width")));
+
+    TEST_ASSERT_EQUAL_INT(0, cfg_set_null(nav, "x", err, sizeof(err)));
+    TEST_ASSERT_TRUE(json_is_null(cfg_at(root, "preferences.ui.nav.x")));
+    TEST_ASSERT_NULL(cfg_at(root, "preferences.ui.missing"));
+    TEST_ASSERT_NULL(json_object_get(ui, "missing"));
+    TEST_ASSERT_NULL(cfg_at(root, "preferences.ui.nav."));
+
+    json_decref(root);
+}
+
 void test_profile_read_kit_skips_zoom_window(void) {
     PavProfile *profile = NULL;
     char err[256];
@@ -1427,5 +1619,11 @@ int main(void) {
     RUN_TEST(test_kit_and_icons_apply_round_trip);
     RUN_TEST(test_profile_read_kit_skips_zoom_window);
     RUN_TEST(test_api_version_matches_header);
+    RUN_TEST(test_cfg_str_defaults_and_rejects_wrong_type);
+    RUN_TEST(test_cfg_num_range_clamps_and_steps);
+    RUN_TEST(test_cfg_int_range_clamps_and_steps);
+    RUN_TEST(test_cfg_bool_defaults_and_rejects_wrong_type);
+    RUN_TEST(test_cfg_enum_rejects_unknown);
+    RUN_TEST(test_cfg_obj_and_at_do_not_replace_or_create);
     return UNITY_END();
 }

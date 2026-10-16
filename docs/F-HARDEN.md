@@ -1,6 +1,6 @@
 # F — HARDEN
 
-**Status:** F-1 complete (2026-10-16). F-6 is superseded. The index names the next phase.
+**Status:** F-1 and F-5 complete (2026-10-16). F-6 is superseded. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Structural fixes found after D-3. They go in before mail is real, because each gets more expensive once JMAP, accounts, and credentials sit on top of it. This document owns the main-window security rules: the CSP, the Font Awesome kit, and the rule that outside HTML never enters the main DOM.
@@ -12,7 +12,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
 | F-1 | API version check (`pavillion_api_version`) | Medium | Complete |
-| F-5 | Trim `config.c` with a helper layer | Medium | Not started |
+| F-5 | Trim `config.c` with a helper layer | Medium | Complete |
 | F-2 | UI preferences as an opaque JSON blob | Medium | Not started |
 | F-4 | Message pane isolation, proven before mail | Medium | Not started |
 | F-3 | Icon library sources: typed https URLs on an allowlist, presets | Medium | Not started |
@@ -152,7 +152,7 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 ## F-5: Trim `config.c` with a helper layer
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Complete (2026-10-16). No behavior change. `PAVILLION_API_VERSION` stays 1.
 
 **Goal:** `core/src/config.c` (1,493 lines after the preview) gets a small helper layer before accounts, rules, and mail settings are added to it. No behavior change.
 
@@ -160,14 +160,20 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 
 **Work items:**
 
-- [ ] Measure the repetition: count jansson get, type check, range clamp, and default blocks. Write the count in Accomplished.
-- [ ] Add `core/src/cfg.c` and `core/include/pav_cfg.h`: `cfg_obj(json_t*, key, create)`, `cfg_str(obj, key, def, out, len)`, `cfg_num_range(obj, key, def, min, max, step)`, `cfg_int_range`, `cfg_bool`, `cfg_enum(obj, key, const char *const *allowed, def)`, `cfg_set_*` writers, and a path helper `cfg_at(root, "preferences.ui.nav")`.
-- [ ] Move the existing parse, ensure, read, and write functions onto the helpers. Split the file: `config.c` (index, profile, load, scan), `config_prefs.c` (preferences), `config_fs.c` (ensure and prepare; G-1 moves its OS calls behind the platform).
-- [ ] Add Unity tests for each helper (`test_cfg_num_range_clamps_and_steps`, `test_cfg_enum_rejects_unknown`, and so on).
+- [x] Measure the repetition: count jansson get, type check, range clamp, and default blocks. Write the count in Accomplished.
+- [x] Add `core/src/cfg.c` and `core/include/pav_cfg.h`: `cfg_obj(json_t*, key, create)`, `cfg_str(obj, key, def, out, len)`, `cfg_num_range(obj, key, def, min, max, step)`, `cfg_int_range`, `cfg_bool`, `cfg_enum(obj, key, const char *const *allowed, def)`, `cfg_set_*` writers, and a path helper `cfg_at(root, "preferences.ui.nav")`.
+- [x] Move the existing parse, ensure, read, and write functions onto the helpers. Split the file: `config.c` (index, profile, load, scan), `config_prefs.c` (preferences), `config_fs.c` (ensure and prepare; G-1 moves its OS calls behind the platform).
+- [x] Add Unity tests for each helper (`test_cfg_num_range_clamps_and_steps`, `test_cfg_enum_rejects_unknown`, and so on).
 
 **Done means:** `make test` passes with every old test unchanged, and adding a profile field is one helper call plus a test.
 
 **Exit gate:** `make test` exits 0 with the old test names all present. `wc -l core/src/config*.c` is reported in Accomplished and the three files together are smaller than 1,493 lines. `make dev` restores the saved layout as before.
+
+**Accomplished:** The 1,493-line `config.c` had `json_object_get` 42 times, `json_is_*` type checks 37 times, `set_err` messages beginning `missing` 45 times (of 100 `set_err` calls), `copy_string` 18, `need_number` 12, `read_number` 8, `clamp_double` 7, `clamp_int` 3, and `json_object_set_new` 8. Those paths now go through `core/include/pav_cfg.h` and `core/src/cfg.c`: `cfg_err`, `cfg_obj`, `cfg_at`, `cfg_str`, `cfg_num_range`, `cfg_int_range`, `cfg_bool`, `cfg_enum`, and the `cfg_set_*` writers. The split is `config.c` 485 lines (index, profile, load, scan), `config_prefs.c` 584 (preferences), and `config_fs.c` 345 (ensure and prepare): 1,414 lines together. `cfg.c` is 429 lines and is not in that count. `make test` is 34 tests, 0 failures. The previous 28 names are unchanged. The new names are `test_cfg_str_defaults_and_rejects_wrong_type`, `test_cfg_num_range_clamps_and_steps`, `test_cfg_int_range_clamps_and_steps`, `test_cfg_bool_defaults_and_rejects_wrong_type`, `test_cfg_enum_rejects_unknown`, and `test_cfg_obj_and_at_do_not_replace_or_create`. `make dev` against a copy of the saved profile restored the window geometry `1900x1309+797+496` and the zoom labels 160%, 170%, 90%, 145%, and 90%. The real profile `~/.local/share/pavillion/profiles/default.json` was not rewritten. Its sha256 stayed `b9bbab0e7be74fcc06536ac624d873f501bf91c73df2d0596f9054e55944bcf8`.
+
+**Lessons learned:** A missing key uses the default. A present value of the wrong type is still an error. `step == 0` does not snap. `cfg_enum` on the chrome write would have changed `chrome must be system or hidden` into `chrome must be one of: system, hidden`. The Unity check only searches for `chrome`, so that change would have passed. The write path compares the two names first, then `cfg_set_enum` stores the value. Window size and position stay errors, not clamps. A pixel width still has to be a whole number before the pane clamp. Zoom shell is stored as written and clamped when the shell prefs are read. `json_object_set_new` already releases its value when the insert fails, so the icon writer does not release the object again. Scan stays in `config.c`. The ensure and prepare OS calls stay in `config_fs.c` for G-1. Which section is selected on launch was not part of this gate. The restored window showed Settings and the saved zoom sliders, and no UI file changed.
+
+**Handoff:** F-2 is next. Do not bump `PAVILLION_API_VERSION` for a helper or a new profile field. Adding a field is one helper call plus a test. Parse of theme, week start, time format, density, log level, and chrome still uses `cfg_str`, so an unknown string still loads. `cfg_at` only walks a dotted path and does not create objects. `cfg_obj` with create inserts one missing object and does not replace a value of the wrong type. G-1 still moves `mkdir`, `open`, `fchmod`, `stat`, and `getenv` out of `config.c` and `config_fs.c`.
 
 ## F-2: UI preferences as an opaque JSON blob
 
@@ -295,3 +301,4 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 - 2026-10-16 Review fixes: added a standalone pinned-kit-version line; `preferences.cache` and `sync` listed as core-read; FFI and scheme contracts point to the G L2 Lock; F-4 no longer depends on N-2 code (it fixes the `pav-link` URL shape); capabilities check is Vitest, not Rust.
 - 2026-10-16 F-1 is now an API version check (`pavillion_api_version()` and `PAVILLION_API_VERSION`). The struct-size check was dropped because G-8 deletes both structs, and the bump rule is in the FFI Lock.
 - 2026-10-16 F-1: `build.rs` reads the macro. A mismatch prints `API version mismatch: core=<n> shell=<m>` and exits 1. No `pav_log`, no working directory. Scratch `return 2` proved it. `make test` is 28 tests. The release window still showed the rail icons.
+- 2026-10-16 F-5: helpers in `pav_cfg.h` and `cfg.c`. `config.c` split into `config.c` (485), `config_prefs.c` (584), and `config_fs.c` (345), 1,414 lines together. `make test` is 34 tests. `make dev` restored `1900x1309+797+496` and the saved zoom labels. API version stays 1.
