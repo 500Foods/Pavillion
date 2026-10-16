@@ -29,7 +29,6 @@ typedef struct PavProfile {
     char time_format[8];
     char theme[16];
     char density[16];
-    double zoom_shell;
     int window_maximized;
     int window_width;
     int window_height;
@@ -83,25 +82,28 @@ int pav_config_prepare(const char *workdir, PavProfile *profile, char *err, size
    error whose text contains that engine name. Does not call a database. */
 int pav_profile_check_engine(const PavProfile *profile, char *err, size_t err_len);
 
-/* Inserts preferences.ui when it is missing, and fills a pane that is missing.
-   *added is 1 when the document changed. A ui value that is not an object is
-   an error. Returns 0, or -1. */
-int pav_profile_ensure_ui(PavProfile *profile, int *added, char *err, size_t err_len);
+/* Moves preferences.zoom, and a layout key that still sits beside
+   preferences.ui, into that object, then deletes the old key. Creates
+   preferences.ui when it is missing. Does not invent keys inside the blob.
+   *changed is 1 when the document changed. Schema stays 1. Returns 0, or -1. */
+int pav_profile_migrate_ui(PavProfile *profile, int *changed, char *err, size_t err_len);
 
-/* Inserts preferences.zoom keys that are missing, each 1. shell is required by
-   pav_profile_parse, so this fills the pane keys only. *added is 1 when the
-   document changed. Returns 0, or -1. */
-int pav_profile_ensure_zoom(PavProfile *profile, int *added, char *err, size_t err_len);
-
-/* Reads zoom, the window, and preferences.ui. Width and the splits are clamped
-   to the limits stored beside them. Returns 0, or -1. */
+/* Reads the window. Returns 0, or -1. */
 int pav_profile_read_shell(const PavProfile *profile, PavShellPrefs *out, char *err, size_t err_len);
 
-/* Writes the masked fields onto the document and the C fields. Clamps nav
-   width and the splits to the limits already stored. Does not write the file.
-   Returns 0, or -1. */
+/* Writes the window when mask includes PAV_PREFS_WINDOW. Does not write the
+   file and does not touch preferences.ui. Returns 0, or -1. */
 int pav_profile_write_shell(PavProfile *profile, const PavShellPrefs *in, unsigned mask,
                             char *err, size_t err_len);
+
+/* Reads preferences.ui as a JSON object string (caller frees). A missing
+   object is "{}". Returns 0, or -1. */
+int pav_profile_read_ui(const PavProfile *profile, char **out, char *err, size_t err_len);
+
+/* Replaces preferences.ui with json. json is an object, at most
+   PAV_UI_JSON_MAX bytes, with no forbidden key. Does not write the file.
+   Returns 0, or -1. */
+int pav_profile_write_ui(PavProfile *profile, const char *json, char *err, size_t err_len);
 
 /* Reads preferences.ui.icons into out as a JSON object string (caller frees).
    When icons is missing, writes an empty object and sets *added. Returns 0, or -1. */

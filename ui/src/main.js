@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { status, log } from "./api.js";
+import { status, log, uiGet } from "./api.js";
+import { clampUi } from "./prefs.js";
 import { startShell } from "./shell.js";
 
 const FA_KIT_ID = "45801522ef";
@@ -76,9 +77,8 @@ window.addEventListener("keydown", (event) => {
 
 async function initIcons() {
   try {
-    const stored = await invoke("prefs");
-    const kit = stored.fontawesome_kit || FA_KIT_ID;
-    loadFontAwesomeKit(kit);
+    const stored = clampUi(JSON.parse(await uiGet()));
+    loadFontAwesomeKit(stored.fontawesome_kit || FA_KIT_ID);
   } catch (err) {
     loadFontAwesomeKit(FA_KIT_ID);
     log("ui", 0, `FA kit init failed: ${err instanceof Error ? err.message : String(err)}`);

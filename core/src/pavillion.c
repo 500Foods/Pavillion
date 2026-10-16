@@ -17,6 +17,7 @@
 #define CORE_CMD_PREFS 2
 #define CORE_CMD_ICONS 3
 #define CORE_CMD_KIT 4
+#define CORE_CMD_UI 5
 
 static pthread_mutex_t g_core_mu = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t g_core_cv = PTHREAD_COND_INITIALIZER;
@@ -51,6 +52,11 @@ static int g_kit_done;
 static int g_kit_busy;
 static int g_kit_rc;
 static char g_kit_err[512];
+static char g_ui_req[PAV_UI_JSON_MAX + 1];
+static int g_ui_done;
+static int g_ui_busy;
+static int g_ui_rc;
+static char g_ui_err[512];
 
 static void copy_field(char *dst, size_t dst_len, const char *src) {
     size_t n;
@@ -86,6 +92,7 @@ static int core_prepare_prefs(char *err, size_t err_len);
 static int core_apply_prefs(char *err, size_t err_len);
 static int core_apply_icons(char *err, size_t err_len);
 static int core_apply_kit(char *err, size_t err_len);
+static int core_apply_ui(char *err, size_t err_len);
 
 static void core_release_profile(void) {
     pav_store_close(g_store);
@@ -153,26 +160,20 @@ static void core_boot(void) {
     pthread_mutex_unlock(&g_core_mu);
 }
 
-/* Inserts missing preferences.zoom keys and preferences.ui when it is missing,
-   then publishes the snapshot. The caller is the core thread and does not hold
-   g_core_mu. */
+/* Moves an old layout into preferences.ui, then publishes the window snapshot.
+   The caller is the core thread and does not hold g_core_mu. */
 static int core_prepare_prefs(char *err, size_t err_len) {
     PavShellPrefs snap;
-    int added_zoom = 0;
-    int added_ui = 0;
+    int changed = 0;
 
     if (g_load == NULL || g_load->profile == NULL || g_load->profile_path[0] == '\0') {
         set_start_err(err, err_len, "missing profile");
         return -1;
     }
-    if (pav_profile_ensure_zoom(g_load->profile, &added_zoom, err, err_len) != 0) {
+    if (pav_profile_migrate_ui(g_load->profile, &changed, err, err_len) != 0) {
         return -1;
     }
-    if (pav_profile_ensure_ui(g_load->profile, &added_ui, err, err_len) != 0) {
-        return -1;
-    }
-    if ((added_zoom || added_ui) &&
-        pav_profile_store(g_load->profile_path, g_load->profile, err, err_len) != 0) {
+    if (changed && pav_profile_store(g_load->profile_path, g_load->profile, err, err_len) != 0) {
         return -1;
     }
     if (pav_profile_read_shell(g_load->profile, &snap, err, err_len) != 0) {
@@ -270,6 +271,13 @@ static void *core_thread_main(void *arg) {
             g_kit_done = 1;
             pthread_cond_broadcast(&g_core_cv);
         }
+        if (cmd == CORE_CMD_UI) {
+            pthread_mutex_unlock(&g_core_mu);
+            core_apply_ui(g_ui_err, sizeof(g_ui_err));
+            pthread_mutex_lock(&g_core_mu);
+            g_ui_done = 1;
+            pthread_cond_broadcast(&g_core_cv);
+        }
     }
     g_core_alive = 0;
     core_fail_prefs_unlocked("core stopped");
@@ -277,6 +285,8 @@ static void *core_thread_main(void *arg) {
     g_icons_done = 1;
     g_kit_rc = -1;
     g_kit_done = 1;
+    g_ui_rc = -1;
+    g_ui_done = 1;
     pthread_cond_broadcast(&g_core_cv);
     pthread_mutex_unlock(&g_core_mu);
     core_release_profile();
@@ -363,6 +373,31 @@ static int core_apply_kit(char *err, size_t err_len) {
     return 0;
 }
 
+/* The caller is the core thread and does not hold g_core_mu.
+   g_ui_req holds the JSON object; the result is written to g_ui_rc. */
+static int core_apply_ui(char *err, size_t err_len) {
+    PavProfile *profile;
+
+    err[0] = '\0';
+    if (g_load == NULL || g_load->profile == NULL || g_load->profile_path[0] == '\0') {
+        set_start_err(err, err_len, "missing profile");
+        g_ui_rc = -1;
+        return -1;
+    }
+    profile = g_load->profile;
+    if (pav_profile_write_ui(profile, g_ui_req, err, err_len) != 0 ||
+        pav_profile_store(g_load->profile_path, profile, err, err_len) != 0) {
+        g_ui_rc = -1;
+        if (err[0] == '\0') {
+            set_start_err(err, err_len, "cannot write preferences.ui");
+        }
+        return -1;
+    }
+    g_ui_rc = 0;
+    err[0] = '\0';
+    return 0;
+}
+
 int pavillion_api_version(void) {
     return PAVILLION_API_VERSION;
 }
@@ -396,6 +431,9 @@ int pavillion_start(const char *workdir, char *err, size_t err_len) {
     g_kit_busy = 0;
     g_kit_done = 1;
     g_kit_req[0] = '\0';
+    g_ui_busy = 0;
+    g_ui_done = 1;
+    g_ui_req[0] = '\0';
     core_queue_clear_unlocked();
     rc = pthread_create(&g_core_thread, NULL, core_thread_main, NULL);
     if (rc != 0) {
@@ -645,6 +683,77 @@ int pavillion_kit_apply(const char *kit, char *err, size_t err_len) {
         set_start_err(err, err_len, g_kit_err[0] != '\0' ? g_kit_err : "core stopped");
     }
     g_kit_busy = 0;
+    pthread_cond_broadcast(&g_core_cv);
+    pthread_mutex_unlock(&g_core_mu);
+    return rc;
+}
+
+int pavillion_ui_get(char **json_out, char *err, size_t err_len) {
+    int rc;
+
+    if (json_out == NULL) {
+        set_start_err(err, err_len, "missing out");
+        return -1;
+    }
+    *json_out = NULL;
+    pthread_mutex_lock(&g_core_mu);
+    if (!g_core_alive || g_load == NULL || g_load->profile == NULL) {
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "core is not running");
+        return -1;
+    }
+    rc = pav_profile_read_ui(g_load->profile, json_out, err, err_len);
+    pthread_mutex_unlock(&g_core_mu);
+    return rc;
+}
+
+int pavillion_ui_set(const char *json, char *err, size_t err_len) {
+    int rc;
+    size_t len;
+
+    if (json == NULL) {
+        set_start_err(err, err_len, "missing arguments");
+        return -1;
+    }
+    len = strlen(json);
+    if (len > PAV_UI_JSON_MAX) {
+        set_start_err(err, err_len, "preferences.ui is too large");
+        return -1;
+    }
+    pthread_mutex_lock(&g_core_mu);
+    if (!g_core_alive || g_core_stop || !g_prefs_ready) {
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "core is not running");
+        return -1;
+    }
+    while (g_ui_busy && g_core_alive && !g_core_stop) {
+        pthread_cond_wait(&g_core_cv, &g_core_mu);
+    }
+    if (!g_core_alive || g_core_stop || !g_prefs_ready) {
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "core is not running");
+        return -1;
+    }
+    memcpy(g_ui_req, json, len + 1);
+    g_ui_done = 0;
+    g_ui_rc = -1;
+    g_ui_err[0] = '\0';
+    g_ui_busy = 1;
+    if (core_queue_push_unlocked(CORE_CMD_UI) != 0) {
+        g_ui_busy = 0;
+        g_ui_done = 1;
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "core is busy");
+        return -1;
+    }
+    while (!g_ui_done && g_core_alive) {
+        pthread_cond_wait(&g_core_cv, &g_core_mu);
+    }
+    rc = g_ui_done ? g_ui_rc : -1;
+    if (rc != 0) {
+        set_start_err(err, err_len, g_ui_err[0] != '\0' ? g_ui_err : "core stopped");
+    }
+    g_ui_busy = 0;
     pthread_cond_broadcast(&g_core_cv);
     pthread_mutex_unlock(&g_core_mu);
     return rc;

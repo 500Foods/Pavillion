@@ -1,16 +1,8 @@
-import { prefs, saveLayout, saveIcons, saveKit, log } from "./api.js";
+import { uiGet, uiSet, log } from "./api.js";
 import { reloadIcons } from "./main.js";
+import { clampUi, snapZoom } from "./prefs.js";
 
-const ui = {
-  nav: { width: 320, min: 200, max: 500 },
-  mail: { split: 0.5, min: 0.25, max: 0.75 },
-  contacts: { split: 0.5, min: 0.25, max: 0.75 },
-  files: { split: 0.5, min: 0.25, max: 0.75 },
-  zoom: { shell: 1, navButtons: 1, navBody: 1, mailList: 1, mailDetail: 1 },
-};
-
-const iconOverrides = {};
-let fontawesomeKit = "45801522ef";
+const ui = clampUi({});
 
 /* shell is the master scale on the root; each pane multiplies on top of it. */
 const zoomPanes = {
@@ -21,8 +13,7 @@ const zoomPanes = {
 };
 
 function zoomClamp(value) {
-  const scale = Number(value);
-  return Number.isFinite(scale) ? clamp(scale, 0.05, 5) : 1;
+  return snapZoom(value);
 }
 
 function zoomLabel(scale) {
@@ -48,7 +39,7 @@ function applyIconOverride(key) {
   if (!navIcon) {
     return;
   }
-  const override = iconOverrides[key];
+  const override = ui.icons[key];
   if (override) {
     if (override.trim().startsWith('<')) {
       navIcon.innerHTML = override;
@@ -107,35 +98,61 @@ function showBanner(text) {
   banner.textContent = text;
 }
 
-function persistLayout() {
+const SAVE_MS = 300;
+let saveTimer = 0;
+let dirty = false;
+
+function scheduleUiSave() {
   if (!canSave) {
     return;
   }
-  saveLayout({
-    zoom: { ...ui.zoom },
-    navWidth: ui.nav.width,
-    mailSplit: ui.mail.split,
-    contactsSplit: ui.contacts.split,
-    filesSplit: ui.files.split,
-  }).catch((err) => {
+  dirty = true;
+  if (saveTimer) {
+    return;
+  }
+  saveTimer = window.setTimeout(() => {
+    saveTimer = 0;
+    flushUiSave();
+  }, SAVE_MS);
+}
+
+function flushUiSave() {
+  if (!canSave || !dirty) {
+    return Promise.resolve();
+  }
+  dirty = false;
+  return uiSet(JSON.stringify(clampUi(ui))).catch((err) => {
     showBanner(messageOf(err));
   });
 }
 
-async function loadPrefs() {
-  const stored = await prefs();
-  ui.nav = stored.ui.nav;
-  ui.mail = stored.ui.mail;
-  ui.contacts = stored.ui.contacts;
-  ui.files = stored.ui.files;
-  for (const key of Object.keys(ui.zoom)) {
-    ui.zoom[key] = zoomClamp(stored.zoom[key]);
+window.addEventListener("pagehide", () => {
+  if (saveTimer) {
+    window.clearTimeout(saveTimer);
+    saveTimer = 0;
   }
-  Object.assign(iconOverrides, stored.icon_overrides || {});
-  fontawesomeKit = stored.fontawesome_kit || fontawesomeKit;
+  flushUiSave();
+});
+
+function persistLayout() {
+  scheduleUiSave();
+}
+
+async function loadPrefs() {
+  const stored = clampUi(JSON.parse(await uiGet()));
+  ui.nav = stored.nav;
+  ui.mail = stored.mail;
+  ui.contacts = stored.contacts;
+  ui.files = stored.files;
+  ui.zoom = stored.zoom;
+  ui.icons = stored.icons;
+  ui.fontawesome_kit = stored.fontawesome_kit;
+  if (stored.fonts) {
+    ui.fonts = stored.fonts;
+  }
   const kitInput = document.querySelector("#fa-kit-html");
   if (kitInput) {
-    kitInput.value = fontawesomeKit;
+    kitInput.value = ui.fontawesome_kit;
   }
   for (const label of document.querySelectorAll("[data-zoom]")) {
     const key = label.dataset.zoom;
@@ -146,13 +163,13 @@ async function loadPrefs() {
     label.querySelector(".zoom-value").textContent = zoomLabel(ui.zoom[key]);
   }
   applyZoom();
-  for (const key of Object.keys(iconOverrides)) {
+  for (const key of Object.keys(ui.icons)) {
     applyIconOverride(key);
   }
   for (const input of document.querySelectorAll("#icon-list .icon-input")) {
     const key = input.dataset.iconKey;
-    if (iconOverrides[key]) {
-      input.value = iconOverrides[key];
+    if (ui.icons[key]) {
+      input.value = ui.icons[key];
     }
   }
   refreshIconPreviews();
@@ -398,7 +415,7 @@ function bindSettings() {
     for (const input of iconForm.querySelectorAll(".icon-input")) {
       input.addEventListener("input", () => {
         const key = input.dataset.iconKey;
-        iconOverrides[key] = input.value;
+        ui.icons[key] = input.value;
         const preview = document.querySelector(`#icon-list .icon[data-icon-key="${key}"]`);
         if (preview) {
           preview.innerHTML = "";
@@ -427,7 +444,7 @@ function bindSettings() {
     const kitInput = iconForm.querySelector("#fa-kit-html");
     if (kitInput) {
       kitInput.addEventListener("input", () => {
-        fontawesomeKit = kitInput.value;
+        ui.fontawesome_kit = kitInput.value;
         let dirty = false;
         for (const input of iconForm.querySelectorAll(".icon-input")) {
           if (input.value !== input.defaultValue) {
@@ -446,43 +463,33 @@ function bindSettings() {
     if (previewBtn) {
       previewBtn.addEventListener("click", (event) => {
         event.preventDefault();
-        const overrides = {};
         for (const input of iconForm.querySelectorAll(".icon-input")) {
-          overrides[input.dataset.iconKey] = input.value;
+          ui.icons[input.dataset.iconKey] = input.value;
         }
-        const kitVal = kitInput ? kitInput.value.trim() : "";
-        const savePromises = [saveIcons(overrides)];
-        if (kitVal) {
-          savePromises.push(saveKit(kitVal));
+        if (kitInput) {
+          ui.fontawesome_kit = kitInput.value.trim();
         }
-        Promise.all(savePromises).then(() => {
-          fontawesomeKit = kitVal || fontawesomeKit;
-          for (const key of Object.keys(iconOverrides)) {
+        dirty = true;
+        flushUiSave().then(() => {
+          for (const key of Object.keys(ui.icons)) {
             applyIconOverride(key);
           }
           setDirty(false);
-        }).catch((err) => {
-          showBanner(messageOf(err));
         });
       });
     }
 
     iconForm.addEventListener("submit", (event) => {
       event.preventDefault();
-      const overrides = {};
       for (const input of iconForm.querySelectorAll(".icon-input")) {
-        overrides[input.dataset.iconKey] = input.value;
+        ui.icons[input.dataset.iconKey] = input.value;
       }
-      const kitVal = kitInput ? kitInput.value.trim() : "";
-      const savePromises = [saveIcons(overrides)];
-      if (kitVal) {
-        savePromises.push(saveKit(kitVal));
+      if (kitInput) {
+        ui.fontawesome_kit = kitInput.value.trim();
       }
-      Promise.all(savePromises).then(() => {
-        fontawesomeKit = kitVal || fontawesomeKit;
+      dirty = true;
+      flushUiSave().then(() => {
         reloadIcons();
-      }).catch((err) => {
-        showBanner(messageOf(err));
       });
     });
 

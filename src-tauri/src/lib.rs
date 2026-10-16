@@ -7,14 +7,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
-use std::collections::HashMap;
-
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::{LogicalPosition, LogicalSize, Manager, Position, Size, WebviewWindow};
 
-const PAV_PREFS_ZOOM: u32 = 1;
 const PAV_PREFS_WINDOW: u32 = 2;
-const PAV_PREFS_UI: u32 = 4;
 
 #[repr(C)]
 struct PavillionStatus {
@@ -26,20 +22,6 @@ struct PavillionStatus {
 
 #[repr(C)]
 struct PavShellPrefs {
-    zoom_shell: f64,
-    zoom_nav_buttons: f64,
-    zoom_nav_body: f64,
-    zoom_mail_list: f64,
-    zoom_mail_detail: f64,
-    mail_split: f64,
-    mail_min: f64,
-    mail_max: f64,
-    contacts_split: f64,
-    contacts_min: f64,
-    contacts_max: f64,
-    files_split: f64,
-    files_min: f64,
-    files_max: f64,
     window_maximized: i32,
     window_width: i32,
     window_height: i32,
@@ -47,9 +29,6 @@ struct PavShellPrefs {
     window_y_set: i32,
     window_x: i32,
     window_y: i32,
-    nav_width: i32,
-    nav_min: i32,
-    nav_max: i32,
     chrome: [u8; 16],
 }
 
@@ -66,10 +45,8 @@ unsafe extern "C" {
         err_len: usize,
     ) -> i32;
     fn pav_ui_log(subsystem: *const c_char, level: i32, message: *const c_char) -> i32;
-    fn pavillion_icons_get(out: *mut *mut c_char, err: *mut c_char, err_len: usize) -> i32;
-    fn pavillion_icons_apply(json: *const c_char, err: *mut c_char, err_len: usize) -> i32;
-    fn pavillion_kit_get(out: *mut c_char, out_len: usize, err: *mut c_char, err_len: usize) -> i32;
-    fn pavillion_kit_apply(kit: *const c_char, err: *mut c_char, err_len: usize) -> i32;
+    fn pavillion_ui_get(json_out: *mut *mut c_char, err: *mut c_char, err_len: usize) -> i32;
+    fn pavillion_ui_set(json: *const c_char, err: *mut c_char, err_len: usize) -> i32;
 }
 
 #[derive(Clone, Copy)]
@@ -121,20 +98,6 @@ fn c_error(bytes: &[u8], rc: i32) -> String {
 
 fn read_prefs() -> Result<PavShellPrefs, String> {
     let mut out = PavShellPrefs {
-        zoom_shell: 1.0,
-        zoom_nav_buttons: 1.0,
-        zoom_nav_body: 1.0,
-        zoom_mail_list: 1.0,
-        zoom_mail_detail: 1.0,
-        mail_split: 0.5,
-        mail_min: 0.25,
-        mail_max: 0.75,
-        contacts_split: 0.5,
-        contacts_min: 0.25,
-        contacts_max: 0.75,
-        files_split: 0.5,
-        files_min: 0.25,
-        files_max: 0.75,
         window_maximized: 0,
         window_width: 1200,
         window_height: 800,
@@ -142,9 +105,6 @@ fn read_prefs() -> Result<PavShellPrefs, String> {
         window_y_set: 0,
         window_x: 0,
         window_y: 0,
-        nav_width: 320,
-        nav_min: 200,
-        nav_max: 500,
         chrome: [0; 16],
     };
     let rc = unsafe { pavillion_prefs_get(&mut out) };
@@ -348,225 +308,37 @@ fn status() -> Result<StatusReply, String> {
     })
 }
 
-#[derive(Serialize)]
-struct PanePx {
-    width: i32,
-    min: i32,
-    max: i32,
-}
-
-#[derive(Serialize)]
-struct PaneSplit {
-    split: f64,
-    min: f64,
-    max: f64,
-}
-
-#[derive(Serialize)]
-struct UiReply {
-    nav: PanePx,
-    mail: PaneSplit,
-    contacts: PaneSplit,
-    files: PaneSplit,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WindowReply {
-    maximized: bool,
-    width: i32,
-    height: i32,
-    x: Option<i32>,
-    y: Option<i32>,
-    chrome: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ZoomReply {
-    shell: f64,
-    nav_buttons: f64,
-    nav_body: f64,
-    mail_list: f64,
-    mail_detail: f64,
-}
-
-#[derive(Serialize)]
-struct PrefsReply {
-    zoom: ZoomReply,
-    window: WindowReply,
-    ui: UiReply,
-    icon_overrides: HashMap<String, String>,
-    fontawesome_kit: String,
-}
-
 #[tauri::command]
-fn prefs() -> Result<PrefsReply, String> {
-    let prefs = read_prefs()?;
-    let mut icon_overrides = HashMap::new();
+fn ui_get() -> Result<String, String> {
     let mut err = [0u8; 512];
+    let mut json_ptr: *mut c_char = std::ptr::null_mut();
     let rc = unsafe {
-        let mut json_ptr: *mut c_char = std::ptr::null_mut();
-        let rc = pavillion_icons_get(
+        pavillion_ui_get(
             &mut json_ptr,
             err.as_mut_ptr() as *mut c_char,
             err.len(),
-        );
-        if rc == 0 && !json_ptr.is_null() {
-            if let Ok(cstr) = std::ffi::CStr::from_ptr(json_ptr).to_str() {
-                if let Ok(map) = serde_json::from_str::<HashMap<String, String>>(cstr) {
-                    icon_overrides = map;
-                }
-            }
-            let _ = std::ffi::CString::from_raw(json_ptr);
-        }
-        rc
+        )
     };
-    if rc != 0 {
-        let msg = unsafe { std::ffi::CStr::from_ptr(err.as_ptr() as *const c_char) }.to_string_lossy();
-        eprintln!("cannot read icon overrides: {msg}");
+    if rc != 0 || json_ptr.is_null() {
+        return Err(c_error(&err, rc));
     }
-    let mut kit_buf = [0u8; 256];
-    let kit = unsafe {
-        let mut err_kit = [0u8; 512];
-        let rc = pavillion_kit_get(
-            kit_buf.as_mut_ptr() as *mut c_char,
-            kit_buf.len(),
-            err_kit.as_mut_ptr() as *mut c_char,
-            err_kit.len(),
-        );
-        if rc != 0 {
-            let msg = std::ffi::CStr::from_ptr(err_kit.as_ptr() as *const c_char).to_string_lossy();
-            eprintln!("cannot read fontawesome kit: {msg}");
-            String::new()
-        } else {
-            std::ffi::CStr::from_ptr(kit_buf.as_ptr() as *const c_char)
-                .to_string_lossy()
-                .into_owned()
-        }
-    };
-    Ok(PrefsReply {
-        zoom: ZoomReply {
-            shell: prefs.zoom_shell,
-            nav_buttons: prefs.zoom_nav_buttons,
-            nav_body: prefs.zoom_nav_body,
-            mail_list: prefs.zoom_mail_list,
-            mail_detail: prefs.zoom_mail_detail,
-        },
-        window: WindowReply {
-            maximized: prefs.window_maximized != 0,
-            width: prefs.window_width,
-            height: prefs.window_height,
-            x: (prefs.window_x_set != 0).then_some(prefs.window_x),
-            y: (prefs.window_y_set != 0).then_some(prefs.window_y),
-            chrome: c_field(&prefs.chrome),
-        },
-        ui: UiReply {
-            nav: PanePx {
-                width: prefs.nav_width,
-                min: prefs.nav_min,
-                max: prefs.nav_max,
-            },
-            mail: PaneSplit {
-                split: prefs.mail_split,
-                min: prefs.mail_min,
-                max: prefs.mail_max,
-            },
-            contacts: PaneSplit {
-                split: prefs.contacts_split,
-                min: prefs.contacts_min,
-                max: prefs.contacts_max,
-            },
-            files: PaneSplit {
-                split: prefs.files_split,
-                min: prefs.files_min,
-                max: prefs.files_max,
-            },
-        },
-        icon_overrides,
-        fontawesome_kit: kit,
-    })
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ZoomSave {
-    shell: f64,
-    nav_buttons: f64,
-    nav_body: f64,
-    mail_list: f64,
-    mail_detail: f64,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LayoutSave {
-    zoom: ZoomSave,
-    nav_width: i32,
-    mail_split: f64,
-    contacts_split: f64,
-    files_split: f64,
+    let owned = unsafe { CString::from_raw(json_ptr) };
+    Ok(owned.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
-fn save_layout(layout: LayoutSave) -> Result<(), String> {
-    let mut prefs = read_prefs()?;
-    prefs.zoom_shell = layout.zoom.shell;
-    prefs.zoom_nav_buttons = layout.zoom.nav_buttons;
-    prefs.zoom_nav_body = layout.zoom.nav_body;
-    prefs.zoom_mail_list = layout.zoom.mail_list;
-    prefs.zoom_mail_detail = layout.zoom.mail_detail;
-    prefs.nav_width = layout.nav_width;
-    prefs.mail_split = layout.mail_split;
-    prefs.contacts_split = layout.contacts_split;
-    prefs.files_split = layout.files_split;
-    write_prefs(&prefs, PAV_PREFS_ZOOM | PAV_PREFS_UI)
-}
-
-#[derive(Deserialize)]
-struct IconsSave {
-    #[serde(flatten)]
-    overrides: HashMap<String, String>,
-}
-
-#[tauri::command]
-fn save_icons(icons: IconsSave) -> Result<(), String> {
-    let json = serde_json::to_string(&icons.overrides).map_err(|e| e.to_string())?;
-    let c_json = std::ffi::CString::new(json).map_err(|e| e.to_string())?;
+fn ui_set(json: String) -> Result<(), String> {
+    let c_json = CString::new(json).map_err(|_| "ui json contains NUL".to_string())?;
     let mut err = [0u8; 512];
     let rc = unsafe {
-        pavillion_icons_apply(
+        pavillion_ui_set(
             c_json.as_ptr(),
             err.as_mut_ptr() as *mut c_char,
             err.len(),
         )
     };
     if rc != 0 {
-        let msg = unsafe { std::ffi::CStr::from_ptr(err.as_ptr() as *const c_char) }.to_string_lossy().into_owned();
-        return Err(if msg.is_empty() { format!("icons_apply returned {rc}") } else { msg });
-    }
-    Ok(())
-}
-
-#[derive(Deserialize)]
-struct KitSave {
-    kit: String,
-}
-
-#[tauri::command]
-fn save_kit(kit: KitSave) -> Result<(), String> {
-    let c_kit = CString::new(kit.kit).map_err(|_| "kit contains NUL".to_string())?;
-    let mut err = [0u8; 512];
-    let rc = unsafe {
-        pavillion_kit_apply(
-            c_kit.as_ptr(),
-            err.as_mut_ptr() as *mut c_char,
-            err.len(),
-        )
-    };
-    if rc != 0 {
-        let msg = unsafe { std::ffi::CStr::from_ptr(err.as_ptr() as *const c_char) }.to_string_lossy().into_owned();
-        return Err(if msg.is_empty() { format!("kit_apply returned {rc}") } else { msg });
+        return Err(c_error(&err, rc));
     }
     Ok(())
 }
@@ -642,7 +414,7 @@ fn start_core(workdir: &str) {
 pub fn run(workdir: &str) {
     start_core(workdir);
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![status, prefs, save_layout, save_icons, save_kit, ui_log])
+        .invoke_handler(tauri::generate_handler![status, ui_get, ui_set, ui_log])
         .setup(|app| {
             let Some(window) = app.get_webview_window("main") else {
                 eprintln!("main window is missing");

@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Capability for the main window",
   "windows": ["main"],
-  "permissions": ["core:default", "core:webview:allow-internal-toggle-devtools", "allow-status", "allow-prefs", "allow-save-layout", "allow-save-icons", "allow-save-kit", "allow-ui-log"]
+  "permissions": ["core:default", "core:webview:allow-internal-toggle-devtools", "allow-status", "allow-ui-get", "allow-ui-set", "allow-ui-log"]
 }

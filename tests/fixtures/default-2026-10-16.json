@@ -1,0 +1,68 @@
+{
+  "kind": "pavillion-profile",
+  "schema": 1,
+  "id": "default",
+  "name": "Default",
+  "storage": {
+    "engine": "sqlite",
+    "path": "default.sqlite"
+  },
+  "logs": "logs/default.log",
+  "blobs": "blobs/default",
+  "cache": "cache/default",
+  "accounts": [],
+  "preferences": {
+    "timezone": "America/Vancouver",
+    "week_start": "monday",
+    "time_format": "24h",
+    "theme": "system",
+    "density": "comfortable",
+    "zoom": {
+      "shell": 1.6000000000000001,
+      "navButtons": 1.7,
+      "navBody": 0.90000000000000002,
+      "mailList": 1.45,
+      "mailDetail": 0.90000000000000002
+    },
+    "window": {
+      "maximized": false,
+      "width": 2361,
+      "height": 1024,
+      "x": 336,
+      "y": 496,
+      "chrome": "system"
+    },
+    "ui": {
+      "nav": {
+        "width": 354,
+        "min": 200,
+        "max": 500
+      },
+      "mail": {
+        "split": 0.49957591178965222,
+        "min": 0.25,
+        "max": 0.75
+      },
+      "contacts": {
+        "split": 0.50401069518716579,
+        "min": 0.25,
+        "max": 0.75
+      },
+      "files": {
+        "split": 0.5,
+        "min": 0.25,
+        "max": 0.75
+      },
+      "icons": {
+        "calendars": "fa-sharp-duotone fa-solid fa-calendar-days",
+        "files": "fa-sharp-duotone fa-solid fa-folder",
+        "help": "fa-sharp-duotone fa-solid fa-circle-question",
+        "activity": "fa-sharp-duotone fa-solid fa-list-timeline",
+        "update": "fa-sharp-duotone fa-solid fa-arrows-rotate",
+        "contacts": "fa-sharp-duotone fa-solid fa-address-book",
+        "settings": "fa-sharp-duotone fa-solid fa-gear",
+        "mail": "fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270 fa-flip-horizontal"
+      }
+    }
+  }
+}

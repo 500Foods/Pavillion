@@ -409,7 +409,6 @@ void test_parse_index_and_profile(void) {
     TEST_ASSERT_EQUAL_STRING("24h", profile->time_format);
     TEST_ASSERT_EQUAL_STRING("system", profile->theme);
     TEST_ASSERT_EQUAL_STRING("comfortable", profile->density);
-    TEST_ASSERT_EQUAL_DOUBLE(1.0, profile->zoom_shell);
     TEST_ASSERT_EQUAL_INT(0, profile->window_maximized);
     TEST_ASSERT_EQUAL_INT(1200, profile->window_width);
     TEST_ASSERT_EQUAL_INT(800, profile->window_height);
@@ -515,13 +514,6 @@ static const char k_default_profile[] =
     "    \"time_format\": \"24h\",\n"
     "    \"theme\": \"system\",\n"
     "    \"density\": \"comfortable\",\n"
-    "    \"zoom\": {\n"
-    "      \"shell\": 1,\n"
-    "      \"navButtons\": 1,\n"
-    "      \"navBody\": 1,\n"
-    "      \"mailList\": 1,\n"
-    "      \"mailDetail\": 1\n"
-    "    },\n"
     "    \"window\": {\n"
     "      \"maximized\": false,\n"
     "      \"width\": 1200,\n"
@@ -531,6 +523,13 @@ static const char k_default_profile[] =
     "      \"chrome\": \"system\"\n"
     "    },\n"
     "    \"ui\": {\n"
+    "      \"zoom\": {\n"
+    "        \"shell\": 1,\n"
+    "        \"navButtons\": 1,\n"
+    "        \"navBody\": 1,\n"
+    "        \"mailList\": 1,\n"
+    "        \"mailDetail\": 1\n"
+    "      },\n"
     "      \"nav\": { \"width\": 320, \"min\": 200, \"max\": 500 },\n"
     "      \"mail\": { \"split\": 0.5, \"min\": 0.25, \"max\": 0.75 },\n"
     "      \"contacts\": { \"split\": 0.5, \"min\": 0.25, \"max\": 0.75 },\n"
@@ -1101,19 +1100,6 @@ void test_prefs_round_trip_clamp_and_mask(void) {
     make_slot(g_cfg_dir, sizeof(g_cfg_dir));
     TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
     TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_get(&prefs));
-    TEST_ASSERT_EQUAL_DOUBLE(1.0, prefs.zoom_shell);
-    TEST_ASSERT_EQUAL_DOUBLE(1.0, prefs.zoom_nav_buttons);
-    TEST_ASSERT_EQUAL_DOUBLE(1.0, prefs.zoom_nav_body);
-    TEST_ASSERT_EQUAL_DOUBLE(1.0, prefs.zoom_mail_list);
-    TEST_ASSERT_EQUAL_DOUBLE(1.0, prefs.zoom_mail_detail);
-    TEST_ASSERT_EQUAL_INT(320, prefs.nav_width);
-    TEST_ASSERT_EQUAL_INT(200, prefs.nav_min);
-    TEST_ASSERT_EQUAL_INT(500, prefs.nav_max);
-    TEST_ASSERT_EQUAL_DOUBLE(0.5, prefs.mail_split);
-    TEST_ASSERT_EQUAL_DOUBLE(0.25, prefs.mail_min);
-    TEST_ASSERT_EQUAL_DOUBLE(0.75, prefs.mail_max);
-    TEST_ASSERT_EQUAL_DOUBLE(0.5, prefs.contacts_split);
-    TEST_ASSERT_EQUAL_DOUBLE(0.5, prefs.files_split);
     TEST_ASSERT_EQUAL_INT(0, prefs.window_maximized);
     TEST_ASSERT_EQUAL_INT(1200, prefs.window_width);
     TEST_ASSERT_EQUAL_INT(800, prefs.window_height);
@@ -1121,15 +1107,6 @@ void test_prefs_round_trip_clamp_and_mask(void) {
     TEST_ASSERT_EQUAL_INT(0, prefs.window_y_set);
     TEST_ASSERT_EQUAL_STRING("system", prefs.chrome);
 
-    prefs.zoom_shell = 1.25;
-    prefs.zoom_nav_buttons = 1.5;
-    prefs.zoom_nav_body = 1.25;
-    prefs.zoom_mail_list = 2.0;
-    prefs.zoom_mail_detail = 0.75;
-    prefs.nav_width = 400;
-    prefs.mail_split = 0.75;
-    prefs.contacts_split = 0.25;
-    prefs.files_split = 0.5;
     prefs.window_width = 1500;
     prefs.window_height = 900;
     prefs.window_x_set = 1;
@@ -1138,18 +1115,9 @@ void test_prefs_round_trip_clamp_and_mask(void) {
     prefs.window_y = 34;
     prefs.window_maximized = 0;
     err[0] = '\0';
-    TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_apply(&prefs,
-        PAV_PREFS_ZOOM | PAV_PREFS_WINDOW | PAV_PREFS_UI, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_apply(&prefs, PAV_PREFS_WINDOW, err, sizeof(err)));
     memset(&prefs, 0, sizeof(prefs));
     TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_get(&prefs));
-    TEST_ASSERT_EQUAL_DOUBLE(1.25, prefs.zoom_shell);
-    TEST_ASSERT_EQUAL_DOUBLE(1.5, prefs.zoom_nav_buttons);
-    TEST_ASSERT_EQUAL_DOUBLE(1.25, prefs.zoom_nav_body);
-    TEST_ASSERT_EQUAL_DOUBLE(2.0, prefs.zoom_mail_list);
-    TEST_ASSERT_EQUAL_DOUBLE(0.75, prefs.zoom_mail_detail);
-    TEST_ASSERT_EQUAL_INT(400, prefs.nav_width);
-    TEST_ASSERT_EQUAL_DOUBLE(0.75, prefs.mail_split);
-    TEST_ASSERT_EQUAL_DOUBLE(0.25, prefs.contacts_split);
     TEST_ASSERT_EQUAL_INT(1500, prefs.window_width);
     TEST_ASSERT_EQUAL_INT(900, prefs.window_height);
     TEST_ASSERT_EQUAL_INT(1, prefs.window_x_set);
@@ -1158,46 +1126,17 @@ void test_prefs_round_trip_clamp_and_mask(void) {
     TEST_ASSERT_EQUAL_INT(34, prefs.window_y);
     TEST_ASSERT_EQUAL_STRING("system", prefs.chrome);
 
-    prefs.nav_width = 1;
-    prefs.mail_split = 0.0;
-    prefs.zoom_shell = 9.0;
-    prefs.zoom_nav_body = 9.0;
-    TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_apply(&prefs, PAV_PREFS_ZOOM | PAV_PREFS_UI, err, sizeof(err)));
-    memset(&prefs, 0, sizeof(prefs));
-    TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_get(&prefs));
-    TEST_ASSERT_EQUAL_INT(200, prefs.nav_width);
-    TEST_ASSERT_EQUAL_DOUBLE(0.25, prefs.mail_split);
-    TEST_ASSERT_EQUAL_DOUBLE(5.0, prefs.zoom_shell);
-    TEST_ASSERT_EQUAL_DOUBLE(5.0, prefs.zoom_nav_body);
-    TEST_ASSERT_EQUAL_INT(1500, prefs.window_width);
-
-    prefs.nav_width = 900;
-    prefs.mail_split = 0.9;
-    prefs.zoom_shell = 0.01;
-    prefs.zoom_mail_list = 0.01;
-    TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_apply(&prefs, PAV_PREFS_ZOOM | PAV_PREFS_UI, err, sizeof(err)));
-    memset(&prefs, 0, sizeof(prefs));
-    TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_get(&prefs));
-    TEST_ASSERT_EQUAL_INT(500, prefs.nav_width);
-    TEST_ASSERT_EQUAL_DOUBLE(0.75, prefs.mail_split);
-    TEST_ASSERT_EQUAL_DOUBLE(0.05, prefs.zoom_shell);
-    TEST_ASSERT_EQUAL_DOUBLE(0.05, prefs.zoom_mail_list);
-    TEST_ASSERT_EQUAL_DOUBLE(1.5, prefs.zoom_nav_buttons);
-
-    prefs.nav_width = 400;
     prefs.window_width = 111;
-    TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_apply(&prefs, PAV_PREFS_UI, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(-1, pavillion_prefs_apply(&prefs, 0, err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(err, "nothing to save"));
     TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_get(&prefs));
-    TEST_ASSERT_EQUAL_INT(400, prefs.nav_width);
     TEST_ASSERT_EQUAL_INT(1500, prefs.window_width);
 
     prefs.window_width = 1600;
     prefs.window_height = 1000;
-    prefs.nav_width = 222;
     prefs.window_maximized = 1;
     TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_apply(&prefs, PAV_PREFS_WINDOW, err, sizeof(err)));
     TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_get(&prefs));
-    TEST_ASSERT_EQUAL_INT(400, prefs.nav_width);
     TEST_ASSERT_EQUAL_INT(1600, prefs.window_width);
     TEST_ASSERT_EQUAL_INT(1000, prefs.window_height);
     TEST_ASSERT_EQUAL_INT(1, prefs.window_maximized);
@@ -1223,14 +1162,10 @@ void test_prefs_round_trip_clamp_and_mask(void) {
     TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
 
     pavillion_stop();
-    TEST_ASSERT_EQUAL_INT(-1, pavillion_prefs_apply(&prefs, PAV_PREFS_UI, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(-1, pavillion_prefs_apply(&prefs, PAV_PREFS_WINDOW, err, sizeof(err)));
     TEST_ASSERT_NOT_NULL(strstr(err, "not running"));
     TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
     TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_get(&prefs));
-    TEST_ASSERT_EQUAL_INT(400, prefs.nav_width);
-    TEST_ASSERT_EQUAL_INT(500, prefs.nav_max);
-    TEST_ASSERT_EQUAL_DOUBLE(0.75, prefs.mail_split);
-    TEST_ASSERT_EQUAL_DOUBLE(0.05, prefs.zoom_shell);
     TEST_ASSERT_EQUAL_INT(1600, prefs.window_width);
     TEST_ASSERT_EQUAL_INT(1000, prefs.window_height);
     TEST_ASSERT_EQUAL_INT(0, prefs.window_maximized);
@@ -1242,9 +1177,11 @@ void test_prefs_round_trip_clamp_and_mask(void) {
 
 void test_missing_ui_is_inserted(void) {
     char path[160];
-    PavShellPrefs prefs;
+    char err[256];
     struct stat st;
     char *text;
+    char *ui;
+    char *zoom;
 
     open_log();
     make_slot(g_cfg_dir, sizeof(g_cfg_dir));
@@ -1265,63 +1202,119 @@ void test_missing_ui_is_inserted(void) {
         "\"window\":{\"maximized\":false,\"width\":1200,\"height\":800,"
         "\"x\":null,\"y\":null,\"chrome\":\"system\"}}}");
     TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
-    TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_get(&prefs));
-    TEST_ASSERT_EQUAL_INT(320, prefs.nav_width);
-    TEST_ASSERT_EQUAL_INT(200, prefs.nav_min);
-    TEST_ASSERT_EQUAL_INT(500, prefs.nav_max);
-    TEST_ASSERT_EQUAL_DOUBLE(0.5, prefs.mail_split);
-    TEST_ASSERT_EQUAL_DOUBLE(1.0, prefs.zoom_shell);
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pavillion_ui_get(&ui, err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(ui, "\"shell\": 1"));
+    TEST_ASSERT_NULL(strstr(ui, "navButtons"));
+    TEST_ASSERT_NULL(strstr(ui, "\"width\""));
+    free(ui);
     text = slurp(path);
     TEST_ASSERT_NOT_NULL(strstr(text, "keep-me"));
-    TEST_ASSERT_NOT_NULL(strstr(text, "\"ui\""));
-    TEST_ASSERT_NOT_NULL(strstr(text, "\"width\": 320"));
     TEST_ASSERT_NOT_NULL(strstr(text, "\"schema\": 1"));
+    zoom = strstr(text, "\"zoom\"");
+    ui = strstr(text, "\"ui\"");
+    TEST_ASSERT_NOT_NULL(zoom);
+    TEST_ASSERT_NOT_NULL(ui);
+    TEST_ASSERT_TRUE(zoom > ui);
     free(text);
     TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
     TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
     pavillion_stop();
 }
 
-void test_missing_zoom_keys_are_inserted(void) {
-    char path[160];
-    PavShellPrefs prefs;
-    struct stat st;
-    char *text;
+void test_ui_blob_round_trip(void) {
+    char err[256];
+    char *ui = NULL;
+    char *big;
+    size_t i;
 
     open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pavillion_ui_get(&ui, err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(ui, "\"width\": 320"));
+    TEST_ASSERT_NOT_NULL(strstr(ui, "\"shell\": 1"));
+    free(ui);
+    ui = NULL;
+
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pavillion_ui_set("{\"zoom\":{\"shell\":9},\"nav\":{\"width\":1},\"note\":\"kept\"}",
+                                              err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_ui_get(&ui, err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(ui, "\"shell\": 9"));
+    TEST_ASSERT_NOT_NULL(strstr(ui, "\"width\": 1"));
+    TEST_ASSERT_NOT_NULL(strstr(ui, "kept"));
+    free(ui);
+    ui = NULL;
+
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(-1, pavillion_ui_set("[]", err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(err, "object"));
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(-1, pavillion_ui_set("{\"password\":\"x\"}", err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(err, "password"));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_ui_get(&ui, err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(ui, "\"shell\": 9"));
+    TEST_ASSERT_NULL(strstr(ui, "password"));
+    free(ui);
+
+    big = malloc(PAV_UI_JSON_MAX + 64);
+    TEST_ASSERT_NOT_NULL(big);
+    memcpy(big, "{\"pad\":\"", 8);
+    for (i = 8; i < PAV_UI_JSON_MAX + 8; i++) {
+        big[i] = 'a';
+    }
+    memcpy(big + PAV_UI_JSON_MAX + 8, "\"}", 3);
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(-1, pavillion_ui_set(big, err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(err, "too large"));
+    free(big);
+    pavillion_stop();
+}
+
+void test_profile_migrates_old_zoom_into_ui(void) {
+    char path[160];
+    char err[256];
+    char *fixture;
+    char *text;
+    char *again;
+    char *ui;
+    char *zoom;
+    char *blob = NULL;
+
+    open_log();
+    fixture = slurp("tests/fixtures/default-2026-10-16.json");
     make_slot(g_cfg_dir, sizeof(g_cfg_dir));
     snprintf(path, sizeof(path), "%s/profiles", g_cfg_dir);
     TEST_ASSERT_EQUAL_INT(0, mkdir(path, 0700));
     snprintf(path, sizeof(path), "%s/Pavillion.json", g_cfg_dir);
     write_index(path, "default.json", "profiles");
     snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
-    write_text(path,
-        "{\"kind\":\"pavillion-profile\",\"schema\":1,\"id\":\"default\",\"name\":\"Default\","
-        "\"note\":\"keep-me\","
-        "\"storage\":{\"engine\":\"sqlite\",\"path\":\"default.sqlite\"},"
-        "\"logs\":\"logs/default.log\",\"blobs\":\"blobs/default\",\"cache\":\"cache/default\","
-        "\"accounts\":[],"
-        "\"preferences\":{\"timezone\":\"America/Vancouver\",\"week_start\":\"monday\","
-        "\"time_format\":\"24h\",\"theme\":\"system\",\"density\":\"comfortable\","
-        "\"zoom\":{\"shell\":1},"
-        "\"window\":{\"maximized\":false,\"width\":1200,\"height\":800,"
-        "\"x\":null,\"y\":null,\"chrome\":\"system\"}}}");
+    write_text(path, fixture);
+    free(fixture);
     TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
-    TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_get(&prefs));
-    TEST_ASSERT_EQUAL_DOUBLE(1.0, prefs.zoom_nav_buttons);
-    TEST_ASSERT_EQUAL_DOUBLE(1.0, prefs.zoom_nav_body);
-    TEST_ASSERT_EQUAL_DOUBLE(1.0, prefs.zoom_mail_list);
-    TEST_ASSERT_EQUAL_DOUBLE(1.0, prefs.zoom_mail_detail);
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pavillion_ui_get(&blob, err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(blob, "1.7"));
+    TEST_ASSERT_NOT_NULL(strstr(blob, "1.45"));
+    TEST_ASSERT_NOT_NULL(strstr(blob, "354"));
+    TEST_ASSERT_NOT_NULL(strstr(blob, "paper-plane"));
+    free(blob);
     text = slurp(path);
-    TEST_ASSERT_NOT_NULL(strstr(text, "keep-me"));
-    TEST_ASSERT_NOT_NULL(strstr(text, "\"navButtons\": 1"));
-    TEST_ASSERT_NOT_NULL(strstr(text, "\"navBody\": 1"));
-    TEST_ASSERT_NOT_NULL(strstr(text, "\"mailList\": 1"));
-    TEST_ASSERT_NOT_NULL(strstr(text, "\"mailDetail\": 1"));
-    TEST_ASSERT_NOT_NULL(strstr(text, "\"shell\": 1"));
+    TEST_ASSERT_NOT_NULL(strstr(text, "\"schema\": 1"));
+    TEST_ASSERT_NOT_NULL(strstr(text, "2361"));
+    zoom = strstr(text, "\"zoom\"");
+    ui = strstr(text, "\"ui\"");
+    TEST_ASSERT_NOT_NULL(zoom);
+    TEST_ASSERT_NOT_NULL(ui);
+    TEST_ASSERT_TRUE(zoom > ui);
+    pavillion_stop();
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    again = slurp(path);
+    TEST_ASSERT_EQUAL_STRING(text, again);
     free(text);
-    TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
-    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    free(again);
     pavillion_stop();
 }
 
@@ -1614,7 +1607,8 @@ int main(void) {
     RUN_TEST(test_start_errors_leave_the_thread_up);
     RUN_TEST(test_prefs_round_trip_clamp_and_mask);
     RUN_TEST(test_missing_ui_is_inserted);
-    RUN_TEST(test_missing_zoom_keys_are_inserted);
+    RUN_TEST(test_ui_blob_round_trip);
+    RUN_TEST(test_profile_migrates_old_zoom_into_ui);
     RUN_TEST(test_kit_and_icons_read_after_start);
     RUN_TEST(test_kit_and_icons_apply_round_trip);
     RUN_TEST(test_profile_read_kit_skips_zoom_window);

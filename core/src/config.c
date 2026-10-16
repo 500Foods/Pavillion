@@ -12,7 +12,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
-static int forbidden_key(const json_t *node, const char **name) {
+int config_forbidden_key(const json_t *node, const char **name) {
     if (json_is_object(node)) {
         const char *key;
         json_t *value;
@@ -23,7 +23,7 @@ static int forbidden_key(const json_t *node, const char **name) {
                 *name = key;
                 return 1;
             }
-            if (forbidden_key(value, name)) {
+            if (config_forbidden_key(value, name)) {
                 return 1;
             }
         }
@@ -32,7 +32,7 @@ static int forbidden_key(const json_t *node, const char **name) {
         json_t *value;
 
         json_array_foreach((json_t *)node, i, value) {
-            if (forbidden_key(value, name)) {
+            if (config_forbidden_key(value, name)) {
                 return 1;
             }
         }
@@ -97,7 +97,7 @@ static json_t *load_object(const char *text, char *err, size_t err_len) {
         cfg_err(err, err_len, "invalid json");
         return NULL;
     }
-    if (forbidden_key(root, &forbidden)) {
+    if (config_forbidden_key(root, &forbidden)) {
         json_decref(root);
         cfg_err(err, err_len, "forbidden key %s", forbidden);
         return NULL;
@@ -143,7 +143,6 @@ int pav_profile_parse(const char *text, PavProfile **out, char *err, size_t err_
     json_t *root;
     json_t *storage;
     json_t *prefs;
-    json_t *zoom;
     json_t *window;
     json_t *accounts;
     PavProfile *profile;
@@ -175,20 +174,14 @@ int pav_profile_parse(const char *text, PavProfile **out, char *err, size_t err_
         cfg_err(err, err_len, "missing profile fields");
         goto fail;
     }
-    zoom = cfg_obj(prefs, "zoom", 0);
     window = cfg_obj(prefs, "window", 0);
-    if (zoom == NULL || window == NULL) {
+    if (window == NULL) {
         cfg_err(err, err_len, "missing profile fields");
         goto fail;
     }
     if (json_object_get(window, "maximized") == NULL ||
         cfg_bool(window, "maximized", 0, &profile->window_maximized, err, err_len) != 0) {
         cfg_err(err, err_len, "missing maximized");
-        goto fail;
-    }
-    if (json_object_get(zoom, "shell") == NULL ||
-        cfg_num_range(zoom, "shell", 0, -INFINITY, INFINITY, 0, &profile->zoom_shell, err, err_len) != 0) {
-        cfg_err(err, err_len, "missing shell");
         goto fail;
     }
     if (cfg_str(storage, "engine", "sqlite", profile->engine, sizeof(profile->engine), err, err_len) != 0 ||

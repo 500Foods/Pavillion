@@ -121,10 +121,8 @@ fn main() {
     let attributes = tauri_build::Attributes::new()
         .app_manifest(tauri_build::AppManifest::new().commands(&[
             "status",
-            "prefs",
-            "save_layout",
-            "save_icons",
-            "save_kit",
+            "ui_get",
+            "ui_set",
             "ui_log",
         ]));
     if let Err(err) = tauri_build::try_build(attributes) {

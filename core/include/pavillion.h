@@ -7,7 +7,7 @@
    build.rs copies it into the shell. Adding a command or an optional field
    does not bump it. The line is a bare decimal integer so the shell and the
    C compiler cannot disagree about its value. */
-#define PAVILLION_API_VERSION 1
+#define PAVILLION_API_VERSION 2
 
 typedef struct PavillionStatus {
     char profile_name[256];
@@ -16,24 +16,9 @@ typedef struct PavillionStatus {
     char error[512];
 } PavillionStatus;
 
-/* Layout, zoom, and the OS window. Doubles are first so the Rust shell can
-   match this layout with repr(C). zoom_shell is the master scale; every pane
-   scale below it multiplies on top of it. */
+/* The OS window. preferences.ui is an opaque blob the page owns.
+   Ints are first so the Rust shell can match this layout with repr(C). */
 typedef struct PavShellPrefs {
-    double zoom_shell;
-    double zoom_nav_buttons;
-    double zoom_nav_body;
-    double zoom_mail_list;
-    double zoom_mail_detail;
-    double mail_split;
-    double mail_min;
-    double mail_max;
-    double contacts_split;
-    double contacts_min;
-    double contacts_max;
-    double files_split;
-    double files_min;
-    double files_max;
     int window_maximized;
     int window_width;
     int window_height;
@@ -41,16 +26,15 @@ typedef struct PavShellPrefs {
     int window_y_set;
     int window_x;
     int window_y;
-    int nav_width;
-    int nav_min;
-    int nav_max;
     char chrome[16];
 } PavShellPrefs;
 
-/* Bits for pavillion_prefs_apply. A field outside the mask is left as stored. */
-#define PAV_PREFS_ZOOM   1u
+/* Bits for pavillion_prefs_apply. A field outside the mask is left as stored.
+   Zoom and layout are not mask bits: they live in preferences.ui. */
 #define PAV_PREFS_WINDOW 2u
-#define PAV_PREFS_UI     4u
+
+/* preferences.ui as serialized JSON text, not counting the terminating NUL. */
+#define PAV_UI_JSON_MAX 65536
 
 /* Returns PAVILLION_API_VERSION. Safe before pavillion_start. The shell
    calls this symbol; it does not substitute the macro. */
@@ -86,6 +70,15 @@ int pavillion_kit_apply(const char *kit, char *err, size_t err_len);
 
 /* Reads preferences.ui.fontawesome_kit into out. Returns 0, or -1. */
 int pavillion_kit_get(char *out, size_t out_len, char *err, size_t err_len);
+
+/* Reads preferences.ui as a JSON object string (caller frees). A missing
+   object is "{}". Returns 0, or -1. */
+int pavillion_ui_get(char **json_out, char *err, size_t err_len);
+
+/* Replaces preferences.ui with the JSON object in json and writes the profile
+   on the core thread. json is an object of at most PAV_UI_JSON_MAX bytes and
+   contains no forbidden key. Returns 0, or -1. */
+int pavillion_ui_set(const char *json, char *err, size_t err_len);
 
 /* Test-only. 1 while the core thread is inside its loop, otherwise 0. */
 int pav_core_thread_alive(void);
