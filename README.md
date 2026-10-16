@@ -21,13 +21,13 @@ While this project is currently under active development, feel free to give it a
 [![Count Lines of Code](https://github.com/500Foods/Pavillion/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/main.yml)
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-16 22:26:21 UTC
+Last updated at 2026-10-16 22:58:40 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C                               12            779            204           6802
-Markdown                        26           1653              2           3661
-C/C++ Header                     9            299            348           1736
+C                               13            919            209           8130
+Markdown                        27           1987              2           4042
+C/C++ Header                    10            315            371           1771
 JSON                             5              0              0           1546
 CSS                              4            138              0            790
 JavaScript                       5             65              5            766
@@ -35,11 +35,11 @@ Rust                             3             40              4            613
 HTML                             1              0              0            227
 YAML                             3             21             17             92
 Text                             2              7              0             51
-make                             1             11              3             44
-CMake                            1              3              1             23
+make                             1             11              3             45
+CMake                            1              3              1             24
 TOML                             1              4              0             20
 -------------------------------------------------------------------------------
-SUM:                            73           3020            584          16371
+SUM:                            76           3510            612          18117
 -------------------------------------------------------------------------------
 23 Files were skipped (duplicate, binary, or without source code):
   png: 17
