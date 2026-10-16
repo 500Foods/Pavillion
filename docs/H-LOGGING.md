@@ -1,213 +1,129 @@
-# Logging and Log Viewer — Design Exploration
+# H — LOGGING
 
-**Status:** Exploration. Covers the C-level app log, JS log bridging, the CodeMirror-based log
-viewer in the Activity panel, and the right-click menu that splits Activity vs Log views.
+**Status:** Not started (exploration 2026-10-16, scoped the same day).
+**Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
----
+The core log in production, read back through a command, and the Log view in the Activity tab. It comes before tabs and before mail so every later phase can be watched from inside the app. The line format and `pav_log` are the [C-CORE.md](C-CORE.md) Lock and do not change here.
 
-## What exists
+## Phases
 
-**C-level logging** (`core/src/pavillion.c:904`):
-- `pav_log(subsystem, level, num_args, fmt, ...)` — main logging function, thread-safe via
-  `g_log_mu` mutex. Formats a line with millisecond UTC timestamp, level name, subsystem, and
-  message.
-- Log line format (`C-CORE.md:79`):
-  `2026-10-14T17:04:01.123Z INFO  core  core ready`
-- Levels (`pavillion.h:84-87`): `PAV_ERROR (0)`, `PAV_WARN (1)`, `PAV_INFO (2)`, `PAV_DEBUG (3)`.
-- Dedicated log thread (`pav_log_thread_start/shutdown` at lines 830/849) drains an enqueue
-  queue. Thread is NOT started from the Rust bridge currently.
-- Output: file via `attach_profile_log` at line 866, opened in append mode during `core_boot()`
-  after config loads. Path: `logs/default.log` in the working directory (configurable in profile).
-- `pav_ui_log(subsystem, level, message)` at line 936 bridges JS errors into the C core log.
+One phase is one session. Do not start the next one in the same conversation.
 
-**Rust bridge** (`src-tauri/src/lib.rs`):
-- `pav_ui_log` FFI declared at line 67, bridging to C at line 684.
-- Registered Tauri command `ui_log` (`build.rs:56-63`, `lib.rs:632`).
-- No `log` crate or `env_logger` — Rust uses `eprintln!` for diagnostics only (16 call sites).
+| Phase | What | Kind | Status |
+| --- | --- | --- | --- |
+| H-1 | Log thread in production, a ring buffer, `log.tail`, and `log.lines` events | Medium | Not started |
+| H-2 | Log view: CodeMirror 6, read-only, highlighted, in the Activity tab | Medium | Not started |
+| H-3 | Search, level and subsystem filters, follow, copy, save, print | Medium | Not started |
 
-**JavaScript** (`ui/src/api.js:23-24`):
-- `log(subsystem, level, message)` calls `invoke("ui_log", { subsystem, level, message })`.
-- Called from `main.js` (lines 56-66, 84) and `shell.js` (lines 85, 92 for window error handlers).
-- Level mapping: `log("ui", 0, ...)` = `PAV_ERROR`, `log("ui", 2, ...)` = `PAV_INFO`.
-- No `console.log/warn/error` anywhere in `ui/src/`.
+Kind: **Easy** is one module and a test. **Medium** crosses one boundary.
 
-**Activity panel** (`ui/index.html:212`):
-- `<div class="panel log" id="panel-activity" role="tabpanel" hidden>` — exists but is empty.
-- CSS `.log` class already styled (`theme.css:355-362`):
-  ```css
-  .log {
-    flex: 1;
-    margin: 0;
-    padding: 0.75rem;
-    overflow: auto;
-    font-family: ui-monospace, monospace;
-    font-size: 0.85rem;
-  }
-  ```
-- Activity nav button at `index.html:63-65` with `data-section="activity"`, `nav: false`
-  in shell.js:168.
+## How a session works
 
-**No log-reading API exists.** The design doc (`D-UI.md:82`) says "The view asks the core for the
-text. It does not open the log file itself." But there is no FFI function to read the log file.
-The C core writes to a `FILE*` and does not expose a read-back mechanism.
+1. Read Resume in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md), the Status column above, and the previous phase's Status, Accomplished, Lessons learned, and Handoff.
+2. Re-read only this phase: Goal, Entry gate, Work items, Done means, Exit gate. Open the lock section this phase cites.
+3. Ask the qualifying questions. Wait for approval before editing source.
+4. Do this phase only. Check a work item `[x]` only after its check has passed. Defer with `[~]`, one line, and the phase it moves to.
+5. Before marking complete, write Status, Accomplished, Lessons learned, and Handoff, update the Status column here and in the index, and append the Working log. Then stop.
+6. A sitting that ends early sets Status to **in progress**, names the last finished work item, and leaves the rest unchecked.
 
-**CodeMirror**: Not installed anywhere. Mentioned only in docs
-(`PAVILLION_PLAN.md:61`, `PAVILLION_PLAN.md:505`, `D-UI.md:84`, `G-LAYERS.md:71`) as "not a
-dependency until that screen exists." The Lithium project has CodeMirror extensions, but they
-are not available in this codebase.
+Leave Accomplished, Lessons learned, and Handoff off a phase that has not started.
 
----
+## What exists (2026-10-16)
 
-## 1. C-level log API (new function needed)
+- `pav_log(subsystem, level, num_args, fmt, ...)` in `core/src/pavillion.c`, the millisecond-UTC line `2026-10-14T17:04:01.123Z INFO  core  core ready`, levels `PAV_ERROR 0` to `PAV_DEBUG 3`.
+- `pav_log_thread_start` and `pav_log_thread_shutdown` exist and are tested, but **nothing in production starts the thread**. Every line is written synchronously by the caller under the mutex. `pavillion_stop` still calls shutdown, which does nothing.
+- The profile log is opened for append in `core_boot()` (`attach_profile_log`). Path `logs/<profile id>.log`.
+- `pav_ui_log` and the `ui_log` Tauri command bridge JS messages into the core log. `api.js` exports `log()`. There is no `console.*` call in `ui/src`.
+- The Activity tab (`#panel-activity`, class `.log`) is empty. CodeMirror is not installed.
 
-A new FFI function to read the log file contents is required. Following the existing C API
-pattern:
+## Lock
 
-```
-// pavillion.h (new declaration)
-int pavillion_log_read(char **out_text, char *err, size_t err_len);
+- The log file is the record. Its line format is the C-CORE Lock. The view never opens the file; it asks the core.
+- The core keeps the last 10,000 lines in an in-memory ring (`core/src/logring.c`), filled by the log thread as it writes. `log.tail` reads the ring, not the file. The ring holds the same bytes as the file.
+- Every line is also delivered as an event: the log thread emits `log.lines {lines:[{seq, ts, level, subsystem, text}, ...]}` through `pav_on_event`, at most one batch per 100 ms. There is no per-line `log.line` event. `seq` is a monotonically increasing 64-bit counter since start.
+- Filtering is client-side in the view for what is loaded; `log.tail {sinceSeq?, limit<=10000, minLevel?, subsystems?}` filters in the core when asked. Default load is the whole ring.
+- Times on screen are local `HH:mm:ss.mmm` (24 h, profile timezone, default `America/Vancouver`). Hovering a line shows the UTC stamp. The file stays UTC.
+- Log rotation: at start, a profile log over 10 MB is renamed `<id>.log.1` (one generation kept) before opening. No rotation while running.
+- Redaction (was plan §11): never log a password, token, `Authorization` header, cookie, message body, or bot key. Log ids, sizes, counts, durations, and HTTP status. `pav_log` callers pass ids, never content. A Unity test (`test_log_redacts_known_secret_shapes`) feeds a fixture `Authorization: Basic …` and `Bearer …` through the HTTP debug path (M-1) and asserts neither appears.
+- `log_level` stays on the index (`error`, `warn`, `info`, `debug`). The Log view can change it for the running session through `prefs.set {logLevel}`, which writes the index.
+- CodeMirror 6 is the viewer (it is already the planned HTML and Lua editor). Packages: `@codemirror/state`, `@codemirror/view`, `@codemirror/search`, `@codemirror/language`. The log language is a small `StreamLanguage` in `ui/src/log/loglang.js`. Font is `--pav-font-mono` (Vanadium Mono when installed, then `ui-monospace, monospace`).
+- Lithium's CodeMirror extensions: evaluate when the Lithium source is available; none are required for H.
+- The Activity button opens the Activity tab. The tab has two views, **Activity** and **Log**, as a segmented control at the top of the tab, plus a right-click menu on the Activity nav button with the same two items. Plain click opens the last view used (stored in `preferences.ui.activity.view`). I-2 adds the Activity view; until then the tab shows Log only.
 
-// Semantics:
-// - Reads the log file (logs/default.log or pavillion.log if no profile loaded)
-// - Allocates and returns contents via *out_text (caller frees with pavillion_free)
-// - Returns 0 on success, -1 on error (with err buffer populated)
-// - Optional: accept a severity filter or component filter as parameters
-// - Format: returns the same line format as written:
-//   2026-10-14T17:04:01.123Z INFO  core  core ready
-```
+## H-1: Log thread, ring, `log.tail`, and `log.lines`
 
-The log thread does not need to be started for read-back. Reading the file directly is simpler
-and avoids race conditions with the queue. The file is written sequentially (append mode with
-`fputs`), so reads can use `fread` or `getline` into an allocated buffer.
+**Kind:** Medium
+**Status:** Not started.
 
-### Tier impact:
-- **C core**: New function in `pavillion.h` + implementation in `pavillion.c`.
-- **Rust bridge**: New `#[tauri::command] fn log_read()` in `lib.rs`, registered in `build.rs`.
-- **UI**: New `api.js` function calling the Tauri command.
+**Goal:** Production logging is asynchronous, the last lines are readable through a command, and new lines arrive as events.
 
----
+**Entry gate:** G-8 complete.
 
-## 2. Log viewer as an Activity tab option
+**Work items:**
 
-The Activity button should present a context menu on right-click (or a dropdown) with two options:
-- **Activity** — the activity feed view (see [I-ACTIVITY.md](I-ACTIVITY.md)).
-- **Log** — the raw C-core log viewer.
+- [ ] `pavillion_start` calls `pav_log_thread_start` before the core thread; `pavillion_stop` keeps joining it last. Lines logged before the profile log is attached go to stderr and `<workdir>/logs/pavillion.log` as the C-CORE Lock says (this was never implemented; implement it).
+- [ ] `core/src/logring.c`: `pav_logring_push(seq, line)`, `pav_logring_read(since_seq, limit, min_level, subsystems, json_t **out)`. Capacity 10,000 lines, oldest dropped.
+- [ ] Command `log.tail` in the dispatcher and `docs/API.md`. Events `log.lines` with the 100 ms coalescing on the log thread.
+- [ ] **Pre-profile logging**, as an explicit item: a line logged before a workdir exists goes to stderr only. Once the workdir is known but before the profile log is attached, it goes to stderr and `<workdir>/logs/pavillion.log`. When the profile log attaches, the buffered lines are already on disk and nothing is lost or duplicated. Unity: `test_log_before_workdir_stderr_only`, `test_log_before_profile_goes_to_workdir_log`, `test_log_no_duplicate_after_profile_attach`.
+- [ ] Startup rotation over 10 MB.
+- [ ] `log.client {subsystem, level, message}` replaces `ui_log`: subsystem limited to `^[a-z][a-z0-9_]{0,15}$`, message capped at 2,000 bytes, newlines replaced by `⏎`.
+- [ ] `ui/src/log.js` routes `window.onerror` and `unhandledrejection` to `log.client` at `error`.
+- [ ] Unity: `test_logring_wraps_at_capacity`, `test_log_tail_since_seq`, `test_log_tail_filters_level`, `test_log_rotation_over_limit`, `test_log_client_sanitizes`, plus the three pre-profile tests above.
 
-When "Log" is selected, the `#panel-activity` div is populated with the CodeMirror editor.
+**Done means:** A running app writes its log from the log thread, and `log.tail` returns the newest lines.
 
-### Right-click menu on Activity button
+**Exit gate:** `make test` exits 0. In `make dev`, the devtools console call `await api.log.tail({limit:5})` (debug builds expose `window.pav` for this) returns five lines ending with `core ready`, and a forced `throw` in the console appears as a `ui` error line.
 
-Right-clicking the Activity nav button shows a small menu:
-```
-Activity
-Log
-```
-- "Activity" opens the activity feed view.
-- "Log" opens the log viewer in the same panel.
+## H-2: Log view in the Activity tab
 
-This replaces the current plain click behavior of `openSection("activity")` with a choice, or
-adds a modifier (e.g., Ctrl+click = Log, plain click = Activity).
+**Kind:** Medium
+**Status:** Not started.
 
-### Tier impact: UI only — `shell.js` event handler on the Activity button.
+**Goal:** The Activity tab shows the log, live, in CodeMirror.
 
----
+**Entry gate:** H-1 complete.
 
-## 3. CodeMirror integration
+**Work items:**
 
-**Installation decision**: CodeMirror 6 is planned for HTML/Lua source editing
-(`PAVILLION_PLAN.md:61`). Install it now for the log viewer as well.
+- [ ] Add the CodeMirror packages to `ui/package.json`. Lazy-load them with `import()` when the Log view first opens, so startup does not pay for them.
+- [ ] `ui/src/log/view.js`: `createLogView(el, api)`. Read-only `EditorState`, line numbers, line wrapping off by default (toggle), the `loglang` highlighter with token classes `pav-log-ts`, `pav-log-level-ERROR|WARN|INFO|DEBUG`, `pav-log-sub`, `pav-log-msg`, colors from `--pav-log-*` variables.
+- [ ] Render timestamps in local time with a gutter or a decoration; the document text stays the UTC line so copy gives the file bytes.
+- [ ] On open: `log.tail`, scroll to the end. Subscribe to `log.lines` and append while open. Unsubscribe on close.
+- [ ] Font size for the view is `preferences.ui.zoom.log` (a new pane key, default 1) with a slider in Settings → Zoom.
+- [ ] Segmented control `Activity | Log` at the top of the tab (Activity disabled until I-2). Right-click menu on the Activity nav button is J-1's menu component; until J-1, this phase adds the segmented control only and J-1's Handoff wires the menu.
 
-**Editor configuration:**
-- Font: Vanadium Mono. The log panel CSS uses `ui-monospace`, but CodeMirror can be configured
-  with `fontFamily: 'Vanadium Mono, monospace'`.
-- Line numbers: enabled.
-- ReadOnly: true.
-- Line wrapping: configurable.
-- Theme: match existing dark theme variables (`--pav-*` from `G-LAYERS.md` L4).
+**Done means:** Opening Activity shows the newest lines, and new lines appear without a refresh.
 
-**Custom syntax highlighting:**
-A simple CodeMirror language mode that parses each line:
-`<timestamp> <LEVEL> <subsystem> <message>`
+**Exit gate:** `make test` exits 0. `make build`: open Activity, the last line is visible, trigger a log line (change zoom, which logs `prefs saved` at debug with level debug set), and it appears within a second.
 
-Token classes:
-- `.cm-log-ts` — timestamp (dimmed)
-- `.cm-log-level-INFO` / `.cm-log-level-WARN` / `.cm-log-level-ERROR` / `.cm-log-level-DEBUG`
-- `.cm-log-subsystem` — the subsystem tag
-- `.cm-log-message` — the rest
+## H-3: Search, filters, follow, copy, save, print
 
-**Lithium extensions**: The task mentions "extensions to CodeMirror that we might want to include
-from the Lithium project." Since no Lithium code is present in this repo, this will require:
-- Identifying which extensions are useful (line highlighting? search match count? column guide?)
-- Either vendoring them or importing from a shared package.
+**Kind:** Medium
+**Status:** Not started.
 
-### Tier impact:
-- **UI**: Install CodeMirror 6 via npm, create `ui/src/log-viewer.js` module, CSS for dark theme.
-- **Dependencies**: Add `@codemirror/view`, `@codemirror/state`, `@codemirror/lang-*` packages.
+**Goal:** The Log view is a tool: find, filter, follow, and hand a log to someone.
 
----
+**Entry gate:** H-2 complete.
 
-## 4. Search and filter UI
+**Work items:**
 
-At the top of the log viewer (above the CodeMirror editor):
-- **Search input**: text field that filters lines containing the search string. Uses CodeMirror's
-  `search` extension + a custom filter that highlights matches.
-- **Severity filter**: multi-select dropdown with INFO, WARN, ERROR, DEBUG checkboxes. Default: all
-  checked.
-- **Component/subsystem filter**: multi-select dropdown populated from the distinct subsystem
-  tags in the log (core, config, ui, etc.). Default: all checked.
-- **Refresh button**: re-reads the log file from the C core.
-- **Auto-follow toggle**: when enabled, the viewer scrolls to the newest line (like `tail -f`).
+- [ ] Toolbar above the editor: search field (CodeMirror search with match count, `Ctrl+F` focuses it), level checkboxes (ERROR, WARN, INFO, DEBUG), subsystem multi-select filled from the distinct subsystems seen, Follow toggle (on by default; scrolling up turns it off), Wrap toggle, Refresh, and the session log level select.
+- [ ] Filtering hides lines with a decoration-based fold (lines are not removed from the document); the match count and "showing N of M" are shown.
+- [ ] Copy visible lines; Save visible lines to a file through the host's save dialog (`dialog.save` host service, file written by the core with `log.export {path, filter}`); Print through `window.print()` on a print stylesheet that shows only the visible lines.
+- [ ] "Email this log" creates a draft with the log attached when O-1 exists; until then the item is absent. (Recorded; wired in O-5's Handoff.) `mailto:` bodies are not used: they truncate and leak to another client.
+- [ ] Filter, wrap, and follow state persist in `preferences.ui.log`.
+- [ ] Vitest: `loglang.test.js` tokenizes each level; `filter.test.js` for the level and subsystem predicate.
 
-**Filtering approach**: Rather than modifying the loaded text, use CodeMirror's `panel` or `gutter`
-markers, or maintain a folded-lines set. Simpler initial approach: load all lines, then use a
-custom `TextMarker` or `Decoration` to dim non-matching lines.
+**Done means:** A user can find every WARN from `config` in the last hour and save exactly those lines.
 
-### Tier impact: UI only — `shell.js` event handlers, new CSS classes for filters.
+**Exit gate:** `make test` exits 0. In `make build`, filter to WARN + `config`, search a word, save; the saved file holds exactly the visible lines, byte for byte the same as the log file's lines.
 
----
+## Open questions for Andrew
 
-## 5. Print and email forwarding
+- H-Q1. Ring size 10,000 lines and file rotation at 10 MB with one old generation: acceptable defaults?
+- H-Q2. Should debug level be switchable per subsystem (`log_level: {"default":"info","sync":"debug"}`) once sync exists?
 
-- **Print**: Standard browser print on the CodeMirror container, or use CodeMirror's print
-  extension. Print the filtered view (current filter applied).
-- **Email forwarding**: Use Tauri's `invoke` to call a Rust function that opens the system email
-  client with a `mailto:` URI pre-populated with the log (or filtered log) as the body.
-  Alternatively, use the OS opener with `data:text/plain;base64,...` as a fallback.
+## Working log
 
-### Tier impact:
-- **UI**: `shell.js` handler for the print/email buttons.
-- **Rust**: New `invoke` command to open mailto or write to a temp file.
-- **C core**: None.
-
----
-
-## Tier impact summary
-
-| Component | Changes |
-|---|---|
-| C core | New `pavillion_log_read` function |
-| Rust bridge | New `log_read` command, optionally `print_log` / `email_log` |
-| UI | New `ui/src/log-viewer.js`, CodeMirror install, filter/search UI, right-click menu on Activity button |
-| CSS | Dark theme matching for CodeMirror, filter bar styling |
-| npm | `@codemirror/*` packages as dependencies |
-
----
-
-## Open questions
-
-1. **Log file location**: Should the Rust bridge read the file path from the profile config
-   (like `attach_profile_log` does), or should the C function take a path parameter?
-2. **Filtering**: Server-side (C returns filtered lines) or client-side (C returns all, UI filters
-   in CodeMirror)? Server-side is simpler for large logs but client-side is more responsive.
-3. **Auto-follow**: Should the log viewer auto-scroll to the newest line on open, or stay at the
-   top? D-UI.md:82 says "scroll to the newest line on open" — confirm this is the desired behavior.
-4. **Log thread**: Should we start the log thread from Rust at app launch (it currently isn't
-   started)? Or is file-based reading sufficient?
-5. **Line limit**: For very large log files, should there be a tail limit (e.g., last 10,000 lines)
-   to avoid memory issues in the browser?
-6. **Lithium extensions**: Which specific CodeMirror extensions from the Lithium project should
-   be included? Need access to the Lithium source to evaluate.
-7. **Email method**: `mailto:` URI (simple, limited to ~2KB body) or temporary file with
-   `tauri::api::process::Command` to call `xdg-email`?
-8. **Right-click menu vs modifier key**: Right-click context menu (as proposed) or keyboard
-   modifier (Ctrl+click for Log, Shift+click for Activity)?
+- 2026-10-16 Exploration written (what exists, a read API, the viewer, filters, print and email).
+- 2026-10-16 Scoped into H-1 to H-3. Decisions: ring buffer in the core instead of reading the file, events for live lines, client-side filtering, the log thread started in production, `mailto:` forwarding replaced by a draft with an attachment.

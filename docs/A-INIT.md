@@ -1,7 +1,7 @@
 # A — INIT
 
 **Status:** A-5 complete (2026-10-14). A-6 was already complete. No further phase in this document.
-**Resume:** The table of contents names the one phase that may be worked. If that id is not in this file, do not start here.
+**Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 A running Pavillion: one executable, one window, the C core started. JSON fields are the lock in [B-CONFIG.md](B-CONFIG.md). Threads and logging are the lock in [C-CORE.md](C-CORE.md). The frame is the lock in [D-UI.md](D-UI.md).
 
@@ -32,6 +32,10 @@ Kind: **Easy** is one module and a Unity test, or a static page. **Medium** cros
 Leave Accomplished, Lessons learned, and Handoff off a phase that has not started.
 
 ## Lock
+
+### Rust is minimal (2026-10-16)
+
+- Pavillion will later be built into Hydrogen, which is C. `src-tauri` does only Tauri work: the window, the webview, dialogs, the plugins, and one generic forwarding command and event. All logic is in the C core. This is the [G-LAYERS.md](G-LAYERS.md) L3 Lock. The A-4/A-5 Rust code that does more (`lib.rs` window state, the prefs struct, workdir creation) is historical, and G-8 moves it into C. Do not add to it.
 
 ### Done when A-5 is complete
 

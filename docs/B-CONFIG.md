@@ -1,7 +1,7 @@
 # B — CONFIG
 
 **Status:** B-5 complete (2026-10-14). No further phase in this document. The sequence runs C-3 next.
-**Resume:** The table of contents names the one phase that may be worked. If that id is not in this file, do not start here.
+**Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The working directory, `Pavillion.json`, and profile files. The loader is C, called from the core. The shell never reads these files.
 
@@ -111,7 +111,18 @@ One profile is loaded for the life of the process. Switching is a restart. Schem
 
 Relative paths are under the working directory. A path beginning with `/` is absolute. `storage.engine` defaults to `sqlite`. `storage.connection` is present only for another engine, and it holds no password. Message bodies stay files under `blobs` for every engine.
 
-`preferences.zoom` is an object of panel id to a scale. Schema 1 has `shell`, `navButtons`, `navBody`, `mailList`, and `mailDetail`, each from `0.05` to `5` in steps of `0.05`. `shell` is the master scale on the root font size; each pane scale multiplies on top of it. A later panel (the contacts list, the reading pane) is another key on the same object, and a profile that lacks the pane keys gains them the next time it loads. Unknown keys are kept. `preferences.window` is how the shell opens: maximized or a size, position when the compositor reports one, and `chrome` of `system` or `hidden`. `x` and `y` are null when unknown. The shell writes this object on move, resize, and quit, and applies it on the next launch. `chrome` of `hidden` is stored. Decorations stay the system frame until that setting is turned on. New profiles also include `preferences.ui`. The shape is in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md) §10. A profile that does not have that object gains it the next time it loads. The sample above is the profile B-2 wrote, before `ui` and the pane zoom keys were added. `preferences.ui.fontawesome_kit` is a Font Awesome kit id (e.g. `"45801522ef"`), or raw HTML such as a `<script>` tag. `preferences.ui.icons` is a map of nav id to an icon spec: a Font Awesome class string (e.g. `"fa-sharp-duotone fa-solid fa-paper-plane"`) or raw HTML (e.g. an inline SVG).
+`preferences.zoom` is an object of panel id to a scale. Schema 1 has `shell`, `navButtons`, `navBody`, `mailList`, and `mailDetail`, each from `0.05` to `5` in steps of `0.05`. `shell` is the master scale on the root font size; each pane scale multiplies on top of it. A later panel (the contacts list, the reading pane) is another key on the same object, and a profile that lacks the pane keys gains them the next time it loads. Unknown keys are kept. `preferences.window` is how the shell opens: maximized or a size, position when the compositor reports one, and `chrome` of `system` or `hidden`. `x` and `y` are null when unknown. The shell writes this object on move, resize, and quit, and applies it on the next launch. `chrome` of `hidden` is stored. Decorations stay the system frame until that setting is turned on. New profiles also include `preferences.ui`:
+
+```json
+"ui": {
+  "nav": { "width": 320, "min": 200, "max": 500 },
+  "mail": { "split": 0.5, "min": 0.25, "max": 0.75 },
+  "contacts": { "split": 0.5, "min": 0.25, "max": 0.75 },
+  "files": { "split": 0.5, "min": 0.25, "max": 0.75 }
+}
+```
+
+A profile that does not have that object gains it the next time it loads. From F-2, `preferences.ui` is opaque to the core (except the icon-library allowlist check in F-3) and also holds zoom, fonts, icons, tabs, colors, and session; see the [F-HARDEN.md](F-HARDEN.md) Lock. The sample above is the profile B-2 wrote, before `ui` and the pane zoom keys were added. `preferences.ui.fontawesome_kit` (a kit id or raw HTML in the preview) is replaced by `preferences.ui.iconLibraries` in F-3. `preferences.ui.icons` (nav id to a class string or raw HTML in the preview) becomes registry key to sanitized HTML snippet in F-7. Both are migrated on load; see the Icons section of the [F-HARDEN.md](F-HARDEN.md) Lock. Later fields added by other documents: account `number` and the index `next_account_number` ([K-ACCOUNTS.md](K-ACCOUNTS.md) K-2), `preferences.cache` (`{bodiesMb, blobsMb}`, core-enforced, so it lives **outside** the opaque `preferences.ui` blob; [L-STORE.md](L-STORE.md) L-2), `preferences.mail`, `preferences.sync`, the profile `rules` and `scripts` arrays ([R-RULES.md](R-RULES.md)). Each is added to this lock by the phase that introduces it.
 
 Modes: the index, the profile, the log, and the database file are `0600`. `blobs` is `0700`.
 
@@ -136,7 +147,7 @@ An account object in `accounts`:
 }
 ```
 
-`kind` is `jmap` or `imap`. An `imap` account uses `host`, `port`, `smtp_host`, and `smtp_port` instead of `session_url`. `auth` is `basic` or `bearer`. `fetch_bodies` is `none`, `recent`, or `all`.
+`kind` is `jmap` or `imap`. An `imap` account uses `host`, `port`, `smtp_host`, and `smtp_port` instead of `session_url`. `auth` is the auth method. In v1 it is `basic`, a username plus a keyring password, used as HTTP Basic for JMAP and DAV and as SASL PLAIN for IMAP and SMTP, always over TLS. `oidc` arrives with K-4, and `bearer` is reserved. See the [K-ACCOUNTS.md](K-ACCOUNTS.md) Authentication Lock. `kind` gains `dav` when S-5 lands. `fetch_bodies` is `none`, `recent`, or `all`.
 
 No password, token, or connection secret is a JSON field. A profile that contains a key named `password`, `token`, `secret`, or `refresh_token` is rejected. The keyring is service `pavillion`, user `<profile id>/<account id>`. Keyring calls are not part of B. Rejecting the key is.
 

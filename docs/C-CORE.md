@@ -1,9 +1,9 @@
 # C — CORE
 
 **Status:** C-6 complete (2026-10-14). No further phase in this document. The sequence runs A-5 next.
-**Resume:** The table of contents names the one phase that may be worked. If that id is not in this file, do not start here.
+**Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
-Threads, the loop, logging, and the store. Protocol work (JMAP, IMAP, the mail tables) is not in this document.
+Threads, the loop, logging, and the store. Protocol work (JMAP, IMAP, the mail tables) is not in this document. Later additions to the thread table are the net threads (one per server endpoint) and work pool ([M-SYNC.md](M-SYNC.md)), the script thread ([R-RULES.md](R-RULES.md)), and the event thread ([G-LAYERS.md](G-LAYERS.md) G-2). Note (2026-10-16): the log thread is tested but not yet started in production; [H-LOGGING.md](H-LOGGING.md) H-1 starts it. Migrations and the schema are [L-STORE.md](L-STORE.md).
 
 ## Phases
 
@@ -40,9 +40,10 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 | Shell | The process, the WebView, argv | JSON, SQLite, curl, the keyring |
 | Core | The profile, the store, the command queue | The WebView |
 | Log | The open log file | Anything but the log queue |
-| Worker | One per account, when sync exists | SQLite. A worker posts a result back to the core |
+| Worker | The work pool, net threads, and script worker added later (M, R) | SQLite. A worker posts a result back to the core |
+| Store writer | From L-1: the only read-write SQLite connection and the write queue ([L-STORE.md](L-STORE.md) Lock) | The profile, curl |
 
-Hello world starts the shell, the core thread, and the log thread. No workers. The core thread is the only thread that opens the database or writes a profile. A worker never holds a `sqlite3 *`.
+Hello world starts the shell, the core thread, and the log thread. No workers. The core thread is the only thread that writes a profile. Until L-1 it is also the only thread that opens the database. From L-1, the store writer owns the only write connection and the core thread uses the read pool ([L-STORE.md](L-STORE.md) Lock). A worker never holds a `sqlite3 *`.
 
 ### Loop
 

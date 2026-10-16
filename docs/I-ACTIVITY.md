@@ -1,124 +1,110 @@
-# Activity Feed — Design Exploration
+# I — ACTIVITY
 
-**Status:** Exploration. Covers the user-facing activity feed view that shows in-progress
-operations (mailbox checks, file copies, downloads) with status, progress, ETA, and cancel
-buttons, plus a history toggle.
+**Status:** Not started (exploration 2026-10-16, scoped the same day).
+**Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
----
+The user-facing feed of work in progress: syncing a mailbox, fetching bodies, downloading an attachment, sending, indexing, importing, running rules. Each has a status, progress, an estimate, and a cancel button. The registry lives in the core; every long operation in M, N, O, Q, R, S, T, and U registers with it. The Update button's spin reads it.
 
-## What exists
-The Activity button (`ui/index.html:63-65`, `shell.js:168` with `nav: false`) opens the
-`#panel-activity` div (`index.html:212`), which is styled with `.log` CSS (`theme.css:355-362`)
-but is currently empty. There is no activity tracking infrastructure in the C core, Rust bridge,
-or JavaScript.
+## Phases
 
----
+One phase is one session. Do not start the next one in the same conversation.
 
-## Activity feed requirements
+| Phase | What | Kind | Status |
+| --- | --- | --- | --- |
+| I-1 | Activity registry in the core, `activity.*` commands and events, cooperative cancel | Medium | Not started |
+| I-2 | Activity view, history toggle, the Update button bound to it | Medium | Not started |
 
-### Columns
-| Column | Description | Example |
-|---|---|---|
-| Started | When the activity began | `14:23:01.452` |
-| Type | The kind of activity | `Retrieve mail`, `Copy files`, `Download attachment` |
-| Status | Current state | `In progress`, `Complete`, `Failed`, `Cancelled` |
-| ETA | Projected completion time or duration | `in 5s`, `2m remaining`, `done` |
-| Description | What the activity is doing | `Fetching message 3 of 17 from imap.example.com` |
-| Progress | Current step | `3/17` or `42%` |
-| Cancel | Button (only for in-progress activities) | `⨯` button |
+Kind: **Easy** is one module and a test. **Medium** crosses one boundary.
 
-### Behavior
-- Shows in-progress activities by default.
-- Toggle to show historical actions (completed, failed, cancelled).
-- Failed activities remain visible in the list (not auto-dismissed).
-- Cancel button sends a cancel signal to the C core operation.
+## How a session works
 
----
+1. Read Resume in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md), the Status column above, and the previous phase's Status, Accomplished, Lessons learned, and Handoff.
+2. Re-read only this phase: Goal, Entry gate, Work items, Done means, Exit gate. Open the lock section this phase cites.
+3. Ask the qualifying questions. Wait for approval before editing source.
+4. Do this phase only. Check a work item `[x]` only after its check has passed. Defer with `[~]`, one line, and the phase it moves to.
+5. Before marking complete, write Status, Accomplished, Lessons learned, and Handoff, update the Status column here and in the index, and append the Working log. Then stop.
+6. A sitting that ends early sets Status to **in progress**, names the last finished work item, and leaves the rest unchecked.
 
-## Data model (UI-side)
+Leave Accomplished, Lessons learned, and Handoff off a phase that has not started.
 
-```javascript
-type Activity = {
-  id: string,           // unique identifier
-  started: string,      // timestamp
-  type: string,         // "Retrieve mail" | "Copy files" | etc.
-  status: "in-progress" | "complete" | "failed" | "cancelled",
-  eta?: string,         // "in 5s" | "2m remaining" | undefined
-  description: string,  // current action description
-  progress: {         // step-based progress
-    current: number,
-    total: number | null,
-  },
-  cancellable: boolean,
-}
+## Lock
+
+- The registry is in the core (`core/src/activity.c`), not a UI abstraction. The UI never invents an activity, so the CLI's `status` and the window agree.
+- An activity:
+
+```json
+{ "id": "act-42", "kind": "sync.mail", "accountId": "a-500foods-andrew",
+  "title": "Sync andrew@500foods.com", "detail": "Inbox: headers 300 of 1,200",
+  "state": "running", "startedMs": 1760630581452, "endedMs": null,
+  "progress": { "done": 300, "total": 1200, "unit": "messages" },
+  "etaMs": 4200, "cancellable": true, "error": null, "parentId": null }
 ```
 
----
+- `state` is `queued`, `running`, `done`, `failed`, or `cancelled`. `kind` is a closed list kept in `docs/API.md`. The kinds below are the **initial set**. The doc that owns a feature extends it, adding the kind to `docs/API.md` in the phase that first uses it, and a kind not in that list is rejected by `pav_activity_begin`. Initial set: `sync.mail`, `sync.contacts`, `sync.calendar`, `sync.files`, `body.fetch`, `attachment.download`, `files.upload`, `files.download`, `send`, `index.rebuild`, `rules.run`, `import`, `export`, `retention`. Added by owning docs: `cache.evict` (L-2), `search.server` (Q-2), `queue.flush` (M-6, failed and pending ops), and `account.test` (M-2).
+- C API, callable from any thread:
 
-## C-core integration
+```c
+int64_t pav_activity_begin(const char *kind, const char *account_id, const char *title, int cancellable, int64_t parent);
+void    pav_activity_progress(int64_t id, int64_t done, int64_t total, const char *unit, const char *detail);
+void    pav_activity_end(int64_t id, int state, const char *error);   /* PAV_ACT_DONE, FAILED, CANCELLED */
+int     pav_activity_cancelled(int64_t id);   /* the operation polls this between steps */
+```
 
-The C core would need:
-- A registry of active operations (each with an ID, type, status, progress, ETA).
-- Functions to register/unregister activities as they start/stop.
-- A cancel mechanism: `pavillion_activity_cancel(activity_id)`.
-- A read API: `pavillion_activities_get(ActivityInfo **out, int *count)` returning the current
-  snapshot.
+- Cancel is cooperative: `activity.cancel {id}` sets a flag; the operation checks `pav_activity_cancelled` between requests or rows and ends itself as `cancelled`. curl transfers in M-1 use the flag in their progress callback to abort. Cancel never kills a thread.
+- ETA is computed in the core from the progress rate over the last 10 seconds (exponential moving average), and is null until two samples exist or when `total` is unknown.
+- Events: `activity.changed {activity}` on begin, end, and at most every 250 ms per activity on progress.
+- History: the last 500 finished activities are kept in memory for the session. Failed ones stay until dismissed. Nothing is persisted across restarts; the log file is the permanent record (each begin and end is also a log line under subsystem `activity`).
+- The view is a table of text (no HTML from outside): Started (local `HH:mm:ss`), Kind (icon + label), Account (number), Title and Detail, Progress (bar + `300/1,200`), ETA (`in 5s`, `2m`), State, Cancel. Columns use `textContent`. Child activities fold under their parent.
+- Default shows running and queued, plus failed not dismissed. A toggle shows history.
+- The Update button (bottom nav) runs `sync.now` and spins while any `sync.*` activity is running. Its tooltip names the count.
 
-### Tier impact:
-- **C core**: Major — new activity registry module with start/stop/cancel/get APIs.
-- **Rust bridge**: New `#[tauri::command]` for `activities_get` and `activity_cancel`, plus
-  event bridge if using push model.
-- **UI**: New `ui/src/activity.js` module, table rendering in `shell.js`, CSS for the activity
-  table and status badges (using `--pav-*` variables).
+## I-1: Activity registry in the core
 
----
+**Kind:** Medium
+**Status:** Not started.
 
-## Data flow options
+**Goal:** Any core thread can register, update, finish, and cancel an activity, and the UI is told.
 
-**Option A — Polling.** The UI polls `activities_get` every 500ms (or a debounce interval).
-Simpler to implement but wastes cycles when nothing is happening.
+**Entry gate:** H-1 complete.
 
-**Option B — Push via Event.** The C core uses a condition variable / event mechanism that
-signals the Rust bridge, which then emits a Tauri event to the frontend. More efficient but
-requires cross-thread signalling infrastructure.
+**Work items:**
 
-**Option C — WebSocket bridge.** If the C core supports async command completion via callbacks,
-expose those as Tauri events.
+- [ ] `core/src/activity.c` and `core/include/pav_activity.h` with the Lock's API, a mutex, and the 500-entry history.
+- [ ] Commands `activity.list {includeHistory}`, `activity.cancel {id}`, `activity.dismiss {id}`; event `activity.changed` with the 250 ms throttle.
+- [ ] A test-only command `debug.activity_demo {steps, ms}` (compiled in debug builds) that runs on a worker, reports progress, and honors cancel. I-2 uses it.
+- [ ] Unity: `test_activity_begin_progress_end`, `test_activity_cancel_is_cooperative`, `test_activity_eta_after_two_samples`, `test_activity_history_capped`, `test_activity_events_throttled`.
 
----
+**Done means:** The demo activity can be started, watched, and cancelled through commands.
 
-## CSS/design
+**Exit gate:** `make test` exits 0 with the five tests.
 
-- Status badges: `--pav-status-in-progress` (blue), `--pav-status-complete` (green),
-  `--pav-status-failed` (red), `--pav-status-cancelled` (gray).
-- Progress bar or progress text in the Progress column.
-- Cancel button: small `⨯` or `fa-x` icon button, only visible for `in-progress` + `cancellable`.
-- History toggle: a checkbox or segmented control at the top of the Activity view.
+## I-2: Activity view and the Update button
 
----
+**Kind:** Medium
+**Status:** Not started.
 
-## Tier impact summary
+**Goal:** The Activity tab shows live work with cancel, and the Update button reflects it.
 
-| Component | Changes |
-|---|---|
-| C core | Activity registry, `pavillion_activity_cancel`, `pavillion_activities_get` |
-| Rust bridge | New commands `activities_get`, `activity_cancel`, event bridge if using push |
-| UI | New `ui/src/activity.js`, table rendering in `shell.js`, activity CSS |
+**Entry gate:** I-1 and H-2 complete.
 
----
+**Work items:**
 
-## Open questions
+- [ ] `ui/src/activity/view.js`: a plain DOM table (Tabulator is not needed for at most a few hundred rows), patched by id on `activity.changed`, never rebuilt.
+- [ ] Status colors from `--pav-status-running`, `-done`, `-failed`, `-cancelled`. Progress bar is a `<progress>` element. Cancel is a button with an accessible name `Cancel <title>`.
+- [ ] History toggle and Dismiss on failed rows; state in `preferences.ui.activity`.
+- [ ] Enable the `Activity | Log` segmented control from H-2. Plain click on the Activity nav button opens the last view.
+- [ ] The Update button calls `sync.now` (a no-op returning `ok` until M-3) and spins while a `sync.*` activity runs, replacing the preview's 1.5 s fake spin. `prefers-reduced-motion` stops the spin and shows a static badge instead.
+- [ ] Debug-only Help item `Run demo activity` calls `debug.activity_demo`.
 
-1. **C-core integration depth**: Should the C core track activities per-mailbox sync, per-copy
-   job, etc.? Or should this be a UI-side abstraction that wraps lower-level progress events?
-2. **Cancellation granularity**: Can any activity be cancelled, or only certain types (network
-   fetches, copies)? How does cancel propagate — SIGINT-equivalent to a thread, or a flag the
-   operation polls?
-3. **History retention**: How long are completed/failed activities kept? Until the app restarts,
-   or persisted across sessions?
-4. **ETA calculation**: Does the C core provide an ETA, or does the UI estimate based on elapsed
-   time and progress fraction?
-5. **Push vs poll**: Which approach for the C core → UI data flow? Polling is simpler but less
-   responsive for fast-changing progress bars.
-6. **Activity types**: Should we enumerate known types (retrieve mail, copy files, download
-   attachment, compaction, indexing) or let any subsystem register with a free-form type string?
+**Done means:** A demo activity shows progress and an ETA, cancels from its button, and moves to history.
+
+**Exit gate:** `make test` exits 0. In `make dev`: start the demo, watch the bar, cancel it, toggle history, see it as cancelled.
+
+## Open questions for Andrew
+
+- I-Q1. Should finished activities persist across restarts (a small SQLite table), or is the session plus the log file enough? The Lock says session only.
+
+## Working log
+
+- 2026-10-16 Exploration written (columns, behavior, a data model, push versus poll).
+- 2026-10-16 Scoped into I-1 and I-2. Decisions: registry in the core, push events with throttling, cooperative cancel, ETA in the core, closed kind list, session-only history, the Update button bound to sync activities.

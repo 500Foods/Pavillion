@@ -1,7 +1,9 @@
 # E — TREE
 
-**Status:** Design recorded (2026-10-15). No phase in this document. The phases below are not in the sequence and none has started.
-**Resume:** The one tree engine behind the section navs. Mail's mailbox tree comes first; files, calendars, and contacts reuse the row renderer and the view state. This document holds the architecture and the lock. Nothing is built: the mail tree in the shell preview is still four placeholder buttons in `ui/index.html`, and the phases below wait for mail to be real (§14 P0 in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md)).
+**Status:** Design recorded (2026-10-15). In the sequence from 2026-10-16. No phase has started.
+**Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
+
+The one tree engine behind the section navs. Mail's mailbox tree comes first; files, calendars, contacts, and the Settings → Accounts tree reuse the row renderer and the view state. Nothing is built: the mail tree in the shell preview is still four placeholder buttons in `ui/index.html`.
 
 The tree is a configurable navigation system, not a list widget. It describes what the user sees and how it behaves, and it does not own the underlying mail, contact, or file data. Nodes arrive from `mailbox_list` and the other list commands through `api.js`; the tree renders them.
 
@@ -10,7 +12,7 @@ The tree is a configurable navigation system, not a list widget. It describes wh
 | Section | Nav | Shape |
 | --- | --- | --- |
 | Mail | Mailbox tree | Nested, per account, with parent folders |
-| Files | Folder tree | Nested; empty for an IMAP account (plan §10) |
+| Files | Folder tree | Nested; empty for an IMAP account (old plan §10) |
 | Calendars | Calendars grouped by account | Flat groups; row renderer only |
 | Contacts | Accounts and recents | Flat lists; row renderer only |
 
@@ -32,9 +34,9 @@ The tree renders nodes; it does not fetch them. A list command returns nodes wit
 | `has_children` | So the disclosure arrow shows on a collapsed branch before it is expanded. |
 | `state`, `favorite`, `swatch` | `idle`/`syncing`/`error`, the favorite marker, the account or calendar color. |
 
-Updates arrive as events, not as polls: `mail://mailboxes-changed` and `mail://messages-changed` today (plan §2.3), with `contacts://changed`, `calendar://changed`, and the files equivalent when those screens are real. The tree patches the named nodes and leaves the rest alone.
+Updates arrive as events, not as polls: `mail.mailboxes_changed` and `mail.messages_changed` ([G-LAYERS.md](G-LAYERS.md) naming), with `contacts.changed`, `calendar.changed`, and `files.changed` when those screens are real. The tree patches the named nodes and leaves the rest alone.
 
-Account order and hidden accounts (plan §6.1) live in the tree's view state. A preset snapshot is taken over that arrangement.
+Account order and hidden accounts (old plan §6.1) live in the tree's view state. A preset snapshot is taken over that arrangement.
 
 ## Architecture: four modules
 
@@ -137,7 +139,7 @@ Illustrative data, not live mailbox statistics.
 - Color by state: unread, selected, error, syncing, and favorite each get their own treatment, through CSS variables so a theme changes them centrally.
 - Recursive size covers the whole subtree, and the tooltip says so. It is not the selected folder's own size.
 - Row regions are configurable: leading icon, label, status, count, trailing actions. Their order is not hard-coded into the engine.
-- Density is compact and comfortable, the two in plan §10. A third, spacious, is recorded here but not promised. All three are a handful of custom properties, not separate stylesheets.
+- Density is compact and comfortable, the two in old plan §10. A third, spacious, is recorded here but not promised. All three are a handful of custom properties, not separate stylesheets.
 
 Mail-specific, and the same contract serves files and calendars: counts and sizes are cached metadata supplied by the backend. Recursive totals are not computed by walking folders and messages on hover. IMAP servers do not universally report authoritative folder sizes, so some values are estimated or computed asynchronously and labeled as such.
 
@@ -159,7 +161,7 @@ The affordances: a dedicated drag handle, so clicking a row still selects it; an
 
 The renderer is ordinary HTML with CSS Grid or Flexbox. No component framework, and no CSS library, per the lock in [D-UI.md](D-UI.md).
 
-Layout tokens. They are `rem`, so the shell zoom (5–500%, plan §10) scales rows with everything else; at 100% they hold the pixel values below.
+Layout tokens. They are `rem`, so the shell zoom (5–500%, old plan §10) scales rows with everything else; at 100% they hold the pixel values below.
 
 ```css
 :root {
@@ -182,7 +184,7 @@ Layout tokens. They are `rem`, so the shell zoom (5–500%, plan §10) scales ro
 
 Every row uses the same tokens, so density, scale, and typography change without touching the renderer. The names follow the theme layer's semantic custom properties; `theme.css` holds the rules and only references variables. Two scales apply to the nav body: `preferences.zoom.shell` on the root, and `preferences.zoom.navBody` multiplying the pane. A pane scale never resizes the nav itself, only what is inside it.
 
-The icon slot has its own sizing and color contract rather than letting icons dictate row dimensions. Duotone icons carry a primary and a secondary layer, so the CSS accounts for both layers and their opacity. The same slot hosts a folder icon, a sync indicator, a favorite marker, or a custom SVG without changing the layout. The kit and its families stay as plan §10 and §11 describe.
+The icon slot has its own sizing and color contract rather than letting icons dictate row dimensions. Duotone icons carry a primary and a secondary layer, so the CSS accounts for both layers and their opacity. The same slot hosts a folder icon, a sync indicator, a favorite marker, or a custom SVG without changing the layout. The kit and its families stay as old plan §10 and §11 describe.
 
 Hover, focus, selection, and drag-over are separate states. A selected row keeps its selected background when hovered, and keyboard focus does not depend on mouse-hover styling.
 
@@ -262,11 +264,13 @@ Container-level, interruptible transitions for collapse/expand and preset switch
 - Hover, focus, selection, and drag-over are separate states.
 - Snapshot presets land before rule-based presets.
 - Drag-and-drop exposes intent. Local ordering is the default; the backend decides any server effect.
-- The ARIA tree pattern: `role="tree"` and `role="treeitem"` with `aria-expanded`, `aria-selected`, and `aria-level`; roving tabindex; arrow keys and Home/End. `*` expands siblings **while the tree has focus**; `*` toggles a flag on the message list (plan §6.13), so the binding is scoped, not claimed. Keyboard move actions cover drag-and-drop.
+- The ARIA tree pattern: `role="tree"` and `role="treeitem"` with `aria-expanded`, `aria-selected`, and `aria-level`; roving tabindex; arrow keys and Home/End. `*` expands siblings **while the tree has focus**; `*` toggles a flag on the message list (old plan §6.13), so the binding is scoped, not claimed. Keyboard move actions cover drag-and-drop.
 
 ## Phases
 
-Not in the sequence in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md), and none started. They open when mail is real (§14 P0) and a mailbox tree has data behind it.
+In the sequence in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md) from 2026-10-16. E-1 to E-4 come before mailbox sync (they need no backend). E-7 follows M-3, when `mailbox.list` has data. E-5 and E-6 come after the initial working copy.
+
+Entry gates: E-1 needs J-6 and K-3. E-2 needs E-1. E-3 needs E-2 and J-1 (menus, tooltips). E-4 needs E-3. E-7 needs M-3 and E-4; it also moves the Settings → Accounts list onto the engine ([K-ACCOUNTS.md](K-ACCOUNTS.md)) and wires the Files and Calendars navs' row renderer as each section lands. E-5 needs the initial working copy. E-6 needs E-5 and N-5 (the move actions).
 
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
@@ -280,13 +284,160 @@ Not in the sequence in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md), and none start
 
 E-1 needs no backend and can start against placeholder nodes once the sheet opens it. E-7 is the phase that replaces the placeholder buttons in `ui/index.html` with a real tree fed by `mailbox_list`, driven by the events in the node contract.
 
-E-1 through E-6 are DOM and pure logic: Vitest covers the model and view state, as plan §13 already plans for modules that do not need a window. E-7 needs the window, and Playwright against `tauri dev` is the optional check for its keyboard flows.
+E-1 through E-6 are DOM and pure logic: Vitest covers the model and view state, as [W-SHIP.md](W-SHIP.md) plans for modules that do not need a window. E-7 needs the window, and Playwright against `tauri dev` is the optional check for its keyboard flows.
 
 A UI exit gate is the window, not a screenshot in the repo. `make test` must still pass if a phase touches the shell.
+
+## How a session works
+
+1. Read Resume in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md), the Status column above, and the previous phase's Status, Accomplished, Lessons learned, and Handoff.
+2. Re-read only this phase: Goal, Entry gate, Work items, Done means, Exit gate. Open the lock section this phase cites.
+3. Ask the qualifying questions. Wait for approval before editing source.
+4. Do this phase only. Check a work item `[x]` only after its check has passed. Defer with `[~]`, one line, and the phase it moves to.
+5. Before marking complete, write Status, Accomplished, Lessons learned, and Handoff, update the Status column here and in the index, and append the Working log. Then stop.
+6. A sitting that ends early sets Status to **in progress**, names the last finished work item, and leaves the rest unchecked.
+
+The Brainstorming section is not binding. A phase that adopts an idea from it says so in Accomplished; one that rejects an idea it touched says why in Lessons learned.
+
+## E-1: Tokens, markup skeleton, row regions
+
+**Kind:** Easy
+**Status:** Not started.
+
+**Goal:** A static tree renders placeholder nodes with the tokens and configurable row regions.
+
+**Entry gate:** J-6 and K-3 complete.
+
+**Work items:**
+
+- [ ] `ui/styles/tree.css` with the `--pav-tree-*` tokens (the CSS section, renamed per the G-4 prefix).
+- [ ] `ui/src/tree/render.js`: `renderRow(node, regions)` with regions leading icon, label, status, count, trailing actions, in an order given by config; ARIA `treeitem` attributes; text via `textContent`.
+- [ ] Replace the four placeholder buttons in the Mail nav with a static tree of placeholder nodes.
+- [ ] Vitest: `render.test.js` (region order, ARIA attributes, no HTML sink).
+
+**Done means:** The Mail nav shows a placeholder tree drawn by the renderer, scaled by shell and nav-body zoom.
+
+**Exit gate:** `make test` exits 0; in `make dev` the tree scales with both zoom sliders.
+
+## E-2: Model, view state, three collapse behaviors
+
+**Kind:** Medium
+**Status:** Not started.
+
+**Goal:** The tree model and view state hold expansion independent of visibility, with the three collapse behaviors.
+
+**Entry gate:** E-1 complete.
+
+**Work items:**
+
+- [ ] `ui/src/tree/model.js`: nodes by id, children by parent, order, `patch(nodes)`, `remove(ids)`.
+- [ ] `ui/src/tree/state.js`: expanded set, selected, focused, hidden roots, favorites (star and heart sets), infrequent set; `collapseAllReset`, `collapseAllRemember`/`restore`, `collapseBranch` that keeps descendants' state; persisted per tree in `preferences.ui.trees.<treeId>`.
+- [ ] Keyboard per the Lock (arrows, Home/End, `*` within tree scope, `+`/`-`) through J-3's registry.
+- [ ] Vitest: `model.test.js`, `state.test.js` (collapse branch keeps descendants, remember and restore, hidden roots keep selection).
+
+**Done means:** Collapsing `Projects` and reopening it restores `Pavilion → Development` as it was.
+
+**Exit gate:** `make test` exits 0; the case above works in `make dev` with placeholder nodes.
+
+## E-3: Renderer states, badges, hover metadata, menus
+
+**Kind:** Medium
+**Status:** Not started.
+
+**Goal:** Rows show counts, states, swatches, and hover metadata, and have context menus.
+
+**Entry gate:** E-2 and J-1 complete.
+
+**Work items:**
+
+- [ ] Unread badge primary; total or recursive size on hover in a secondary region (never replacing the unread count); state classes for unread, selected, error, syncing, favorite; account swatch leading edge; duotone icon slot contract.
+- [ ] Context menus per node type from the Brainstorming list, as data the section supplies (Mail supplies its actions in N-5).
+- [ ] Incremental patch: a count change updates one row's badge without re-rendering siblings (asserted in Vitest by node identity).
+- [ ] Filter buttons: star, heart, ghost.
+
+**Done means:** A count patch updates one badge, hover shows secondary metadata, and menus open by mouse and keyboard.
+
+**Exit gate:** `make test` exits 0; checked in `make dev` with placeholder nodes.
+
+## E-4: Animation and the height test
+
+**Kind:** Easy
+**Status:** Not started.
+
+**Goal:** Expansion animates at the container level, interruptibly, and respects reduced motion.
+
+**Entry gate:** E-3 complete.
+
+**Work items:**
+
+- [ ] Test grid-row (`grid-template-rows: 0fr → 1fr`) and measured-height techniques in the WebKitGTK window; record the winner in Lessons.
+- [ ] Disclosure arrow rotation with one SVG; interruptible transitions under rapid toggling; `prefers-reduced-motion` shortens to 0.
+
+**Done means:** Rapid expand and collapse never stutters or ends in the wrong state.
+
+**Exit gate:** `make test` exits 0; in `make build`, toggle a branch ten times quickly and it settles in the last state.
+
+## E-7: Wiring to the backend, mail first
+
+**Kind:** Hard
+**Status:** Not started.
+
+**Goal:** The Mail nav is the real mailbox tree from `mailbox.list`, patched by events.
+
+**Entry gate:** M-3 and E-4 complete.
+
+**Work items:**
+
+- [ ] `ui/src/mail/nav.js`: accounts as roots (number and name), mailboxes nested by `parentId`, role icons, unread counts, sync state per account from `sync.state`.
+- [ ] `mail.mailboxes_changed` patches nodes; selection opens the mailbox in the home tab (J-2).
+- [ ] Move the Settings → Accounts list onto the engine (K Lock).
+- [ ] Account order and hidden accounts in view state.
+
+**Done means:** Mailbox trees and unread counts match the server for every account (old plan P0 acceptance).
+
+**Exit gate:** `make test` exits 0; in `make build` with Andrew's three first accounts, trees and counts match the server, and a mailbox created elsewhere appears without a restart.
+
+## E-5: Presets
+
+**Kind:** Medium
+**Status:** Not started.
+
+**Goal:** Named snapshot presets and the preset toolbar.
+
+**Entry gate:** The initial working copy is complete (index milestone 4).
+
+**Work items:**
+
+- [ ] Snapshot presets (expanded set plus visible roots) with names; built-ins Compact, Mail triage, Everything, Custom; Save as preset; the toolbar above the tree.
+- [ ] Vitest for switching and saving.
+
+**Done means:** Switching presets restores exactly the saved expansion and roots.
+
+**Exit gate:** `make test` exits 0; checked in `make build`.
+
+## E-6: Drag and drop
+
+**Kind:** Hard
+**Status:** Not started.
+
+**Goal:** Reorder siblings, reparent, and reorder accounts, by mouse and keyboard.
+
+**Entry gate:** E-5 and N-5 complete.
+
+**Work items:**
+
+- [ ] Drag handle, insertion indicator (reorder versus nest), auto-expand on hover, auto-scroll near edges, keyboard move actions.
+- [ ] Intents: local order (default), `mailbox.move` for a reparent the backend accepts, account reorder in view state. Messages dragged from the list onto a folder call `message.move`.
+- [ ] Vitest for the intent decisions.
+
+**Done means:** Reordering never moves mail on the server; reparenting a folder moves it only after the drop is a nest.
+
+**Exit gate:** `make test` exits 0; checked against the container.
 
 ## Working log
 
 - 2026-10-15 Tree design recorded. This document holds the architecture, the lock, and the seven proposed phases. Nothing is built. The mail tree in the shell preview is still four placeholder buttons.
-- 2026-10-15 Revisions: node contract added, tokens moved to `rem` so shell zoom applies, density aligned to plan §10, `*` scoped to tree focus against §6.13, Vitest named for E-1 through E-6.
+- 2026-10-15 Revisions: node contract added, tokens moved to `rem` so shell zoom applies, density aligned to old plan §10, `*` scoped to tree focus against §6.13, Vitest named for E-1 through E-6.
 - 2026-10-15 Root visibility filters added: star (favorites only), heart (second favorite set), ghost/hide (infrequent roots). Hidden roots stay in the model; visibility is view state, toggleable from preset toolbar buttons.
 - 2026-10-15 Brainstorming added: per-pane settings (background, zoom, density), always-visible vs hover-visible row regions, preset toolbar buttons, right-click context menus per node type, per-section expectations for mail/calendar/contacts/files, keyboard expectations, and delightful-but-not-required items. None are locked or in a phase.
+- 2026-10-16 Put in the sequence (E-1 to E-4 before mailbox sync, E-7 after M-3, E-5 and E-6 after the initial working copy). Phase sections with entry gates, work items, and exit gates written. Event names follow the G naming. Tokens take the `--pav-` prefix in E-1.

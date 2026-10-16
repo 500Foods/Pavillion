@@ -1,9 +1,9 @@
 # D — UI
 
-**Status:** D-3 complete (2026-10-14). No further phase in this document. The shell preview below is not a phase.
-**Resume:** No phase is open. Read the shell preview at the bottom of this file, then §10 and §11 in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md). Do not start a phase from here.
+**Status:** D-3 complete (2026-10-14). D-4 (theme switch) and D-5 (theme extras) were added 2026-10-16 and aren't started. The shell preview below is not a phase.
+**Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
-The shell. Mail, contacts, calendar, and files stay in `PAVILLION_PLAN.md` until they get their own letters. The tree behind the mail and files navs is [E-TREE.md](E-TREE.md).
+The first frame, the shell preview, and the theme layer. The shell layout (nav, buttons, home tabs, window) is the [J-TABS.md](J-TABS.md) Lock. Security rules for the main window are the [F-HARDEN.md](F-HARDEN.md) Lock. The tree behind the mail and files navs is [E-TREE.md](E-TREE.md). Mail, contacts, calendars, and files have their own letters (N, O, S, T, U).
 
 ## Phases
 
@@ -14,12 +14,14 @@ One phase is one session. Do not start the next one in the same conversation.
 | D-1 | Frame and theme variables | Easy | Complete |
 | D-2 | `api.js` and status text | Easy | Complete |
 | D-3 | The error state | Easy | Complete |
+| D-4 | Theme switch: semantic variables, dark, light, follow system | Medium | Not started |
+| D-5 | Theme extras: density, gradient tuning, the contrast audit | Medium | Not started |
 
-Kind: **Easy** is the static frame or one function in `api.js`. **Medium** and **Hard** are unused. A later screen that adds Tabulator and a browser pass will be Medium in its own document.
+Kind: **Easy** is the static frame or one function in `api.js`. **Medium** crosses one boundary. **Hard** is unused.
 
 ## How a session works
 
-1. Read Resume in `PAVILLION_PLAN.md`, the Status column above, and the previous phase's Status, Accomplished, Lessons learned, and Handoff.
+1. Read Resume in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md), the Status column above, and the previous phase's Status, Accomplished, Lessons learned, and Handoff.
 2. Re-read only this phase: Goal, Work items, Done means, Exit gate. Open the lock below when the phase cites it.
 3. Ask the qualifying questions. Wait for approval before editing source.
 4. Do this phase only. Check a work item `[x]` only after its check has passed. Defer with `[~]`, one line, and the phase it moves to.
@@ -30,7 +32,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 A UI exit gate is the window, not a screenshot stored in the repo. `make test` must still pass if the phase touched the shell.
 
-The frame diagram below is the hello-world page. The shell preview replaced that page on the same day. §10 in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md) is the layout.
+The frame diagram below is the hello-world page. The shell preview replaced that page on the same day. The layout is the [J-TABS.md](J-TABS.md) Lock.
 
 ## Lock
 
@@ -39,8 +41,11 @@ The frame diagram below is the hello-world page. The shell preview replaced that
 - The UI does not read `Pavillion.json`. Status comes from `pavillion_status`.
 - Tabulator is not a dependency until a screen is a table.
 - The message pane, when it exists, is a sandboxed iframe with no script and no bridge. The shell does not put IPC on `window` inside a child frame.
-- One window.
-- The main window runs the Font Awesome kit, which needs `'unsafe-inline'` scripts. Outside HTML never goes into the main DOM; use `textContent` or the message pane. The kit field takes an id only. See [F-HARDEN.md](F-HARDEN.md).
+- One window. (A browse tab in [J-TABS.md](J-TABS.md) J-7 is a child webview inside it, not a second window.)
+- Times are 24 h (`HH:mm`) by default everywhere, dates `2026-10-14` or `Oct 14` (`preferences.time_format`). Default time zone `America/Vancouver`.
+- Accessibility: full keyboard navigation, visible focus rings, ARIA roles on lists, trees, and grids, contrast at least 4.5:1 in every theme, `prefers-reduced-motion` respected, font scaling through the zoom settings.
+- CodeMirror 6 is the source editor for HTML, Lua, and the log ([H-LOGGING.md](H-LOGGING.md)). SunEditor is the rich mail composer, isolated per [O-COMPOSE.md](O-COMPOSE.md). Each becomes a dependency in the phase that first uses it.
+- The main window runs the Font Awesome kit, which needs `'unsafe-inline'` scripts. Outside HTML never goes into the main DOM; use `textContent` or the message pane. Icon libraries are typed https URLs on an allowlist, and every icon snippet passes the shared icon sanitizer. See the Icons section of the [F-HARDEN.md](F-HARDEN.md) Lock.
 
 ### Frame
 
@@ -73,15 +78,15 @@ Dark only, until a preferences screen exists. The OS window title is `Pavillion`
 
 Hello world exports `status()`, invoking the Tauri command `status` and returning `{ profileName, profileId, state, error }`. Wire names are camelCase. The C struct stays snake_case. Later functions are added to this module one at a time. A screen does not register its own Tauri listener. Event names already listed in the plan stay the names, and none are emitted in this document.
 
-The shell layout is in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md) §10. Changing the active profile is a restart, as [B-CONFIG.md](B-CONFIG.md) says.
+The shell layout is in the [J-TABS.md](J-TABS.md) Lock. Changing the active profile is a restart, as [B-CONFIG.md](B-CONFIG.md) says.
 
 ### Later, not a phase in this document
 
-Settings is a screen, not a popup. Its button sits on the bottom of the nav, with Activity, Update, and Help. The first control is zoom: one scale for the shell, 50% to 300%, detents every 25%, stored as `preferences.zoom.shell`. Each later panel gets its own key and its own scale. The window applies `preferences.window` on startup and writes it back on move, resize, and quit. `chrome: "hidden"` turns off the system decorations. The empty part of the tab strip is the drag region, and the icon buttons stay clickable. Default remains `system` until that setting exists. Layout the user can change is `preferences.ui` in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md) §10.
+Settings is a screen, not a popup. Its button sits on the bottom of the nav, with Activity, Update, and Help. The first control is zoom: one scale for the shell, stored as `preferences.zoom.shell`. (Superseded 2026-10-15: the range is 5%–500% in steps of 5%, per pane, per the B Lock; F-2 moves zoom under `preferences.ui.zoom`.) Each later panel gets its own key and its own scale. The window applies `preferences.window` on startup and writes it back on move, resize, and quit. `chrome: "hidden"` turns off the system decorations. The empty part of the tab strip is the drag region, and the icon buttons stay clickable. Default remains `system` until that setting exists. Layout the user can change is `preferences.ui` in the [B-CONFIG.md](B-CONFIG.md) Lock.
 
 Activity is a tab opened from the bottom of the nav, including while Settings is open. It is a read-only view of the core log: refresh, scroll to the newest line on open, monospace, and a font size for that view. Times on screen are local `HH:mm:ss.mmm`. The file format stays the millisecond UTC line in [C-CORE.md](C-CORE.md). The view asks the core for the text. It does not open the log file itself.
 
-CodeMirror 6 is the source editor for HTML and for Lua. SunEditor is the rich mail composer. Neither is installed in this document. Icons are the Font Awesome Pro Plus 7.3.1 SVG kit (`https://kit.fontawesome.com/45801522ef.js`). Duotone, Sharp, and Thin are the families to use. Mail keeps the roof mark. The kit hosts are allowed by the CSP in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md) §11. The kit is used as-is, and Pro files are not vendored. The shell preview loads the kit. This phase did not.
+CodeMirror 6 is the source editor for HTML and for Lua. SunEditor is the rich mail composer. Neither is installed in this document. Icons are the Font Awesome Pro Plus 7.3.1 SVG kit (`https://kit.fontawesome.com/45801522ef.js`). Duotone, Sharp, and Thin are the families to use. Mail keeps the roof mark. The kit hosts are allowed by the CSP in the [F-HARDEN.md](F-HARDEN.md) Lock. The kit is used as-is, and Pro files are not vendored. The shell preview loads the kit. This phase did not.
 
 D-1 keeps the five variables in the lock above. A later theme phase follows Lithium: dark-first semantic custom properties, and a theme is an override of those properties. `preferences.theme` names `dark.css` or `light.css`. The control is the Theme heading under Settings. The shell has no theme icon. Gradients live in those files. `preferences.ui` does not store backgrounds. Pavillion does not import Lithium's stylesheets or fonts. The shell preview links `dark.css` directly and does not read `preferences.theme`.
 
@@ -160,6 +165,53 @@ D-1 keeps the five variables in the lock above. A later theme phase follows Lith
 
 **Handoff:** The hello-world sequence is complete. The page this phase drew was replaced the same day by the shell preview below. That preview is not a phase.
 
+## D-4: Theme switch
+
+**Kind:** Medium
+**Status:** Not started.
+
+**Goal:** Every surface reads semantic `--pav-*` variables, and `preferences.theme` switches dark, light, and system live. The shell preview already has a Theme setting and a `dark.css`, and screens built after G-4 should be built on variables from the start.
+
+**Entry gate:** G-4 complete (variables namespaced `--pav-*`, styles scoped).
+
+**Lock for this phase (was old plan §10 Theming):**
+
+- Dark first. The theme layer follows Lithium (`docs/Li/LITHIUM-CSS.md`): semantic custom properties (`--pav-surface-*`, `--pav-text-*`, `--pav-accent`, `--pav-border`, `--pav-status-*`), dark defaults, and a theme is an override of those properties. No UI framework, no hard-coded colors in components, no import of Lithium's stylesheets or fonts.
+- `preferences.theme` names `dark`, `light`, or `system`. `system` follows `prefers-color-scheme`. The control is the Theme heading under Settings; the shell has no theme icon.
+- `ui/styles/theme.css` holds the rules and only references variables. `dark.css` and `light.css` assign the same names. A surface may be a gradient: one angle, black in one corner, a very dark red in the other, taken from the roof mark; panels and buttons differ by how far the red reaches. Active and inactive are two variables. `preferences.ui` stores layout only, never backgrounds.
+- Density `compact` or `comfortable` (`preferences.density`) is a handful of custom properties (row height, padding, icon size). E-TREE's third density, spacious, is recorded and not promised.
+- Fonts: the system UI font by default, Vanadium Sans when chosen; monospace (Vanadium Mono) for the headers view and the log.
+
+**Work items:**
+
+- [ ] Audit every color literal in `ui/styles` and `ui/src`; move each to a semantic variable.
+- [ ] `light.css` assigning the same names (a first pass. D-5 tunes it).
+- [ ] `preferences.theme` (`dark`, `light`, `system`) through `prefs.set`. The Theme setting in Settings now persists. `system` follows `prefers-color-scheme` live.
+- [ ] Vitest: `theme-vars.test.js` checks that `dark.css` and `light.css` define the same variable names.
+
+**Done means:** Switching dark, light, and system changes every surface live, with no hard-coded color left.
+
+**Exit gate:** `make test` exits 0. `rg '#[0-9a-fA-F]{3,6}' ui/src` finds none outside theme files. In `make build`, all three modes switch live and survive a restart.
+
+## D-5: Theme extras
+
+**Kind:** Medium
+**Status:** Not started.
+
+**Goal:** Density, gradient tuning, and a checked contrast floor, on top of D-4's switch.
+
+**Entry gate:** V-4 complete (after the initial working copy).
+
+**Work items:**
+
+- [ ] Density `compact` or `comfortable` (`preferences.density`, per the D-4 Lock) in Settings → Theme.
+- [ ] Gradient tuning for both themes (roof-mark angle, how far the red reaches).
+- [ ] Contrast at 4.5:1 for text pairs: a Vitest that parses both theme files and computes contrast for the listed pairs.
+
+**Done means:** Both densities and both themes look right and pass the contrast test.
+
+**Exit gate:** `make test` exits 0 including the contrast test. In `make build`, all three modes and both densities look right.
+
 ## Working log
 
 - 2026-10-14 D-1: Dark frame. `theme.css` has the five variables. Title row shows Pavillion. Profile slot and body are empty.
@@ -168,6 +220,7 @@ D-1 keeps the five variables in the lock above. A later theme phase follows Lith
 - 2026-10-14 Shell preview: nav, tabs, gradients, and the kit are on screen. Not a phase. Width, zoom, and the window are not saved.
 - 2026-10-14 Shell preferences: nav width, the splits, zoom, and the window are saved through the core and restored on launch. Not a phase. Hidden chrome is stored and not applied.
 - 2026-10-15 Per-pane zoom: `preferences.zoom` gained `navButtons`, `navBody`, `mailList`, and `mailDetail` beside `shell`. The Zoom section has one slider per pane, the shell scale multiplies each pane, `save_layout` carries the zoom object, and a profile missing the keys gains them on the next load. Not a phase.
+- 2026-10-16 D-4 theme layer added from old plan §10. Lock references moved to J-TABS and F-HARDEN. The 50–300% zoom note marked superseded.
 - 2026-10-15 Fonts setting: a Fonts heading and panel under Settings. Vanadium Sans is the primary font through `--font`, switchable live; not persisted yet. Not a phase.
 
 ## Shell preview
@@ -197,3 +250,4 @@ The SVG kit rendered with the §11 CSP. Sharp Thin and the roof mark both showed
 The window is shown only after the saved rectangle is applied, so it does not flash the 1200×800 from `tauri.conf.json`. On this X11 session Tauri's position and the frame reported by the window manager differ by the decoration offset. Saving Tauri's position and setting that same position on the next launch comes back to the same place. `gen` is a keyword in Rust edition 2024, so the shell does not use it as a name.
 
 **Handoff:** No phase is open. Nav width, the splits, zoom, and the window are saved. The page does not read `Pavillion.json`. Hidden chrome is stored and the decorations stay on. Activity is still an empty tab. When that view is built, it asks the core for the log and does not open the file. Do not vendor the kit, and leave its domain list open. Do not put the word `ready` in the page. Placeholders stay until the screen they stand in for is real.
+- 2026-10-16 Review: theming is split in two. D-4 (variables plus the dark/light/system switch) moves early, right after G-4. D-5 (density, gradients, contrast audit) stays late.
