@@ -37,6 +37,8 @@ int pav_core_prefs_set(json_t *args, json_t **data, PavError *err);
 int pav_core_ui_get_data(json_t **data, PavError *err);
 int pav_core_ui_set(json_t *args, json_t **data, PavError *err);
 
+int pav_ui_log(const char *subsystem, int level, const char *message);
+
 int pav_event_thread_start(void);
 void pav_event_thread_stop(void);
 

@@ -5,6 +5,20 @@
 
 #include <stddef.h>
 
+/* Internal window snapshot. Not part of the FFI. G-8 removed it from pavillion.h. */
+typedef struct PavShellPrefs {
+    int window_maximized;
+    int window_width;
+    int window_height;
+    int window_x_set;
+    int window_y_set;
+    int window_x;
+    int window_y;
+    char chrome[16];
+} PavShellPrefs;
+
+#define PAV_PREFS_WINDOW 2u
+
 typedef struct PavIndex {
     int schema;
     char kind[32];

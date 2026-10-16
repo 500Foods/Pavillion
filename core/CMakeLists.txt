@@ -9,6 +9,9 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_library(pavillion_core STATIC
     src/pavillion.c
     src/dispatch.c
+    src/window_state.c
+    src/protocol.c
+    src/cli.c
     src/cfg.c
     src/config.c
     src/config_prefs.c

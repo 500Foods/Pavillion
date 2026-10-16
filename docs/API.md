@@ -1,10 +1,10 @@
 # Pavillion API
 
-API version: 2
+API version: 3
 
 `PAVILLION_API_VERSION` goes up when this contract or the C surface in the G L2 Lock changes incompatibly: a function is removed or changed, or a command or event is removed, renamed, or given a different meaning. Adding a command, an event, or an optional field does not bump it. The shell refuses to start when `pavillion_api_version()` disagrees with the number it was built against.
 
-G-2 added `pavillion_call`, `pavillion_free`, and `pav_on_event`. G-3 removed the shell's callers of the older C entry points (`pavillion_status`, `pavillion_prefs_get`, `pavillion_prefs_apply`, `pavillion_ui_get`, `pavillion_ui_set`, `pavillion_icons_get`, `pavillion_icons_apply`, `pavillion_kit_get`, `pavillion_kit_apply`, `pav_ui_log`). Those functions stay in the header for the Unity tests until G-8 removes them. That removal is the version bump.
+G-2 added `pavillion_call`, `pavillion_free`, and `pav_on_event`. G-3 removed the shell's callers of the older C entry points. G-8 removed those declarations from this header (`pavillion_status`, `pavillion_prefs_get`, `pavillion_prefs_apply`, `pavillion_ui_get`, `pavillion_ui_set`, `pavillion_icons_get`, `pavillion_icons_apply`, `pavillion_kit_get`, `pavillion_kit_apply`, `pav_ui_log`, `PavillionStatus`, and `PavShellPrefs`). That removal is version 3. The header now also has `pav_protocol` (`PavBytes`) and `pav_cli_main`.
 
 ## Conventions
 
@@ -590,6 +590,26 @@ Returns one thread, oldest message first.
 State: planned (M-6)
 
 `{opId}`. Runs the undo payload for a held or applied op.
+
+### window.initial
+
+State: real (G-8)
+
+Args: `{monitors?}`. `monitors` is an array of `{x, y, w, h}` in logical pixels, at most 16. Omit it when the host has none.
+
+Result: `{x, y, w, h, maximized}`. `x` and `y` are null when the profile has no saved position. A new profile is `w` 1200, `h` 800, and `maximized` false. When `monitors` is present the reply is clamped onto the monitor that holds the window center. This command does not write the profile.
+
+Errors: `bad_args`, `not_ready`, `internal`.
+
+### window.report
+
+State: real (G-8)
+
+Args: `{x?, y?, w, h, maximized, monitors?}`. `w` and `h` are required integers. `maximized` is a boolean. `x` and `y` are optional integers. `monitors` matches `window.initial`.
+
+Result: `{}`. The core clamps the rectangle onto the reported monitors, or onto the absolute ranges when none are sent. It writes `windowMaximized`, `windowWidth`, `windowHeight`, `windowX`, and `windowY` 500 ms after the last report. `maximized` true keeps the rectangle already remembered and sets only the flag. Quitting inside that 500 ms still writes. `chrome` is left as stored.
+
+Errors: `bad_args`, `not_ready`, `internal`.
 
 ## Events
 

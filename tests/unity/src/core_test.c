@@ -20,6 +20,25 @@
 #include <time.h>
 #include <unistd.h>
 
+/* Removed from pavillion.h in G-8. The bodies stay so these tests still link. */
+typedef struct PavillionStatus {
+    char profile_name[256];
+    char profile_id[64];
+    char state[32];
+    char error[512];
+} PavillionStatus;
+
+int pavillion_status(PavillionStatus *out);
+int pavillion_prefs_get(PavShellPrefs *out);
+int pavillion_prefs_apply(const PavShellPrefs *in, unsigned mask, char *err, size_t err_len);
+int pavillion_icons_get(char **out, char *err, size_t err_len);
+int pavillion_icons_apply(const char *json, char *err, size_t err_len);
+int pavillion_kit_get(char *out, size_t out_len, char *err, size_t err_len);
+int pavillion_kit_apply(const char *kit, char *err, size_t err_len);
+int pavillion_ui_get(char **json_out, char *err, size_t err_len);
+int pavillion_ui_set(const char *json, char *err, size_t err_len);
+int usleep(unsigned int usec);
+
 #define ALT_LINES 20
 
 static pthread_mutex_t g_turn_mu = PTHREAD_MUTEX_INITIALIZER;
@@ -1039,6 +1058,7 @@ void test_start_errors_leave_the_thread_up(void) {
     char text[1024];
     PavillionStatus status;
     char *body;
+    char err[128];
 
     open_log();
     TEST_ASSERT_EQUAL_INT(0, pavillion_start(NULL, NULL, 0));
@@ -1051,11 +1071,10 @@ void test_start_errors_leave_the_thread_up(void) {
     make_slot(g_cfg_dir, sizeof(g_cfg_dir));
     snprintf(path, sizeof(path), "%s/not-a-dir", g_cfg_dir);
     write_text(path, "x");
-    TEST_ASSERT_EQUAL_INT(0, pavillion_start(path, NULL, 0));
-    TEST_ASSERT_EQUAL_INT(1, pav_core_thread_alive());
-    TEST_ASSERT_EQUAL_INT(0, pavillion_status(&status));
-    TEST_ASSERT_EQUAL_STRING("error", status.state);
-    TEST_ASSERT_NOT_NULL(strstr(status.error, "cannot create"));
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(-1, pavillion_start(path, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, pav_core_thread_alive());
+    TEST_ASSERT_NOT_NULL(strstr(err, "cannot create workdir"));
     pavillion_stop();
     remove_cfg_dir();
 
@@ -2086,6 +2105,132 @@ void test_api_md_lists_every_command(void) {
     TEST_ASSERT_NULL(pav_command_name(count));
 }
 
+static json_t *profile_window(void) {
+    char path[160];
+    json_error_t jerr;
+    json_t *root;
+    json_t *window;
+
+    snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
+    root = json_load_file(path, 0, &jerr);
+    TEST_ASSERT_NOT_NULL(root);
+    window = json_object_get(json_object_get(root, "preferences"), "window");
+    TEST_ASSERT_TRUE(json_is_object(window));
+    json_incref(window);
+    json_decref(root);
+    return window;
+}
+
+void test_window_initial_default_1200x800(void) {
+    json_t *root;
+    json_t *data;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    root = call_reply("window.initial", "{}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    data = json_object_get(root, "data");
+    TEST_ASSERT_TRUE(json_is_object(data));
+    TEST_ASSERT_EQUAL_INT(1200, (int)json_integer_value(json_object_get(data, "w")));
+    TEST_ASSERT_EQUAL_INT(800, (int)json_integer_value(json_object_get(data, "h")));
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(data, "maximized")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(data, "x")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(data, "y")));
+    json_decref(root);
+}
+
+void test_window_report_debounced_write(void) {
+    json_t *root;
+    json_t *window;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    root = call_reply("window.report",
+                      "{\"x\":40,\"y\":50,\"w\":1100,\"h\":700,\"maximized\":false}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    json_decref(root);
+    window = profile_window();
+    TEST_ASSERT_EQUAL_INT(1200, (int)json_integer_value(json_object_get(window, "width")));
+    json_decref(window);
+    usleep(200000);
+    root = call_reply("window.report",
+                      "{\"x\":40,\"y\":50,\"w\":1300,\"h\":750,\"maximized\":false}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    json_decref(root);
+    window = profile_window();
+    TEST_ASSERT_EQUAL_INT(1200, (int)json_integer_value(json_object_get(window, "width")));
+    json_decref(window);
+    usleep(800000);
+    window = profile_window();
+    TEST_ASSERT_EQUAL_INT(1300, (int)json_integer_value(json_object_get(window, "width")));
+    TEST_ASSERT_EQUAL_INT(750, (int)json_integer_value(json_object_get(window, "height")));
+    TEST_ASSERT_EQUAL_INT(40, (int)json_integer_value(json_object_get(window, "x")));
+    TEST_ASSERT_EQUAL_INT(50, (int)json_integer_value(json_object_get(window, "y")));
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(window, "maximized")));
+    json_decref(window);
+}
+
+void test_window_clamped_to_monitor(void) {
+    json_t *root;
+    json_t *window;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    root = call_reply("window.report",
+                      "{\"x\":-400,\"y\":10,\"w\":3000,\"h\":500,\"maximized\":false,"
+                      "\"monitors\":[{\"x\":0,\"y\":0,\"w\":1920,\"h\":1080}]}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    json_decref(root);
+    pavillion_stop();
+    window = profile_window();
+    TEST_ASSERT_EQUAL_INT(1920, (int)json_integer_value(json_object_get(window, "width")));
+    TEST_ASSERT_EQUAL_INT(500, (int)json_integer_value(json_object_get(window, "height")));
+    TEST_ASSERT_EQUAL_INT(0, (int)json_integer_value(json_object_get(window, "x")));
+    TEST_ASSERT_EQUAL_INT(10, (int)json_integer_value(json_object_get(window, "y")));
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(window, "maximized")));
+    json_decref(window);
+}
+
+void test_protocol_unknown_scheme_404(void) {
+    PavBytes out;
+
+    memset(&out, 0, sizeof(out));
+    TEST_ASSERT_EQUAL_INT(0, pav_protocol("{\"scheme\":\"nope\"}", &out));
+    TEST_ASSERT_EQUAL_INT(404, out.status);
+    TEST_ASSERT_NOT_NULL(out.headers_json);
+    TEST_ASSERT_EQUAL_UINT(9, (unsigned)out.body_len);
+    TEST_ASSERT_EQUAL_MEMORY("not found", out.body, 9);
+    pavillion_free(out.headers_json);
+    pavillion_free(out.body);
+
+    memset(&out, 0, sizeof(out));
+    TEST_ASSERT_EQUAL_INT(0, pav_protocol("{\"scheme\":\"pav-blob\",\"url\":\"pav-blob://a/b\","
+                                          "\"method\":\"GET\",\"range\":\"\"}",
+                                          &out));
+    TEST_ASSERT_EQUAL_INT(404, out.status);
+    TEST_ASSERT_EQUAL_UINT(9, (unsigned)out.body_len);
+    TEST_ASSERT_EQUAL_MEMORY("not found", out.body, 9);
+    pavillion_free(out.headers_json);
+    pavillion_free(out.body);
+}
+
+void test_start_creates_workdir_0700(void) {
+    char parent[] = "/tmp/pav-g8-XXXXXX";
+    char nested[96];
+    struct stat st;
+    char err[128];
+
+    TEST_ASSERT_NOT_NULL(mkdtemp(parent));
+    memcpy(g_cfg_dir, parent, strlen(parent) + 1);
+    snprintf(nested, sizeof(nested), "%s/fresh", parent);
+    TEST_ASSERT_TRUE(stat(nested, &st) != 0);
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(nested, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, stat(nested, &st));
+    TEST_ASSERT_TRUE(S_ISDIR(st.st_mode));
+    TEST_ASSERT_EQUAL_INT(0700, (int)(st.st_mode & 0777));
+}
+
 int main(void) {
     pav_platform_install(pav_platform_fake());
     UNITY_BEGIN();
@@ -2132,5 +2277,10 @@ int main(void) {
     RUN_TEST(test_call_prefs_ui_and_log);
     RUN_TEST(test_event_delivered_off_core_thread);
     RUN_TEST(test_api_md_lists_every_command);
+    RUN_TEST(test_window_initial_default_1200x800);
+    RUN_TEST(test_window_report_debounced_write);
+    RUN_TEST(test_window_clamped_to_monitor);
+    RUN_TEST(test_protocol_unknown_scheme_404);
+    RUN_TEST(test_start_creates_workdir_0700);
     return UNITY_END();
 }

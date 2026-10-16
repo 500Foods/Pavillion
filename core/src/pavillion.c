@@ -7,12 +7,16 @@
 #include "pav_store.h"
 #include "pavillion.h"
 
+#include "window_state.h"
+
 #include <ctype.h>
+#include <errno.h>
 #include <pthread.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define CORE_QUEUE_CAP 256
 #define CORE_CMD_STOP 1
@@ -22,6 +26,14 @@
 #define CORE_CMD_UI 5
 #define CORE_CMD_CALL 6
 #define PAV_CALL_JSON_MAX (2u * 1024u * 1024u)
+
+/* No longer in the FFI. The older Unity tests still call pavillion_status. */
+typedef struct PavillionStatus {
+    char profile_name[256];
+    char profile_id[64];
+    char state[32];
+    char error[512];
+} PavillionStatus;
 
 typedef struct CoreQItem {
     int cmd;
@@ -269,7 +281,17 @@ static void *core_thread_main(void *arg) {
         PavCall *call = NULL;
 
         while (g_core_q_count == 0 && !g_core_stop) {
-            pthread_cond_wait(&g_core_cv, &g_core_mu);
+            struct timespec deadline;
+
+            if (pav_window_deadline(&deadline)) {
+                if (pthread_cond_timedwait(&g_core_cv, &g_core_mu, &deadline) == ETIMEDOUT) {
+                    pthread_mutex_unlock(&g_core_mu);
+                    pav_window_fire();
+                    pthread_mutex_lock(&g_core_mu);
+                }
+            } else {
+                pthread_cond_wait(&g_core_cv, &g_core_mu);
+            }
         }
         if (g_core_q_count == 0) {
             break;
@@ -345,6 +367,7 @@ static void *core_thread_main(void *arg) {
     }
     pthread_cond_broadcast(&g_core_cv);
     pthread_mutex_unlock(&g_core_mu);
+    pav_window_flush();
     core_release_profile();
     return NULL;
 }
@@ -460,8 +483,16 @@ int pavillion_api_version(void) {
 
 int pavillion_start(const char *workdir, char *err, size_t err_len) {
     int rc;
+    const PavPlatform *platform;
 
     pav_platform_install_host();
+    platform = pav_platform();
+    if (workdir != NULL && workdir[0] != '\0' &&
+        (platform == NULL || platform->mkdir_private == NULL || platform->mkdir_private(workdir) != 0)) {
+        set_start_err(err, err_len, "cannot create workdir");
+        return -1;
+    }
+    pav_window_reset();
     pthread_mutex_lock(&g_core_mu);
     if (g_core_alive) {
         pthread_mutex_unlock(&g_core_mu);

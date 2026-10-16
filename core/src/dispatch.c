@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "dispatch.h"
+#include "window_state.h"
 
 #include "pav_platform.h"
 #include "pavillion.h"
@@ -44,6 +45,8 @@ static const PavCommand k_commands[] = {
     {"prefs.ui.get", cmd_prefs_ui_get, 0},
     {"prefs.ui.set", cmd_prefs_ui_set, 0},
     {"system.status", cmd_status, 0},
+    {"window.initial", pav_cmd_window_initial, 0},
+    {"window.report", pav_cmd_window_report, 0},
 };
 
 static pthread_mutex_t g_ev_mu = PTHREAD_MUTEX_INITIALIZER;

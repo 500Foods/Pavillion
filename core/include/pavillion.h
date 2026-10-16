@@ -7,31 +7,7 @@
    build.rs copies it into the shell. Adding a command or an optional field
    does not bump it. The line is a bare decimal integer so the shell and the
    C compiler cannot disagree about its value. */
-#define PAVILLION_API_VERSION 2
-
-typedef struct PavillionStatus {
-    char profile_name[256];
-    char profile_id[64];
-    char state[32]; /* "ready" or "error" */
-    char error[512];
-} PavillionStatus;
-
-/* The OS window. preferences.ui is an opaque blob the page owns.
-   Ints are first so the Rust shell can match this layout with repr(C). */
-typedef struct PavShellPrefs {
-    int window_maximized;
-    int window_width;
-    int window_height;
-    int window_x_set;
-    int window_y_set;
-    int window_x;
-    int window_y;
-    char chrome[16];
-} PavShellPrefs;
-
-/* Bits for pavillion_prefs_apply. A field outside the mask is left as stored.
-   Zoom and layout are not mask bits: they live in preferences.ui. */
-#define PAV_PREFS_WINDOW 2u
+#define PAVILLION_API_VERSION 3
 
 /* preferences.ui as serialized JSON text, not counting the terminating NUL. */
 #define PAV_UI_JSON_MAX 65536
@@ -48,38 +24,6 @@ int pavillion_start(const char *workdir, char *err, size_t err_len);
 /* Pushes stop and joins the core thread. A second call does nothing. */
 void pavillion_stop(void);
 
-/* Copies the status under a lock. Returns 0, or -1 when out is NULL. */
-int pavillion_status(PavillionStatus *out);
-
-/* Copies the shell preferences. Returns 0, or -1 when out is NULL or the
-   profile is not ready. */
-int pavillion_prefs_get(PavShellPrefs *out);
-
-/* Asks the core thread to store the masked fields and waits until that write
-   finishes. Returns 0, or -1. On failure err receives a short reason. */
-int pavillion_prefs_apply(const PavShellPrefs *in, unsigned mask, char *err, size_t err_len);
-
-/* Reads preferences.ui.icons as a JSON string (caller frees). Returns 0, or -1. */
-int pavillion_icons_get(char **out, char *err, size_t err_len);
-
-/* Writes preferences.ui.icons from a JSON object string and persists. Returns 0, or -1. */
-int pavillion_icons_apply(const char *json, char *err, size_t err_len);
-
-/* Writes preferences.ui.fontawesome_kit from `kit` and persists. Returns 0, or -1. */
-int pavillion_kit_apply(const char *kit, char *err, size_t err_len);
-
-/* Reads preferences.ui.fontawesome_kit into out. Returns 0, or -1. */
-int pavillion_kit_get(char *out, size_t out_len, char *err, size_t err_len);
-
-/* Reads preferences.ui as a JSON object string (caller frees). A missing
-   object is "{}". Returns 0, or -1. */
-int pavillion_ui_get(char **json_out, char *err, size_t err_len);
-
-/* Replaces preferences.ui with the JSON object in json and writes the profile
-   on the core thread. json is an object of at most PAV_UI_JSON_MAX bytes and
-   contains no forbidden key. Returns 0, or -1. */
-int pavillion_ui_set(const char *json, char *err, size_t err_len);
-
 /* Test-only. 1 while the core thread is inside its loop, otherwise 0. */
 int pav_core_thread_alive(void);
 
@@ -92,11 +36,6 @@ int pav_core_thread_alive(void);
 /* num_args is the number of format specifiers in fmt. A mismatch is logged
    at error and fmt is not formatted. */
 void pav_log(const char *subsystem, int level, int num_args, const char *fmt, ...);
-
-/* Logs a frontend (shell) message into the core log. subsystem is a short
-   tag like "ui". level is one of PAV_ERROR/PAV_WARN/PAV_INFO/PAV_DEBUG.
-   message is logged verbatim. Returns 0, or -1. */
-int pav_ui_log(const char *subsystem, int level, const char *message);
 
 /* Runs one command on the core thread. args_json is a JSON object.
    *result_json is {"ok":true,"data":...} or
@@ -125,6 +64,21 @@ unsigned long long pav_event_dropped(void);
    when index is out of range. */
 int pav_command_count(void);
 const char *pav_command_name(int index);
+
+/* URI scheme handlers. The host forwards the request unparsed. Returns 0
+   when *out was filled, including a 4xx. Free headers_json and body with
+   pavillion_free. */
+typedef struct PavBytes {
+    int status;
+    char *headers_json;
+    void *body;
+    size_t body_len;
+} PavBytes;
+int pav_protocol(const char *req_json, PavBytes *out);
+
+/* Unknown subcommand. Prints "pavillion: no subcommands yet" and returns 1.
+   --help and --version stay in the shell and do not call this. */
+int pav_cli_main(int argc, char **argv);
 
 /* Test-only. 1 when the caller is the running core thread. */
 int pav_on_core_thread(void);

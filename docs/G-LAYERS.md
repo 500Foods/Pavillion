@@ -1,6 +1,6 @@
 # G — LAYERS
 
-**Status:** G-3 complete (2026-10-16). The index names the next phase. Lua and mail rules moved to [R-RULES.md](R-RULES.md) (old G-5 is R-1, old G-7 is R-3).
+**Status:** G-8 complete (2026-10-16). The index names the next phase. Lua and mail rules moved to [R-RULES.md](R-RULES.md) (old G-5 is R-1, old G-7 is R-3).
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Pavillion runs on Fedora Linux first, then macOS and Windows, maybe iPad one day. Its UI can be lifted into Lithium. Both come down to clear layers with one written contract between each pair. This document owns the layers, the platform table, the command ABI, the host adapter, the mountable UI, and the multiplatform strategy.
@@ -14,7 +14,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | G-1 | `pav_platform.h`, the Linux backend, a test fake; dirs and file modes behind it | Medium | Complete |
 | G-2 | JSON command dispatcher, `pav_on_event`, and `docs/API.md` | Medium | Complete |
 | G-3 | Generic Tauri `core` command; `api.js` takes a transport | Medium | Complete |
-| G-8 | Move the remaining `lib.rs` logic (662 lines) into C behind the dispatcher | Medium | Not started |
+| G-8 | Move the remaining `lib.rs` logic (662 lines) into C behind the dispatcher | Medium | Complete |
 | G-4 | Mountable UI: `mount(el, api)`, `--pav-*` variables, scoped styles, bare harness | Medium | Not started |
 | G-6 | Second-platform smoke build of the core and `make test` | Hard | Not started |
 
@@ -285,7 +285,7 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 ## G-8: Move `lib.rs` logic into C
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Complete (2026-10-16). No variances. Not pushed.
 
 **Goal:** `src-tauri` holds only Tauri work, per the L3 Lock. Window state, the prefs conversion, the workdir, and the scheme decisions are C behind the dispatcher. No C struct crosses the FFI.
 
@@ -293,18 +293,24 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 
 **Work items:**
 
-- [ ] Inventory `src-tauri/src/lib.rs` (447 lines after F-2; 662 was the count when this phase was written). The inventory goes in Accomplished, listing each function with "stays (Tauri)" or "moves to C".
-- [ ] Commands `window.initial` and `window.report` in `core/src/window_state.c`. These replace `read_prefs`, `write_prefs`, `seed_restored`, `note_window`, `schedule_window_save`, `save_window_now`, and the clamp in `apply_saved_window`. The 500 ms debounce, the monitor clamp, the maximized flag, and the write are all core-side, with a timer on the core thread.
-- [ ] Rust keeps three things: reading the logical rectangle and monitors from Tauri, sending `window.report`, and applying the `window.initial` reply before `show()`.
-- [ ] `ensure_workdir` moves into `pavillion_start` (mode `0700`, through G-1's platform layer). `start_core` reduces to one call.
-- [ ] `pav_protocol` (L2 Lock contract) in `core/src/protocol.c`, freed with `pavillion_free`, with a table of handlers per scheme. Its first entry is a stub `pav-blob` that returns 404. N-4 and N-7 fill it in, and F-4 adds `pav-link`. Rust gets one generic scheme handler that registers each scheme against `pav_protocol`.
-- [ ] Delete `PavShellPrefs` and `PavillionStatus` from the FFI. Status becomes the `system.status` command. This removes functions, so `PAVILLION_API_VERSION` goes to 3. F-2 already used 2 when `PavShellPrefs` shrank to the window.
-- [ ] `pav_cli_main` stub in C (prints `pavillion: no subcommands yet` for an unknown subcommand). `main.rs` calls it and keeps no flag logic of its own beyond what A-6 needs before the core.
-- [ ] Unity: `test_window_initial_default_1200x800`, `test_window_report_debounced_write`, `test_window_clamped_to_monitor`, `test_protocol_unknown_scheme_404`, `test_start_creates_workdir_0700`.
+- [x] Inventory `src-tauri/src/lib.rs` (447 lines after F-2; 662 was the count when this phase was written). The inventory goes in Accomplished, listing each function with "stays (Tauri)" or "moves to C".
+- [x] Commands `window.initial` and `window.report` in `core/src/window_state.c`. These replace `read_prefs`, `write_prefs`, `seed_restored`, `note_window`, `schedule_window_save`, `save_window_now`, and the clamp in `apply_saved_window`. The 500 ms debounce, the monitor clamp, the maximized flag, and the write are all core-side, with a timer on the core thread.
+- [x] Rust keeps three things: reading the logical rectangle and monitors from Tauri, sending `window.report`, and applying the `window.initial` reply before `show()`.
+- [x] `ensure_workdir` moves into `pavillion_start` (mode `0700`, through G-1's platform layer). `start_core` reduces to one call.
+- [x] `pav_protocol` (L2 Lock contract) in `core/src/protocol.c`, freed with `pavillion_free`, with a table of handlers per scheme. Its first entry is a stub `pav-blob` that returns 404. N-4 and N-7 fill it in, and F-4 adds `pav-link`. Rust gets one generic scheme handler that registers each scheme against `pav_protocol`.
+- [x] Delete `PavShellPrefs` and `PavillionStatus` from the FFI. Status becomes the `system.status` command. This removes functions, so `PAVILLION_API_VERSION` goes to 3. F-2 already used 2 when `PavShellPrefs` shrank to the window.
+- [x] `pav_cli_main` stub in C (prints `pavillion: no subcommands yet` for an unknown subcommand). `main.rs` calls it and keeps no flag logic of its own beyond what A-6 needs before the core.
+- [x] Unity: `test_window_initial_default_1200x800`, `test_window_report_debounced_write`, `test_window_clamped_to_monitor`, `test_protocol_unknown_scheme_404`, `test_start_creates_workdir_0700`.
 
 **Done means:** `lib.rs` is under 200 lines. Every line in it is a Tauri call, a plugin registration, or forwarding, and window behavior is unchanged.
 
 **Exit gate:** `make test` exits 0 with the five tests. In `make dev`: move and resize the window, maximize it, quit, and relaunch. The window comes back the same with no 1200×800 flash. `wc -l src-tauri/src/lib.rs` is under 200. `rg 'serde::Deserialize|struct Pav' src-tauri/src` finds nothing outside the forwarded `Value`.
+
+**Accomplished:** `src-tauri/src/lib.rs` is 199 lines. `rg 'serde::Deserialize|struct Pav' src-tauri/src` is empty. Inventory of the G-3 file: `ApiError` and `api_error` become a JSON `Value` (forwarding). `EventNote`, `on_core_event`, `core_data`, the `core` command, `require_api_version`, `start_core`, `stop_events`, `start_events`, and `run` stay (Tauri). `logical_inner` and `logical_outer_pos` stay as the logical rectangle inside `report_window`. `on_window_change` stays as sending `window.report`. `apply_saved_window` stays as applying `window.initial` before `show()`. `RestoredWindow`, `WindowPrefs`, `int_field`, `opt_int_field`, `read_window`, `restored_lock`, `note_window`, `seed_restored`, `save_window_now`, and `schedule_window_save` move to C. `ensure_workdir` moves into `pavillion_start`. `window.initial` and `window.report` are in the sorted table. The core debounces 500 ms on its own thread, clamps to the monitors the host reports, and flushes on stop. A maximized report keeps the remembered rectangle. `pav_protocol` answers unknown schemes and `pav-blob` with 404. Rust registers `pav-blob`, `pav-cid`, and `pav-link` and copies status, headers, and body. `PavShellPrefs` and `PavillionStatus` are gone from `pavillion.h`. `PAVILLION_API_VERSION` is 3. `pav_cli_main` prints `pavillion: no subcommands yet`. `--help` and `--version` still exit before the core. `make test` is 48 Unity tests and 8 Vitest tests, 0 failures. On a temp workdir, a 1000×700 window at 480,260 was maximized and quit. The profile kept that rectangle, `maximized` true, and `chrome` system. The next launch's first viewable frame was 3840×2071. Unmaximize returned to 1000×700. The rail icons were on screen. The real profile was not used.
+
+**Lessons learned:** `ExitRequested` must finish `window.report` before `Exit` calls `pavillion_stop`. The stop flushes the pending write, so a quit inside 500 ms is kept. A maximized report does not replace the rectangle, so the host has to have reported the restored size first. `mkdir_private` failing returns -1 and does not start the thread; a workdir path that is a file is that case. The old function bodies stay in `pavillion.c` so the Unity tests still link. The test file declares them. They are not in the header. `usleep` needs a declaration under `-std=c11`. `xdotool windowstate` maximized only the width and left Tauri's maximized flag false. `wmctrl` set both directions and the flag. The frame is still about 8 px by 35 px ahead of the saved outer position. The kit-load race from G-3 can still log, and the icons still appear. G-Q1 and G-Q4 stayed open.
+
+**Handoff:** H-1 is next, in [H-LOGGING.md](H-LOGGING.md): the production log thread, the ring, `log.tail`, and `log.lines`. Do not start it in this sitting. `PAVILLION_API_VERSION` is 3. Adding a command does not bump it. A new command is a sorted-table row and a `State: real` heading in the same sitting. `pav-blob` and `pav-cid` stay 404 until N-7 and N-4. `pav-link` stays a registered scheme until F-4. `pav_cli_main` stays a stub until V-1. The event callback must not call `pavillion_stop`. A handler on the core thread must not call `pavillion_call`. Secrets stay `-1` until K-1. `macos-core` stays `continue-on-error` until G-6. Tests install the fake before Unity.
 
 ## G-4: Mountable UI for Lithium
 
@@ -361,3 +367,4 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 - 2026-10-16 G-1: platform table, Linux XDG dirs, and a test fake. Profile writes are `path.tmp` then rename. `make test` is 37 tests. `rg 'sys/stat|fchmod|getenv' core/src` is empty. A fresh `make dev` workdir has the index, profile, log, and sqlite at `0600` and the directories at `0700`. API version stays 2. `macos-core` is in `ci.yml` with `continue-on-error` and was not pushed.
 - 2026-10-16 G-2: `pavillion_call`, `pav_on_event`, and `docs/API.md`. Six real commands. Queue cap 256. `make test` is 43 tests. API version stays 2. Not pushed.
 - 2026-10-16 G-3: one Tauri `core` command, `createApi(transport)`, and Vitest on `make test`. `make test` is 43 Unity tests and 8 Vitest tests. API version stays 2. Not pushed.
+- 2026-10-16 G-8: window state, `pav_protocol`, and workdir creation moved into C. `lib.rs` is 199 lines. API version is 3. `make test` is 48 Unity tests and 8 Vitest tests. Not pushed.

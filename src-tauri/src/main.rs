@@ -61,8 +61,7 @@ fn main() {
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.len() > 1 {
-        eprint!("{}", help_text());
-        std::process::exit(1);
+        std::process::exit(pavillion_lib::unknown_subcommand());
     }
     let workdir = if args.len() == 1 {
         args[0].clone()
