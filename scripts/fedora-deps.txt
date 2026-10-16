@@ -1,0 +1,37 @@
+# Fedora package names for a Pavillion build. Do not pin versions.
+# Install:
+#   dnf install $(grep -vE '^[[:space:]]*(#|$)' scripts/fedora-deps.txt)
+#
+# Compiler tools from A-INIT. gcc-c++ is the extra compiler in Tauri's
+# Fedora "c-development" group. pkgconf-pkg-config is the package that
+# installs the pkg-config command; A-INIT names it pkgconf.
+gcc
+gcc-c++
+cmake
+make
+pkgconf-pkg-config
+
+# Tauri 2 Fedora prerequisites, from the v2 prerequisites page (2026-10-16).
+webkit2gtk4.1-devel
+openssl-devel
+curl
+wget
+file
+libappindicator-gtk3-devel
+librsvg2-devel
+libxdo-devel
+
+# A-INIT libraries. Lua and lexbor are vendored later and are not listed.
+jansson-devel
+libcurl-devel
+sqlite-devel
+libsecret-devel
+libuuid-devel
+gmime-devel
+libical-devel
+
+# A-INIT Rust and Node, from Fedora. npm is the command dnf resolves.
+rust
+cargo
+nodejs
+npm

@@ -2,7 +2,7 @@
 
 Status: v0.7 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 
-**Resume:** The hello-world sequence (steps 1–20) is complete, and the shell preview is in the tree. F-1 landed 2026-10-16: `pavillion_api_version()` returns `PAVILLION_API_VERSION` (1), `build.rs` copies that macro into the shell, and a mismatch prints `API version mismatch: core=<n> shell=<m>` to stderr and exits 1 before the window. It does not call `pav_log` and it does not create the working directory. v0.7 puts the CodeMirror log (H-2, H-3) immediately after H-1, and restores Tabulator and SunEditor in the phases that first need them. WebKit bytes stay out of both ELFs; only `pavillion-gui` dynamically needs the system library. **Next: step 22, W-1 — CI on GitHub Actions**, in [docs/W-SHIP.md](docs/W-SHIP.md). Read that document's Lock, then W-1 only.
+**Resume:** The hello-world sequence (steps 1–20) is complete, and the shell preview is in the tree. F-1 landed 2026-10-16: `pavillion_api_version()` returns `PAVILLION_API_VERSION` (1), `build.rs` copies that macro into the shell, and a mismatch prints `API version mismatch: core=<n> shell=<m>` to stderr and exits 1 before the window. It does not call `pav_log` and it does not create the working directory. v0.7 puts the CodeMirror log (H-2, H-3) immediately after H-1, and restores Tabulator and SunEditor in the phases that first need them. WebKit bytes stay out of both ELFs; only `pavillion-gui` dynamically needs the system library. **W-1 is in progress** (step 22, [docs/W-SHIP.md](docs/W-SHIP.md)). The workflow, `scripts/fedora-deps.txt`, and the README Build section are in the tree. The exit gate waits on a push: a green Fedora job, then a Unity test broken on purpose so that job goes red, then the revert. Do not start F-5.
 
 **Read first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), one page with diagrams of the layers, the threads, and the data flow.
 
@@ -78,7 +78,7 @@ Written later by phases (not plans): `docs/API.md` (G-2) and `docs/LUA_API.md` (
 | 20 | D-3 | The error state | Easy | Done |
 | | | *Milestone 0: hello world, plus the shell preview (not a phase)* | | Done |
 | 21 | F-1 | API version check (`pavillion_api_version`) | Medium | Done |
-| 22 | **W-1** | **CI on GitHub Actions: `make test` and `make build` on Fedora** | Medium | **Next** |
+| 22 | **W-1** | **CI on GitHub Actions: `make test` and `make build` on Fedora** | Medium | **In progress** |
 | 23 | F-5 | Trim `config.c` with a helper layer | Medium | |
 | 24 | F-2 | UI preferences as an opaque JSON blob (Fonts persisted) | Medium | |
 | 25 | G-1 | Platform layer and a test fake; macOS core CI job | Medium | |

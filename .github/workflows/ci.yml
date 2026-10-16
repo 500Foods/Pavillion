@@ -1,0 +1,56 @@
+# W-1. The fedora job is the CI Lock. G-1 adds the macos-core job.
+# main.yml is the line-count workflow and stays as it is.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  fedora:
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - name: Install git
+        run: dnf install -y git
+
+      - uses: actions/checkout@v4
+
+      - name: Install Fedora packages
+        run: |
+          dnf install -y $(grep -vE '^[[:space:]]*(#|$)' scripts/fedora-deps.txt)
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: cargo-fedora-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            cargo-fedora-
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-fedora-${{ hashFiles('ui/package-lock.json') }}
+          restore-keys: |
+            npm-fedora-
+
+      - name: Test
+        run: make test
+
+      - name: Build
+        run: make build
+
+      - name: Upload pavillion
+        uses: actions/upload-artifact@v4
+        with:
+          name: pavillion-${{ github.sha }}
+          path: dist/pavillion

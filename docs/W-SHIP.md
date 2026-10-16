@@ -1,6 +1,6 @@
 # W — SHIP
 
-**Status:** Not started (scoped 2026-10-16 from old plan §12, §13, and the 2026-10-15 suggestions).
+**Status:** W-1 in progress (2026-10-16). W-2, W-3, and W-4 are not started.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Continuous integration, the test fixtures every network phase depends on, the testing rules, and packaging. W-1 and W-2 come early. W-3 and W-4 come right after daily-driver mail (milestone 3), before calendars and files, so the Betterbird replacement is installable on its own.
@@ -11,7 +11,7 @@ One phase is one session. Do not start the next one in the same conversation.
 
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
-| W-1 | CI on GitHub Actions: `make test` and `make build` on Fedora | Medium | Not started |
+| W-1 | CI on GitHub Actions: `make test` and `make build` on Fedora | Medium | In progress |
 | W-2 | JMAP fixtures: a recorded fixture server and a disposable Stalwart container with seeded accounts | Hard | Not started |
 | W-3 | Fedora rpm, the dnf repository, desktop file, autostart | Medium | Not started |
 | W-4 | Arch `PKGBUILD` (Omarchy) | Easy | Not started |
@@ -65,7 +65,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 ## W-1: CI on GitHub Actions
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** In progress (2026-10-16). The three files are in the tree. Last finished work item: the artifact upload is named `pavillion-<sha>` and its path is `dist/pavillion`. The exit gate has not run. This session does not commit or push. After Andrew pushes: a green Fedora job, a Unity failure that turns that job red, and the revert of that failure. Record the green run here before marking the phase complete.
 
 **Goal:** Every push runs `make test` and `make build` on Fedora.
 
@@ -73,13 +73,13 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Work items:**
 
-- [ ] `.github/workflows/ci.yml` per the CI Lock; cache cargo and npm.
-- [ ] Add the A-INIT Fedora package list as `scripts/fedora-deps.txt` used by CI and by the README.
-- [ ] The artifact `pavillion-<sha>` is the `dist/pavillion` binary.
+- [x] `.github/workflows/ci.yml` per the CI Lock; cache cargo and npm.
+- [x] Add the A-INIT Fedora package list as `scripts/fedora-deps.txt` used by CI and by the README.
+- [x] The artifact `pavillion-<sha>` is the `dist/pavillion` binary.
 
 **Done means:** A push shows a green Fedora job.
 
-**Exit gate:** A green run linked in Accomplished. A deliberately broken Unity test turns it red (then revert).
+**Exit gate:** A green run linked in Accomplished. A deliberately broken Unity test turns it red (then revert). Not run.
 
 ## W-2: JMAP fixtures
 
@@ -151,3 +151,4 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 - 2026-10-16 Opened from old plan §12 and §13 and the 2026-10-15 suggestions (CI with `make build`, a disposable Stalwart with seeded accounts). Decisions: a Python fixture server with a test CA, a pinned Stalwart version, `make it-*` targets, rpm dependency list, UPX fallback by `--version`.
 - 2026-10-16 Andrew: the fixtures use Docker. Stalwart pinned to v0.16.26, the latest GitHub release (published 2026-10-11 10:33 PT, checked 2026-10-16). W-Q3 resolved.
+- 2026-10-16 W-1 in progress. Added `.github/workflows/ci.yml` (job `fedora` in `fedora:latest`, cargo registry and `src-tauri/target` cached, npm cache is `~/.npm`), `scripts/fedora-deps.txt` (24 names; `dnf install --assumeno` resolved every name on Fedora 43), and the README Build section. Rust and Node are the Fedora packages. `pkgconf-pkg-config` is the package that installs the `pkg-config` command. `git` is installed in the workflow and is not in the package list. No commit and no push. `make test` is 28 Unity tests. The exit gate waits on Andrew's push.
