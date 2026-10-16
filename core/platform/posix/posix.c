@@ -287,6 +287,8 @@ int pav_posix_write_abort(const char *path, const void *buf, size_t n) {
 
 int pav_thread_create(void **out, void *(*fn)(void *), void *arg) {
     pthread_t *thread;
+    pthread_attr_t attr;
+    int rc;
 
     if (out == NULL || fn == NULL) {
         return -1;
@@ -295,7 +297,19 @@ int pav_thread_create(void **out, void *(*fn)(void *), void *arg) {
     if (thread == NULL) {
         return -1;
     }
-    if (pthread_create(thread, NULL, fn, arg) != 0) {
+    if (pthread_attr_init(&attr) != 0) {
+        free(thread);
+        return -1;
+    }
+    /* C-CORE Lock: every thread this helper creates uses a 512 KB stack. */
+    if (pthread_attr_setstacksize(&attr, 512u * 1024u) != 0) {
+        pthread_attr_destroy(&attr);
+        free(thread);
+        return -1;
+    }
+    rc = pthread_create(thread, &attr, fn, arg);
+    pthread_attr_destroy(&attr);
+    if (rc != 0) {
         free(thread);
         return -1;
     }

@@ -27,7 +27,8 @@ lib: $(LIB)
 
 $(LIB): core/CMakeLists.txt core/include/pavillion.h core/include/pav_config.h \
 		core/include/pav_cfg.h core/include/pav_store.h core/include/pav_platform.h \
-		core/src/pavillion.c core/src/cfg.c core/src/config.c core/src/config_prefs.c \
+		core/src/pavillion.c core/src/dispatch.c core/src/dispatch.h \
+		core/src/cfg.c core/src/config.c core/src/config_prefs.c \
 		core/src/config_fs.c core/src/config_internal.h core/src/store.c \
 		core/platform/platform_internal.h core/platform/posix/posix.c \
 		core/platform/linux/linux.c

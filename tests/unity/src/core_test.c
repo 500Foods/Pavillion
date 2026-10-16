@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #define ALT_LINES 20
@@ -1701,6 +1702,390 @@ void test_platform_fake_dirs_secrets_and_clock(void) {
     TEST_ASSERT_EQUAL_STRING("fake", pav_platform()->name);
 }
 
+static json_t *call_reply(const char *cmd, const char *args) {
+    char *reply = NULL;
+    json_error_t jerr;
+    json_t *root;
+
+    TEST_ASSERT_EQUAL_INT(0, pavillion_call(cmd, args, &reply));
+    TEST_ASSERT_NOT_NULL(reply);
+    root = json_loads(reply, 0, &jerr);
+    pavillion_free(reply);
+    TEST_ASSERT_NOT_NULL(root);
+    TEST_ASSERT_TRUE(json_is_object(root));
+    return root;
+}
+
+static void assert_call_error(json_t *root, const char *code, const char *fragment) {
+    json_t *error = json_object_get(root, "error");
+    const char *message;
+
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(root, "ok")));
+    TEST_ASSERT_NULL(json_object_get(root, "data"));
+    TEST_ASSERT_TRUE(json_is_object(error));
+    TEST_ASSERT_EQUAL_STRING(code, json_string_value(json_object_get(error, "code")));
+    message = json_string_value(json_object_get(error, "message"));
+    TEST_ASSERT_NOT_NULL(message);
+    if (fragment != NULL) {
+        TEST_ASSERT_NOT_NULL(strstr(message, fragment));
+    }
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(error, "retryable")));
+}
+
+void test_call_unknown_command(void) {
+    json_t *root = NULL;
+
+    TEST_ASSERT_EQUAL_INT(-1, pavillion_call("system.status", "{}", NULL));
+    root = call_reply("system.status", "{}");
+    assert_call_error(root, "not_ready", "not running");
+    json_decref(root);
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    root = call_reply("no.such", "{}");
+    assert_call_error(root, "bad_args", "no.such");
+    json_decref(root);
+    root = call_reply("NOPE", "{}");
+    assert_call_error(root, "bad_args", "invalid command");
+    json_decref(root);
+}
+
+void test_call_bad_args(void) {
+    json_t *root;
+    char big[2002];
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+
+    root = call_reply("system.status", "[]");
+    assert_call_error(root, "bad_args", "not an object");
+    json_decref(root);
+    root = call_reply("system.status", "null");
+    assert_call_error(root, "bad_args", "not an object");
+    json_decref(root);
+    root = call_reply("system.status", "{\"extra\":1}");
+    assert_call_error(root, "bad_args", "extra");
+    json_decref(root);
+    root = call_reply("prefs.set", "{}");
+    assert_call_error(root, "bad_args", "nothing to save");
+    json_decref(root);
+    root = call_reply("prefs.set", "{\"nope\":1}");
+    assert_call_error(root, "bad_args", "nope");
+    json_decref(root);
+    root = call_reply("prefs.set", "{\"windowWidth\":100}");
+    assert_call_error(root, "bad_args", "out of range");
+    json_decref(root);
+    root = call_reply("log.client", "{\"subsystem\":\"UI\",\"level\":\"info\",\"message\":\"x\"}");
+    assert_call_error(root, "bad_args", "subsystem");
+    json_decref(root);
+
+    memset(big, 'a', sizeof(big) - 1);
+    big[sizeof(big) - 1] = '\0';
+    {
+        char args[2100];
+
+        snprintf(args, sizeof(args),
+                 "{\"subsystem\":\"ui\",\"level\":\"info\",\"message\":\"%s\"}", big);
+        root = call_reply("log.client", args);
+        assert_call_error(root, "too_large", "too large");
+        json_decref(root);
+    }
+}
+
+void test_call_status_roundtrip(void) {
+    json_t *root;
+    json_t *data;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    root = call_reply("system.status", "{}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_STRING("Default", json_string_value(json_object_get(data, "profileName")));
+    TEST_ASSERT_EQUAL_STRING("default", json_string_value(json_object_get(data, "profileId")));
+    TEST_ASSERT_EQUAL_STRING("ready", json_string_value(json_object_get(data, "state")));
+    TEST_ASSERT_EQUAL_STRING("", json_string_value(json_object_get(data, "error")));
+    json_decref(root);
+
+    root = call_reply("prefs.get", "{}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_STRING("America/Vancouver", json_string_value(json_object_get(data, "timezone")));
+    TEST_ASSERT_EQUAL_STRING("system", json_string_value(json_object_get(data, "theme")));
+    TEST_ASSERT_EQUAL_STRING("system", json_string_value(json_object_get(data, "chrome")));
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(data, "windowMaximized")));
+    TEST_ASSERT_EQUAL_INT(1200, (int)json_integer_value(json_object_get(data, "windowWidth")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(data, "windowX")));
+    json_decref(root);
+}
+
+void test_call_prefs_ui_and_log(void) {
+    json_t *root;
+    json_t *data;
+    json_t *zoom;
+    char *text;
+    char path[160];
+
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+
+    root = call_reply("prefs.ui.get", "{}");
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_INT(320, (int)json_integer_value(json_object_get(json_object_get(data, "nav"), "width")));
+    json_decref(root);
+
+    root = call_reply("prefs.set", "{\"theme\":\"light\",\"windowWidth\":900}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_STRING("light", json_string_value(json_object_get(data, "theme")));
+    TEST_ASSERT_EQUAL_INT(900, (int)json_integer_value(json_object_get(data, "windowWidth")));
+    TEST_ASSERT_EQUAL_STRING("America/Vancouver", json_string_value(json_object_get(data, "timezone")));
+    json_decref(root);
+
+    snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
+    {
+        FILE *f = fopen(path, "r");
+        long n;
+        char *buf;
+
+        TEST_ASSERT_NOT_NULL(f);
+        TEST_ASSERT_EQUAL_INT(0, fseek(f, 0, SEEK_END));
+        n = ftell(f);
+        TEST_ASSERT_TRUE(n > 0);
+        rewind(f);
+        buf = calloc((size_t)n + 1, 1);
+        TEST_ASSERT_NOT_NULL(buf);
+        TEST_ASSERT_EQUAL_INT((int)n, (int)fread(buf, 1, (size_t)n, f));
+        fclose(f);
+        TEST_ASSERT_NOT_NULL(strstr(buf, "\"theme\": \"light\""));
+        TEST_ASSERT_NOT_NULL(strstr(buf, "\"width\": 900"));
+        free(buf);
+    }
+
+    root = call_reply("prefs.ui.set", "{\"zoom\":{\"shell\":1.5}}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    data = json_object_get(root, "data");
+    zoom = json_object_get(data, "zoom");
+    TEST_ASSERT_TRUE(json_is_number(json_object_get(zoom, "shell")));
+    TEST_ASSERT_TRUE(json_real_value(json_object_get(zoom, "shell")) > 1.49);
+    TEST_ASSERT_NULL(json_object_get(data, "nav"));
+    json_decref(root);
+
+    root = call_reply("prefs.ui.set", "{\"password\":\"nope\"}");
+    assert_call_error(root, "forbidden", "password");
+    json_decref(root);
+
+    root = call_reply("log.client",
+                      "{\"subsystem\":\"ui\",\"level\":\"info\",\"message\":\"line-one\\nline-two\"}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    TEST_ASSERT_TRUE(json_is_object(json_object_get(root, "data")));
+    json_decref(root);
+    text = read_log();
+    TEST_ASSERT_NOT_NULL(strstr(text, " ui  line-one\xE2\x8E\xAAline-two"));
+    free(text);
+}
+
+static pthread_mutex_t g_ev_test_mu = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t g_ev_test_cv = PTHREAD_COND_INITIALIZER;
+
+struct EvGot {
+    int hit;
+    int on_core;
+    int same_as_caller;
+    char name[64];
+    char json[128];
+};
+
+static struct EvGot g_ev_got;
+static pthread_t g_ev_caller;
+
+static void ev_test_cb(const char *name, const char *json, void *user) {
+    struct EvGot *got = user;
+
+    pthread_mutex_lock(&g_ev_test_mu);
+    got->hit = 1;
+    got->on_core = pav_on_core_thread();
+    got->same_as_caller = pthread_equal(pthread_self(), g_ev_caller);
+    snprintf(got->name, sizeof(got->name), "%s", name != NULL ? name : "");
+    snprintf(got->json, sizeof(got->json), "%s", json != NULL ? json : "");
+    pthread_cond_signal(&g_ev_test_cv);
+    pthread_mutex_unlock(&g_ev_test_mu);
+}
+
+void test_event_delivered_off_core_thread(void) {
+    struct timespec ts;
+    int rc;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(0, pav_event_post("core.state", "{\"state\":\"ready\"}"));
+    TEST_ASSERT_TRUE(pav_event_dropped() >= 1);
+
+    memset(&g_ev_got, 0, sizeof(g_ev_got));
+    g_ev_caller = pthread_self();
+    pav_on_event(ev_test_cb, &g_ev_got);
+    TEST_ASSERT_EQUAL_INT(0, pav_event_post("core.state", "{\"state\":\"ready\"}"));
+
+    pthread_mutex_lock(&g_ev_test_mu);
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 2;
+    while (!g_ev_got.hit) {
+        rc = pthread_cond_timedwait(&g_ev_test_cv, &g_ev_test_mu, &ts);
+        if (rc != 0) {
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_ev_test_mu);
+    pav_on_event(NULL, NULL);
+
+    TEST_ASSERT_EQUAL_INT(1, g_ev_got.hit);
+    TEST_ASSERT_EQUAL_INT(0, g_ev_got.on_core);
+    TEST_ASSERT_EQUAL_INT(0, g_ev_got.same_as_caller);
+    TEST_ASSERT_EQUAL_STRING("core.state", g_ev_got.name);
+    TEST_ASSERT_EQUAL_STRING("{\"state\":\"ready\"}", g_ev_got.json);
+}
+
+#define API_SLOTS 128
+#define API_NAME_LEN 64
+
+static char g_api_real[API_SLOTS][API_NAME_LEN];
+static char g_api_plan[API_SLOTS][API_NAME_LEN];
+static int g_api_real_n;
+static int g_api_plan_n;
+
+static void rstrip(char *line) {
+    size_t n = strlen(line);
+
+    while (n > 0 && (line[n - 1] == '\n' || line[n - 1] == '\r' || line[n - 1] == ' ' ||
+                     line[n - 1] == '\t')) {
+        line[--n] = '\0';
+    }
+}
+
+static int api_has(char names[][API_NAME_LEN], int count, const char *name) {
+    int i;
+
+    for (i = 0; i < count; i++) {
+        if (strcmp(names[i], name) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void api_add(char names[][API_NAME_LEN], int *count, const char *name) {
+    TEST_ASSERT_TRUE(*count < API_SLOTS);
+    TEST_ASSERT_TRUE(strlen(name) < API_NAME_LEN);
+    TEST_ASSERT_TRUE(name[0] != '\0');
+    TEST_ASSERT_FALSE(api_has(names, *count, name));
+    memcpy(names[*count], name, strlen(name) + 1);
+    (*count)++;
+}
+
+static int api_name_cmp(const void *a, const void *b) {
+    return strcmp(a, b);
+}
+
+void test_api_md_lists_every_command(void) {
+    FILE *f;
+    char line[2048];
+    char version[64];
+    char heading[API_NAME_LEN];
+    int in_commands = 0;
+    int have = 0;
+    int state_seen = 0;
+    int state_real = 0;
+    int saw_version = 0;
+    int i;
+    int count;
+
+    f = fopen("docs/API.md", "r");
+    TEST_ASSERT_NOT_NULL(f);
+    g_api_real_n = 0;
+    g_api_plan_n = 0;
+    heading[0] = '\0';
+    snprintf(version, sizeof(version), "API version: %d", PAVILLION_API_VERSION);
+
+    while (fgets(line, sizeof(line), f) != NULL) {
+        if (strlen(line) == sizeof(line) - 1 && strchr(line, '\n') == NULL) {
+            TEST_FAIL_MESSAGE("docs/API.md line is too long for the test reader");
+        }
+        rstrip(line);
+        if (strcmp(line, version) == 0) {
+            saw_version = 1;
+        }
+        if (strncmp(line, "### ", 4) == 0) {
+            if (in_commands && have) {
+                TEST_ASSERT_TRUE(state_seen);
+                if (state_real) {
+                    api_add(g_api_real, &g_api_real_n, heading);
+                } else {
+                    api_add(g_api_plan, &g_api_plan_n, heading);
+                }
+            }
+            if (in_commands) {
+                TEST_ASSERT_TRUE(strlen(line + 4) < API_NAME_LEN);
+                memcpy(heading, line + 4, strlen(line + 4) + 1);
+                have = 1;
+                state_seen = 0;
+                state_real = 0;
+            }
+            continue;
+        }
+        if (strncmp(line, "## ", 3) == 0) {
+            if (in_commands && have) {
+                TEST_ASSERT_TRUE(state_seen);
+                if (state_real) {
+                    api_add(g_api_real, &g_api_real_n, heading);
+                } else {
+                    api_add(g_api_plan, &g_api_plan_n, heading);
+                }
+                have = 0;
+            }
+            in_commands = strcmp(line, "## Commands") == 0;
+            continue;
+        }
+        if (in_commands && have && strncmp(line, "State: ", 7) == 0) {
+            TEST_ASSERT_FALSE(state_seen);
+            if (strncmp(line, "State: real", 11) == 0) {
+                state_real = 1;
+            } else {
+                TEST_ASSERT_TRUE(strncmp(line, "State: planned", 14) == 0);
+                state_real = 0;
+            }
+            state_seen = 1;
+        }
+    }
+    if (in_commands && have) {
+        TEST_ASSERT_TRUE(state_seen);
+        if (state_real) {
+            api_add(g_api_real, &g_api_real_n, heading);
+        } else {
+            api_add(g_api_plan, &g_api_plan_n, heading);
+        }
+    }
+    fclose(f);
+
+    TEST_ASSERT_TRUE(saw_version);
+    TEST_ASSERT_TRUE(g_api_plan_n > 0);
+    qsort(g_api_real, (size_t)g_api_real_n, API_NAME_LEN, api_name_cmp);
+    count = pav_command_count();
+    TEST_ASSERT_EQUAL_INT(count, g_api_real_n);
+    for (i = 0; i < count; i++) {
+        const char *name = pav_command_name(i);
+
+        TEST_ASSERT_NOT_NULL(name);
+        if (i > 0) {
+            TEST_ASSERT_TRUE(strcmp(pav_command_name(i - 1), name) < 0);
+        }
+        TEST_ASSERT_EQUAL_STRING(g_api_real[i], name);
+        TEST_ASSERT_FALSE(api_has(g_api_plan, g_api_plan_n, name));
+    }
+    TEST_ASSERT_NULL(pav_command_name(-1));
+    TEST_ASSERT_NULL(pav_command_name(count));
+}
+
 int main(void) {
     pav_platform_install(pav_platform_fake());
     UNITY_BEGIN();
@@ -1741,5 +2126,11 @@ int main(void) {
     RUN_TEST(test_cfg_obj_and_at_do_not_replace_or_create);
     RUN_TEST(test_profile_write_is_atomic);
     RUN_TEST(test_platform_fake_dirs_secrets_and_clock);
+    RUN_TEST(test_call_unknown_command);
+    RUN_TEST(test_call_bad_args);
+    RUN_TEST(test_call_status_roundtrip);
+    RUN_TEST(test_call_prefs_ui_and_log);
+    RUN_TEST(test_event_delivered_off_core_thread);
+    RUN_TEST(test_api_md_lists_every_command);
     return UNITY_END();
 }

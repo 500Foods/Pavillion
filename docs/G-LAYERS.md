@@ -1,6 +1,6 @@
 # G — LAYERS
 
-**Status:** G-1 complete (2026-10-16). The index names the next phase. Lua and mail rules moved to [R-RULES.md](R-RULES.md) (old G-5 is R-1, old G-7 is R-3).
+**Status:** G-2 complete (2026-10-16). The index names the next phase. Lua and mail rules moved to [R-RULES.md](R-RULES.md) (old G-5 is R-1, old G-7 is R-3).
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Pavillion runs on Fedora Linux first, then macOS and Windows, maybe iPad one day. Its UI can be lifted into Lithium. Both come down to clear layers with one written contract between each pair. This document owns the layers, the platform table, the command ABI, the host adapter, the mountable UI, and the multiplatform strategy.
@@ -12,7 +12,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
 | G-1 | `pav_platform.h`, the Linux backend, a test fake; dirs and file modes behind it | Medium | Complete |
-| G-2 | JSON command dispatcher, `pav_on_event`, and `docs/API.md` | Medium | Not started |
+| G-2 | JSON command dispatcher, `pav_on_event`, and `docs/API.md` | Medium | Complete |
 | G-3 | Generic Tauri `core` command; `api.js` takes a transport | Medium | Not started |
 | G-8 | Move the remaining `lib.rs` logic (662 lines) into C behind the dispatcher | Medium | Not started |
 | G-4 | Mountable UI: `mount(el, api)`, `--pav-*` variables, scoped styles, bare harness | Medium | Not started |
@@ -229,7 +229,7 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 ## G-2: JSON command dispatcher and `docs/API.md`
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Complete (2026-10-16). No variances. This sitting did not push.
 
 **Goal:** One generic entry point, `pavillion_call`, and one event callback, `pav_on_event`, carry everything after this phase.
 
@@ -237,16 +237,22 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 
 **Work items:**
 
-- [ ] `core/src/dispatch.c`: a sorted table of `{ name, handler, flags }`, `handler(json_t *args, json_t **data, PavError *err)`. Unknown command is `bad_args` with the name. Args that are not an object are `bad_args`.
-- [ ] `pavillion_call` posts a `CORE_CMD_CALL` to the core queue and waits on that command's reply (the C-3 pattern). Grow `CORE_QUEUE_CAP` from 8 to 256 and make a full queue an `internal` error, not a hang.
-- [ ] `pav_on_event`: an event queue drained by a small event thread that calls the callback, so a slow host never blocks the core thread. Events posted with no callback are dropped and counted.
-- [ ] Port the existing surface: `system.status`, `prefs.get`, `prefs.set` (window and core-read preferences), `prefs.ui.get`, `prefs.ui.set`, `log.client`. The old C entry points stay until G-3 removes their callers.
-- [ ] Write `docs/API.md`. Its header states the current `PAVILLION_API_VERSION` and the bump rule (F Lock). Then: conventions, error codes, every real command, every planned one from the Lock's seed marked `planned (phase)`.
-- [ ] Unity tests: `test_call_unknown_command`, `test_call_bad_args`, `test_call_status_roundtrip`, `test_event_delivered_off_core_thread`, `test_api_md_lists_every_command`.
+- [x] `core/src/dispatch.c`: a sorted table of `{ name, handler, flags }`, `handler(json_t *args, json_t **data, PavError *err)`. Unknown command is `bad_args` with the name. Args that are not an object are `bad_args`.
+- [x] `pavillion_call` posts a `CORE_CMD_CALL` to the core queue and waits on that command's reply (the C-3 pattern). Grow `CORE_QUEUE_CAP` from 8 to 256 and make a full queue an `internal` error, not a hang.
+- [x] `pav_on_event`: an event queue drained by a small event thread that calls the callback, so a slow host never blocks the core thread. Events posted with no callback are dropped and counted.
+- [x] Port the existing surface: `system.status`, `prefs.get`, `prefs.set` (window and core-read preferences), `prefs.ui.get`, `prefs.ui.set`, `log.client`. The old C entry points stay until G-3 removes their callers.
+- [x] Write `docs/API.md`. Its header states the current `PAVILLION_API_VERSION` and the bump rule (F Lock). Then: conventions, error codes, every real command, every planned one from the Lock's seed marked `planned (phase)`.
+- [x] Unity tests: `test_call_unknown_command`, `test_call_bad_args`, `test_call_status_roundtrip`, `test_event_delivered_off_core_thread`, `test_api_md_lists_every_command`.
 
 **Done means:** Every current UI need is reachable through `pavillion_call`, and `docs/API.md` lists it.
 
 **Exit gate:** `make test` exits 0 with the five new tests. `docs/API.md` exists.
+
+**Accomplished:** `core/src/dispatch.c` holds a sorted table of six commands. `pavillion_call` parses a JSON object, posts `CORE_CMD_CALL`, and waits for that call's reply. The queue cap is 256. A full queue returns `{"ok":false,"error":{"code":"internal",...}}` immediately. `pav_on_event` is served by an event thread started from `pavillion_start` and joined from `pavillion_stop` before the log thread. A post with no callback, or before that thread is running, increments `pav_event_dropped` and is not queued. The real commands are `system.status`, `prefs.get`, `prefs.set`, `prefs.ui.get`, `prefs.ui.set`, and `log.client`. `prefs.set` writes the window and the core-read preference strings (`timezone`, `weekStart`, `timeFormat`, `theme`, `density`). `prefs.ui.set` replaces the blob. `log.client` checks the subsystem pattern, the level name, and a 2000-byte cap, and replaces newlines with U+23CE. The old C entry points are unchanged. `docs/API.md` states API version 2, the bump rule, the error codes, the six real commands, and every seed command and event as `planned (phase)`. `make test` is 43 tests, 0 failures: the five named above plus `test_call_prefs_ui_and_log`. `PAVILLION_API_VERSION` stays 2. `pav_thread_create` sets a 512 KB stack, which is what the event thread uses.
+
+**Lessons learned:** A handler that runs on the core thread must not call `pavillion_prefs_apply` or `pavillion_ui_set`. Those wait for a queue reply, and the core thread would wait for itself. The handlers write the profile directly. `pavillion_call` returns 0 whenever it produced a reply, including `bad_args` and `not_ready`. It returns -1 only when there is no buffer to put a reply in. `prefs.ui.set` replaces the object; it does not merge. `log.client` already sanitizes, so H-1 does not change that command's meaning. `pav_log` still copies the formatted line into a 1024-byte buffer. The event callback must not call `pavillion_stop`: stop joins the event thread. `strdup` in `dispatch.c` needs `_POSIX_C_SOURCE` before the includes. `test_api_md_lists_every_command` reads `docs/API.md` from the repo root and treats every `###` heading under `## Commands` as a command. A `State: real` heading that is not in the sorted table fails the test. The queue-full branch returns `internal` without waiting; the tests do not fill all 256 slots. G-Q1 and G-Q4 stayed open.
+
+**Handoff:** G-3 is next. Point the shell at `pavillion_call` and delete the per-command Tauri handlers. Do not bump `PAVILLION_API_VERSION`. The old C functions stay until their callers are gone. G-8's removal bump is 3. A new command is a row in the sorted table and a `State: real` heading, in the same sitting. The event thread starts inside `pavillion_start` and stops inside `pavillion_stop` before the log thread. Stop clears the callback before it drains, so a late event is not delivered. The callback only queues. Secrets stay `-1` until K-1. `macos-core` stays `continue-on-error` until G-6. Tests install the fake before Unity.
 
 ## G-3: Generic host command and a transport-agnostic `api.js`
 
@@ -347,3 +353,4 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 - 2026-10-16 Andrew: minimize Rust ahead of the Hydrogen (C) integration. Rewrote the L3 Lock so Rust does only Tauri work, moved window-state persistence and scheme decisions to C (`window.report`/`window.initial`, `pav_protocol`), and added G-8 to migrate today's `lib.rs` logic right after G-3.
 - 2026-10-16 Review fixes: the `pav_protocol` signature, `PavBytes`, and the scheme-handler contract are now in the L2 Lock. One free function, `pavillion_free` (`pav_bytes_free` retired). Added a table of the FFI surface by stage. `system.status` and `log.lines` names aligned.
 - 2026-10-16 G-1: platform table, Linux XDG dirs, and a test fake. Profile writes are `path.tmp` then rename. `make test` is 37 tests. `rg 'sys/stat|fchmod|getenv' core/src` is empty. A fresh `make dev` workdir has the index, profile, log, and sqlite at `0600` and the directories at `0700`. API version stays 2. `macos-core` is in `ci.yml` with `continue-on-error` and was not pushed.
+- 2026-10-16 G-2: `pavillion_call`, `pav_on_event`, and `docs/API.md`. Six real commands. Queue cap 256. `make test` is 43 tests. API version stays 2. Not pushed.

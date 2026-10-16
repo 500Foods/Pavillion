@@ -1,5 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
+#include "dispatch.h"
+#include "pav_cfg.h"
 #include "pav_config.h"
 #include "pav_platform.h"
 #include "pav_store.h"
@@ -12,12 +14,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define CORE_QUEUE_CAP 8
+#define CORE_QUEUE_CAP 256
 #define CORE_CMD_STOP 1
 #define CORE_CMD_PREFS 2
 #define CORE_CMD_ICONS 3
 #define CORE_CMD_KIT 4
 #define CORE_CMD_UI 5
+#define CORE_CMD_CALL 6
+#define PAV_CALL_JSON_MAX (2u * 1024u * 1024u)
+
+typedef struct CoreQItem {
+    int cmd;
+    PavCall *call;
+} CoreQItem;
 
 static pthread_mutex_t g_core_mu = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t g_core_cv = PTHREAD_COND_INITIALIZER;
@@ -25,7 +34,7 @@ static pthread_t g_core_thread;
 static int g_core_alive;
 static int g_core_published;
 static int g_core_stop;
-static int g_core_q[CORE_QUEUE_CAP];
+static CoreQItem g_core_q[CORE_QUEUE_CAP];
 static int g_core_q_head;
 static int g_core_q_tail;
 static int g_core_q_count;
@@ -194,31 +203,51 @@ static void set_start_err(char *err, size_t err_len, const char *msg) {
 }
 
 static void core_queue_clear_unlocked(void) {
+    memset(g_core_q, 0, sizeof(g_core_q));
     g_core_q_head = 0;
     g_core_q_tail = 0;
     g_core_q_count = 0;
 }
 
-/* The caller holds g_core_mu. A full queue still wakes the thread via g_core_stop. */
-static int core_queue_push_unlocked(int cmd) {
+/* The caller holds g_core_mu. A full queue returns -1. Stop still wakes the
+   thread through g_core_stop, so a full queue does not hang the process. */
+static int core_queue_push_unlocked(int cmd, PavCall *call) {
     if (g_core_q_count >= CORE_QUEUE_CAP) {
         return -1;
     }
-    g_core_q[g_core_q_tail] = cmd;
+    g_core_q[g_core_q_tail].cmd = cmd;
+    g_core_q[g_core_q_tail].call = call;
     g_core_q_tail = (g_core_q_tail + 1) % CORE_QUEUE_CAP;
     g_core_q_count++;
     pthread_cond_broadcast(&g_core_cv);
     return 0;
 }
 
-static int core_queue_pop_unlocked(int *cmd) {
+static int core_queue_pop_unlocked(int *cmd, PavCall **call) {
     if (g_core_q_count == 0) {
         return -1;
     }
-    *cmd = g_core_q[g_core_q_head];
+    *cmd = g_core_q[g_core_q_head].cmd;
+    if (call != NULL) {
+        *call = g_core_q[g_core_q_head].call;
+    }
+    g_core_q[g_core_q_head].call = NULL;
     g_core_q_head = (g_core_q_head + 1) % CORE_QUEUE_CAP;
     g_core_q_count--;
     return 0;
+}
+
+/* The caller holds g_core_mu. The waiter frees the PavCall. */
+static void fail_call_unlocked(PavCall *call, const char *code, const char *message) {
+    if (call == NULL || call->done) {
+        return;
+    }
+    if (call->args != NULL) {
+        json_decref(call->args);
+        call->args = NULL;
+    }
+    call->reply = pav_reply_error(code, message, 0);
+    call->done = 1;
 }
 
 static void core_fail_prefs_unlocked(const char *msg) {
@@ -237,6 +266,7 @@ static void *core_thread_main(void *arg) {
     pthread_mutex_lock(&g_core_mu);
     for (;;) {
         int cmd = 0;
+        PavCall *call = NULL;
 
         while (g_core_q_count == 0 && !g_core_stop) {
             pthread_cond_wait(&g_core_cv, &g_core_mu);
@@ -244,11 +274,27 @@ static void *core_thread_main(void *arg) {
         if (g_core_q_count == 0) {
             break;
         }
-        if (core_queue_pop_unlocked(&cmd) != 0) {
+        if (core_queue_pop_unlocked(&cmd, &call) != 0) {
             continue;
         }
         if (cmd == CORE_CMD_STOP) {
             break;
+        }
+        if (cmd == CORE_CMD_CALL) {
+            char *reply;
+
+            if (call == NULL) {
+                continue;
+            }
+            pthread_mutex_unlock(&g_core_mu);
+            reply = pav_dispatch_reply(call->name, call->args);
+            json_decref(call->args);
+            call->args = NULL;
+            pthread_mutex_lock(&g_core_mu);
+            call->reply = reply;
+            call->done = 1;
+            pthread_cond_broadcast(&g_core_cv);
+            continue;
         }
         if (cmd == CORE_CMD_PREFS) {
             pthread_mutex_unlock(&g_core_mu);
@@ -287,6 +333,16 @@ static void *core_thread_main(void *arg) {
     g_kit_done = 1;
     g_ui_rc = -1;
     g_ui_done = 1;
+    {
+        int left_cmd = 0;
+        PavCall *left = NULL;
+
+        while (core_queue_pop_unlocked(&left_cmd, &left) == 0) {
+            if (left != NULL) {
+                fail_call_unlocked(left, "not_ready", "core stopped");
+            }
+        }
+    }
     pthread_cond_broadcast(&g_core_cv);
     pthread_mutex_unlock(&g_core_mu);
     core_release_profile();
@@ -436,9 +492,15 @@ int pavillion_start(const char *workdir, char *err, size_t err_len) {
     g_ui_done = 1;
     g_ui_req[0] = '\0';
     core_queue_clear_unlocked();
+    if (pav_event_thread_start() != 0) {
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "cannot start events");
+        return -1;
+    }
     rc = pthread_create(&g_core_thread, NULL, core_thread_main, NULL);
     if (rc != 0) {
         pthread_mutex_unlock(&g_core_mu);
+        pav_event_thread_stop();
         set_start_err(err, err_len, "cannot start core");
         return -1;
     }
@@ -457,11 +519,12 @@ void pavillion_stop(void) {
     pthread_mutex_lock(&g_core_mu);
     if (!g_core_alive) {
         pthread_mutex_unlock(&g_core_mu);
+        pav_event_thread_stop();
         pav_log_thread_shutdown();
         return;
     }
     g_core_stop = 1;
-    if (core_queue_push_unlocked(CORE_CMD_STOP) != 0) {
+    if (core_queue_push_unlocked(CORE_CMD_STOP, NULL) != 0) {
         pthread_cond_broadcast(&g_core_cv);
     }
     thread = g_core_thread;
@@ -471,6 +534,7 @@ void pavillion_stop(void) {
         pthread_join(thread, NULL);
     }
     /* After the core thread has finished. A second stop joins nothing. */
+    pav_event_thread_stop();
     pav_log_thread_shutdown();
 }
 
@@ -520,7 +584,7 @@ int pavillion_prefs_apply(const PavShellPrefs *in, unsigned mask, char *err, siz
     g_prefs_rc = -1;
     g_prefs_err[0] = '\0';
     g_prefs_busy = 1;
-    if (core_queue_push_unlocked(CORE_CMD_PREFS) != 0) {
+    if (core_queue_push_unlocked(CORE_CMD_PREFS, NULL) != 0) {
         g_prefs_busy = 0;
         g_prefs_done = 1;
         pthread_mutex_unlock(&g_core_mu);
@@ -599,7 +663,7 @@ int pavillion_icons_apply(const char *json, char *err, size_t err_len) {
     g_icons_rc = -1;
     g_icons_err[0] = '\0';
     g_icons_busy = 1;
-    if (core_queue_push_unlocked(CORE_CMD_ICONS) != 0) {
+    if (core_queue_push_unlocked(CORE_CMD_ICONS, NULL) != 0) {
         g_icons_busy = 0;
         g_icons_done = 1;
         pthread_mutex_unlock(&g_core_mu);
@@ -669,7 +733,7 @@ int pavillion_kit_apply(const char *kit, char *err, size_t err_len) {
     g_kit_rc = -1;
     g_kit_err[0] = '\0';
     g_kit_busy = 1;
-    if (core_queue_push_unlocked(CORE_CMD_KIT) != 0) {
+    if (core_queue_push_unlocked(CORE_CMD_KIT, NULL) != 0) {
         g_kit_busy = 0;
         g_kit_done = 1;
         pthread_mutex_unlock(&g_core_mu);
@@ -740,7 +804,7 @@ int pavillion_ui_set(const char *json, char *err, size_t err_len) {
     g_ui_rc = -1;
     g_ui_err[0] = '\0';
     g_ui_busy = 1;
-    if (core_queue_push_unlocked(CORE_CMD_UI) != 0) {
+    if (core_queue_push_unlocked(CORE_CMD_UI, NULL) != 0) {
         g_ui_busy = 0;
         g_ui_done = 1;
         pthread_mutex_unlock(&g_core_mu);
@@ -758,6 +822,468 @@ int pavillion_ui_set(const char *json, char *err, size_t err_len) {
     pthread_cond_broadcast(&g_core_cv);
     pthread_mutex_unlock(&g_core_mu);
     return rc;
+}
+
+int pav_on_core_thread(void) {
+    int same = 0;
+
+    pthread_mutex_lock(&g_core_mu);
+    if (g_core_alive) {
+        same = pthread_equal(pthread_self(), g_core_thread);
+    }
+    pthread_mutex_unlock(&g_core_mu);
+    return same ? 1 : 0;
+}
+
+static int command_name_ok(const char *name) {
+    size_t i;
+    size_t n;
+
+    if (name == NULL || name[0] < 'a' || name[0] > 'z') {
+        return 0;
+    }
+    n = strlen(name);
+    if (n >= 64) {
+        return 0;
+    }
+    for (i = 1; i < n; i++) {
+        char c = name[i];
+
+        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.')) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static char *reply_or_fail(char **result_json, const char *code, const char *message) {
+    char *text = pav_reply_error(code, message, 0);
+
+    if (text == NULL) {
+        return NULL;
+    }
+    *result_json = text;
+    return text;
+}
+
+int pavillion_call(const char *cmd, const char *args_json, char **result_json) {
+    json_error_t jerr;
+    json_t *args;
+    PavCall *call;
+
+    if (result_json == NULL) {
+        return -1;
+    }
+    *result_json = NULL;
+    if (!command_name_ok(cmd)) {
+        return reply_or_fail(result_json, "bad_args", "missing or invalid command") == NULL ? -1 : 0;
+    }
+    if (args_json == NULL || strlen(args_json) > PAV_CALL_JSON_MAX) {
+        const char *code = args_json == NULL ? "bad_args" : "too_large";
+        const char *message = args_json == NULL ? "arguments are not an object" : "arguments are too large";
+
+        return reply_or_fail(result_json, code, message) == NULL ? -1 : 0;
+    }
+    args = json_loads(args_json, 0, &jerr);
+    if (args == NULL || !json_is_object(args)) {
+        json_decref(args);
+        return reply_or_fail(result_json, "bad_args", "arguments are not an object") == NULL ? -1 : 0;
+    }
+    call = calloc(1, sizeof(*call));
+    if (call == NULL) {
+        json_decref(args);
+        return -1;
+    }
+    memcpy(call->name, cmd, strlen(cmd) + 1);
+    call->args = args;
+    pthread_mutex_lock(&g_core_mu);
+    if (!g_core_alive || g_core_stop) {
+        pthread_mutex_unlock(&g_core_mu);
+        json_decref(args);
+        free(call);
+        return reply_or_fail(result_json, "not_ready", "core is not running") == NULL ? -1 : 0;
+    }
+    if (core_queue_push_unlocked(CORE_CMD_CALL, call) != 0) {
+        pthread_mutex_unlock(&g_core_mu);
+        json_decref(args);
+        free(call);
+        return reply_or_fail(result_json, "internal", "command queue is full") == NULL ? -1 : 0;
+    }
+    while (!call->done && g_core_alive) {
+        pthread_cond_wait(&g_core_cv, &g_core_mu);
+    }
+    if (!call->done) {
+        pthread_mutex_unlock(&g_core_mu);
+        json_decref(call->args);
+        free(call);
+        return reply_or_fail(result_json, "not_ready", "core stopped") == NULL ? -1 : 0;
+    }
+    *result_json = call->reply;
+    pthread_mutex_unlock(&g_core_mu);
+    free(call);
+    return *result_json != NULL ? 0 : -1;
+}
+
+static int profile_is_ready(PavError *err) {
+    if (g_load == NULL || g_load->profile == NULL || strcmp(g_load->state, "ready") != 0) {
+        pav_error_set(err, "not_ready", "profile is not ready", 0);
+        return 0;
+    }
+    return 1;
+}
+
+static int fail_profile(PavError *err, const char *message) {
+    const char *text = message != NULL && message[0] != '\0' ? message : "cannot update preferences";
+
+    if (strstr(text, "too large") != NULL) {
+        pav_error_set(err, "too_large", text, 0);
+    } else if (strstr(text, "forbidden") != NULL) {
+        pav_error_set(err, "forbidden", text, 0);
+    } else if (strstr(text, "not running") != NULL || strstr(text, "missing profile") != NULL) {
+        pav_error_set(err, "not_ready", text, 0);
+    } else if (strstr(text, "out of memory") != NULL) {
+        pav_error_set(err, "internal", text, 0);
+    } else {
+        pav_error_set(err, "bad_args", text, 0);
+    }
+    return -1;
+}
+
+static int json_set_or_oom(json_t *obj, const char *key, json_t *value, PavError *err) {
+    if (obj == NULL || value == NULL || json_object_set_new(obj, key, value) != 0) {
+        json_decref(value);
+        json_decref(obj);
+        pav_error_set(err, "internal", "out of memory", 0);
+        return -1;
+    }
+    return 0;
+}
+
+int pav_core_status_data(json_t **data, PavError *err) {
+    PavillionStatus status;
+    json_t *obj;
+
+    if (data == NULL) {
+        pav_error_set(err, "internal", "missing data", 0);
+        return -1;
+    }
+    *data = NULL;
+    pthread_mutex_lock(&g_core_mu);
+    status = g_status;
+    pthread_mutex_unlock(&g_core_mu);
+    obj = json_object();
+    if (json_set_or_oom(obj, "profileName", json_string(status.profile_name), err) != 0 ||
+        json_set_or_oom(obj, "profileId", json_string(status.profile_id), err) != 0 ||
+        json_set_or_oom(obj, "state", json_string(status.state), err) != 0 ||
+        json_set_or_oom(obj, "error", json_string(status.error), err) != 0) {
+        return -1;
+    }
+    *data = obj;
+    return 0;
+}
+
+int pav_core_prefs_get_data(json_t **data, PavError *err) {
+    PavProfile *profile;
+    json_t *obj;
+
+    if (data == NULL) {
+        pav_error_set(err, "internal", "missing data", 0);
+        return -1;
+    }
+    *data = NULL;
+    if (!profile_is_ready(err)) {
+        return -1;
+    }
+    profile = g_load->profile;
+    obj = json_object();
+    if (json_set_or_oom(obj, "timezone", json_string(profile->timezone), err) != 0 ||
+        json_set_or_oom(obj, "weekStart", json_string(profile->week_start), err) != 0 ||
+        json_set_or_oom(obj, "timeFormat", json_string(profile->time_format), err) != 0 ||
+        json_set_or_oom(obj, "theme", json_string(profile->theme), err) != 0 ||
+        json_set_or_oom(obj, "density", json_string(profile->density), err) != 0 ||
+        json_set_or_oom(obj, "windowMaximized", profile->window_maximized ? json_true() : json_false(), err) !=
+            0 ||
+        json_set_or_oom(obj, "windowWidth", json_integer(profile->window_width), err) != 0 ||
+        json_set_or_oom(obj, "windowHeight", json_integer(profile->window_height), err) != 0 ||
+        json_set_or_oom(obj, "windowX",
+                        profile->window_x_set ? json_integer(profile->window_x) : json_null(), err) != 0 ||
+        json_set_or_oom(obj, "windowY",
+                        profile->window_y_set ? json_integer(profile->window_y) : json_null(), err) != 0 ||
+        json_set_or_oom(obj, "chrome", json_string(profile->chrome), err) != 0) {
+        return -1;
+    }
+    *data = obj;
+    return 0;
+}
+
+static int take_pref_string(json_t *value, size_t cap, const char **out, const char *wire, PavError *err) {
+    const char *text;
+    char buf[128];
+
+    if (!json_is_string(value)) {
+        snprintf(buf, sizeof(buf), "%s must be a string", wire);
+        pav_error_set(err, "bad_args", buf, 0);
+        return -1;
+    }
+    text = json_string_value(value);
+    if (text == NULL || text[0] == '\0' || strlen(text) >= cap) {
+        snprintf(buf, sizeof(buf), "%s is empty or too long", wire);
+        pav_error_set(err, "bad_args", buf, 0);
+        return -1;
+    }
+    *out = text;
+    return 0;
+}
+
+static int take_bool(json_t *value, int *out, const char *wire, PavError *err) {
+    char buf[128];
+
+    if (!json_is_boolean(value)) {
+        snprintf(buf, sizeof(buf), "%s must be a boolean", wire);
+        pav_error_set(err, "bad_args", buf, 0);
+        return -1;
+    }
+    *out = json_is_true(value) ? 1 : 0;
+    return 0;
+}
+
+static int take_int(json_t *value, int *out, const char *wire, PavError *err) {
+    json_int_t number;
+    char buf[128];
+
+    if (!json_is_integer(value)) {
+        snprintf(buf, sizeof(buf), "%s must be an integer", wire);
+        pav_error_set(err, "bad_args", buf, 0);
+        return -1;
+    }
+    number = json_integer_value(value);
+    if (number < -32000 || number > 32000) {
+        snprintf(buf, sizeof(buf), "%s is out of range", wire);
+        pav_error_set(err, "bad_args", buf, 0);
+        return -1;
+    }
+    *out = (int)number;
+    return 0;
+}
+
+static int take_int_or_null(json_t *value, int *set, int *coord, const char *wire, PavError *err) {
+    if (json_is_null(value)) {
+        *set = 0;
+        *coord = 0;
+        return 0;
+    }
+    if (take_int(value, coord, wire, err) != 0) {
+        return -1;
+    }
+    *set = 1;
+    return 0;
+}
+
+static int apply_pref_string(PavProfile *profile, const char *file_key, const char *value, char *dst,
+                             size_t cap, char *errbuf, size_t err_len) {
+    json_t *prefs = cfg_obj(profile->doc, "preferences", 0);
+
+    if (prefs == NULL) {
+        snprintf(errbuf, err_len, "%s", "missing profile fields");
+        return -1;
+    }
+    if (cfg_set_str(prefs, file_key, value, errbuf, err_len) != 0) {
+        return -1;
+    }
+    memset(dst, 0, cap);
+    memcpy(dst, value, strlen(value));
+    return 0;
+}
+
+int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
+    PavProfile *profile;
+    PavShellPrefs shell;
+    const char *timezone = NULL;
+    const char *week_start = NULL;
+    const char *time_format = NULL;
+    const char *theme = NULL;
+    const char *density = NULL;
+    const char *key;
+    json_t *value;
+    char errbuf[512];
+    char buf[128];
+    int window_touched = 0;
+    int any = 0;
+
+    if (data == NULL) {
+        pav_error_set(err, "internal", "missing data", 0);
+        return -1;
+    }
+    *data = NULL;
+    if (!profile_is_ready(err)) {
+        return -1;
+    }
+    profile = g_load->profile;
+    if (json_object_size(args) == 0) {
+        pav_error_set(err, "bad_args", "nothing to save", 0);
+        return -1;
+    }
+    errbuf[0] = '\0';
+    if (pav_profile_read_shell(profile, &shell, errbuf, sizeof(errbuf)) != 0) {
+        return fail_profile(err, errbuf);
+    }
+    json_object_foreach(args, key, value) {
+        any = 1;
+        if (strcmp(key, "timezone") == 0) {
+            if (take_pref_string(value, sizeof(profile->timezone), &timezone, key, err) != 0) {
+                return -1;
+            }
+        } else if (strcmp(key, "weekStart") == 0) {
+            if (take_pref_string(value, sizeof(profile->week_start), &week_start, key, err) != 0) {
+                return -1;
+            }
+        } else if (strcmp(key, "timeFormat") == 0) {
+            if (take_pref_string(value, sizeof(profile->time_format), &time_format, key, err) != 0) {
+                return -1;
+            }
+        } else if (strcmp(key, "theme") == 0) {
+            if (take_pref_string(value, sizeof(profile->theme), &theme, key, err) != 0) {
+                return -1;
+            }
+        } else if (strcmp(key, "density") == 0) {
+            if (take_pref_string(value, sizeof(profile->density), &density, key, err) != 0) {
+                return -1;
+            }
+        } else if (strcmp(key, "windowMaximized") == 0) {
+            if (take_bool(value, &shell.window_maximized, key, err) != 0) {
+                return -1;
+            }
+            window_touched = 1;
+        } else if (strcmp(key, "windowWidth") == 0) {
+            if (take_int(value, &shell.window_width, key, err) != 0) {
+                return -1;
+            }
+            window_touched = 1;
+        } else if (strcmp(key, "windowHeight") == 0) {
+            if (take_int(value, &shell.window_height, key, err) != 0) {
+                return -1;
+            }
+            window_touched = 1;
+        } else if (strcmp(key, "windowX") == 0) {
+            if (take_int_or_null(value, &shell.window_x_set, &shell.window_x, key, err) != 0) {
+                return -1;
+            }
+            window_touched = 1;
+        } else if (strcmp(key, "windowY") == 0) {
+            if (take_int_or_null(value, &shell.window_y_set, &shell.window_y, key, err) != 0) {
+                return -1;
+            }
+            window_touched = 1;
+        } else if (strcmp(key, "chrome") == 0) {
+            const char *chrome = NULL;
+
+            if (take_pref_string(value, sizeof(shell.chrome), &chrome, key, err) != 0) {
+                return -1;
+            }
+            memset(shell.chrome, 0, sizeof(shell.chrome));
+            memcpy(shell.chrome, chrome, strlen(chrome));
+            window_touched = 1;
+        } else {
+            snprintf(buf, sizeof(buf), "unknown preference %s", key);
+            pav_error_set(err, "bad_args", buf, 0);
+            return -1;
+        }
+    }
+    if (!any) {
+        pav_error_set(err, "bad_args", "nothing to save", 0);
+        return -1;
+    }
+    errbuf[0] = '\0';
+    if (window_touched &&
+        pav_profile_write_shell(profile, &shell, PAV_PREFS_WINDOW, errbuf, sizeof(errbuf)) != 0) {
+        return fail_profile(err, errbuf);
+    }
+    if ((timezone != NULL &&
+         apply_pref_string(profile, "timezone", timezone, profile->timezone, sizeof(profile->timezone), errbuf,
+                           sizeof(errbuf)) != 0) ||
+        (week_start != NULL && apply_pref_string(profile, "week_start", week_start, profile->week_start,
+                                                 sizeof(profile->week_start), errbuf, sizeof(errbuf)) != 0) ||
+        (time_format != NULL && apply_pref_string(profile, "time_format", time_format, profile->time_format,
+                                                  sizeof(profile->time_format), errbuf, sizeof(errbuf)) != 0) ||
+        (theme != NULL &&
+         apply_pref_string(profile, "theme", theme, profile->theme, sizeof(profile->theme), errbuf,
+                           sizeof(errbuf)) != 0) ||
+        (density != NULL && apply_pref_string(profile, "density", density, profile->density,
+                                              sizeof(profile->density), errbuf, sizeof(errbuf)) != 0)) {
+        return fail_profile(err, errbuf);
+    }
+    if (pav_profile_store(g_load->profile_path, profile, errbuf, sizeof(errbuf)) != 0) {
+        return fail_profile(err, errbuf[0] != '\0' ? errbuf : "cannot write profile");
+    }
+    if (pav_profile_read_shell(profile, &shell, errbuf, sizeof(errbuf)) != 0) {
+        return fail_profile(err, errbuf);
+    }
+    pthread_mutex_lock(&g_core_mu);
+    g_prefs_snap = shell;
+    g_prefs_ready = 1;
+    pthread_mutex_unlock(&g_core_mu);
+    return pav_core_prefs_get_data(data, err);
+}
+
+int pav_core_ui_get_data(json_t **data, PavError *err) {
+    char *text = NULL;
+    char errbuf[512];
+    json_error_t jerr;
+    json_t *obj;
+
+    if (data == NULL) {
+        pav_error_set(err, "internal", "missing data", 0);
+        return -1;
+    }
+    *data = NULL;
+    if (!profile_is_ready(err)) {
+        return -1;
+    }
+    errbuf[0] = '\0';
+    if (pav_profile_read_ui(g_load->profile, &text, errbuf, sizeof(errbuf)) != 0) {
+        return fail_profile(err, errbuf);
+    }
+    obj = json_loads(text, JSON_PRESERVE_ORDER, &jerr);
+    free(text);
+    if (obj == NULL || !json_is_object(obj)) {
+        json_decref(obj);
+        pav_error_set(err, "internal", "preferences.ui is not an object", 0);
+        return -1;
+    }
+    *data = obj;
+    return 0;
+}
+
+int pav_core_ui_set(json_t *args, json_t **data, PavError *err) {
+    char *compact;
+    char errbuf[512];
+
+    if (data == NULL) {
+        pav_error_set(err, "internal", "missing data", 0);
+        return -1;
+    }
+    *data = NULL;
+    if (!profile_is_ready(err)) {
+        return -1;
+    }
+    compact = json_dumps(args, JSON_COMPACT | JSON_PRESERVE_ORDER);
+    if (compact == NULL) {
+        pav_error_set(err, "internal", "out of memory", 0);
+        return -1;
+    }
+    if (strlen(compact) > PAV_UI_JSON_MAX) {
+        free(compact);
+        pav_error_set(err, "too_large", "preferences.ui is too large", 0);
+        return -1;
+    }
+    errbuf[0] = '\0';
+    if (pav_profile_write_ui(g_load->profile, compact, errbuf, sizeof(errbuf)) != 0 ||
+        pav_profile_store(g_load->profile_path, g_load->profile, errbuf, sizeof(errbuf)) != 0) {
+        free(compact);
+        return fail_profile(err, errbuf[0] != '\0' ? errbuf : "cannot write preferences.ui");
+    }
+    free(compact);
+    return pav_core_ui_get_data(data, err);
 }
 
 typedef struct LogNode {

@@ -98,6 +98,37 @@ void pav_log(const char *subsystem, int level, int num_args, const char *fmt, ..
    message is logged verbatim. Returns 0, or -1. */
 int pav_ui_log(const char *subsystem, int level, const char *message);
 
+/* Runs one command on the core thread. args_json is a JSON object.
+   *result_json is {"ok":true,"data":...} or
+   {"ok":false,"error":{"code":"...","message":"...","retryable":false}}.
+   Returns 0 when a reply was produced, or -1 when it could not be.
+   Free *result_json with pavillion_free. */
+int pavillion_call(const char *cmd, const char *args_json, char **result_json);
+
+/* Frees a buffer the core handed out (a call reply, or a later body). */
+void pavillion_free(void *p);
+
+/* One callback for every event. Called on the event thread, not the core
+   thread. The host only queues. json is UTF-8 JSON text. */
+typedef void (*pav_event_cb)(const char *name, const char *json, void *user);
+void pav_on_event(pav_event_cb cb, void *user);
+
+/* Queues an event. With no callback, or before the event thread is running,
+   the event is dropped and counted and this returns 0. A full queue increments
+   the same counter and returns -1. json NULL is "{}". */
+int pav_event_post(const char *name, const char *json);
+
+/* Events dropped because nobody was listening, or because the queue was full. */
+unsigned long long pav_event_dropped(void);
+
+/* Registered commands, in strcmp order. pav_command_name returns NULL
+   when index is out of range. */
+int pav_command_count(void);
+const char *pav_command_name(int index);
+
+/* Test-only. 1 when the caller is the running core thread. */
+int pav_on_core_thread(void);
+
 /* Test-only. Truncates path and writes later lines there. NULL closes that
    file. Returns 0, or -1 when path cannot be opened. */
 int pav_log_set_output(const char *path);
