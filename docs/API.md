@@ -4,7 +4,7 @@ API version: 2
 
 `PAVILLION_API_VERSION` goes up when this contract or the C surface in the G L2 Lock changes incompatibly: a function is removed or changed, or a command or event is removed, renamed, or given a different meaning. Adding a command, an event, or an optional field does not bump it. The shell refuses to start when `pavillion_api_version()` disagrees with the number it was built against.
 
-G-2 added `pavillion_call`, `pavillion_free`, and `pav_on_event`. The older C entry points (`pavillion_status`, `pavillion_prefs_get`, `pavillion_prefs_apply`, `pavillion_ui_get`, `pavillion_ui_set`, `pavillion_icons_get`, `pavillion_icons_apply`, `pavillion_kit_get`, `pavillion_kit_apply`, `pav_ui_log`) stay until G-3 removes their callers. Removing them is the G-8 bump.
+G-2 added `pavillion_call`, `pavillion_free`, and `pav_on_event`. G-3 removed the shell's callers of the older C entry points (`pavillion_status`, `pavillion_prefs_get`, `pavillion_prefs_apply`, `pavillion_ui_get`, `pavillion_ui_set`, `pavillion_icons_get`, `pavillion_icons_apply`, `pavillion_kit_get`, `pavillion_kit_apply`, `pav_ui_log`). Those functions stay in the header for the Unity tests until G-8 removes them. That removal is the version bump.
 
 ## Conventions
 

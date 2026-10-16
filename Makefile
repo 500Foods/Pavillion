@@ -54,6 +54,8 @@ build: lib
 
 test: $(TEST_BIN)
 	$(TEST_BIN)
+	npm --prefix ui install
+	npm --prefix ui test
 
 clean:
 	rm -rf $(BUILD_DIR) $(DIST_DIR)

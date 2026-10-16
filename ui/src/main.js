@@ -1,7 +1,14 @@
-import { invoke } from "@tauri-apps/api/core";
-import { status, log, uiGet } from "./api.js";
+import { createApi } from "./api.js";
+import { tauriTransport } from "./transport/tauri.js";
 import { clampUi } from "./prefs.js";
-import { startShell } from "./shell.js";
+import { startShell, useApi } from "./shell.js";
+
+const api = createApi(tauriTransport());
+useApi(api);
+
+function log(subsystem, level, message) {
+  return api.log.client({ subsystem, level, message });
+}
 
 const FA_KIT_ID = "45801522ef";
 const FA_KIT_URL = `https://kit.fontawesome.com/${FA_KIT_ID}.js`;
@@ -68,16 +75,9 @@ window.addEventListener("load", () => {
   }
 });
 
-window.addEventListener("keydown", (event) => {
-  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === "KeyI") {
-    event.preventDefault();
-    invoke("internal_toggle_devtools").catch(() => {});
-  }
-});
-
 async function initIcons() {
   try {
-    const stored = clampUi(JSON.parse(await uiGet()));
+    const stored = clampUi(await api.prefs.ui.get());
     loadFontAwesomeKit(stored.fontawesome_kit || FA_KIT_ID);
   } catch (err) {
     loadFontAwesomeKit(FA_KIT_ID);
@@ -87,7 +87,7 @@ async function initIcons() {
 
 try {
   await initIcons();
-  await startShell(await status());
+  await startShell(await api.system.status());
 } catch (err) {
   await startShell({
     state: "error",

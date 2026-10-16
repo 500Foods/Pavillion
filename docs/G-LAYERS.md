@@ -1,6 +1,6 @@
 # G — LAYERS
 
-**Status:** G-2 complete (2026-10-16). The index names the next phase. Lua and mail rules moved to [R-RULES.md](R-RULES.md) (old G-5 is R-1, old G-7 is R-3).
+**Status:** G-3 complete (2026-10-16). The index names the next phase. Lua and mail rules moved to [R-RULES.md](R-RULES.md) (old G-5 is R-1, old G-7 is R-3).
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Pavillion runs on Fedora Linux first, then macOS and Windows, maybe iPad one day. Its UI can be lifted into Lithium. Both come down to clear layers with one written contract between each pair. This document owns the layers, the platform table, the command ABI, the host adapter, the mountable UI, and the multiplatform strategy.
@@ -13,7 +13,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | --- | --- | --- | --- |
 | G-1 | `pav_platform.h`, the Linux backend, a test fake; dirs and file modes behind it | Medium | Complete |
 | G-2 | JSON command dispatcher, `pav_on_event`, and `docs/API.md` | Medium | Complete |
-| G-3 | Generic Tauri `core` command; `api.js` takes a transport | Medium | Not started |
+| G-3 | Generic Tauri `core` command; `api.js` takes a transport | Medium | Complete |
 | G-8 | Move the remaining `lib.rs` logic (662 lines) into C behind the dispatcher | Medium | Not started |
 | G-4 | Mountable UI: `mount(el, api)`, `--pav-*` variables, scoped styles, bare harness | Medium | Not started |
 | G-6 | Second-platform smoke build of the core and `make test` | Hard | Not started |
@@ -257,7 +257,7 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 ## G-3: Generic host command and a transport-agnostic `api.js`
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Complete (2026-10-16). No variances. This sitting did not push.
 
 **Goal:** The Tauri shell has one `core` command and one event forwarder. The UI never imports Tauri outside its transport.
 
@@ -265,16 +265,22 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 
 **Work items:**
 
-- [ ] `src-tauri/src/lib.rs`: `#[tauri::command] async fn core(cmd: String, args: serde_json::Value) -> Result<Value, ApiError>` over `spawn_blocking` and `pavillion_call`. Register `pav_on_event` once; the callback pushes into a channel and a task emits `pav`.
-- [ ] Delete `status`, `prefs`, `save_layout`, `save_icons`, `save_kit`, `ui_log` and their permissions. Capability: `allow-core` plus plugin permissions.
-- [ ] `ui/src/transport/tauri.js` (the only `@tauri-apps` import) and `ui/src/transport/mock.js` (in-memory, for Vitest and the G-4 harness).
-- [ ] Add Vitest (`ui/package.json`) and make `make test` run `npm --prefix ui test`. This is the first phase that does; F-3 and later add tests, they do not add the runner again.
-- [ ] `ui/src/api.js` becomes `createApi(transport)` with namespaced methods for the real commands. `main.js` builds it with the Tauri transport.
-- [ ] Vitest: `api.test.js` runs the API over the mock transport; `no-tauri-imports.test.js` asserts only `transport/tauri.js` imports `@tauri-apps`.
+- [x] `src-tauri/src/lib.rs`: `#[tauri::command] async fn core(cmd: String, args: serde_json::Value) -> Result<Value, ApiError>` over `spawn_blocking` and `pavillion_call`. Register `pav_on_event` once; the callback pushes into a channel and a task emits `pav`.
+- [x] Delete `status`, `prefs`, `save_layout`, `save_icons`, `save_kit`, `ui_log` and their permissions. Capability: `allow-core` plus plugin permissions.
+- [x] `ui/src/transport/tauri.js` (the only `@tauri-apps` import) and `ui/src/transport/mock.js` (in-memory, for Vitest and the G-4 harness).
+- [x] Add Vitest (`ui/package.json`) and make `make test` run `npm --prefix ui test`. This is the first phase that does; F-3 and later add tests, they do not add the runner again.
+- [x] `ui/src/api.js` becomes `createApi(transport)` with namespaced methods for the real commands. `main.js` builds it with the Tauri transport.
+- [x] Vitest: `api.test.js` runs the API over the mock transport; `no-tauri-imports.test.js` asserts only `transport/tauri.js` imports `@tauri-apps`.
 
 **Done means:** The window behaves as before, through one command.
 
 **Exit gate:** `make test` exits 0. `make dev` restores layout and saves it. `make build` shows the icons. `rg '@tauri-apps' ui/src` lists one file.
+
+**Accomplished:** The shell has one command, `core`, which runs `pavillion_call` on `spawn_blocking` and returns the `data` value, or an `ApiError` (`code`, `message`, `retryable`). `pav_on_event` copies the payload into a channel of 64. A task emits `pav` as `{name, payload}`. A full channel drops the event so the event thread does not block. The old Tauri commands and their permission files are gone. The capability is `core:default`, `core:webview:allow-internal-toggle-devtools`, and `allow-core`. `ui/src/api.js` is `createApi(transport)` with `system.status`, `prefs.get`, `prefs.set`, `prefs.ui.get`, `prefs.ui.set`, `log.client`, and `on`. `main.js` builds it with the Tauri transport. `prefs.ui.set` sends the object, not a JSON string. `log.client` accepts the old numeric levels (`0` error through `3` debug) and sends the name. Window save and restore in `lib.rs` go through `prefs.get` and `prefs.set`. The C functions stay for the Unity tests. `make test` is 43 Unity tests and 8 Vitest tests, 0 failures. `rg '@tauri-apps' ui/src` lists only `ui/src/transport/tauri.js`. On a temp workdir, dragging the nav handle saved width 400 and a resize saved 1000×700. The next `make dev` opened at 1000×700 with that nav width. `make build` produced `dist/pavillion`, and that binary showed the rail icons. `PAVILLION_API_VERSION` stays 2. The real profile was not used.
+
+**Lessons learned:** A handler on the core thread must not call back into `pavillion_call`. The window thread may. The event callback only queues, and it copies `name` and `json` before returning because the core frees them. Tauri rejects a serialized `ApiError` as a plain object, so the transport turns that into an `Error` with `message` and `code` before the page sees it. `prefs.set` leaves out `chrome`, and the core keeps the stored value. The Ctrl+Shift+I shortcut lives in `transport/tauri.js` because that is the only file that may import `@tauri-apps`. The `load` listener can log `FA kit: script tag not found` while `initIcons` is still awaiting `prefs.ui.get`. The script is inserted after that await, and the icons still appear. `make test` now needs npm. G-Q1 and G-Q4 stayed open.
+
+**Handoff:** G-8 is next. Move window state, workdir creation, and the scheme handler into C. Do not bump `PAVILLION_API_VERSION` until `PavShellPrefs` and `PavillionStatus` are removed. That bump is 3. The old C functions have no shell callers. A new command is a sorted-table row and a `State: real` heading in the same sitting. The event callback must not call `pavillion_stop`. Secrets stay `-1` until K-1. `macos-core` stays `continue-on-error` until G-6. Tests install the fake before Unity.
 
 ## G-8: Move `lib.rs` logic into C
 
@@ -354,3 +360,4 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 - 2026-10-16 Review fixes: the `pav_protocol` signature, `PavBytes`, and the scheme-handler contract are now in the L2 Lock. One free function, `pavillion_free` (`pav_bytes_free` retired). Added a table of the FFI surface by stage. `system.status` and `log.lines` names aligned.
 - 2026-10-16 G-1: platform table, Linux XDG dirs, and a test fake. Profile writes are `path.tmp` then rename. `make test` is 37 tests. `rg 'sys/stat|fchmod|getenv' core/src` is empty. A fresh `make dev` workdir has the index, profile, log, and sqlite at `0600` and the directories at `0700`. API version stays 2. `macos-core` is in `ci.yml` with `continue-on-error` and was not pushed.
 - 2026-10-16 G-2: `pavillion_call`, `pav_on_event`, and `docs/API.md`. Six real commands. Queue cap 256. `make test` is 43 tests. API version stays 2. Not pushed.
+- 2026-10-16 G-3: one Tauri `core` command, `createApi(transport)`, and Vitest on `make test`. `make test` is 43 Unity tests and 8 Vitest tests. API version stays 2. Not pushed.

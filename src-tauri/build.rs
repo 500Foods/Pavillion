@@ -125,12 +125,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../core/platform/fake/host.c");
 
     let attributes = tauri_build::Attributes::new()
-        .app_manifest(tauri_build::AppManifest::new().commands(&[
-            "status",
-            "ui_get",
-            "ui_set",
-            "ui_log",
-        ]));
+        .app_manifest(tauri_build::AppManifest::new().commands(&["core"]));
     if let Err(err) = tauri_build::try_build(attributes) {
         panic!("failed to run tauri-build: {err}");
     }

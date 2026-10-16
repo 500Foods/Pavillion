@@ -1,4 +1,4 @@
-use std::ffi::{CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 use std::fs;
 use std::os::raw::c_char;
 use std::os::unix::fs::PermissionsExt;
@@ -8,126 +8,148 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use serde::Serialize;
-use tauri::{LogicalPosition, LogicalSize, Manager, Position, Size, WebviewWindow};
+use serde_json::Value;
+use tauri::{Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, WebviewWindow};
 
-const PAV_PREFS_WINDOW: u32 = 2;
-
-#[repr(C)]
-struct PavillionStatus {
-    profile_name: [u8; 256],
-    profile_id: [u8; 64],
-    state: [u8; 32],
-    error: [u8; 512],
+#[derive(Debug, Serialize)]
+struct ApiError {
+    code: String,
+    message: String,
+    retryable: bool,
 }
 
-#[repr(C)]
-struct PavShellPrefs {
-    window_maximized: i32,
-    window_width: i32,
-    window_height: i32,
-    window_x_set: i32,
-    window_y_set: i32,
-    window_x: i32,
-    window_y: i32,
-    chrome: [u8; 16],
+struct EventNote {
+    name: String,
+    json: String,
 }
+
+static EVENT_TX: Mutex<Option<tauri::async_runtime::Sender<EventNote>>> = Mutex::new(None);
 
 unsafe extern "C" {
     fn pavillion_api_version() -> i32;
     fn pavillion_start(workdir: *const c_char, err: *mut c_char, err_len: usize) -> i32;
     fn pavillion_stop();
-    fn pavillion_status(out: *mut PavillionStatus) -> i32;
-    fn pavillion_prefs_get(out: *mut PavShellPrefs) -> i32;
-    fn pavillion_prefs_apply(
-        prefs: *const PavShellPrefs,
-        mask: u32,
-        err: *mut c_char,
-        err_len: usize,
-    ) -> i32;
-    fn pav_ui_log(subsystem: *const c_char, level: i32, message: *const c_char) -> i32;
-    fn pavillion_ui_get(json_out: *mut *mut c_char, err: *mut c_char, err_len: usize) -> i32;
-    fn pavillion_ui_set(json: *const c_char, err: *mut c_char, err_len: usize) -> i32;
+    fn pavillion_call(cmd: *const c_char, args_json: *const c_char, result_json: *mut *mut c_char) -> i32;
+    fn pavillion_free(p: *mut c_void);
+    fn pav_on_event(
+        cb: Option<unsafe extern "C" fn(*const c_char, *const c_char, *mut c_void)>,
+        user: *mut c_void,
+    );
+}
+
+/// Copies the strings and queues them. The core frees `name` and `json` when
+/// this returns, and this must not call `pavillion_call` or `pavillion_stop`.
+unsafe extern "C" fn on_core_event(name: *const c_char, json: *const c_char, _user: *mut c_void) {
+    if name.is_null() {
+        return;
+    }
+    let name = unsafe { CStr::from_ptr(name) }.to_string_lossy().into_owned();
+    let json = if json.is_null() {
+        "{}".to_string()
+    } else {
+        unsafe { CStr::from_ptr(json) }.to_string_lossy().into_owned()
+    };
+    let guard = EVENT_TX.lock().unwrap_or_else(|err| err.into_inner());
+    if let Some(tx) = guard.as_ref() {
+        let _ = tx.try_send(EventNote { name, json });
+    }
+}
+
+fn api_error(code: &str, message: impl Into<String>) -> ApiError {
+    ApiError {
+        code: code.to_string(),
+        message: message.into(),
+        retryable: false,
+    }
+}
+
+fn core_data(cmd: &str, args: &Value) -> Result<Value, ApiError> {
+    let args_text = serde_json::to_string(args).map_err(|_| api_error("internal", "cannot encode arguments"))?;
+    let c_cmd = CString::new(cmd).map_err(|_| api_error("bad_args", "command contains NUL"))?;
+    let c_args = CString::new(args_text).map_err(|_| api_error("bad_args", "arguments contain NUL"))?;
+    let mut result: *mut c_char = std::ptr::null_mut();
+    let rc = unsafe { pavillion_call(c_cmd.as_ptr(), c_args.as_ptr(), &mut result) };
+    if rc != 0 || result.is_null() {
+        return Err(api_error("internal", "core produced no reply"));
+    }
+    let text = unsafe { CStr::from_ptr(result) }.to_string_lossy().into_owned();
+    unsafe { pavillion_free(result.cast()) };
+    let reply: Value = serde_json::from_str(&text).map_err(|_| api_error("internal", "reply is not JSON"))?;
+    if reply.get("ok").and_then(Value::as_bool) == Some(true) {
+        return Ok(reply.get("data").cloned().unwrap_or(Value::Null));
+    }
+    let err = reply.get("error");
+    let code = err
+        .and_then(|item| item.get("code"))
+        .and_then(Value::as_str)
+        .unwrap_or("internal");
+    let message = err
+        .and_then(|item| item.get("message"))
+        .and_then(Value::as_str)
+        .unwrap_or("core call failed");
+    let retryable = err
+        .and_then(|item| item.get("retryable"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    Err(ApiError {
+        code: code.to_string(),
+        message: message.to_string(),
+        retryable,
+    })
 }
 
 #[derive(Clone, Copy)]
 struct RestoredWindow {
     width: i32,
     height: i32,
-    x_set: i32,
-    y_set: i32,
-    x: i32,
-    y: i32,
+    x: Option<i32>,
+    y: Option<i32>,
     known: bool,
+}
+
+struct WindowPrefs {
+    maximized: bool,
+    width: i32,
+    height: i32,
+    x: Option<i32>,
+    y: Option<i32>,
 }
 
 static RESTORED: Mutex<RestoredWindow> = Mutex::new(RestoredWindow {
     width: 0,
     height: 0,
-    x_set: 0,
-    y_set: 0,
-    x: 0,
-    y: 0,
+    x: None,
+    y: None,
     known: false,
 });
 static WINDOW_GEN: AtomicU64 = AtomicU64::new(0);
 static WINDOW_WAIT: AtomicBool = AtomicBool::new(false);
 static WINDOW_READY: AtomicBool = AtomicBool::new(false);
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct StatusReply {
-    profile_name: String,
-    profile_id: String,
-    state: String,
-    error: String,
+fn int_field(data: &Value, key: &str, fallback: i32) -> i32 {
+    data.get(key)
+        .and_then(Value::as_i64)
+        .and_then(|n| i32::try_from(n).ok())
+        .unwrap_or(fallback)
 }
 
-fn c_field(bytes: &[u8]) -> String {
-    let end = bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len());
-    String::from_utf8_lossy(&bytes[..end]).into_owned()
-}
-
-fn c_error(bytes: &[u8], rc: i32) -> String {
-    let message = c_field(bytes);
-    if message.is_empty() {
-        format!("core returned {rc}")
-    } else {
-        message
+fn opt_int_field(data: &Value, key: &str) -> Option<i32> {
+    match data.get(key) {
+        Some(value) if value.is_null() => None,
+        Some(value) => value.as_i64().and_then(|n| i32::try_from(n).ok()),
+        None => None,
     }
 }
 
-fn read_prefs() -> Result<PavShellPrefs, String> {
-    let mut out = PavShellPrefs {
-        window_maximized: 0,
-        window_width: 1200,
-        window_height: 800,
-        window_x_set: 0,
-        window_y_set: 0,
-        window_x: 0,
-        window_y: 0,
-        chrome: [0; 16],
-    };
-    let rc = unsafe { pavillion_prefs_get(&mut out) };
-    if rc != 0 {
-        return Err(format!("pavillion_prefs_get returned {rc}"));
-    }
-    Ok(out)
-}
-
-fn write_prefs(prefs: &PavShellPrefs, mask: u32) -> Result<(), String> {
-    let mut err = [0u8; 512];
-    let rc = unsafe {
-        pavillion_prefs_apply(
-            prefs,
-            mask,
-            err.as_mut_ptr() as *mut c_char,
-            err.len(),
-        )
-    };
-    if rc != 0 {
-        return Err(c_error(&err, rc));
-    }
-    Ok(())
+fn read_window() -> Result<WindowPrefs, String> {
+    let data = core_data("prefs.get", &serde_json::json!({})).map_err(|err| err.message)?;
+    Ok(WindowPrefs {
+        maximized: data.get("windowMaximized").and_then(Value::as_bool).unwrap_or(false),
+        width: int_field(&data, "windowWidth", 1200),
+        height: int_field(&data, "windowHeight", 800),
+        x: opt_int_field(&data, "windowX"),
+        y: opt_int_field(&data, "windowY"),
+    })
 }
 
 fn restored_lock() -> std::sync::MutexGuard<'static, RestoredWindow> {
@@ -174,21 +196,17 @@ fn note_window(window: &WebviewWindow) {
     restored.height = height;
     restored.known = true;
     if let Some((x, y)) = logical_outer_pos(window) {
-        restored.x = x;
-        restored.y = y;
-        restored.x_set = 1;
-        restored.y_set = 1;
+        restored.x = Some(x);
+        restored.y = Some(y);
     }
 }
 
-fn seed_restored(prefs: &PavShellPrefs) {
+fn seed_restored(prefs: &WindowPrefs) {
     let mut restored = restored_lock();
-    restored.width = prefs.window_width;
-    restored.height = prefs.window_height;
-    restored.x = prefs.window_x;
-    restored.y = prefs.window_y;
-    restored.x_set = prefs.window_x_set;
-    restored.y_set = prefs.window_y_set;
+    restored.width = prefs.width;
+    restored.height = prefs.height;
+    restored.x = prefs.x;
+    restored.y = prefs.y;
     restored.known = true;
 }
 
@@ -197,22 +215,15 @@ fn save_window_now(window: &WebviewWindow) {
     if !restored.known {
         return;
     }
-    let mut prefs = match read_prefs() {
-        Ok(prefs) => prefs,
-        Err(err) => {
-            eprintln!("cannot read preferences: {err}");
-            return;
-        }
-    };
-    prefs.window_maximized = i32::from(window.is_maximized().unwrap_or(false));
-    prefs.window_width = restored.width;
-    prefs.window_height = restored.height;
-    prefs.window_x = restored.x;
-    prefs.window_y = restored.y;
-    prefs.window_x_set = restored.x_set;
-    prefs.window_y_set = restored.y_set;
-    if let Err(err) = write_prefs(&prefs, PAV_PREFS_WINDOW) {
-        eprintln!("cannot save window: {err}");
+    let args = serde_json::json!({
+        "windowMaximized": window.is_maximized().unwrap_or(false),
+        "windowWidth": restored.width,
+        "windowHeight": restored.height,
+        "windowX": restored.x,
+        "windowY": restored.y,
+    });
+    if let Err(err) = core_data("prefs.set", &args) {
+        eprintln!("cannot save window: {}", err.message);
     }
 }
 
@@ -256,7 +267,7 @@ fn on_window_change(window: &WebviewWindow) {
 }
 
 fn apply_saved_window(window: &WebviewWindow) {
-    let prefs = match read_prefs() {
+    let prefs = match read_window() {
         Ok(prefs) => prefs,
         Err(err) => {
             eprintln!("cannot read preferences: {err}");
@@ -265,19 +276,19 @@ fn apply_saved_window(window: &WebviewWindow) {
         }
     };
     seed_restored(&prefs);
-    if prefs.window_width >= 200 && prefs.window_height >= 200 {
-        let size = LogicalSize::new(prefs.window_width as f64, prefs.window_height as f64);
+    if prefs.width >= 200 && prefs.height >= 200 {
+        let size = LogicalSize::new(prefs.width as f64, prefs.height as f64);
         if let Err(err) = window.set_size(Size::Logical(size)) {
             eprintln!("cannot set window size: {err}");
         }
     }
-    if prefs.window_x_set != 0 && prefs.window_y_set != 0 {
-        let pos = LogicalPosition::new(prefs.window_x as f64, prefs.window_y as f64);
+    if let (Some(x), Some(y)) = (prefs.x, prefs.y) {
+        let pos = LogicalPosition::new(x as f64, y as f64);
         if let Err(err) = window.set_position(Position::Logical(pos)) {
             eprintln!("cannot set window position: {err}");
         }
     }
-    if prefs.window_maximized != 0 {
+    if prefs.maximized {
         if let Err(err) = window.maximize() {
             eprintln!("cannot maximize window: {err}");
         }
@@ -289,81 +300,11 @@ fn apply_saved_window(window: &WebviewWindow) {
 }
 
 #[tauri::command]
-fn status() -> Result<StatusReply, String> {
-    let mut out = PavillionStatus {
-        profile_name: [0; 256],
-        profile_id: [0; 64],
-        state: [0; 32],
-        error: [0; 512],
-    };
-    let rc = unsafe { pavillion_status(&mut out) };
-    if rc != 0 {
-        return Err(format!("pavillion_status returned {rc}"));
+async fn core(cmd: String, args: Value) -> Result<Value, ApiError> {
+    match tauri::async_runtime::spawn_blocking(move || core_data(&cmd, &args)).await {
+        Ok(result) => result,
+        Err(_) => Err(api_error("internal", "command task failed")),
     }
-    Ok(StatusReply {
-        profile_name: c_field(&out.profile_name),
-        profile_id: c_field(&out.profile_id),
-        state: c_field(&out.state),
-        error: c_field(&out.error),
-    })
-}
-
-#[tauri::command]
-fn ui_get() -> Result<String, String> {
-    let mut err = [0u8; 512];
-    let mut json_ptr: *mut c_char = std::ptr::null_mut();
-    let rc = unsafe {
-        pavillion_ui_get(
-            &mut json_ptr,
-            err.as_mut_ptr() as *mut c_char,
-            err.len(),
-        )
-    };
-    if rc != 0 || json_ptr.is_null() {
-        return Err(c_error(&err, rc));
-    }
-    let owned = unsafe { CString::from_raw(json_ptr) };
-    Ok(owned.to_string_lossy().into_owned())
-}
-
-#[tauri::command]
-fn ui_set(json: String) -> Result<(), String> {
-    let c_json = CString::new(json).map_err(|_| "ui json contains NUL".to_string())?;
-    let mut err = [0u8; 512];
-    let rc = unsafe {
-        pavillion_ui_set(
-            c_json.as_ptr(),
-            err.as_mut_ptr() as *mut c_char,
-            err.len(),
-        )
-    };
-    if rc != 0 {
-        return Err(c_error(&err, rc));
-    }
-    Ok(())
-}
-
-#[tauri::command]
-fn ui_log(subsystem: String, level: i32, message: String) -> Result<(), String> {
-    let c_subsystem = match CString::new(subsystem.clone()) {
-        Ok(s) => s,
-        Err(_) => return Err("subsystem contains NUL".into()),
-    };
-    let c_message = match CString::new(message.clone()) {
-        Ok(s) => s,
-        Err(_) => return Err("message contains NUL".into()),
-    };
-    let rc = unsafe {
-        pav_ui_log(
-            c_subsystem.as_ptr(),
-            level,
-            c_message.as_ptr(),
-        )
-    };
-    if rc != 0 {
-        return Err(format!("pav_ui_log returned {rc}"));
-    }
-    Ok(())
 }
 
 fn ensure_workdir(workdir: &str) {
@@ -410,25 +351,51 @@ fn start_core(workdir: &str) {
     }
 }
 
+fn stop_events() {
+    unsafe { pav_on_event(None, std::ptr::null_mut()) };
+    let mut slot = EVENT_TX.lock().unwrap_or_else(|err| err.into_inner());
+    slot.take();
+}
+
+fn start_events(app: &tauri::AppHandle) {
+    let (tx, mut rx) = tauri::async_runtime::channel::<EventNote>(64);
+    {
+        let mut slot = EVENT_TX.lock().unwrap_or_else(|err| err.into_inner());
+        *slot = Some(tx);
+    }
+    unsafe { pav_on_event(Some(on_core_event), std::ptr::null_mut()) };
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(note) = rx.recv().await {
+            let payload = serde_json::from_str::<Value>(&note.json).unwrap_or(Value::String(note.json));
+            let body = serde_json::json!({ "name": note.name, "payload": payload });
+            if let Err(err) = handle.emit("pav", body) {
+                eprintln!("cannot emit pav: {err}");
+            }
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run(workdir: &str) {
     start_core(workdir);
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![status, ui_get, ui_set, ui_log])
+        .invoke_handler(tauri::generate_handler![core])
         .setup(|app| {
+            start_events(app.handle());
             let Some(window) = app.get_webview_window("main") else {
                 eprintln!("main window is missing");
                 return Ok(());
             };
-    let watch = window.clone();
-    window.on_window_event(move |event| {
-        if matches!(
-            event,
-            tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Moved(_)
-        ) {
-            on_window_change(&watch);
-        }
-    });
+            let watch = window.clone();
+            window.on_window_event(move |event| {
+                if matches!(
+                    event,
+                    tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Moved(_)
+                ) {
+                    on_window_change(&watch);
+                }
+            });
             apply_saved_window(&window);
             Ok(())
         })
@@ -441,7 +408,10 @@ pub fn run(workdir: &str) {
                     save_window_now(&window);
                 }
             }
-            tauri::RunEvent::Exit => unsafe { pavillion_stop() },
+            tauri::RunEvent::Exit => {
+                stop_events();
+                unsafe { pavillion_stop() };
+            }
             _ => {}
         });
 }

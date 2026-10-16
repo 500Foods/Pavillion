@@ -1,6 +1,28 @@
-import { uiGet, uiSet, log } from "./api.js";
 import { reloadIcons } from "./main.js";
 import { clampUi, snapZoom } from "./prefs.js";
+
+let api = null;
+
+function log(subsystem, level, message) {
+  return api.log.client({ subsystem, level, message });
+}
+
+export function useApi(next) {
+  api = next;
+  window.onerror = function (message, source, lineno, colno, error) {
+    const text = error && error.stack
+      ? String(error.stack)
+      : `${message} (${source}:${lineno}:${colno})`;
+    log("ui", 0, `onerror: ${text}`);
+    return false;
+  };
+  window.onunhandledrejection = function (event) {
+    const reason = event && event.reason
+      ? String(event.reason.stack || event.reason)
+      : "unhandled promise rejection";
+    log("ui", 0, `onunhandledrejection: ${reason}`);
+  };
+}
 
 const ui = clampUi({});
 
@@ -85,22 +107,6 @@ function refreshIconPreviews() {
   }
 }
 
-/* Surface JS errors in the core log so a missing DevTools doesn't leave us
-   blind. Errors are logged as "ui" at PAV_ERROR. */
-window.onerror = function (message, source, lineno, colno, error) {
-  const text = error && error.stack
-    ? String(error.stack)
-    : `${message} (${source}:${lineno}:${colno})`;
-  log("ui", 0, `onerror: ${text}`);
-  return false;
-};
-window.onunhandledrejection = function (event) {
-  const reason = event && event.reason
-    ? String(event.reason.stack || event.reason)
-    : "unhandled promise rejection";
-  log("ui", 0, `onunhandledrejection: ${reason}`);
-};
-
 let canSave = false;
 
 function messageOf(err) {
@@ -139,7 +145,7 @@ function flushUiSave() {
     return Promise.resolve();
   }
   dirty = false;
-  return uiSet(JSON.stringify(clampUi(ui))).catch((err) => {
+  return api.prefs.ui.set(clampUi(ui)).catch((err) => {
     showBanner(messageOf(err));
   });
 }
@@ -157,7 +163,7 @@ function persistLayout() {
 }
 
 async function loadPrefs() {
-  const stored = clampUi(JSON.parse(await uiGet()));
+  const stored = clampUi(await api.prefs.ui.get());
   ui.nav = stored.nav;
   ui.mail = stored.mail;
   ui.contacts = stored.contacts;

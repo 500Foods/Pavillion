@@ -1,17 +1,52 @@
-import { invoke } from "@tauri-apps/api/core";
+const LEVEL_NAMES = ["error", "warn", "info", "debug"];
 
-export function status() {
-  return invoke("status");
+function levelName(level) {
+  if (typeof level === "number") {
+    return LEVEL_NAMES[level] || "info";
+  }
+  return level;
 }
 
-export function uiGet() {
-  return invoke("ui_get");
-}
+/* A transport is { call(cmd, args) -> Promise, on(handler) -> unsubscribe }.
+   Screens use the methods below and api.on(name, fn). They never see the transport. */
+export function createApi(transport) {
+  function call(cmd, args) {
+    return transport.call(cmd, args ?? {});
+  }
 
-export function uiSet(json) {
-  return invoke("ui_set", { json });
-}
-
-export function log(subsystem, level, message) {
-  return invoke("ui_log", { subsystem, level, message });
+  return {
+    system: {
+      status() {
+        return call("system.status", {});
+      },
+    },
+    prefs: {
+      get() {
+        return call("prefs.get", {});
+      },
+      set(patch) {
+        return call("prefs.set", patch);
+      },
+      ui: {
+        get() {
+          return call("prefs.ui.get", {});
+        },
+        set(blob) {
+          return call("prefs.ui.set", blob);
+        },
+      },
+    },
+    log: {
+      client({ subsystem, level, message }) {
+        return call("log.client", { subsystem, level: levelName(level), message });
+      },
+    },
+    on(name, fn) {
+      return transport.on((eventName, payload) => {
+        if (eventName === name) {
+          fn(payload);
+        }
+      });
+    },
+  };
 }
