@@ -1,16 +1,13 @@
-#define _POSIX_C_SOURCE 200809L
-
 #include "pav_config.h"
 #include "pav_cfg.h"
+#include "pav_platform.h"
 #include "config_internal.h"
 
-#include <dirent.h>
 #include <jansson.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 
 int config_forbidden_key(const json_t *node, const char **name) {
     if (json_is_object(node)) {
@@ -313,7 +310,6 @@ static void consider_file(const char *dir, const char *name, const char *active,
     char err[256];
     char *text;
     PavProfile *profile = NULL;
-    struct stat st;
 
     if (strcmp(name, "Pavillion.json") == 0) {
         return;
@@ -325,7 +321,7 @@ static void consider_file(const char *dir, const char *name, const char *active,
         }
         return;
     }
-    if (stat(path, &st) != 0 || S_ISDIR(st.st_mode)) {
+    if (!pav_exists(path) || pav_is_dir(path)) {
         return;
     }
     if (strlen(name) < 5 || strcmp(name + strlen(name) - 5, ".json") != 0) {
@@ -376,14 +372,29 @@ static void consider_file(const char *dir, const char *name, const char *active,
     }
 }
 
+struct ScanVisit {
+    const char *dir;
+    const char *active;
+    PavProfile **found;
+    int *broken;
+    char *path_out;
+    size_t path_out_len;
+};
+
+static int scan_visit(const char *name, void *user) {
+    struct ScanVisit *visit = user;
+
+    consider_file(visit->dir, name, visit->active, visit->found, visit->broken, visit->path_out,
+                  visit->path_out_len);
+    return 0;
+}
+
 int pav_config_load(const char *workdir, PavConfigLoad **out, char *err, size_t err_len) {
     char index_path[4096];
     char scan_dir[4096];
     char *text;
     PavIndex *index = NULL;
     PavConfigLoad *load;
-    DIR *dir;
-    struct dirent *ent;
 
     if (out == NULL) {
         cfg_err(err, err_len, "missing workdir");
@@ -428,25 +439,26 @@ int pav_config_load(const char *workdir, PavConfigLoad **out, char *err, size_t 
         return -1;
     }
 
-    dir = opendir(scan_dir);
-    if (dir != NULL) {
+    {
+        struct ScanVisit visit;
         int broken = 0;
-        while ((ent = readdir(dir)) != NULL) {
-            if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) {
-                continue;
+
+        visit.dir = scan_dir;
+        visit.active = index->active;
+        visit.found = &load->profile;
+        visit.broken = &broken;
+        visit.path_out = load->profile_path;
+        visit.path_out_len = sizeof(load->profile_path);
+        if (pav_dir_each(scan_dir, scan_visit, &visit) == 0) {
+            if (load->profile == NULL) {
+                load_error(load, broken ? "active profile broken: %s" : "active profile missing: %s",
+                           index->active);
+            } else {
+                memcpy(load->state, "ready", sizeof("ready"));
             }
-            consider_file(scan_dir, ent->d_name, index->active, &load->profile, &broken, load->profile_path,
-                          sizeof(load->profile_path));
-        }
-        closedir(dir);
-        if (load->profile == NULL) {
-            load_error(load, broken ? "active profile broken: %s" : "active profile missing: %s",
-                       index->active);
         } else {
-            memcpy(load->state, "ready", sizeof("ready"));
+            load_error(load, "active profile missing: %s", index->active);
         }
-    } else {
-        load_error(load, "active profile missing: %s", index->active);
     }
 
     pav_index_free(index);

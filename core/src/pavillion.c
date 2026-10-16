@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "pav_config.h"
+#include "pav_platform.h"
 #include "pav_store.h"
 #include "pavillion.h"
 
@@ -10,7 +11,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #define CORE_QUEUE_CAP 8
 #define CORE_CMD_STOP 1
@@ -405,6 +405,7 @@ int pavillion_api_version(void) {
 int pavillion_start(const char *workdir, char *err, size_t err_len) {
     int rc;
 
+    pav_platform_install_host();
     pthread_mutex_lock(&g_core_mu);
     if (g_core_alive) {
         pthread_mutex_unlock(&g_core_mu);
@@ -848,22 +849,9 @@ static const char *level_name(int level) {
 }
 
 static void format_stamp(char *out, size_t out_len) {
-    struct timespec ts;
-    struct tm tm;
-    int msec;
-
-    if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
+    if (pav_format_utc(out, out_len, pav_now_ms()) != 0) {
         snprintf(out, out_len, "0000-00-00T00:00:00.000Z");
-        return;
     }
-    gmtime_r(&ts.tv_sec, &tm);
-    msec = (int)(ts.tv_nsec / 1000000L);
-    if (msec > 999) {
-        msec = 999;
-    }
-    snprintf(out, out_len, "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
-             tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-             tm.tm_hour, tm.tm_min, tm.tm_sec, msec);
 }
 
 static void emit_bytes_unlocked(const char *line) {

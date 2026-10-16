@@ -54,3 +54,19 @@ jobs:
         with:
           name: pavillion-${{ github.sha }}
           path: dist/pavillion
+
+  # G-1. Core and Unity only, on the fake platform. No window. continue-on-error
+  # stays until G-6 has a macOS backend.
+  macos-core:
+    runs-on: macos-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install core libraries
+        run: brew install jansson sqlite cmake
+
+      - name: Test
+        run: |
+          prefix="$(brew --prefix)"
+          make test CFLAGS="-I${prefix}/include" LDFLAGS="-L${prefix}/lib"

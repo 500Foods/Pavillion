@@ -1,6 +1,6 @@
-#define _POSIX_C_SOURCE 200809L
-
 #include "pav_store.h"
+
+#include "pav_platform.h"
 
 #include <sqlite3.h>
 
@@ -8,8 +8,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 static void set_err(char *err, size_t err_len, const char *fmt, ...) {
     va_list ap;
@@ -31,7 +29,7 @@ static int sqlite_open(PavStore *store, const char *path, char *err, size_t err_
         set_err(err, err_len, "missing path");
         return -1;
     }
-    existed = access(path, F_OK) == 0;
+    existed = pav_exists(path);
     rc = sqlite3_open_v2(path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
     if (rc != SQLITE_OK) {
         const char *msg = db != NULL ? sqlite3_errmsg(db) : "cannot open database";
@@ -40,15 +38,15 @@ static int sqlite_open(PavStore *store, const char *path, char *err, size_t err_
             sqlite3_close(db);
         }
         if (!existed) {
-            unlink(path);
+            remove(path);
         }
         return -1;
     }
-    if (chmod(path, 0600) != 0) {
+    if (pav_file_private(path) != 0) {
         set_err(err, err_len, "cannot create %s", path);
         sqlite3_close(db);
         if (!existed) {
-            unlink(path);
+            remove(path);
         }
         return -1;
     }

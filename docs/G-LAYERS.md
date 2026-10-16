@@ -1,6 +1,6 @@
 # G — LAYERS
 
-**Status:** Not started (opened 2026-10-15; scoped 2026-10-16). Lua and mail rules moved to [R-RULES.md](R-RULES.md) (old G-5 is R-1, old G-7 is R-3).
+**Status:** G-1 complete (2026-10-16). The index names the next phase. Lua and mail rules moved to [R-RULES.md](R-RULES.md) (old G-5 is R-1, old G-7 is R-3).
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Pavillion runs on Fedora Linux first, then macOS and Windows, maybe iPad one day. Its UI can be lifted into Lithium. Both come down to clear layers with one written contract between each pair. This document owns the layers, the platform table, the command ABI, the host adapter, the mountable UI, and the multiplatform strategy.
@@ -11,7 +11,7 @@ One phase is one session. Do not start the next one in the same conversation.
 
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
-| G-1 | `pav_platform.h`, the Linux backend, a test fake; dirs and file modes behind it | Medium | Not started |
+| G-1 | `pav_platform.h`, the Linux backend, a test fake; dirs and file modes behind it | Medium | Complete |
 | G-2 | JSON command dispatcher, `pav_on_event`, and `docs/API.md` | Medium | Not started |
 | G-3 | Generic Tauri `core` command; `api.js` takes a transport | Medium | Not started |
 | G-8 | Move the remaining `lib.rs` logic (662 lines) into C behind the dispatcher | Medium | Not started |
@@ -201,7 +201,7 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 ## G-1: Platform layer and a test fake
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Complete (2026-10-16). Variance: the `macos-core` job is in the workflow and has not been observed on a runner. This sitting did not push.
 
 **Goal:** Every OS call in the core goes through `pav_platform()`. Tests run on a fake platform.
 
@@ -209,16 +209,22 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 
 **Work items:**
 
-- [ ] Add `core/include/pav_platform.h` with the Lock's table, `PAV_DIR_*`, and `pav_path_join`.
-- [ ] `core/platform/posix/posix.c` (threads helpers, `mkdir_private`, `write_private` with temp file, `fchmod`, `fsync`, `rename`), `core/platform/linux/linux.c` (XDG dirs; secrets stubbed with `-1 "not yet"` until K-1), `core/platform/fake/fake.c`.
-- [ ] Move every `mkdir`, `open(...0600)`, `fchmod`, `stat`, and `getenv("HOME")` in `config.c`, `config_fs.c`, `store.c`, and `pavillion.c` behind the table. `rg 'sys/stat|fchmod|getenv' core/src` returns nothing.
-- [ ] `pavillion_start` installs the Linux table unless a test installed one first. CMake builds `posix` and `linux` on Linux, and the fake into the test binary only.
-- [ ] Profile writes become atomic (`write_private` writes `name.tmp` then renames), so a crash mid-write cannot leave a half profile. Unity test `test_profile_write_is_atomic`.
-- [ ] Add the macOS core-only CI job to `.github/workflows/ci.yml` (W-1 adds the file): `cmake` + Unity on `macos-latest` with the fake platform. It may be `continue-on-error: true` until G-6.
+- [x] Add `core/include/pav_platform.h` with the Lock's table, `PAV_DIR_*`, and `pav_path_join`.
+- [x] `core/platform/posix/posix.c` (threads helpers, `mkdir_private`, `write_private` with temp file, `fchmod`, `fsync`, `rename`), `core/platform/linux/linux.c` (XDG dirs; secrets stubbed with `-1 "not yet"` until K-1), `core/platform/fake/fake.c`.
+- [x] Move every `mkdir`, `open(...0600)`, `fchmod`, `stat`, and `getenv("HOME")` in `config.c`, `config_fs.c`, `store.c`, and `pavillion.c` behind the table. `rg 'sys/stat|fchmod|getenv' core/src` returns nothing.
+- [x] `pavillion_start` installs the Linux table unless a test installed one first. CMake builds `posix` and `linux` on Linux, and the fake into the test binary only.
+- [x] Profile writes become atomic (`write_private` writes `name.tmp` then renames), so a crash mid-write cannot leave a half profile. Unity test `test_profile_write_is_atomic`.
+- [x] Add the macOS core-only CI job to `.github/workflows/ci.yml` (W-1 adds the file): `cmake` + Unity on `macos-latest` with the fake platform. It may be `continue-on-error: true` until G-6.
 
 **Done means:** The core contains no OS-specific call outside `core/platform/`, and every Unity test runs on the fake.
 
 **Exit gate:** `make test` exits 0. The `rg` check is empty. `make dev` on a fresh `DEV_DIR` creates the same files with the same modes as before. The macOS job runs.
+
+**Accomplished:** `pav_platform.h` holds the Lock's table. `posix.c` does `mkdir_private` (parents included, new directories `0700`, an existing directory keeps its mode), `write_private` (`path.tmp`, `fchmod 0600`, `fsync`, `rename`), the clock, directory listing, and `pav_thread_create` / `pav_thread_join`. `linux.c` resolves XDG dirs and appends `pavillion`. `PAV_DIR_LOG` is `XDG_STATE_HOME` (default `$HOME/.local/state`). `PAV_DIR_RUNTIME` fails when `XDG_RUNTIME_DIR` is unset. Secret calls return `-1` until K-1. The fake keeps secrets in memory, one temp root per dir kind, and a settable clock. `pav_platform_install` keeps the first table. `pavillion_start` calls `pav_platform_install_host`, which installs Linux only when a test has not installed the fake. On Linux the fake is linked into the test binary only. A non-Linux core links the fake as its host, because there is no macOS backend until G-6. `config.c`, `config_fs.c`, and `store.c` no longer include `sys/stat.h`. `rg 'sys/stat|fchmod|getenv' core/src` is empty. Profile stores go through `write_private`. `make test` is 37 tests, 0 failures, including `test_profile_write_is_atomic` and `test_platform_fake_dirs_secrets_and_clock`. Every test's `setUp` requires the fake. A fresh `DEV_DIR` (`/tmp/pav-g1-aNIqBT`) from `make dev` created `Pavillion.json`, `profiles/default.json`, `logs/default.log`, and `default.sqlite` at `0600`, and the workdir, `profiles`, `logs`, `blobs`, `blobs/default`, `cache`, and `cache/default` at `0700`. The real profile `~/.local/share/pavillion/profiles/default.json` was not rewritten. Its sha256 stayed `d551dd41c45a987e74c4af687c74f513eb68425bbd5ebedaeffe47103f339e04`. `PAVILLION_API_VERSION` stays 2. `.github/workflows/ci.yml` has job `macos-core` (`macos-latest`, `continue-on-error: true`, `make test` with the Homebrew include path). It has not been executed on a runner.
+
+**Lessons learned:** The first install wins, so the test installs the fake in `main` before `pavillion_start`. `write_private` replaces. `pav_config_ensure` still refuses to overwrite a profile that exists when the index does not, which is what `O_EXCL` did. An existing log is chmod'd to `0600` and not truncated; a missing log is an empty `write_private`. `json_dumps` has no trailing newline, so `pav_profile_store` adds one before the write. `tearDown` clears the fake clock and the abort flag, or the next test would keep them. `pthread.h` stays in `pavillion.c`. The C-3 mutexes are static initializers, and a byte-array stand-in would be the wrong size on macOS. The thread helpers are for new code. `fopen` stays; it is ISO C. Helpers that are not table slots (`pav_exists`, `pav_is_dir`, `pav_file_private`, `pav_dir_each`, `pav_path_parent`, `pav_path_is_absolute`, `pav_now_ms`, `pav_format_utc`) exist so `core/src` does not include `sys/stat.h` or walk `/` itself. The Lock table was not changed. Killing `make dev` after the files exist makes `make` report Terminated. The files were already written.
+
+**Handoff:** G-2 is next. Do not bump `PAVILLION_API_VERSION`. Tests install the fake before Unity and `setUp` rejects any other name. `pavillion_start` must keep the host install, or a production launch has no platform and profile writes fail. Secrets stay `-1` until K-1. `dir()` is unused by the shell; G-8 moves workdir creation. The core queue still uses `pthread` directly. `macos-core` stays `continue-on-error` until G-6. G-Q1 and G-Q4 stay open; this phase did not need them.
 
 ## G-2: JSON command dispatcher and `docs/API.md`
 
@@ -340,3 +346,4 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 - 2026-10-16 Scoped for implementation: the platform table, `pavillion_call`/`pav_on_event` signatures, naming and error codes, the API seed from the old §2.3, plan §17 absorbed. Lua and rules moved to R-RULES (G-5 to R-1, G-7 to R-3). Lua open questions moved there.
 - 2026-10-16 Andrew: minimize Rust ahead of the Hydrogen (C) integration. Rewrote the L3 Lock so Rust does only Tauri work, moved window-state persistence and scheme decisions to C (`window.report`/`window.initial`, `pav_protocol`), and added G-8 to migrate today's `lib.rs` logic right after G-3.
 - 2026-10-16 Review fixes: the `pav_protocol` signature, `PavBytes`, and the scheme-handler contract are now in the L2 Lock. One free function, `pavillion_free` (`pav_bytes_free` retired). Added a table of the FFI surface by stage. `system.status` and `log.lines` names aligned.
+- 2026-10-16 G-1: platform table, Linux XDG dirs, and a test fake. Profile writes are `path.tmp` then rename. `make test` is 37 tests. `rg 'sys/stat|fchmod|getenv' core/src` is empty. A fresh `make dev` workdir has the index, profile, log, and sqlite at `0600` and the directories at `0700`. API version stays 2. `macos-core` is in `ci.yml` with `continue-on-error` and was not pushed.

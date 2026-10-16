@@ -2,6 +2,7 @@
 
 #include "pav_config.h"
 #include "pav_cfg.h"
+#include "pav_platform.h"
 #include "pav_store.h"
 #include "pavillion.h"
 #include "unity.h"
@@ -93,6 +94,11 @@ static void assert_one_line(const char *text, const char *tail) {
 }
 
 void setUp(void) {
+    const PavPlatform *platform = pav_platform();
+
+    if (platform == NULL || platform->name == NULL || strcmp(platform->name, "fake") != 0) {
+        TEST_FAIL_MESSAGE("platform is not the fake");
+    }
 }
 
 static char g_cfg_dir[80];
@@ -137,6 +143,7 @@ static void remove_cfg_dir(void) {
 }
 
 void tearDown(void) {
+    pav_platform_fake_reset();
     pavillion_stop();
     pav_log_thread_shutdown();
     pav_log_set_output(NULL);
@@ -1582,7 +1589,120 @@ void test_profile_read_kit_skips_zoom_window(void) {
     pav_profile_free(profile);
 }
 
+static void *platform_thread_fn(void *arg) {
+    int *flag = arg;
+
+    *flag = 1;
+    return NULL;
+}
+
+void test_profile_write_is_atomic(void) {
+    char path[160];
+    char tmp[180];
+    char err[256];
+    char *body = NULL;
+    char *expected = NULL;
+    char *file = NULL;
+    char *after = NULL;
+    PavConfigLoad *load = NULL;
+    struct stat st;
+    size_t n;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pav_config_ensure(g_cfg_dir, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, pav_config_load(g_cfg_dir, &load, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_STRING("ready", load->state);
+    TEST_ASSERT_EQUAL_INT(0, json_object_set_new(load->profile->doc, "name", json_string("Renamed")));
+
+    snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(0, pav_profile_store(path, load->profile, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
+    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+    TEST_ASSERT_TRUE(stat(tmp, &st) != 0);
+
+    TEST_ASSERT_EQUAL_INT(0, pav_profile_rewrite(load->profile, &body));
+    n = strlen(body);
+    expected = malloc(n + 2);
+    TEST_ASSERT_NOT_NULL(expected);
+    memcpy(expected, body, n);
+    expected[n] = '\n';
+    expected[n + 1] = '\0';
+    file = slurp(path);
+    TEST_ASSERT_EQUAL_STRING(expected, file);
+
+    TEST_ASSERT_EQUAL_INT(0, json_object_set_new(load->profile->doc, "name", json_string("Again")));
+    pav_platform_fake_abort_next_write();
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(-1, pav_profile_store(path, load->profile, err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(err, "cannot write"));
+    after = slurp(path);
+    TEST_ASSERT_EQUAL_STRING(file, after);
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
+    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    TEST_ASSERT_TRUE(stat(tmp, &st) != 0);
+
+    free(body);
+    free(expected);
+    free(file);
+    free(after);
+    pav_config_load_free(load);
+}
+
+void test_platform_fake_dirs_secrets_and_clock(void) {
+    const PavPlatform *platform = pav_platform();
+    char data[256];
+    char runtime[256];
+    char stamp[32];
+    char err[256];
+    char *secret = NULL;
+    struct stat st;
+    void *thread = NULL;
+    int flag = 0;
+    PavillionStatus status;
+
+    TEST_ASSERT_EQUAL_INT(0, platform->dir(PAV_DIR_DATA, data, sizeof(data)));
+    TEST_ASSERT_EQUAL_INT(0, stat(data, &st));
+    TEST_ASSERT_TRUE(S_ISDIR(st.st_mode));
+    TEST_ASSERT_EQUAL_INT(0700, (int)(st.st_mode & 0777));
+    TEST_ASSERT_EQUAL_INT(0, platform->dir(PAV_DIR_RUNTIME, runtime, sizeof(runtime)));
+    TEST_ASSERT_TRUE(strcmp(data, runtime) != 0);
+    TEST_ASSERT_EQUAL_INT(0, stat(runtime, &st));
+    TEST_ASSERT_TRUE(S_ISDIR(st.st_mode));
+    platform->on_network_change(NULL, NULL);
+    platform->on_resume(NULL, NULL);
+
+    TEST_ASSERT_EQUAL_INT(-1, platform->secret_get("pavillion", "default/a", &secret));
+    TEST_ASSERT_NULL(secret);
+    TEST_ASSERT_EQUAL_INT(0,
+                          platform->secret_set("pavillion", "default/a", "Account", "s3cret"));
+    TEST_ASSERT_EQUAL_INT(0, platform->secret_get("pavillion", "default/a", &secret));
+    TEST_ASSERT_EQUAL_STRING("s3cret", secret);
+    free(secret);
+    secret = NULL;
+    TEST_ASSERT_EQUAL_INT(0, platform->secret_delete("pavillion", "default/a"));
+    TEST_ASSERT_EQUAL_INT(-1, platform->secret_get("pavillion", "default/a", &secret));
+
+    pav_platform_fake_set_now_ms(1700000000123LL);
+    TEST_ASSERT_TRUE(platform->now_ms() == 1700000000123LL);
+    TEST_ASSERT_EQUAL_INT(0, pav_format_utc(stamp, sizeof(stamp), platform->now_ms()));
+    TEST_ASSERT_EQUAL_STRING("2023-11-14T22:13:20.123Z", stamp);
+
+    TEST_ASSERT_EQUAL_INT(0, pav_thread_create(&thread, platform_thread_fn, &flag));
+    TEST_ASSERT_EQUAL_INT(0, pav_thread_join(thread));
+    TEST_ASSERT_EQUAL_INT(1, flag);
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_status(&status));
+    TEST_ASSERT_EQUAL_STRING("ready", status.state);
+    TEST_ASSERT_EQUAL_STRING("fake", pav_platform()->name);
+}
+
 int main(void) {
+    pav_platform_install(pav_platform_fake());
     UNITY_BEGIN();
     RUN_TEST(test_start_reports_ready_and_stop_is_repeatable);
     RUN_TEST(test_core_thread_ready_after_start_and_joined_on_stop);
@@ -1619,5 +1739,7 @@ int main(void) {
     RUN_TEST(test_cfg_bool_defaults_and_rejects_wrong_type);
     RUN_TEST(test_cfg_enum_rejects_unknown);
     RUN_TEST(test_cfg_obj_and_at_do_not_replace_or_create);
+    RUN_TEST(test_profile_write_is_atomic);
+    RUN_TEST(test_platform_fake_dirs_secrets_and_clock);
     return UNITY_END();
 }

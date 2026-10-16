@@ -117,6 +117,12 @@ fn main() {
     println!("cargo:rerun-if-changed=../core/include/pav_cfg.h");
     println!("cargo:rerun-if-changed=../core/src/store.c");
     println!("cargo:rerun-if-changed=../core/include/pav_store.h");
+    println!("cargo:rerun-if-changed=../core/include/pav_platform.h");
+    println!("cargo:rerun-if-changed=../core/platform/platform_internal.h");
+    println!("cargo:rerun-if-changed=../core/platform/posix/posix.c");
+    println!("cargo:rerun-if-changed=../core/platform/linux/linux.c");
+    println!("cargo:rerun-if-changed=../core/platform/fake/fake.c");
+    println!("cargo:rerun-if-changed=../core/platform/fake/host.c");
 
     let attributes = tauri_build::Attributes::new()
         .app_manifest(tauri_build::AppManifest::new().commands(&[
