@@ -40,6 +40,7 @@ The frame diagram below is the hello-world page. The shell preview replaced that
 - Tabulator is not a dependency until a screen is a table.
 - The message pane, when it exists, is a sandboxed iframe with no script and no bridge. The shell does not put IPC on `window` inside a child frame.
 - One window.
+- The main window runs the Font Awesome kit, which needs `'unsafe-inline'` scripts. Outside HTML never goes into the main DOM; use `textContent` or the message pane. The kit field takes an id only. See [F-HARDEN.md](F-HARDEN.md).
 
 ### Frame
 

@@ -2,7 +2,7 @@
 
 Status: draft v0.4 (2026-10-14). Implementer: Grok Build. Reviewer: Andrew Simard.
 
-**Resume:** D-3 is complete. The hello-world sequence A-1 through D-3 is finished. No phase is open. §10 is the shell, and a preview of it is in the UI. Andrew likes the direction. The preview is not a closed phase. Nav width, the three splits, shell zoom, and the window are stored on the profile through the core and restored on the next launch. `chrome` is stored. Hidden chrome does not turn the decorations off. Font Awesome is the Pro Plus 7.3.1 SVG kit (`45801522ef`), used as-is. Its hosts are on the §11 CSP allowlist. Pro files stay out of the tree. Lessons from the preview are in [docs/D-UI.md](docs/D-UI.md). The tree design for the section navs — mail first, then files, calendars, and contacts — is recorded in [docs/E-TREE.md](docs/E-TREE.md). It is not a phase, its phases are not in the sequence, and nothing is built. Per-pane zoom is in the tree: `shell` is the master scale, and the nav buttons, nav body, and the mail panes each have their own key on the profile. §16 below is the command line for AI agents. It is a section, not a phase.
+**Resume:** D-3 is complete. The hello-world sequence A-1 through D-3 is finished. **Next: F-1** in [docs/F-HARDEN.md](docs/F-HARDEN.md). F-1 through F-6, then G-1 through G-4 in [docs/G-LAYERS.md](docs/G-LAYERS.md) (platform layer, command ABI, Lithium-ready UI), come before any mail work. G-5 (Lua) may follow mail P0, and F-6 (where JMAP and sync live) must be closed before a mail letter opens. §10 is the shell, and a preview of it is in the UI. Andrew likes the direction. The preview is not a closed phase. Nav width, the three splits, shell zoom, and the window are stored on the profile through the core and restored on the next launch. `chrome` is stored. Hidden chrome does not turn the decorations off. Font Awesome is the Pro Plus 7.3.1 SVG kit (`45801522ef`), used as-is. Its hosts are on the §11 CSP allowlist. Pro files stay out of the tree. Lessons from the preview are in [docs/D-UI.md](docs/D-UI.md). The tree design for the section navs — mail first, then files, calendars, and contacts — is recorded in [docs/E-TREE.md](docs/E-TREE.md). It is not a phase, its phases are not in the sequence, and nothing is built. Per-pane zoom is in the tree: `shell` is the master scale, and the nav buttons, nav body, and the mail panes each have their own key on the profile. §16 below is the command line for AI agents. It is a section, not a phase.
 
 This file is the map. A new session reads Resume, the sequence table, and then only the named phase. One phase per session. The next session starts fresh. Phases are not worked in parallel.
 
@@ -15,6 +15,8 @@ A phase id is a letter and a number. The letter is the document. The number star
 | C | [docs/C-CORE.md](docs/C-CORE.md) | Threads, the loop, logging, the SQLite open |
 | D | [docs/D-UI.md](docs/D-UI.md) | The shell, `api.js`, the first frame |
 | E | [docs/E-TREE.md](docs/E-TREE.md) | The tree engine behind the section navs |
+| F | [docs/F-HARDEN.md](docs/F-HARDEN.md) | FFI structs, UI prefs, kit input, message-pane isolation, `config.c`, where JMAP lives |
+| G | [docs/G-LAYERS.md](docs/G-LAYERS.md) | Platform layer, JSON command ABI, host adapters (Tauri, Lithium), mountable UI, Lua |
 
 | | Phase | What | Kind |
 | --- | --- | --- | --- |
@@ -38,6 +40,19 @@ A phase id is a letter and a number. The letter is the document. The number star
 | 18 | C-6 | Start loads a profile | Medium |
 | 19 | A-5 | Working directory and a real start | Medium |
 | 20 | D-3 | The error state | Easy |
+| 21 | F-1 | One definition of the FFI structs | Medium |
+| 22 | F-2 | UI preferences as an opaque JSON blob | Medium |
+| 23 | F-3 | The kit setting is an id, not HTML | Easy |
+| 24 | F-4 | Message pane isolation, proven before mail | Medium |
+| 25 | F-5 | Trim `config.c` | Medium |
+| 26 | F-6 | Decide where JMAP and sync live | Easy |
+| 27 | G-1 | Platform layer and a test fake | Medium |
+| 28 | G-2 | JSON command dispatcher and `docs/API.md` | Medium |
+| 29 | G-3 | Generic host command, transport-agnostic `api.js` | Medium |
+| 30 | G-4 | Mountable UI for Lithium | Medium |
+| 31 | G-5 | Embedded Lua 5.5, sandboxed | Medium |
+| 32 | G-7 | Mail rules in Lua (declarative compiled to Lua, Sieve export) | Medium |
+| 33 | G-6 | Second-platform smoke build | Hard |
 
 **Easy** is one module and a test, or a static page. **Medium** crosses one boundary. **Hard** is the first join of the two build systems. That is A-4.
 
@@ -116,8 +131,8 @@ Added because Hydrogen does not do this job:
   the system zoneinfo data (`America/Vancouver` and the rest).
 - **libsecret** for the Secret Service (gnome-keyring or KeePassXC).
 
-Left behind on purpose: libmicrohttpd, libwebsockets, Lua, MagickWand, Brotli. Those
-belong to the server. JMAP over HTTP does not need them.
+Left behind on purpose: libmicrohttpd, libwebsockets, MagickWand, Brotli. Those
+belong to the server. JMAP over HTTP does not need them. **Lua 5.5 is in** (changed 2026-10-15), embedded and sandboxed in the core as in Hydrogen; see [docs/G-LAYERS.md](docs/G-LAYERS.md). The layering (platform, core, host, UI) is also defined there.
 
 Concurrency is the Hydrogen shape, not an async runtime: one worker thread per login,
 a shared curl multi handle, a global cap on in-flight requests (default 6).
@@ -503,8 +518,9 @@ The first window, `api.js`, and the rule that screens do not call Tauri themselv
   in the user's runtime directory, mode 0600, and it refuses every command while bots are paused.
 - TLS required (libcurl with the system trust store); no "accept invalid cert" toggle.
   Optional per-account pinned CA path for internal endpoints.
-- App CSP (tauri.conf): `default-src 'self'; script-src 'self' https://kit.fontawesome.com https://ka-p.fontawesome.com; style-src 'self' 'unsafe-inline'; img-src 'self' pav-cid: data:; frame-src 'self'; connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com`.
-  `https://ka-p.fontawesome.com` is on `connect-src` because the SVG kit loads each icon with `fetch()`. `font-src` is left unset, so a webfont from the v5 shim is refused. `kit-uploads.fontawesome.com` is not allowed. The HTML mail iframe keeps the CSP in §7 and does not gain these hosts. `security.csp` in tauri.conf is that string, plus `ws://localhost:1420` on `connect-src` so the dev server can refresh. Tauri capabilities: least privilege per window.
+- App CSP (tauri.conf): `default-src 'self'; script-src 'self' 'unsafe-inline' https://kit.fontawesome.com https://ka-p.fontawesome.com; font-src 'self' data: https://ka-p.fontawesome.com; style-src 'self' 'unsafe-inline'; img-src 'self' pav-cid: data:; frame-src 'self'; connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com`, plus `ws://localhost:1420` on `connect-src` for the dev server.
+  Font Awesome Pro is loaded only through the official kit, because the license allows nothing else for an open-source project. Never vendor Pro files. The kit loader `fetch()`es the library from `ka-p.fontawesome.com` and runs it as an **inline** script, so `'unsafe-inline'` is required, and it only works because `dangerousDisableAssetCspModification` is `true` (a Tauri hash or nonce would make browsers ignore it). `make dev` does not apply this CSP, so kit problems show up only in `make build`. `font-src` covers the kit's v4 and v5 font-face shims. `kit-uploads.fontawesome.com` is not allowed.
+  **Consequence:** the main window can run inline script, so no outside HTML ever enters the main document. Mail and every other outside text go through `textContent` or the sandboxed iframe in §7, whose own CSP never gains these hosts or `'unsafe-inline'` for scripts. The Settings kit field accepts only a kit id. See the Lock and F-3/F-4 in [docs/F-HARDEN.md](docs/F-HARDEN.md). Tauri capabilities: least privilege per window, and IPC for the main window only.
 - No in-app updater and no telemetry. No outbound requests except configured JMAP endpoints,
   user-approved remote images/links, and the Font Awesome hosts named above. Package updates come from the system repo in §12.
 - Logging: the core logger in [docs/C-CORE.md](docs/C-CORE.md). Redact `Authorization`
@@ -627,6 +643,7 @@ Total to daily-driver mail (P0–P3): ~3 weeks. Full replacement (P0–P5): ~5�
 11. Repo location and name (e.g. `/mnt/extra/Projects/Pavillion`, GitHub/origin remote)?
 12. Fedora rpm only to start, or also Omarchy build from day one?
 13. Fonts: Vanadium Sans is the primary font. Package the font files with the app, or rely on a system install? A Fonts setting exists in the shell; persistence and packaging are undecided.
+14. Where JMAP and sync live (C core with libcurl and jansson, or Rust in the shell) and the threading model for about 20 accounts. Tracked as F-6 in [docs/F-HARDEN.md](docs/F-HARDEN.md); must be settled before mail.
 
 ## 16. AI and command-line access
 
@@ -787,8 +804,8 @@ paths. Everything else in the core is platform-agnostic.
   in the Tauri shell and the WebView. The core already respects this (§2.1).
 - No `dlopen` database-engine layer (Hydrogen's pattern was left behind deliberately); link the
   system SQLite everywhere.
-- No libmicrohttpd / libwebsockets / Lua / Brotli — those belong to a server, not a desktop app
-  on any platform.
+- No libmicrohttpd / libwebsockets / Brotli — those belong to a server, not a desktop app. (Lua is in; see [docs/G-LAYERS.md](docs/G-LAYERS.md).)
+- Platform calls only through `pav_platform.h` (G-1); the UI is a host-agnostic, mountable module so Lithium can embed it (G-4).
 - No assuming `/`-separated paths or `~` expansion without the dirs helper; Windows uses `\` and
   `%APPDATA%`.
 
