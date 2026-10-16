@@ -137,12 +137,19 @@
             <h2>Fonts</h2>
             <label class="font-row">Body font
               <select id="body-font">
-                <option value="Vanadium Sans, system-ui, sans-serif">Vanadium Sans</option>
+                <option value="&quot;Vanadium Sans&quot;, system-ui, sans-serif">Vanadium Sans</option>
                 <option value="system-ui, sans-serif">System UI</option>
                 <option value="ui-monospace, monospace">Monospace</option>
               </select>
             </label>
-            <p class="muted">Vanadium Sans is used as the system font here; packaging the font files is still open.</p>
+            <label class="font-row">Mono font
+              <select id="mono-font">
+                <option value="ui-monospace, monospace">System mono</option>
+                <option value="&quot;Vanadium Mono&quot;, ui-monospace, monospace">Vanadium Mono</option>
+                <option value="&quot;Liberation Mono&quot;, ui-monospace, monospace">Liberation Mono</option>
+              </select>
+            </label>
+            <p class="muted">Vanadium Sans is the default body font. Packaging those font files is still open. Mono is used for logs and the icon fields.</p>
           </div>
           <div data-settings="icons" hidden>
             <h2>Icons</h2>

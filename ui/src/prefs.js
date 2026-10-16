@@ -6,6 +6,10 @@ export const DEFAULT_UI = {
   zoom: { shell: 1, navButtons: 1, navBody: 1, mailList: 1, mailDetail: 1 },
   icons: {},
   fontawesome_kit: "45801522ef",
+  fonts: {
+    body: '"Vanadium Sans", system-ui, sans-serif',
+    mono: "ui-monospace, monospace",
+  },
 };
 
 const ZOOM_KEYS = ["shell", "navButtons", "navBody", "mailList", "mailDetail"];
@@ -78,8 +82,24 @@ function paneSplit(src, fallback) {
   return out;
 }
 
-/* Fills defaults and clamps. Unknown keys are kept. fonts is kept when present
-   and is not invented here. */
+function fontStack(value, fallback) {
+  if (typeof value !== "string" || value.trim() === "") {
+    return fallback;
+  }
+  return value.trim();
+}
+
+function fontsOf(src) {
+  const raw = isObject(src) ? src : {};
+  const out = {
+    body: fontStack(raw.body, DEFAULT_UI.fonts.body),
+    mono: fontStack(raw.mono, DEFAULT_UI.fonts.mono),
+  };
+  copyUnknown(out, raw, ["body", "mono"]);
+  return out;
+}
+
+/* Fills defaults and clamps. Unknown keys are kept. */
 export function clampUi(raw) {
   const src = isObject(raw) ? raw : {};
   const zoomSrc = isObject(src.zoom) ? src.zoom : {};
@@ -96,10 +116,8 @@ export function clampUi(raw) {
     zoom,
     icons: isObject(src.icons) ? { ...src.icons } : {},
     fontawesome_kit: typeof src.fontawesome_kit === "string" ? src.fontawesome_kit : DEFAULT_UI.fontawesome_kit,
+    fonts: fontsOf(src.fonts),
   };
-  if (isObject(src.fonts)) {
-    out.fonts = { ...src.fonts };
-  }
   for (const key of Object.keys(src)) {
     if (!KNOWN.has(key)) {
       out[key] = src[key];

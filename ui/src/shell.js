@@ -20,6 +20,24 @@ function zoomLabel(scale) {
   return `${Math.round(scale * 100)}%`;
 }
 
+function applyFonts() {
+  document.documentElement.style.setProperty("--font", ui.fonts.body);
+  document.documentElement.style.setProperty("--font-mono", ui.fonts.mono);
+}
+
+function showFont(select, value) {
+  if (!select) {
+    return;
+  }
+  if (![...select.options].some((option) => option.value === value)) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    select.append(option);
+  }
+  select.value = value;
+}
+
 function applyZoom() {
   document.documentElement.style.fontSize = `${ui.zoom.shell * 100}%`;
   for (const [key, selector] of Object.entries(zoomPanes)) {
@@ -147,9 +165,7 @@ async function loadPrefs() {
   ui.zoom = stored.zoom;
   ui.icons = stored.icons;
   ui.fontawesome_kit = stored.fontawesome_kit;
-  if (stored.fonts) {
-    ui.fonts = stored.fonts;
-  }
+  ui.fonts = stored.fonts;
   const kitInput = document.querySelector("#fa-kit-html");
   if (kitInput) {
     kitInput.value = ui.fontawesome_kit;
@@ -163,6 +179,9 @@ async function loadPrefs() {
     label.querySelector(".zoom-value").textContent = zoomLabel(ui.zoom[key]);
   }
   applyZoom();
+  applyFonts();
+  showFont(document.querySelector("#body-font"), ui.fonts.body);
+  showFont(document.querySelector("#mono-font"), ui.fonts.mono);
   for (const key of Object.keys(ui.icons)) {
     applyIconOverride(key);
   }
@@ -365,10 +384,16 @@ function bindSettings() {
       persistLayout();
     });
   }
-  const bodyFont = document.querySelector("#body-font");
-  if (bodyFont) {
-    bodyFont.addEventListener("change", () => {
-      document.documentElement.style.setProperty("--font", bodyFont.value);
+  for (const [id, key] of [["#body-font", "body"], ["#mono-font", "mono"]]) {
+    const select = document.querySelector(id);
+    if (!select) {
+      continue;
+    }
+    showFont(select, ui.fonts[key]);
+    select.addEventListener("change", () => {
+      ui.fonts[key] = select.value;
+      applyFonts();
+      persistLayout();
     });
   }
   for (const button of document.querySelectorAll("[data-heading]")) {

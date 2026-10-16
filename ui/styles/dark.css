@@ -6,6 +6,7 @@
   --accent: #2a7;
   --border: #333;
   --font: system-ui, sans-serif;
+  --font-mono: ui-monospace, monospace;
   --icon-glow: #cc9999;
   --surface-nav: linear-gradient(160deg, #160808 0%, #000 70%);
   --surface-workspace: linear-gradient(160deg, #100606 0%, #000 78%);
