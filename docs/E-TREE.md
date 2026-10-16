@@ -182,7 +182,7 @@ Layout tokens. They are `rem`, so the shell zoom (5–500%, old plan §10) scale
 
 30px, 16px, 16px, 13px, and 4px at the default 16px root.
 
-Every row uses the same tokens, so density, scale, and typography change without touching the renderer. The names follow the theme layer's semantic custom properties; `theme.css` holds the rules and only references variables. Two scales apply to the nav body: `preferences.zoom.shell` on the root, and `preferences.zoom.navBody` multiplying the pane. A pane scale never resizes the nav itself, only what is inside it.
+Every row uses the same tokens, so density, scale, and typography change without touching the renderer. The names follow the theme layer's semantic custom properties; `theme.css` holds the rules and only references variables. Two scales apply to the nav body: `preferences.ui.zoom.shell` on the root, and `preferences.ui.zoom.navBody` multiplying the pane. A pane scale never resizes the nav itself, only what is inside it.
 
 The icon slot has its own sizing and color contract rather than letting icons dictate row dimensions. Duotone icons carry a primary and a secondary layer, so the CSS accounts for both layers and their opacity. The same slot hosts a folder icon, a sync indicator, a favorite marker, or a custom SVG without changing the layout. The kit and its families stay as old plan §10 and §11 describe.
 

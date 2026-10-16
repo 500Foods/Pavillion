@@ -91,6 +91,7 @@ const PavPlatform *pav_platform(void);
 | Surface | Functions |
 | --- | --- |
 | Today (F-1) | `pavillion_start`, `pavillion_stop`, `pavillion_status` (`PavillionStatus`), `pavillion_prefs_get/apply` (`PavShellPrefs`), `pavillion_icons_get/apply`, `pavillion_kit_get/apply`, `pav_ui_log`, `pavillion_api_version` |
+| After F-2 | `pavillion_start`, `pavillion_stop`, `pavillion_status` (`PavillionStatus`), `pavillion_prefs_get/apply` (`PavShellPrefs`, window and chrome only), `pavillion_ui_get/set`, `pavillion_icons_get/apply`, `pavillion_kit_get/apply`, `pav_ui_log`, `pavillion_api_version` (2) |
 | After G-3 | `pavillion_start`, `pavillion_stop`, `pavillion_call`, `pavillion_free`, `pav_on_event`, `pavillion_api_version`, and the two structs until G-8 (the per-command entry points become commands in G-2, and their callers are gone after G-3) |
 | After G-8 (target) | `pavillion_start`, `pavillion_stop`, `pavillion_call`, `pavillion_free`, `pav_on_event`, `pav_protocol`, `pav_cli_main`, `pavillion_api_version`. No struct except `PavBytes`. |
 
@@ -274,12 +275,12 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 
 **Work items:**
 
-- [ ] Inventory `src-tauri/src/lib.rs` (662 lines at the 2026-10-16 count). The inventory goes in Accomplished, listing each function with "stays (Tauri)" or "moves to C".
+- [ ] Inventory `src-tauri/src/lib.rs` (447 lines after F-2; 662 was the count when this phase was written). The inventory goes in Accomplished, listing each function with "stays (Tauri)" or "moves to C".
 - [ ] Commands `window.initial` and `window.report` in `core/src/window_state.c`. These replace `read_prefs`, `write_prefs`, `seed_restored`, `note_window`, `schedule_window_save`, `save_window_now`, and the clamp in `apply_saved_window`. The 500 ms debounce, the monitor clamp, the maximized flag, and the write are all core-side, with a timer on the core thread.
 - [ ] Rust keeps three things: reading the logical rectangle and monitors from Tauri, sending `window.report`, and applying the `window.initial` reply before `show()`.
 - [ ] `ensure_workdir` moves into `pavillion_start` (mode `0700`, through G-1's platform layer). `start_core` reduces to one call.
 - [ ] `pav_protocol` (L2 Lock contract) in `core/src/protocol.c`, freed with `pavillion_free`, with a table of handlers per scheme. Its first entry is a stub `pav-blob` that returns 404. N-4 and N-7 fill it in, and F-4 adds `pav-link`. Rust gets one generic scheme handler that registers each scheme against `pav_protocol`.
-- [ ] Delete `PavShellPrefs` and `PavillionStatus` from the FFI. Status becomes the `system.status` command. This removes functions, so `PAVILLION_API_VERSION` goes to 2.
+- [ ] Delete `PavShellPrefs` and `PavillionStatus` from the FFI. Status becomes the `system.status` command. This removes functions, so `PAVILLION_API_VERSION` goes to 3. F-2 already used 2 when `PavShellPrefs` shrank to the window.
 - [ ] `pav_cli_main` stub in C (prints `pavillion: no subcommands yet` for an unknown subcommand). `main.rs` calls it and keeps no flag logic of its own beyond what A-6 needs before the core.
 - [ ] Unity: `test_window_initial_default_1200x800`, `test_window_report_debounced_write`, `test_window_clamped_to_monitor`, `test_protocol_unknown_scheme_404`, `test_start_creates_workdir_0700`.
 

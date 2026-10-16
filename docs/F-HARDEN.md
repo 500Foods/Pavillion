@@ -13,7 +13,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | --- | --- | --- | --- |
 | F-1 | API version check (`pavillion_api_version`) | Medium | Complete |
 | F-5 | Trim `config.c` with a helper layer | Medium | Complete |
-| F-2 | UI preferences as an opaque JSON blob | Medium | Not started |
+| F-2 | UI preferences as an opaque JSON blob | Medium | Complete |
 | F-4 | Message pane isolation, proven before mail | Medium | Not started |
 | F-3 | Icon library sources: typed https URLs on an allowlist, presets | Medium | Not started |
 | F-7 | Shared icon HTML sanitizer, the icon registry, overrides in the UI blob | Medium | Not started |
@@ -178,7 +178,7 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 ## F-2: UI preferences as an opaque JSON blob
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Complete (2026-10-16). Variance: `PAVILLION_API_VERSION` is 2. Shrinking `PavShellPrefs` changes the C struct, so the FFI Lock requires the bump. Adding `pavillion_ui_get` and `pavillion_ui_set` alone would not have.
 
 **Goal:** A new UI knob (a slider, a split, a font, a tab setting) touches only `ui/` and does not change a C header, a Rust struct, or a `PAV_PREFS_*` mask.
 
@@ -186,16 +186,22 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 
 **Work items:**
 
-- [ ] Core: `int pavillion_ui_get(char **json_out, char *err, size_t len)` and `int pavillion_ui_set(const char *json, char *err, size_t len)`. Set validates an object, at most 64 KB serialized, no forbidden key, and writes the profile on the core thread. Get returns the stored object. (G-2 turns these into the `prefs.ui.get` and `prefs.ui.set` commands.)
-- [ ] Move zoom (`preferences.zoom` becomes `preferences.ui.zoom`), nav width, the three splits and their limits, icons, kit, and fonts under `preferences.ui`. `PavShellPrefs` shrinks to the window rectangle and `chrome`, which the shell applies before the page loads.
-- [ ] Migration on load: a profile with the old `preferences.zoom` or fields outside `ui` is rewritten once into the new shape; schema stays 1. Unity test `test_profile_migrates_old_zoom_into_ui` reads a fixture copied from today's `default.json`.
-- [ ] The page owns defaults and clamps: `ui/src/prefs.js` with one `DEFAULT_UI` object and `clampUi()`. Zoom range is `0.05`–`5` step `0.05` (B lock); the preview's `0.5`–`3` clamp is replaced.
-- [ ] Persist the Fonts setting (`ui.fonts.body`, `ui.fonts.mono`), which today resets on launch.
-- [ ] Debounce: the page writes at most every 300 ms and on `pagehide`.
+- [x] Core: `int pavillion_ui_get(char **json_out, char *err, size_t len)` and `int pavillion_ui_set(const char *json, char *err, size_t len)`. Set validates an object, at most 64 KB serialized, no forbidden key, and writes the profile on the core thread. Get returns the stored object. (G-2 turns these into the `prefs.ui.get` and `prefs.ui.set` commands.)
+- [x] Move zoom (`preferences.zoom` becomes `preferences.ui.zoom`), nav width, the three splits and their limits, icons, kit, and fonts under `preferences.ui`. `PavShellPrefs` shrinks to the window rectangle and `chrome`, which the shell applies before the page loads.
+- [x] Migration on load: a profile with the old `preferences.zoom` or fields outside `ui` is rewritten once into the new shape; schema stays 1. Unity test `test_profile_migrates_old_zoom_into_ui` reads a fixture copied from today's `default.json`.
+- [x] The page owns defaults and clamps: `ui/src/prefs.js` with one `DEFAULT_UI` object and `clampUi()`. Zoom range is `0.05`–`5` step `0.05` (B lock); the preview's `0.5`–`3` clamp is replaced.
+- [x] Persist the Fonts setting (`ui.fonts.body`, `ui.fonts.mono`), which today resets on launch.
+- [x] Debounce: the page writes at most every 300 ms and on `pagehide`.
 
 **Done means:** The Fonts setting is persisted with no C or Rust change in that commit, and an old profile loads with its zoom and splits intact.
 
 **Exit gate:** `make test` exits 0 including the migration test. In `make dev`: change the font, the nav width, and a pane zoom; quit; relaunch; all three are restored. `git diff` of the Fonts commit touches only `ui/`.
+
+**Accomplished:** `pavillion_ui_get` and `pavillion_ui_set` queue `CORE_CMD_UI` on the core thread. Set rejects a non-object, a forbidden key, and a payload over `PAV_UI_JSON_MAX` (65536) both as text and as compact JSON. Get of a missing `ui` returns `{}` and does not write the file. The core stores the object and does not clamp or invent keys inside it. On load, `zoom`, `nav`, `mail`, `contacts`, `files`, `icons`, `fontawesome_kit`, and `fonts` move from `preferences` into `preferences.ui` when absent there; if both exist, `ui` wins and the outside key is deleted. Schema stays 1. `PavShellPrefs` is the window rectangle and `chrome`. `PAV_PREFS_ZOOM` and `PAV_PREFS_UI` are gone. `PAV_PREFS_WINDOW` stays `2u`. `PAVILLION_API_VERSION` is 2. The page commands are `ui_get` and `ui_set`. `ui/src/prefs.js` clamps zoom to `0.05`–`5` in steps of `0.05`, nav width into its stored limits, and the three splits the same way. Writes are a leading 300 ms throttle, a flush on `pagehide`, and an immediate flush before an icon reload. `config.c` is 478 lines, `config_prefs.c` 412, `config_fs.c` 345: 1,235 together. `make test` is 35 tests, 0 failures, including `test_profile_migrates_old_zoom_into_ui` on `tests/fixtures/default-2026-10-16.json`. In `make dev` the body font was set to System UI, the mono font to Liberation Mono, the nav width from 354 to 400, and the mail-list zoom from 145% to 160%. After quit and relaunch the window had `nav` `400px`, body `system-ui, sans-serif`, and mail list `160%`. The Fonts commit `9be9a8b` touches only `ui/`. The trial values were then removed: `~/.local/share/pavillion/profiles/default.json` was restored from the snapshot taken before that launch. Its sha256 is `d551dd41c45a987e74c4af687c74f513eb68425bbd5ebedaeffe47103f339e04`. The next real launch migrates that file once.
+
+**Lessons learned:** A new command does not bump the API version. A smaller `PavShellPrefs` does, because a shell still at version 1 would read the window fields at the old offsets. The core must not invent pane defaults. The page writes them on the next change, and a load that filled them in would hide a missing key from the migration test. `json_object_set_new` steals the reference. The 300 ms rule is a leading throttle: the first dirty event starts the timer, later events in that window are included, and `pagehide` flushes. A trailing debounce can miss the quit. The window gate's save had already landed from the timer before quit, so this sitting did not prove that the `pagehide` invoke finishes before the webview dies. Served CSS is `ui/public/styles`. A font stack with an unquoted multi-word family is two families. The Vanadium option value is `"Vanadium Sans", system-ui, sans-serif`. `clampUi` did not invent `fonts` until the Fonts commit, so the earlier layout save could not persist a font and spoil that commit's diff.
+
+**Handoff:** G-1 is next. `PAVILLION_API_VERSION` is 2. G-8 removes functions, so that bump goes to 3, not 2. Do not bump for a helper or a new optional field. The core does not clamp `preferences.ui` and does not invent zoom or pane keys. The page does, in `ui/src/prefs.js`. `pavillion_icons_get`, `pavillion_icons_apply`, `pavillion_kit_get`, and `pavillion_kit_apply` stay for the Unity tests. The page does not call them. G-1 still moves `mkdir`, `open`, `fchmod`, `stat`, and `getenv` out of `config.c` and `config_fs.c`. Schema stays 1. The real profile was put back after the window gate and will be migrated on the next launch.
 
 ## F-3: Icon library sources
 
@@ -302,3 +308,4 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 - 2026-10-16 F-1 is now an API version check (`pavillion_api_version()` and `PAVILLION_API_VERSION`). The struct-size check was dropped because G-8 deletes both structs, and the bump rule is in the FFI Lock.
 - 2026-10-16 F-1: `build.rs` reads the macro. A mismatch prints `API version mismatch: core=<n> shell=<m>` and exits 1. No `pav_log`, no working directory. Scratch `return 2` proved it. `make test` is 28 tests. The release window still showed the rail icons.
 - 2026-10-16 F-5: helpers in `pav_cfg.h` and `cfg.c`. `config.c` split into `config.c` (485), `config_prefs.c` (584), and `config_fs.c` (345), 1,414 lines together. `make test` is 34 tests. `make dev` restored `1900x1309+797+496` and the saved zoom labels. API version stays 1.
+- 2026-10-16 F-2: `preferences.ui` is an opaque blob. `PavShellPrefs` is the window only, so `PAVILLION_API_VERSION` is 2. An old profile migrates once, schema stays 1. `make test` is 35 tests. Fonts persist in `9be9a8b`, which touches only `ui/`. The window restored System UI, nav 400, and mail list 160% after quit. The real profile was then restored.
