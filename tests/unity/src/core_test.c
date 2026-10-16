@@ -1375,7 +1375,7 @@ void test_api_version_matches_header(void) {
     int version = pavillion_api_version();
 
     TEST_ASSERT_EQUAL_INT(PAVILLION_API_VERSION, version);
-    TEST_ASSERT_TRUE(version >= 1);
+    TEST_ASSERT_TRUE(version < 0);
 }
 
 void test_profile_read_kit_skips_zoom_window(void) {
