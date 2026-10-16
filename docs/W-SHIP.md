@@ -1,6 +1,6 @@
 # W — SHIP
 
-**Status:** W-1 in progress (2026-10-16). W-2, W-3, and W-4 are not started.
+**Status:** W-1 complete (2026-10-16). W-2, W-3, and W-4 are not started. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Continuous integration, the test fixtures every network phase depends on, the testing rules, and packaging. W-1 and W-2 come early. W-3 and W-4 come right after daily-driver mail (milestone 3), before calendars and files, so the Betterbird replacement is installable on its own.
@@ -11,7 +11,7 @@ One phase is one session. Do not start the next one in the same conversation.
 
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
-| W-1 | CI on GitHub Actions: `make test` and `make build` on Fedora | Medium | In progress |
+| W-1 | CI on GitHub Actions: `make test` and `make build` on Fedora | Medium | Complete |
 | W-2 | JMAP fixtures: a recorded fixture server and a disposable Stalwart container with seeded accounts | Hard | Not started |
 | W-3 | Fedora rpm, the dnf repository, desktop file, autostart | Medium | Not started |
 | W-4 | Arch `PKGBUILD` (Omarchy) | Easy | Not started |
@@ -65,7 +65,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 ## W-1: CI on GitHub Actions
 
 **Kind:** Medium
-**Status:** In progress (2026-10-16). The three files are in the tree. Last finished work item: the artifact upload is named `pavillion-<sha>` and its path is `dist/pavillion`. The exit gate has not run. This session does not commit or push. After Andrew pushes: a green Fedora job, a Unity failure that turns that job red, and the revert of that failure. Record the green run here before marking the phase complete.
+**Status:** Complete (2026-10-16).
 
 **Goal:** Every push runs `make test` and `make build` on Fedora.
 
@@ -79,7 +79,19 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Done means:** A push shows a green Fedora job.
 
-**Exit gate:** A green run linked in Accomplished. A deliberately broken Unity test turns it red (then revert). Not run.
+**Exit gate:** A green run linked in Accomplished. A deliberately broken Unity test turns it red (then revert). Passed.
+
+**Accomplished:** `.github/workflows/ci.yml` runs job `fedora` in `fedora:latest` on every push and pull request. It installs `scripts/fedora-deps.txt`, caches the cargo registry, `src-tauri/target`, and `~/.npm`, runs `make test` and `make build`, and uploads `dist/pavillion` as `pavillion-<full sha>`. The README Build section installs from that file. `main.yml` is unchanged.
+
+Green: [run 38961249214](https://github.com/500Foods/Pavillion/actions/runs/38961249214) at `976e16954727ab0f40cb5168d0234b07421d1532`. Fedora 44. Unity 28 tests, 0 failures. Release build 4m 09s. Artifact `pavillion-976e16954727ab0f40cb5168d0234b07421d1532` (1,904,328 bytes).
+
+Red: [run 38962441480](https://github.com/500Foods/Pavillion/actions/runs/38962441480) at `9c486b5`. `test_api_version_matches_header` failed at `tests/unity/src/core_test.c:1378` (`Expected TRUE Was FALSE`). The Test step failed and the Build step did not run.
+
+Revert green: [run 38962706169](https://github.com/500Foods/Pavillion/actions/runs/38962706169) at `4c176869f4ada1cbc44fc6a1a2399c96ccb6020b`. Unity 28 tests, 0 failures. Release build 1m 56s with a cargo cache hit. Artifact `pavillion-4c176869f4ada1cbc44fc6a1a2399c96ccb6020b` (1,904,328 bytes).
+
+**Lessons learned:** `fedora:latest` was Fedora 44, and its `rustc` compiled edition 2024, so Rust and Node stayed Fedora packages. `pkgconf` does not install the `pkg-config` command; `pkgconf-pkg-config` does. `dnf install wget` and `dnf install npm` resolve to `wget2-wget` and `nodejs-npm`. The cargo cache cut the release build from 4m 09s to 1m 56s. `git` is installed in the job before checkout and is not in the package list. `main.yml` commits `README.md` back to `main` on every push, so a following push has to rebase onto that "Apply automatic changes" commit. `make test` is still the Unity binary. The Tests lock's `cargo test` and Vitest are not in the Makefile yet.
+
+**Handoff:** F-5 is next. The assertion in `test_api_version_matches_header` is `version >= 1` again. Do not add the macOS job here; G-1 does. Do not bump `PAVILLION_API_VERSION` for a new helper. A push to `main` also runs the line-count workflow, which will commit `README.md`.
 
 ## W-2: JMAP fixtures
 
@@ -152,3 +164,5 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - 2026-10-16 Opened from old plan §12 and §13 and the 2026-10-15 suggestions (CI with `make build`, a disposable Stalwart with seeded accounts). Decisions: a Python fixture server with a test CA, a pinned Stalwart version, `make it-*` targets, rpm dependency list, UPX fallback by `--version`.
 - 2026-10-16 Andrew: the fixtures use Docker. Stalwart pinned to v0.16.26, the latest GitHub release (published 2026-10-11 10:33 PT, checked 2026-10-16). W-Q3 resolved.
 - 2026-10-16 W-1 in progress. Added `.github/workflows/ci.yml` (job `fedora` in `fedora:latest`, cargo registry and `src-tauri/target` cached, npm cache is `~/.npm`), `scripts/fedora-deps.txt` (24 names; `dnf install --assumeno` resolved every name on Fedora 43), and the README Build section. Rust and Node are the Fedora packages. `pkgconf-pkg-config` is the package that installs the `pkg-config` command. `git` is installed in the workflow and is not in the package list. No commit and no push. `make test` is 28 Unity tests. The exit gate waits on Andrew's push.
+- 2026-10-16 W-1 green run: https://github.com/500Foods/Pavillion/actions/runs/38961249214 at `976e169`. Fedora 44. Unity 28/0. Release build 4m 09s. Artifact `pavillion-976e16954727ab0f40cb5168d0234b07421d1532`. The deliberate red test is still open.
+- 2026-10-16 W-1 complete. Red run https://github.com/500Foods/Pavillion/actions/runs/38962441480 at `9c486b5` (`test_api_version_matches_header` failed, Build did not run). Revert green https://github.com/500Foods/Pavillion/actions/runs/38962706169 at `4c17686`, cargo cache hit, release build 1m 56s. F-5 is next.
