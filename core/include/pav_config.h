@@ -103,6 +103,21 @@ int pav_profile_read_shell(const PavProfile *profile, PavShellPrefs *out, char *
 int pav_profile_write_shell(PavProfile *profile, const PavShellPrefs *in, unsigned mask,
                             char *err, size_t err_len);
 
+/* Reads preferences.ui.icons into out as a JSON object string (caller frees).
+   When icons is missing, writes an empty object and sets *added. Returns 0, or -1. */
+int pav_profile_read_icons(const PavProfile *profile, char **out, char *err, size_t err_len);
+
+/* Writes the contents of `json` (a JSON object mapping icon keys to FA class
+   strings) into preferences.ui.icons. Does not write the file. Returns 0, or -1. */
+int pav_profile_write_icons(PavProfile *profile, const char *json, char *err, size_t err_len);
+
+/* Writes preferences.ui.fontawesome_kit. Does not write the file. Returns 0, or -1. */
+int pav_profile_write_kit(PavProfile *profile, const char *kit, char *err, size_t err_len);
+
+/* Reads preferences.ui.fontawesome_kit into out (default "45801522ef" when missing).
+   Returns 0, or -1. */
+int pav_profile_read_kit(const PavProfile *profile, char *out, size_t out_len, char *err, size_t err_len);
+
 /* Rewrites the profile over path, mode 0600. Returns 0, or -1. */
 int pav_profile_store(const char *path, const PavProfile *profile, char *err, size_t err_len);
 

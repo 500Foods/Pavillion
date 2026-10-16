@@ -1,7 +1,92 @@
-import { status } from "./api.js";
+import { invoke } from "@tauri-apps/api/core";
+import { status, log } from "./api.js";
 import { startShell } from "./shell.js";
 
+const FA_KIT_ID = "45801522ef";
+const FA_KIT_URL = `https://kit.fontawesome.com/${FA_KIT_ID}.js`;
+
+function isFontAwesomeLoaded() {
+  return !!document.querySelector('script[src*="kit.fontawesome.com"]');
+}
+
+export function loadFontAwesomeKit(kitHtml) {
+  const isHtml = kitHtml.trim().startsWith('<');
+  if (isHtml) {
+    const temp = document.createElement('div');
+    temp.innerHTML = kitHtml;
+    const script = temp.querySelector('script');
+    if (script) {
+      const newScript = document.createElement('script');
+      if (script.src) {
+        newScript.src = script.src;
+      } else if (script.textContent) {
+        newScript.textContent = script.textContent;
+      }
+      for (const attr of script.attributes) {
+        newScript.setAttribute(attr.name, attr.value);
+      }
+      document.head.appendChild(newScript);
+    }
+    return;
+  }
+  if (isFontAwesomeLoaded()) {
+    return;
+  }
+  const script = document.createElement("script");
+  script.src = `https://kit.fontawesome.com/${kitHtml}.js`;
+  script.setAttribute("data-auto-replace-svg", "svg");
+  script.setAttribute("data-kit-id", kitHtml);
+  script.setAttribute("crossorigin", "anonymous");
+  document.head.appendChild(script);
+  return script;
+}
+
+export function reloadIcons() {
+  const kitInput = document.querySelector("#fa-kit-html");
+  if (kitInput) {
+    loadFontAwesomeKit(kitInput.value || FA_KIT_ID);
+  }
+  window.location.reload();
+}
+
+window.addEventListener("load", () => {
+  const kitScript = document.querySelector('script[src*="kit.fontawesome.com"]');
+  if (kitScript) {
+    if (kitScript.dataset.fontawesome) {
+      log("ui", 2, `FA kit: ${kitScript.dataset.fontawesome}`);
+    } else {
+      log("ui", 0, "FA kit: dataset absent, kit may not have executed");
+      const svgs = document.querySelectorAll(".nav-buttons svg");
+      log("ui", 2, `FA kit: ${svgs.length} SVG(s) found in nav (expected 8)`);
+      if (svgs.length === 0) {
+        log("ui", 0, "FA kit: no SVGs in nav — kit JS did not replace <i> elements");
+      }
+    }
+  } else {
+    log("ui", 0, "FA kit: script tag not found in DOM");
+  }
+});
+
+window.addEventListener("keydown", (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === "KeyI") {
+    event.preventDefault();
+    invoke("internal_toggle_devtools").catch(() => {});
+  }
+});
+
+async function initIcons() {
+  try {
+    const stored = await invoke("prefs");
+    const kit = stored.fontawesome_kit || FA_KIT_ID;
+    loadFontAwesomeKit(kit);
+  } catch (err) {
+    loadFontAwesomeKit(FA_KIT_ID);
+    log("ui", 0, `FA kit init failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 try {
+  await initIcons();
   await startShell(await status());
 } catch (err) {
   await startShell({

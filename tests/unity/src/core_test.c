@@ -531,7 +531,8 @@ static const char k_default_profile[] =
     "      \"nav\": { \"width\": 320, \"min\": 200, \"max\": 500 },\n"
     "      \"mail\": { \"split\": 0.5, \"min\": 0.25, \"max\": 0.75 },\n"
     "      \"contacts\": { \"split\": 0.5, \"min\": 0.25, \"max\": 0.75 },\n"
-    "      \"files\": { \"split\": 0.5, \"min\": 0.25, \"max\": 0.75 }\n"
+    "      \"files\": { \"split\": 0.5, \"min\": 0.25, \"max\": 0.75 },\n"
+    "      \"fontawesome_kit\": \"45801522ef\"\n"
     "    }\n"
     "  }\n"
     "}\n";
@@ -1159,23 +1160,25 @@ void test_prefs_round_trip_clamp_and_mask(void) {
     prefs.zoom_shell = 9.0;
     prefs.zoom_nav_body = 9.0;
     TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_apply(&prefs, PAV_PREFS_ZOOM | PAV_PREFS_UI, err, sizeof(err)));
+    memset(&prefs, 0, sizeof(prefs));
     TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_get(&prefs));
     TEST_ASSERT_EQUAL_INT(200, prefs.nav_width);
     TEST_ASSERT_EQUAL_DOUBLE(0.25, prefs.mail_split);
-    TEST_ASSERT_EQUAL_DOUBLE(3.0, prefs.zoom_shell);
-    TEST_ASSERT_EQUAL_DOUBLE(3.0, prefs.zoom_nav_body);
+    TEST_ASSERT_EQUAL_DOUBLE(5.0, prefs.zoom_shell);
+    TEST_ASSERT_EQUAL_DOUBLE(5.0, prefs.zoom_nav_body);
     TEST_ASSERT_EQUAL_INT(1500, prefs.window_width);
 
     prefs.nav_width = 900;
     prefs.mail_split = 0.9;
-    prefs.zoom_shell = 0.1;
-    prefs.zoom_mail_list = 0.1;
+    prefs.zoom_shell = 0.01;
+    prefs.zoom_mail_list = 0.01;
     TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_apply(&prefs, PAV_PREFS_ZOOM | PAV_PREFS_UI, err, sizeof(err)));
+    memset(&prefs, 0, sizeof(prefs));
     TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_get(&prefs));
     TEST_ASSERT_EQUAL_INT(500, prefs.nav_width);
     TEST_ASSERT_EQUAL_DOUBLE(0.75, prefs.mail_split);
-    TEST_ASSERT_EQUAL_DOUBLE(0.5, prefs.zoom_shell);
-    TEST_ASSERT_EQUAL_DOUBLE(0.5, prefs.zoom_mail_list);
+    TEST_ASSERT_EQUAL_DOUBLE(0.05, prefs.zoom_shell);
+    TEST_ASSERT_EQUAL_DOUBLE(0.05, prefs.zoom_mail_list);
     TEST_ASSERT_EQUAL_DOUBLE(1.5, prefs.zoom_nav_buttons);
 
     prefs.nav_width = 400;
@@ -1224,7 +1227,7 @@ void test_prefs_round_trip_clamp_and_mask(void) {
     TEST_ASSERT_EQUAL_INT(400, prefs.nav_width);
     TEST_ASSERT_EQUAL_INT(500, prefs.nav_max);
     TEST_ASSERT_EQUAL_DOUBLE(0.75, prefs.mail_split);
-    TEST_ASSERT_EQUAL_DOUBLE(0.5, prefs.zoom_shell);
+    TEST_ASSERT_EQUAL_DOUBLE(0.05, prefs.zoom_shell);
     TEST_ASSERT_EQUAL_INT(1600, prefs.window_width);
     TEST_ASSERT_EQUAL_INT(1000, prefs.window_height);
     TEST_ASSERT_EQUAL_INT(0, prefs.window_maximized);
@@ -1319,6 +1322,74 @@ void test_missing_zoom_keys_are_inserted(void) {
     pavillion_stop();
 }
 
+void test_kit_and_icons_read_after_start(void) {
+    char err[512];
+    char kit_buf[256];
+    char *icons_json = NULL;
+
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+
+    err[0] = '\0';
+    kit_buf[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pavillion_kit_get(kit_buf, sizeof(kit_buf), err, sizeof(err)));
+    TEST_ASSERT_EQUAL_STRING("45801522ef", kit_buf);
+
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pavillion_icons_get(&icons_json, err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(icons_json);
+    free(icons_json);
+    icons_json = NULL;
+
+    pavillion_stop();
+}
+
+void test_kit_and_icons_apply_round_trip(void) {
+    char err[512];
+    char kit_buf[256];
+    char *icons_json = NULL;
+
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pavillion_kit_apply("abc123", err, sizeof(err)));
+    kit_buf[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pavillion_kit_get(kit_buf, sizeof(kit_buf), err, sizeof(err)));
+    TEST_ASSERT_EQUAL_STRING("abc123", kit_buf);
+
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pavillion_icons_apply("{\"save\":\"fa-solid fa-save\"}", err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_icons_get(&icons_json, err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(icons_json);
+    TEST_ASSERT_NOT_NULL(strstr(icons_json, "fa-solid fa-save"));
+    free(icons_json);
+    icons_json = NULL;
+
+    pavillion_stop();
+}
+
+void test_profile_read_kit_skips_zoom_window(void) {
+    PavProfile *profile = NULL;
+    char err[256];
+    char kit_buf[64];
+    char *icons = NULL;
+
+    TEST_ASSERT_EQUAL_INT(0, pav_profile_parse(k_default_profile, &profile, err, sizeof(err)));
+
+    kit_buf[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pav_profile_read_kit(profile, kit_buf, sizeof(kit_buf), err, sizeof(err)));
+    TEST_ASSERT_EQUAL_STRING("45801522ef", kit_buf);
+
+    TEST_ASSERT_EQUAL_INT(0, pav_profile_read_icons(profile, &icons, err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(icons);
+    free(icons);
+
+    pav_profile_free(profile);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_start_reports_ready_and_stop_is_repeatable);
@@ -1345,5 +1416,8 @@ int main(void) {
     RUN_TEST(test_prefs_round_trip_clamp_and_mask);
     RUN_TEST(test_missing_ui_is_inserted);
     RUN_TEST(test_missing_zoom_keys_are_inserted);
+    RUN_TEST(test_kit_and_icons_read_after_start);
+    RUN_TEST(test_kit_and_icons_apply_round_trip);
+    RUN_TEST(test_profile_read_kit_skips_zoom_window);
     return UNITY_END();
 }

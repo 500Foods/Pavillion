@@ -67,7 +67,7 @@ Non-goals (do not build):
 - Plugin/add-on system (add-ons caused the CardBook mess; the app stays closed).
 - RSS, chat, newsgroups, PGP/S-MIME (S/MIME and PGP may be an open question later).
 - An in-app self-updater. Updates are a package the system already installs. Development builds stay local.
-- Windows/macOS support.
+- Windows/macOS/iPad support not in v1; platform strategy in §17.
 
 ## 2. Architecture
 
@@ -471,7 +471,7 @@ The first window, `api.js`, and the rule that screens do not call Tauri themselv
   Bottom: Activity `fa-sharp fa-thin fa-list-timeline`, Settings `fa-sharp fa-thin fa-gear`, Update `fa-sharp fa-thin fa-arrows-rotate`, Help `fa-sharp fa-thin fa-circle-question`.
   A top button swaps the nav body and focuses that section's home tab. Home tabs stay put. Settings, from the bottom, does the same: the nav lists settings sections and its tab focuses. Activity and Help open their tabs and leave the nav body as it is. Update starts a sync and spins while work is in progress. It is not a tab.
   Mail's nav is the mailbox tree, the engine in [docs/E-TREE.md](docs/E-TREE.md). Contacts' nav is a letter rolodex, a search field, then accounts and recents. Calendars' nav is a continuous mini-calendar scroller, opening on the week before the current month through the week after, then the calendars grouped by account with a color swatch beside each. Files' nav is the folder tree, on the same engine. An IMAP account still shows Files, and that tree is empty. The calendar groups and the contacts lists are flat: they use the tree's row renderer and view state without nesting.
-   Settings is a screen, not a popup. Its nav is a list of headings. Theme is one heading. The shell has no theme control and no light/dark icon. The first control is shell zoom (50–300%, steps of 25%). Each later panel stores its own zoom, and the Zoom section now carries one slider per pane: `shell` is the master scale on the root, and `navButtons`, `navBody`, `mailList`, and `mailDetail` each multiply on top of it. Window placement and maximized state are restored on launch. Chrome may be the system frame or hidden. Hidden chrome uses the empty part of the tab strip as the drag region, and the icon buttons stay clickable. Per-account status dots are not placed. Indicators of that kind wait.
+   Settings is a screen, not a popup. Its nav is a list of headings. Theme is one heading. The shell has no theme control and no light/dark icon.    The first control is shell zoom (5–500%, steps of 5%). Each later panel stores its own zoom, and the Zoom section now carries one slider per pane: `shell` is the master scale on the root, and `navButtons`, `navBody`, `mailList`, and `mailDetail` each multiply on top of it. Window placement and maximized state are restored on launch. Chrome may be the system frame or hidden. Hidden chrome uses the empty part of the tab strip as the drag region, and the icon buttons stay clickable. Per-account status dots are not placed. Indicators of that kind wait.
    Accounts is a Settings heading, not a fifth section. Its panel is a split: the account tree on the left, the selected leaf's form on the right. The tree is the [docs/E-TREE.md](docs/E-TREE.md) engine's third consumer, three levels deep — account, section (Account / Mail / Calendar / Contacts / Files), page (Name and photo, Credentials, Server settings, Folder settings, Spam settings, Colors). Accounts are numbered at add time, zero-padded (`001`), never renumbered or reused, and the number appears in the mail tree, the CLI's `--account`, and the audit log, so one number is the same account everywhere. There is one global account list: the section navs are filtered views of it, and an account appears in a section's nav when it has that capability (an IMAP account still shows Files, empty). Order and hidden accounts are the same view state the tree already owns. The Credentials page stores and replaces a secret in the keyring and never renders one, the same rule as the add-account form. The right pane carries a header with the number, name, and section, because a leaf like Spam settings loses its context otherwise.
 - Workspace: Mail's home tab is the message list beside the open message. The divider moves and starts in the middle. A message may open as its own tab, titled by subject. That tab closes. The home tab does not. Contacts' home tab is the same kind of split, with a larger rolodex beside the open contact. Calendars' home tab is the month. Files' home tab is the folder contents beside a large preview. Settings' home tab is the chosen section. Activity's home tab is the log.
   Message list row: account color bar, from, subject, preview, 24h time or date, flags, attachment icon.
@@ -626,6 +626,7 @@ Total to daily-driver mail (P0–P3): ~3 weeks. Full replacement (P0–P5): ~5�
 10. Need PGP or S/MIME at any point?
 11. Repo location and name (e.g. `/mnt/extra/Projects/Pavillion`, GitHub/origin remote)?
 12. Fedora rpm only to start, or also Omarchy build from day one?
+13. Fonts: Vanadium Sans is the primary font. Package the font files with the app, or rely on a system install? A Fonts setting exists in the shell; persistence and packaging are undecided.
 
 ## 16. AI and command-line access
 
@@ -726,3 +727,97 @@ soon as the command bridge exists, because the bridge already answers `status`. 
 wait for P0/P1 data; `watch`, `config`, contacts, and calendar follow their own features (§14).
 The A-6 flags stay in front of everything: `--help` and `--version` still print without a window,
 and a subcommand skips the window entirely.
+
+## 17. Multiplatform objectives
+
+Pavillion is being built on Fedora Linux, for Fedora Linux, and that is the supported platform for
+v1. Windows, macOS, and iPad are explicitly deferred, not deleted. The goal of this section is to
+make sure the code we write today never boxes those platforms out, so adding them later is
+additive work rather than a rewrite. The non-goal in §1 is amended accordingly: the app does not
+ship on Windows, macOS, or iPad in v1; the strategy for doing so lives here.
+
+### 17.1 Principle: one codebase, platform-appropriate edges
+
+The C core, the Tauri Rust shell, and the Vite frontend are all cross-platform by construction.
+What changes per platform is the edge between the app and the OS: the WebView, the secret store,
+notifications, file paths, autostart, deep links, and single-instance locking. The core must never
+call a Linux-only API directly; platform-specific work goes behind function tables, exactly the
+pattern the sync backend boundary already uses (§2.4).
+
+### 17.2 What stays the same everywhere
+
+- **Frontend:** vanilla JS, HTML, CSS variables, Vite. The same `ui/dist` bundle runs in any
+  WebView Tauri hosts. No Linux-only browser APIs; the mail iframe is sandboxed `srcdoc` with no
+  bridge and no scripts (§7), so it is host-agnostic.
+- **Rust shell:** command handlers, event emitters, window management, single-instance,
+  mailto deep-link. Tauri 2 already targets Windows, macOS, and Linux; iOS is supported by Tauri
+  mobile (WKWebView) but is a separate build target discussed below.
+- **C core:** pure C. Jansson (JSON), libcurl (HTTPS/HTTP2/EventSource), SQLite+FTS5 (local
+  store), OpenSSL (TLS, SHA-256), libuuid (ids), GMime (MIME), libical (calendars). All of these
+  build on Linux, Windows, and macOS. The core links system libraries where available and has no
+  Tauri dependency, so it can be unit-tested on any platform like the Unity tests do today.
+- **SQLite schema and wire format:** `user_version` schema, WAL mode, UTC timestamps, JMAP JSON
+  bodies — identical on every platform. A profile directory copied between machines is read by any
+  build of the app.
+- **Concurrency model:** one worker thread per login, a shared curl multi handle, global in-flight
+  cap (default 6). No async runtime, no Linux-only threading primitives beyond pthreads, which have
+  equivalents everywhere.
+
+### 17.3 What changes per platform (the edge)
+
+| Concern | Linux (today) | Windows | macOS | iPad (later) |
+| --- | --- | --- | --- | --- |
+| WebView | WebKitGTK (system) | WebView2 | WebKit / WKWebView | WKWebView (Tauri mobile) |
+| Secrets | libsecret / Secret Service | Windows Credential Manager | macOS Keychain | iOS Keychain |
+| Notifications | libayatana-appindicator (tray) | Windows toast | macOS Notification Center | iOS push notifications |
+| Config/data dir | `$XDG_DATA_HOME/pavillion` | `%APPDATA%\Pavillion` | `~/Library/Application Support/Pavillion` | app sandbox container |
+| Autostart | XDG autostart | startup folder / run key | launch agent | not applicable |
+| mailto deep-link | `tauri-plugin-deep-link` + xdg-mime | protocol handler registration | `CFBundleURLTypes` | universal link / custom scheme |
+| Single-instance | socket in `$XDG_RUNTIME_DIR` | named pipe / mutex | socket / mutex | not applicable |
+| Packaging | rpm + dnf repo | MSI / EXE | .app bundle, notarized | iOS App Store |
+
+The core's `secrets` module (already in the §2 architecture diagram) is the abstraction point: it
+exposes `get_secret` / `store_secret` / `delete_secret`, and each platform provides one backend.
+Paths go through a small dirs helper (config, cache, logs, blobs) rather than hard-coded XDG
+paths. Everything else in the core is platform-agnostic.
+
+### 17.4 What the core must not do
+
+- No X11, Wayland, or libayatana calls in the core — the core is headless; all UI concerns live
+  in the Tauri shell and the WebView. The core already respects this (§2.1).
+- No `dlopen` database-engine layer (Hydrogen's pattern was left behind deliberately); link the
+  system SQLite everywhere.
+- No libmicrohttpd / libwebsockets / Lua / Brotli — those belong to a server, not a desktop app
+  on any platform.
+- No assuming `/`-separated paths or `~` expansion without the dirs helper; Windows uses `\` and
+  `%APPDATA%`.
+
+### 17.5 Build and packaging
+
+- **Build:** the core is built with CMake on all platforms. `make dev` / `make build` / `make test`
+  at the repo root drive both the C core and the Tauri shell today; Windows and macOS builds need
+  their own toolchain invocation (MSVC or MinGW for Windows, Xcode/clang for macOS) but the same
+  C sources. Tauri's bundler handles the .app / MSI packaging once the WebView story is settled.
+- **Updates:** the dnf repo is the Fedora path. Windows and macOS do not get dnf; the "no in-app
+  updater" non-goal stands, so updates on those platforms are manual downloads until a separate
+  update story is justified. Do not design an updater now.
+- **WebView runtime:** WebKitGTK is a system package on Fedora; WebView2 is a system component on
+  modern Windows; WebKit is the system WebView on macOS/iOS. The app does not vendor a browser
+  engine anywhere — consistent with §12 (AppImage rejected for the same reason).
+
+### 17.6 iPad specifically
+
+iPad is the furthest out. Tauri mobile can host the same Vite bundle in WKWebView, and the C core
+compiles for ARM64 iOS, but the split-pane desktop UI does not translate to a tablet: the nav
+tree, message list, and reading pane need a touch-appropriate layout (sidebar drawer, stacked
+panes), and iOS background sync and push notifications are a different engineering domain than
+EventSource + libcurl. Treat iPad as a "when we're ready" consideration, not a v1 or v2 target.
+Revisit after P3 (mail works on Linux) if there is actual demand.
+
+### 17.7 Decision
+
+Ship v1 on Fedora Linux only (rpm + dnf repo). Keep Windows, macOS, and iPad as documented,
+deferred targets. The core and shell are already structured so that adding a platform is a matter
+of writing platform backends for secrets, notifications, and paths — not rewriting the app. Revisit
+§17 after P3 lands; any platform work is its own lettered document and its own phase table, opened
+when someone is ready to build it.

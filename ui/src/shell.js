@@ -1,4 +1,5 @@
-import { prefs, saveLayout } from "./api.js";
+import { prefs, saveLayout, saveIcons, saveKit, log } from "./api.js";
+import { reloadIcons } from "./main.js";
 
 const ui = {
   nav: { width: 320, min: 200, max: 500 },
@@ -7,6 +8,9 @@ const ui = {
   files: { split: 0.5, min: 0.25, max: 0.75 },
   zoom: { shell: 1, navButtons: 1, navBody: 1, mailList: 1, mailDetail: 1 },
 };
+
+const iconOverrides = {};
+let fontawesomeKit = "45801522ef";
 
 /* shell is the master scale on the root; each pane multiplies on top of it. */
 const zoomPanes = {
@@ -18,7 +22,7 @@ const zoomPanes = {
 
 function zoomClamp(value) {
   const scale = Number(value);
-  return Number.isFinite(scale) ? clamp(scale, 0.5, 3) : 1;
+  return Number.isFinite(scale) ? clamp(scale, 0.05, 5) : 1;
 }
 
 function zoomLabel(scale) {
@@ -29,10 +33,64 @@ function applyZoom() {
   document.documentElement.style.fontSize = `${ui.zoom.shell * 100}%`;
   for (const [key, selector] of Object.entries(zoomPanes)) {
     for (const element of document.querySelectorAll(selector)) {
-      element.style.zoom = String(ui.zoom.shell * ui.zoom[key]);
+      const scale = ui.zoom.shell * ui.zoom[key];
+      element.style.zoom = String(scale);
+      for (const svg of element.querySelectorAll("svg")) {
+        svg.style.width = `${1.15 * scale}em`;
+        svg.style.height = `${1.15 * scale}em`;
+      }
     }
   }
 }
+
+function applyIconOverride(key) {
+  const navIcon = document.querySelector(`.nav [data-section="${key}"] .icon`);
+  if (!navIcon) {
+    return;
+  }
+  const override = iconOverrides[key];
+  if (override) {
+    if (override.trim().startsWith('<')) {
+      navIcon.innerHTML = override;
+    } else {
+      navIcon.className = `icon ${override}`;
+    }
+  } else {
+    navIcon.className = navIcon.dataset.iconDefinition || navIcon.className;
+  }
+}
+
+function refreshIconPreviews() {
+  for (const input of document.querySelectorAll("#icon-list .icon-input")) {
+    const key = input.dataset.iconKey;
+    const preview = document.querySelector(`#icon-list .icon[data-icon-key="${key}"]`);
+    if (preview) {
+      preview.innerHTML = "";
+      const value = input.value || input.defaultValue;
+      if (value.trim().startsWith('<')) {
+        preview.innerHTML = value;
+      } else {
+        preview.className = `icon ${value}`;
+      }
+    }
+  }
+}
+
+/* Surface JS errors in the core log so a missing DevTools doesn't leave us
+   blind. Errors are logged as "ui" at PAV_ERROR. */
+window.onerror = function (message, source, lineno, colno, error) {
+  const text = error && error.stack
+    ? String(error.stack)
+    : `${message} (${source}:${lineno}:${colno})`;
+  log("ui", 0, `onerror: ${text}`);
+  return false;
+};
+window.onunhandledrejection = function (event) {
+  const reason = event && event.reason
+    ? String(event.reason.stack || event.reason)
+    : "unhandled promise rejection";
+  log("ui", 0, `onunhandledrejection: ${reason}`);
+};
 
 let canSave = false;
 
@@ -73,15 +131,31 @@ async function loadPrefs() {
   for (const key of Object.keys(ui.zoom)) {
     ui.zoom[key] = zoomClamp(stored.zoom[key]);
   }
+  Object.assign(iconOverrides, stored.icon_overrides || {});
+  fontawesomeKit = stored.fontawesome_kit || fontawesomeKit;
+  const kitInput = document.querySelector("#fa-kit-html");
+  if (kitInput) {
+    kitInput.value = fontawesomeKit;
+  }
   for (const label of document.querySelectorAll("[data-zoom]")) {
     const key = label.dataset.zoom;
     if (!(key in ui.zoom)) {
       continue;
     }
     label.querySelector("input").value = String(ui.zoom[key]);
-    label.querySelector("span").textContent = zoomLabel(ui.zoom[key]);
+    label.querySelector(".zoom-value").textContent = zoomLabel(ui.zoom[key]);
   }
   applyZoom();
+  for (const key of Object.keys(iconOverrides)) {
+    applyIconOverride(key);
+  }
+  for (const input of document.querySelectorAll("#icon-list .icon-input")) {
+    const key = input.dataset.iconKey;
+    if (iconOverrides[key]) {
+      input.value = iconOverrides[key];
+    }
+  }
+  refreshIconPreviews();
   canSave = true;
 }
 
@@ -262,7 +336,7 @@ function bindSettings() {
       continue;
     }
     const input = label.querySelector("input");
-    const value = label.querySelector("span");
+    const value = label.querySelector(".zoom-value");
     const show = () => {
       ui.zoom[key] = zoomClamp(input.value);
       value.textContent = zoomLabel(ui.zoom[key]);
@@ -272,6 +346,12 @@ function bindSettings() {
     input.addEventListener("change", () => {
       show();
       persistLayout();
+    });
+  }
+  const bodyFont = document.querySelector("#body-font");
+  if (bodyFont) {
+    bodyFont.addEventListener("change", () => {
+      document.documentElement.style.setProperty("--font", bodyFont.value);
     });
   }
   for (const button of document.querySelectorAll("[data-heading]")) {
@@ -284,6 +364,129 @@ function bindSettings() {
         pane.hidden = pane.dataset.settings !== button.dataset.heading;
       }
     });
+  }
+  const iconForm = document.querySelector("#icon-form");
+  if (iconForm) {
+    const previewBtn = iconForm.querySelector("#icon-preview");
+    const reloadBtn = iconForm.querySelector("#icon-reload");
+
+    function setDirty(dirty) {
+      if (previewBtn) {
+        previewBtn.disabled = !dirty;
+      }
+      if (reloadBtn) {
+        reloadBtn.disabled = !dirty;
+      }
+    }
+
+    function updatePreviews() {
+      for (const input of iconForm.querySelectorAll(".icon-input")) {
+        const key = input.dataset.iconKey;
+        const preview = document.querySelector(`#icon-list .icon[data-icon-key="${key}"]`);
+        if (preview) {
+          preview.innerHTML = "";
+          const value = input.value || input.defaultValue;
+          if (value.trim().startsWith('<')) {
+            preview.innerHTML = value;
+          } else {
+            preview.className = `icon ${value}`;
+          }
+        }
+      }
+    }
+
+    for (const input of iconForm.querySelectorAll(".icon-input")) {
+      input.addEventListener("input", () => {
+        const key = input.dataset.iconKey;
+        iconOverrides[key] = input.value;
+        const preview = document.querySelector(`#icon-list .icon[data-icon-key="${key}"]`);
+        if (preview) {
+          preview.innerHTML = "";
+          const value = input.value || input.defaultValue;
+          if (value.trim().startsWith('<')) {
+            preview.innerHTML = value;
+          } else {
+            preview.className = `icon ${value}`;
+          }
+        }
+        for (const other of iconForm.querySelectorAll(".icon-input")) {
+          if (other.value !== other.defaultValue) {
+            setDirty(true);
+            return;
+          }
+        }
+        const kitInput = iconForm.querySelector("#fa-kit-html");
+        if (kitInput && kitInput.value !== kitInput.defaultValue) {
+          setDirty(true);
+          return;
+        }
+        setDirty(false);
+      });
+    }
+
+    const kitInput = iconForm.querySelector("#fa-kit-html");
+    if (kitInput) {
+      kitInput.addEventListener("input", () => {
+        fontawesomeKit = kitInput.value;
+        let dirty = false;
+        for (const input of iconForm.querySelectorAll(".icon-input")) {
+          if (input.value !== input.defaultValue) {
+            dirty = true;
+            break;
+          }
+        }
+        if (!dirty && kitInput.value === kitInput.defaultValue) {
+          setDirty(false);
+        } else {
+          setDirty(true);
+        }
+      });
+    }
+
+    if (previewBtn) {
+      previewBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        const overrides = {};
+        for (const input of iconForm.querySelectorAll(".icon-input")) {
+          overrides[input.dataset.iconKey] = input.value;
+        }
+        const kitVal = kitInput ? kitInput.value.trim() : "";
+        const savePromises = [saveIcons(overrides)];
+        if (kitVal) {
+          savePromises.push(saveKit(kitVal));
+        }
+        Promise.all(savePromises).then(() => {
+          fontawesomeKit = kitVal || fontawesomeKit;
+          for (const key of Object.keys(iconOverrides)) {
+            applyIconOverride(key);
+          }
+          setDirty(false);
+        }).catch((err) => {
+          showBanner(messageOf(err));
+        });
+      });
+    }
+
+    iconForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const overrides = {};
+      for (const input of iconForm.querySelectorAll(".icon-input")) {
+        overrides[input.dataset.iconKey] = input.value;
+      }
+      const kitVal = kitInput ? kitInput.value.trim() : "";
+      const savePromises = [saveIcons(overrides)];
+      if (kitVal) {
+        savePromises.push(saveKit(kitVal));
+      }
+      Promise.all(savePromises).then(() => {
+        fontawesomeKit = kitVal || fontawesomeKit;
+        reloadIcons();
+      }).catch((err) => {
+        showBanner(messageOf(err));
+      });
+    });
+
+    setDirty(false);
   }
 }
 

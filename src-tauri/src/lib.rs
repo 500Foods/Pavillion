@@ -7,6 +7,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use tauri::{LogicalPosition, LogicalSize, Manager, Position, Size, WebviewWindow};
 
@@ -62,6 +64,11 @@ unsafe extern "C" {
         err: *mut c_char,
         err_len: usize,
     ) -> i32;
+    fn pav_ui_log(subsystem: *const c_char, level: i32, message: *const c_char) -> i32;
+    fn pavillion_icons_get(out: *mut *mut c_char, err: *mut c_char, err_len: usize) -> i32;
+    fn pavillion_icons_apply(json: *const c_char, err: *mut c_char, err_len: usize) -> i32;
+    fn pavillion_kit_get(out: *mut c_char, out_len: usize, err: *mut c_char, err_len: usize) -> i32;
+    fn pavillion_kit_apply(kit: *const c_char, err: *mut c_char, err_len: usize) -> i32;
 }
 
 #[derive(Clone, Copy)]
@@ -388,11 +395,55 @@ struct PrefsReply {
     zoom: ZoomReply,
     window: WindowReply,
     ui: UiReply,
+    icon_overrides: HashMap<String, String>,
+    fontawesome_kit: String,
 }
 
 #[tauri::command]
 fn prefs() -> Result<PrefsReply, String> {
     let prefs = read_prefs()?;
+    let mut icon_overrides = HashMap::new();
+    let mut err = [0u8; 512];
+    let rc = unsafe {
+        let mut json_ptr: *mut c_char = std::ptr::null_mut();
+        let rc = pavillion_icons_get(
+            &mut json_ptr,
+            err.as_mut_ptr() as *mut c_char,
+            err.len(),
+        );
+        if rc == 0 && !json_ptr.is_null() {
+            if let Ok(cstr) = std::ffi::CStr::from_ptr(json_ptr).to_str() {
+                if let Ok(map) = serde_json::from_str::<HashMap<String, String>>(cstr) {
+                    icon_overrides = map;
+                }
+            }
+            let _ = std::ffi::CString::from_raw(json_ptr);
+        }
+        rc
+    };
+    if rc != 0 {
+        let msg = unsafe { std::ffi::CStr::from_ptr(err.as_ptr() as *const c_char) }.to_string_lossy();
+        eprintln!("cannot read icon overrides: {msg}");
+    }
+    let mut kit_buf = [0u8; 256];
+    let kit = unsafe {
+        let mut err_kit = [0u8; 512];
+        let rc = pavillion_kit_get(
+            kit_buf.as_mut_ptr() as *mut c_char,
+            kit_buf.len(),
+            err_kit.as_mut_ptr() as *mut c_char,
+            err_kit.len(),
+        );
+        if rc != 0 {
+            let msg = std::ffi::CStr::from_ptr(err_kit.as_ptr() as *const c_char).to_string_lossy();
+            eprintln!("cannot read fontawesome kit: {msg}");
+            String::new()
+        } else {
+            std::ffi::CStr::from_ptr(kit_buf.as_ptr() as *const c_char)
+                .to_string_lossy()
+                .into_owned()
+        }
+    };
     Ok(PrefsReply {
         zoom: ZoomReply {
             shell: prefs.zoom_shell,
@@ -431,6 +482,8 @@ fn prefs() -> Result<PrefsReply, String> {
                 max: prefs.files_max,
             },
         },
+        icon_overrides,
+        fontawesome_kit: kit,
     })
 }
 
@@ -469,6 +522,77 @@ fn save_layout(layout: LayoutSave) -> Result<(), String> {
     write_prefs(&prefs, PAV_PREFS_ZOOM | PAV_PREFS_UI)
 }
 
+#[derive(Deserialize)]
+struct IconsSave {
+    #[serde(flatten)]
+    overrides: HashMap<String, String>,
+}
+
+#[tauri::command]
+fn save_icons(icons: IconsSave) -> Result<(), String> {
+    let json = serde_json::to_string(&icons.overrides).map_err(|e| e.to_string())?;
+    let c_json = std::ffi::CString::new(json).map_err(|e| e.to_string())?;
+    let mut err = [0u8; 512];
+    let rc = unsafe {
+        pavillion_icons_apply(
+            c_json.as_ptr(),
+            err.as_mut_ptr() as *mut c_char,
+            err.len(),
+        )
+    };
+    if rc != 0 {
+        let msg = unsafe { std::ffi::CStr::from_ptr(err.as_ptr() as *const c_char) }.to_string_lossy().into_owned();
+        return Err(if msg.is_empty() { format!("icons_apply returned {rc}") } else { msg });
+    }
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct KitSave {
+    kit: String,
+}
+
+#[tauri::command]
+fn save_kit(kit: KitSave) -> Result<(), String> {
+    let c_kit = CString::new(kit.kit).map_err(|_| "kit contains NUL".to_string())?;
+    let mut err = [0u8; 512];
+    let rc = unsafe {
+        pavillion_kit_apply(
+            c_kit.as_ptr(),
+            err.as_mut_ptr() as *mut c_char,
+            err.len(),
+        )
+    };
+    if rc != 0 {
+        let msg = unsafe { std::ffi::CStr::from_ptr(err.as_ptr() as *const c_char) }.to_string_lossy().into_owned();
+        return Err(if msg.is_empty() { format!("kit_apply returned {rc}") } else { msg });
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn ui_log(subsystem: String, level: i32, message: String) -> Result<(), String> {
+    let c_subsystem = match CString::new(subsystem.clone()) {
+        Ok(s) => s,
+        Err(_) => return Err("subsystem contains NUL".into()),
+    };
+    let c_message = match CString::new(message.clone()) {
+        Ok(s) => s,
+        Err(_) => return Err("message contains NUL".into()),
+    };
+    let rc = unsafe {
+        pav_ui_log(
+            c_subsystem.as_ptr(),
+            level,
+            c_message.as_ptr(),
+        )
+    };
+    if rc != 0 {
+        return Err(format!("pav_ui_log returned {rc}"));
+    }
+    Ok(())
+}
+
 fn ensure_workdir(workdir: &str) {
     let path = Path::new(workdir);
     if path.exists() {
@@ -505,21 +629,21 @@ fn start_core(workdir: &str) {
 pub fn run(workdir: &str) {
     start_core(workdir);
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![status, prefs, save_layout])
+        .invoke_handler(tauri::generate_handler![status, prefs, save_layout, save_icons, save_kit, ui_log])
         .setup(|app| {
             let Some(window) = app.get_webview_window("main") else {
                 eprintln!("main window is missing");
                 return Ok(());
             };
-            let watch = window.clone();
-            window.on_window_event(move |event| {
-                if matches!(
-                    event,
-                    tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Moved(_)
-                ) {
-                    on_window_change(&watch);
-                }
-            });
+    let watch = window.clone();
+    window.on_window_event(move |event| {
+        if matches!(
+            event,
+            tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Moved(_)
+        ) {
+            on_window_change(&watch);
+        }
+    });
             apply_saved_window(&window);
             Ok(())
         })

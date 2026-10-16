@@ -6,23 +6,22 @@
     <title>Pavillion</title>
     <link rel="stylesheet" href="/styles/dark.css" />
     <link rel="stylesheet" href="/styles/theme.css" />
-    <script src="https://kit.fontawesome.com/45801522ef.js" crossorigin="anonymous"></script>
   </head>
   <body>
     <div class="shell">
       <nav class="nav" id="nav" aria-label="Sections">
         <div class="nav-buttons" role="toolbar" aria-label="Sections">
           <button type="button" data-section="mail" aria-pressed="true" aria-label="Mail">
-            <img class="icon" src="/mark.png" alt="" />
+            <i class="icon fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270" data-icon-definition="fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270" aria-hidden="true"></i>
           </button>
           <button type="button" data-section="contacts" aria-pressed="false" aria-label="Contacts">
-            <i class="icon fa-sharp fa-thin fa-address-book" aria-hidden="true"></i>
+            <i class="icon fa-sharp-duotone fa-solid fa-address-book" data-icon-definition="fa-sharp-duotone fa-solid fa-address-book" aria-hidden="true"></i>
           </button>
           <button type="button" data-section="calendars" aria-pressed="false" aria-label="Calendars">
-            <i class="icon fa-sharp fa-thin fa-calendar-days" aria-hidden="true"></i>
+            <i class="icon fa-sharp-duotone fa-solid fa-calendar-days" data-icon-definition="fa-sharp-duotone fa-solid fa-calendar-days" aria-hidden="true"></i>
           </button>
           <button type="button" data-section="files" aria-pressed="false" aria-label="Files">
-            <i class="icon fa-sharp fa-thin fa-folder" aria-hidden="true"></i>
+            <i class="icon fa-sharp-duotone fa-solid fa-folder" data-icon-definition="fa-sharp-duotone fa-solid fa-folder" aria-hidden="true"></i>
           </button>
         </div>
         <div class="nav-body">
@@ -55,21 +54,23 @@
             <div class="heading-list" role="list">
               <button type="button" data-heading="zoom" aria-current="true">Zoom</button>
               <button type="button" data-heading="theme">Theme</button>
+              <button type="button" data-heading="fonts">Fonts</button>
+              <button type="button" data-heading="icons">Icons</button>
             </div>
           </div>
         </div>
         <div class="nav-buttons" role="toolbar" aria-label="Tools">
           <button type="button" data-section="activity" aria-pressed="false" aria-label="Activity">
-            <i class="icon fa-sharp fa-thin fa-list-timeline" aria-hidden="true"></i>
+            <i class="icon fa-sharp-duotone fa-solid fa-list-timeline" data-icon-definition="fa-sharp-duotone fa-solid fa-list-timeline" aria-hidden="true"></i>
           </button>
           <button type="button" data-section="settings" aria-pressed="false" aria-label="Settings">
-            <i class="icon fa-sharp fa-thin fa-gear" aria-hidden="true"></i>
+            <i class="icon fa-sharp-duotone fa-solid fa-gear" data-icon-definition="fa-sharp-duotone fa-solid fa-gear" aria-hidden="true"></i>
           </button>
           <button type="button" id="update" aria-label="Update">
-            <i class="icon fa-sharp fa-thin fa-arrows-rotate" aria-hidden="true"></i>
+            <i class="icon fa-sharp-duotone fa-solid fa-arrows-rotate" data-icon-definition="fa-sharp-duotone fa-solid fa-arrows-rotate" aria-hidden="true"></i>
           </button>
           <button type="button" data-section="help" aria-pressed="false" aria-label="Help">
-            <i class="icon fa-sharp fa-thin fa-circle-question" aria-hidden="true"></i>
+            <i class="icon fa-sharp-duotone fa-solid fa-circle-question" data-icon-definition="fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
           </button>
         </div>
         <button type="button" class="nav-resize" id="nav-resize" aria-label="Resize navigation"></button>
@@ -104,25 +105,25 @@
           <div data-settings="zoom">
             <h2>Zoom</h2>
             <div class="zoom-list">
-              <label class="zoom" data-zoom="shell">Shell
-                <input id="zoom" type="range" min="0.5" max="3" step="0.25" value="1" />
-                <span id="zoom-value">100%</span>
+              <label class="zoom" data-zoom="shell"><span class="zoom-label">Shell</span>
+                <input id="zoom" type="range" min="0.05" max="5" step="0.05" value="1" />
+                <span class="zoom-value" id="zoom-value">100%</span>
               </label>
-              <label class="zoom" data-zoom="navButtons">Nav buttons
-                <input type="range" min="0.5" max="3" step="0.25" value="1" />
-                <span>100%</span>
+              <label class="zoom" data-zoom="navButtons"><span class="zoom-label">Nav buttons</span>
+                <input type="range" min="0.05" max="5" step="0.05" value="1" />
+                <span class="zoom-value">100%</span>
               </label>
-              <label class="zoom" data-zoom="navBody">Nav body
-                <input type="range" min="0.5" max="3" step="0.25" value="1" />
-                <span>100%</span>
+              <label class="zoom" data-zoom="navBody"><span class="zoom-label">Nav body</span>
+                <input type="range" min="0.05" max="5" step="0.05" value="1" />
+                <span class="zoom-value">100%</span>
               </label>
-              <label class="zoom" data-zoom="mailList">Mail list
-                <input type="range" min="0.5" max="3" step="0.25" value="1" />
-                <span>100%</span>
+              <label class="zoom" data-zoom="mailList"><span class="zoom-label">Mail list</span>
+                <input type="range" min="0.05" max="5" step="0.05" value="1" />
+                <span class="zoom-value">100%</span>
               </label>
-              <label class="zoom" data-zoom="mailDetail">Mail detail
-                <input type="range" min="0.5" max="3" step="0.25" value="1" />
-                <span>100%</span>
+              <label class="zoom" data-zoom="mailDetail"><span class="zoom-label">Mail detail</span>
+                <input type="range" min="0.05" max="5" step="0.05" value="1" />
+                <span class="zoom-value">100%</span>
               </label>
             </div>
             <p class="muted">Shell multiplies every pane below. Each pane is its own key on the profile.</p>
@@ -131,6 +132,81 @@
           <div data-settings="theme" hidden>
             <h2>Theme</h2>
             <p>System. Dark is the theme in use.</p>
+          </div>
+          <div data-settings="fonts" hidden>
+            <h2>Fonts</h2>
+            <label class="font-row">Body font
+              <select id="body-font">
+                <option value="Vanadium Sans, system-ui, sans-serif">Vanadium Sans</option>
+                <option value="system-ui, sans-serif">System UI</option>
+                <option value="ui-monospace, monospace">Monospace</option>
+              </select>
+            </label>
+            <p class="muted">Vanadium Sans is used as the system font here; packaging the font files is still open.</p>
+          </div>
+          <div data-settings="icons" hidden>
+            <h2>Icons</h2>
+             <p class="muted">Each nav icon can be a Font Awesome class string (e.g. <code>fa-sharp-duotone fa-solid fa-paper-plane</code>) or raw HTML (e.g. an inline SVG). Edit to change the icon. The preview updates live.</p>
+             <label class="font-row kit-row">Font Awesome kit
+               <textarea type="text" id="fa-kit-html" class="kit-input" rows="3" spellcheck="false">45801522ef</textarea>
+             </label>
+             <p class="muted">The kit is a Font Awesome kit id (e.g. <code>45801522ef</code>) loaded from <code>kit.fontawesome.com</code>, or raw HTML (e.g. a <code>&lt;script&gt;</code> tag). Changing it requires a page reload to take effect.</p>
+             <form class="icon-form" id="icon-form">
+               <table class="icon-table">
+                 <thead>
+                   <tr>
+                     <th>Nav button</th>
+                     <th>Preview</th>
+                     <th>Icon HTML</th>
+                   </tr>
+                 </thead>
+                 <tbody id="icon-list">
+                   <tr data-icon-key="mail">
+                     <td>Mail</td>
+                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270" data-icon-key="mail"></i></td>
+                     <td><textarea type="text" data-icon-key="mail" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270</textarea></td>
+                   </tr>
+                   <tr data-icon-key="contacts">
+                     <td>Contacts</td>
+                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-address-book" data-icon-key="contacts"></i></td>
+                     <td><textarea type="text" data-icon-key="contacts" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-address-book</textarea></td>
+                   </tr>
+                   <tr data-icon-key="calendars">
+                     <td>Calendars</td>
+                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-calendar-days" data-icon-key="calendars"></i></td>
+                     <td><textarea type="text" data-icon-key="calendars" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-calendar-days</textarea></td>
+                   </tr>
+                   <tr data-icon-key="files">
+                     <td>Files</td>
+                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-folder" data-icon-key="files"></i></td>
+                     <td><textarea type="text" data-icon-key="files" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-folder</textarea></td>
+                   </tr>
+                   <tr data-icon-key="activity">
+                     <td>Activity</td>
+                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-list-timeline" data-icon-key="activity"></i></td>
+                     <td><textarea type="text" data-icon-key="activity" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-list-timeline</textarea></td>
+                   </tr>
+                   <tr data-icon-key="settings">
+                     <td>Settings</td>
+                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-gear" data-icon-key="settings"></i></td>
+                     <td><textarea type="text" data-icon-key="settings" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-gear</textarea></td>
+                   </tr>
+                   <tr data-icon-key="update">
+                     <td>Update</td>
+                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-arrows-rotate" data-icon-key="update"></i></td>
+                     <td><textarea type="text" data-icon-key="update" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-arrows-rotate</textarea></td>
+                   </tr>
+                   <tr data-icon-key="help">
+                     <td>Help</td>
+                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-circle-question" data-icon-key="help"></i></td>
+                     <td><textarea type="text" data-icon-key="help" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-circle-question</textarea></td>
+                   </tr>
+                 </tbody>
+               </table>
+               <button type="button" id="icon-preview" disabled>Preview</button>
+               <button type="submit" id="icon-reload" disabled>Reload &amp; Save</button>
+             </form>
+             <p class="muted">Icons are rendered from your registered Font Awesome kit. Use class prefixes like <code>fa-sharp-duotone fa-solid</code> for Sharp Duotone Solid, or <code>fa-solid</code> for classic Solid. Or paste raw HTML like an inline SVG.</p>
           </div>
         </div>
         <div class="panel log" id="panel-activity" role="tabpanel" hidden></div>

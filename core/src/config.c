@@ -369,7 +369,8 @@ static const char k_default_profile[] =
     "      \"nav\": { \"width\": 320, \"min\": 200, \"max\": 500 },\n"
     "      \"mail\": { \"split\": 0.5, \"min\": 0.25, \"max\": 0.75 },\n"
     "      \"contacts\": { \"split\": 0.5, \"min\": 0.25, \"max\": 0.75 },\n"
-    "      \"files\": { \"split\": 0.5, \"min\": 0.25, \"max\": 0.75 }\n"
+    "      \"files\": { \"split\": 0.5, \"min\": 0.25, \"max\": 0.75 },\n"
+    "      \"fontawesome_kit\": \"45801522ef\"\n"
     "    }\n"
     "  }\n"
     "}\n";
@@ -541,7 +542,7 @@ static int read_zoom_key(json_t *zoom, const char *key, double *out, char *err, 
         set_err(err, err_len, "missing %s", key);
         return -1;
     }
-    *out = clamp_double(parsed, 0.5, 3.0);
+    *out = clamp_double(parsed, 0.05, 5.0);
     return 0;
 }
 
@@ -550,7 +551,7 @@ static int write_zoom_key(json_t *zoom, const char *key, double value, char *err
         set_err(err, err_len, "missing %s", key);
         return -1;
     }
-    return json_set_new(zoom, key, json_real(clamp_double(value, 0.5, 3.0)), err, err_len);
+    return json_set_new(zoom, key, json_real(clamp_double(value, 0.05, 5.0)), err, err_len);
 }
 
 static json_t *make_nav(void) {
@@ -698,12 +699,26 @@ static int prefs_objects(const PavProfile *profile, json_t **prefs, json_t **zoo
         set_err(err, err_len, "missing profile fields");
         return -1;
     }
-    *zoom = json_object_get(*prefs, "zoom");
-    *window = json_object_get(*prefs, "window");
-    *ui = json_object_get(*prefs, "ui");
-    if (!json_is_object(*zoom) || !json_is_object(*window) || !json_is_object(*ui)) {
-        set_err(err, err_len, "missing profile fields");
-        return -1;
+    if (zoom != NULL) {
+        *zoom = json_object_get(*prefs, "zoom");
+        if (!json_is_object(*zoom)) {
+            set_err(err, err_len, "missing profile fields");
+            return -1;
+        }
+    }
+    if (window != NULL) {
+        *window = json_object_get(*prefs, "window");
+        if (!json_is_object(*window)) {
+            set_err(err, err_len, "missing profile fields");
+            return -1;
+        }
+    }
+    if (ui != NULL) {
+        *ui = json_object_get(*prefs, "ui");
+        if (!json_is_object(*ui)) {
+            set_err(err, err_len, "missing profile fields");
+            return -1;
+        }
     }
     return 0;
 }
@@ -793,7 +808,7 @@ int pav_profile_read_shell(const PavProfile *profile, PavShellPrefs *out, char *
     if (prefs_objects(profile, &prefs, &zoom, &window, &ui, err, err_len) != 0) {
         return -1;
     }
-    out->zoom_shell = clamp_double(profile->zoom_shell, 0.5, 3.0);
+    out->zoom_shell = clamp_double(profile->zoom_shell, 0.05, 5.0);
     if (read_zoom_key(zoom, "navButtons", &out->zoom_nav_buttons, err, err_len) != 0 ||
         read_zoom_key(zoom, "navBody", &out->zoom_nav_body, err, err_len) != 0 ||
         read_zoom_key(zoom, "mailList", &out->zoom_mail_list, err, err_len) != 0 ||
@@ -878,7 +893,7 @@ int pav_profile_write_shell(PavProfile *profile, const PavShellPrefs *in, unsign
             set_err(err, err_len, "missing shell");
             return -1;
         }
-        zoom_shell = clamp_double(in->zoom_shell, 0.5, 3.0);
+        zoom_shell = clamp_double(in->zoom_shell, 0.05, 5.0);
         if (json_set_new(zoom, "shell", json_real(zoom_shell), err, err_len) != 0) {
             return -1;
         }
@@ -932,6 +947,150 @@ int pav_profile_write_shell(PavProfile *profile, const PavShellPrefs *in, unsign
         }
     }
     return 0;
+}
+
+int pav_profile_read_icons(const PavProfile *profile, char **out, char *err, size_t err_len) {
+    json_t *prefs;
+    json_t *ui;
+    json_t *icons;
+    char *text;
+
+    if (out == NULL) {
+        set_err(err, err_len, "missing out");
+        return -1;
+    }
+    *out = NULL;
+    if (profile == NULL || profile->doc == NULL) {
+        set_err(err, err_len, "missing profile");
+        return -1;
+    }
+    prefs = json_object_get(profile->doc, "preferences");
+    if (!json_is_object(prefs)) {
+        set_err(err, err_len, "missing profile fields");
+        return -1;
+    }
+    ui = json_object_get(prefs, "ui");
+    if (ui == NULL) {
+        ui = json_object();
+        if (json_set_new(prefs, "ui", ui, err, err_len) != 0) {
+            return -1;
+        }
+    } else if (!json_is_object(ui)) {
+        set_err(err, err_len, "preferences.ui is not an object");
+        return -1;
+    }
+    icons = json_object_get(ui, "icons");
+    if (icons == NULL) {
+        icons = json_object();
+        if (json_set_new(ui, "icons", icons, err, err_len) != 0) {
+            return -1;
+        }
+    } else if (!json_is_object(icons)) {
+        set_err(err, err_len, "preferences.ui.icons is not an object");
+        return -1;
+    }
+    text = json_dumps(icons, JSON_PRESERVE_ORDER);
+    if (text == NULL) {
+        set_err(err, err_len, "cannot serialize icons");
+        return -1;
+    }
+    *out = text;
+    return 0;
+}
+
+int pav_profile_write_icons(PavProfile *profile, const char *json, char *err, size_t err_len) {
+    json_error_t jerr;
+    json_t *root;
+    json_t *prefs;
+    json_t *ui;
+
+    if (profile == NULL || profile->doc == NULL || json == NULL) {
+        set_err(err, err_len, "missing arguments");
+        return -1;
+    }
+    root = json_loads(json, JSON_PRESERVE_ORDER, &jerr);
+    if (root == NULL) {
+        set_err(err, err_len, "invalid icons json");
+        return -1;
+    }
+    if (!json_is_object(root)) {
+        json_decref(root);
+        set_err(err, err_len, "icons must be a json object");
+        return -1;
+    }
+    prefs = json_object_get(profile->doc, "preferences");
+    if (!json_is_object(prefs)) {
+        json_decref(root);
+        set_err(err, err_len, "missing profile fields");
+        return -1;
+    }
+    ui = json_object_get(prefs, "ui");
+    if (ui == NULL) {
+        ui = json_object();
+        if (json_set_new(prefs, "ui", ui, err, err_len) != 0) {
+            json_decref(root);
+            return -1;
+        }
+    } else if (!json_is_object(ui)) {
+        json_decref(root);
+        set_err(err, err_len, "preferences.ui is not an object");
+        return -1;
+    }
+    if (json_object_set_new(ui, "icons", root) != 0) {
+        json_decref(root);
+        set_err(err, err_len, "out of memory");
+        return -1;
+    }
+    return 0;
+}
+
+int pav_profile_read_kit(const PavProfile *profile, char *out, size_t out_len, char *err, size_t err_len) {
+    json_t *prefs;
+    json_t *ui;
+    json_t *value;
+    const char *kit;
+
+    if (out == NULL || out_len == 0) {
+        set_err(err, err_len, "missing out");
+        return -1;
+    }
+    out[0] = '\0';
+    if (profile == NULL || profile->doc == NULL) {
+        set_err(err, err_len, "missing profile");
+        return -1;
+    }
+    if (prefs_objects(profile, &prefs, NULL, NULL, &ui, err, err_len) != 0) {
+        return -1;
+    }
+    value = json_object_get(ui, "fontawesome_kit");
+    kit = value != NULL ? json_string_value(value) : NULL;
+    if (kit == NULL || kit[0] == '\0') {
+        kit = "45801522ef";
+    }
+    if (strlen(kit) >= out_len) {
+        set_err(err, err_len, "kit id is too long");
+        return -1;
+    }
+    memcpy(out, kit, strlen(kit) + 1);
+    return 0;
+}
+
+int pav_profile_write_kit(PavProfile *profile, const char *kit, char *err, size_t err_len) {
+    json_t *prefs;
+    json_t *ui;
+
+    if (kit == NULL) {
+        set_err(err, err_len, "missing kit");
+        return -1;
+    }
+    if (profile == NULL || profile->doc == NULL) {
+        set_err(err, err_len, "missing profile");
+        return -1;
+    }
+    if (prefs_objects(profile, &prefs, NULL, NULL, &ui, err, err_len) != 0) {
+        return -1;
+    }
+    return json_set_new(ui, "fontawesome_kit", json_string(kit), err, err_len);
 }
 
 int pav_profile_store(const char *path, const PavProfile *profile, char *err, size_t err_len) {

@@ -15,6 +15,8 @@
 #define CORE_QUEUE_CAP 8
 #define CORE_CMD_STOP 1
 #define CORE_CMD_PREFS 2
+#define CORE_CMD_ICONS 3
+#define CORE_CMD_KIT 4
 
 static pthread_mutex_t g_core_mu = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t g_core_cv = PTHREAD_COND_INITIALIZER;
@@ -39,6 +41,16 @@ static int g_prefs_done;
 static int g_prefs_rc;
 static unsigned g_prefs_mask;
 static char g_prefs_err[512];
+static char g_icons_req[65536];
+static int g_icons_done;
+static int g_icons_busy;
+static int g_icons_rc;
+static char g_icons_err[512];
+static char g_kit_req[256];
+static int g_kit_done;
+static int g_kit_busy;
+static int g_kit_rc;
+static char g_kit_err[512];
 
 static void copy_field(char *dst, size_t dst_len, const char *src) {
     size_t n;
@@ -72,6 +84,8 @@ static void attach_profile_log(const char *path);
 static void set_start_err(char *err, size_t err_len, const char *msg);
 static int core_prepare_prefs(char *err, size_t err_len);
 static int core_apply_prefs(char *err, size_t err_len);
+static int core_apply_icons(char *err, size_t err_len);
+static int core_apply_kit(char *err, size_t err_len);
 
 static void core_release_profile(void) {
     pav_store_close(g_store);
@@ -242,9 +256,28 @@ static void *core_thread_main(void *arg) {
             g_prefs_done = 1;
             pthread_cond_broadcast(&g_core_cv);
         }
+        if (cmd == CORE_CMD_ICONS) {
+            pthread_mutex_unlock(&g_core_mu);
+            core_apply_icons(g_icons_err, sizeof(g_icons_err));
+            pthread_mutex_lock(&g_core_mu);
+            g_icons_done = 1;
+            pthread_cond_broadcast(&g_core_cv);
+        }
+        if (cmd == CORE_CMD_KIT) {
+            pthread_mutex_unlock(&g_core_mu);
+            core_apply_kit(g_kit_err, sizeof(g_kit_err));
+            pthread_mutex_lock(&g_core_mu);
+            g_kit_done = 1;
+            pthread_cond_broadcast(&g_core_cv);
+        }
     }
     g_core_alive = 0;
     core_fail_prefs_unlocked("core stopped");
+    g_icons_rc = -1;
+    g_icons_done = 1;
+    g_kit_rc = -1;
+    g_kit_done = 1;
+    pthread_cond_broadcast(&g_core_cv);
     pthread_mutex_unlock(&g_core_mu);
     core_release_profile();
     return NULL;
@@ -282,6 +315,54 @@ static int core_apply_prefs(char *err, size_t err_len) {
     return 0;
 }
 
+/* The caller is the core thread and does not hold g_core_mu.
+   g_icons_req holds the JSON string; the result is written to g_icons_rc. */
+static int core_apply_icons(char *err, size_t err_len) {
+    PavProfile *profile;
+
+    err[0] = '\0';
+    if (g_load == NULL || g_load->profile == NULL || g_load->profile_path[0] == '\0') {
+        set_start_err(err, err_len, "missing profile");
+        g_icons_rc = -1;
+        return -1;
+    }
+    profile = g_load->profile;
+    if (pav_profile_write_icons(profile, g_icons_req, err, err_len) != 0 ||
+        pav_profile_store(g_load->profile_path, profile, err, err_len) != 0) {
+        g_icons_rc = -1;
+        if (err[0] == '\0') {
+            set_start_err(err, err_len, "cannot write icons");
+        }
+        return -1;
+    }
+    g_icons_rc = 0;
+    err[0] = '\0';
+    return 0;
+}
+
+static int core_apply_kit(char *err, size_t err_len) {
+    PavProfile *profile;
+
+    err[0] = '\0';
+    if (g_load == NULL || g_load->profile == NULL || g_load->profile_path[0] == '\0') {
+        set_start_err(err, err_len, "missing profile");
+        g_kit_rc = -1;
+        return -1;
+    }
+    profile = g_load->profile;
+    if (pav_profile_write_kit(profile, g_kit_req, err, err_len) != 0 ||
+        pav_profile_store(g_load->profile_path, profile, err, err_len) != 0) {
+        g_kit_rc = -1;
+        if (err[0] == '\0') {
+            set_start_err(err, err_len, "cannot write kit");
+        }
+        return -1;
+    }
+    g_kit_rc = 0;
+    err[0] = '\0';
+    return 0;
+}
+
 int pavillion_start(const char *workdir, char *err, size_t err_len) {
     int rc;
 
@@ -305,6 +386,12 @@ int pavillion_start(const char *workdir, char *err, size_t err_len) {
     g_prefs_ready = 0;
     g_prefs_busy = 0;
     g_prefs_done = 1;
+    g_icons_busy = 0;
+    g_icons_done = 1;
+    g_icons_req[0] = '\0';
+    g_kit_busy = 0;
+    g_kit_done = 1;
+    g_kit_req[0] = '\0';
     core_queue_clear_unlocked();
     rc = pthread_create(&g_core_thread, NULL, core_thread_main, NULL);
     if (rc != 0) {
@@ -417,6 +504,146 @@ int pav_core_thread_alive(void) {
     alive = g_core_alive;
     pthread_mutex_unlock(&g_core_mu);
     return alive;
+}
+
+int pavillion_icons_get(char **out, char *err, size_t err_len) {
+    int rc = 0;
+
+    if (out == NULL) {
+        set_start_err(err, err_len, "missing out");
+        return -1;
+    }
+    *out = NULL;
+    pthread_mutex_lock(&g_core_mu);
+    if (!g_core_alive || g_load == NULL || g_load->profile == NULL) {
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "core is not running");
+        return -1;
+    }
+    rc = pav_profile_read_icons(g_load->profile, out, err, err_len);
+    pthread_mutex_unlock(&g_core_mu);
+    return rc;
+}
+
+int pavillion_icons_apply(const char *json, char *err, size_t err_len) {
+    int rc;
+
+    if (json == NULL) {
+        set_start_err(err, err_len, "missing icons");
+        return -1;
+    }
+    pthread_mutex_lock(&g_core_mu);
+    if (!g_core_alive || g_core_stop || !g_prefs_ready) {
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "core is not running");
+        return -1;
+    }
+    while (g_icons_busy && g_core_alive && !g_core_stop) {
+        pthread_cond_wait(&g_core_cv, &g_core_mu);
+    }
+    if (!g_core_alive || g_core_stop || !g_prefs_ready) {
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "core is not running");
+        return -1;
+    }
+    if (strlen(json) >= sizeof(g_icons_req)) {
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "icons payload too large");
+        return -1;
+    }
+    memcpy(g_icons_req, json, strlen(json) + 1);
+    g_icons_done = 0;
+    g_icons_rc = -1;
+    g_icons_err[0] = '\0';
+    g_icons_busy = 1;
+    if (core_queue_push_unlocked(CORE_CMD_ICONS) != 0) {
+        g_icons_busy = 0;
+        g_icons_done = 1;
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "core is busy");
+        return -1;
+    }
+    while (!g_icons_done && g_core_alive) {
+        pthread_cond_wait(&g_core_cv, &g_core_mu);
+    }
+    rc = g_icons_done ? g_icons_rc : -1;
+    if (rc != 0) {
+        set_start_err(err, err_len, g_icons_err[0] != '\0' ? g_icons_err : "core stopped");
+    }
+    g_icons_busy = 0;
+    pthread_cond_broadcast(&g_core_cv);
+    pthread_mutex_unlock(&g_core_mu);
+    return rc;
+}
+
+int pavillion_kit_get(char *out, size_t out_len, char *err, size_t err_len) {
+    int rc = 0;
+
+    if (out == NULL || out_len == 0) {
+        set_start_err(err, err_len, "missing out");
+        return -1;
+    }
+    out[0] = '\0';
+    pthread_mutex_lock(&g_core_mu);
+    if (!g_core_alive || g_load == NULL || g_load->profile == NULL) {
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "core is not running");
+        return -1;
+    }
+    rc = pav_profile_read_kit(g_load->profile, out, out_len, err, err_len);
+    pthread_mutex_unlock(&g_core_mu);
+    return rc;
+}
+
+int pavillion_kit_apply(const char *kit, char *err, size_t err_len) {
+    int rc;
+
+    if (kit == NULL) {
+        set_start_err(err, err_len, "missing kit");
+        return -1;
+    }
+    pthread_mutex_lock(&g_core_mu);
+    if (!g_core_alive || g_core_stop || !g_prefs_ready) {
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "core is not running");
+        return -1;
+    }
+    while (g_kit_busy && g_core_alive && !g_core_stop) {
+        pthread_cond_wait(&g_core_cv, &g_core_mu);
+    }
+    if (!g_core_alive || g_core_stop || !g_prefs_ready) {
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "core is not running");
+        return -1;
+    }
+    if (strlen(kit) >= sizeof(g_kit_req)) {
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "kit id is too long");
+        return -1;
+    }
+    memcpy(g_kit_req, kit, strlen(kit) + 1);
+    g_kit_done = 0;
+    g_kit_rc = -1;
+    g_kit_err[0] = '\0';
+    g_kit_busy = 1;
+    if (core_queue_push_unlocked(CORE_CMD_KIT) != 0) {
+        g_kit_busy = 0;
+        g_kit_done = 1;
+        pthread_mutex_unlock(&g_core_mu);
+        set_start_err(err, err_len, "core is busy");
+        return -1;
+    }
+    while (!g_kit_done && g_core_alive) {
+        pthread_cond_wait(&g_core_cv, &g_core_mu);
+    }
+    rc = g_kit_done ? g_kit_rc : -1;
+    if (rc != 0) {
+        set_start_err(err, err_len, g_kit_err[0] != '\0' ? g_kit_err : "core stopped");
+    }
+    g_kit_busy = 0;
+    pthread_cond_broadcast(&g_core_cv);
+    pthread_mutex_unlock(&g_core_mu);
+    return rc;
 }
 
 typedef struct LogNode {
@@ -701,4 +928,12 @@ void pav_log(const char *subsystem, int level, int num_args, const char *fmt, ..
     va_end(ap);
     deliver_unlocked(level, subsystem, msg);
     pthread_mutex_unlock(&g_log_mu);
+}
+
+/* Called from the frontend shell so JS errors surface in the core log instead
+   of disappearing into the browser console. message is passed as a single %s
+   argument so percent signs in it cannot break the format string. */
+int pav_ui_log(const char *subsystem, int level, const char *message) {
+    pav_log(subsystem, level, 1, "%s", message);
+    return 0;
 }

@@ -95,6 +95,20 @@ Two implementations, and the order matters:
 - **Snapshot presets** save the exact set of expanded node IDs. Switching back restores that state. Deterministic, simple to explain, and built first.
 - **Rule-based presets** save criteria such as "expand every folder containing unread mail," and adapt as the mailbox changes. A later enhancement.
 
+## Root visibility and favorite filters
+
+Roots — top-level nodes such as accounts or their sections — can be hidden or shown without touching the tree model. A hidden root's node and its descendants stay in the model; they simply stop rendering, so toggling visibility preserves selection, focus, and running animations.
+
+Two kinds of filter, applied from preset toolbar buttons:
+
+| Button | Meaning |
+| --- | --- |
+| Star | Show favorite roots only; hide everything else |
+| Heart | Show the second favorite set only |
+| Ghost / hide | Hide infrequent roots (accounts or folders the user marks as rare) |
+
+Hidden roots live in view state, alongside expanded IDs and presets. Marking a root infrequent does not delete it, and restoring it brings its subtree back exactly as it was. Presets can record which roots were visible, so switching presets can re-show or re-hide roots wholesale. Toggling a filter filters what renders; it never changes node IDs, parentage, or any backend data.
+
 ## Three collapse behaviors, not two
 
 | Behavior | Effect |
@@ -145,7 +159,7 @@ The affordances: a dedicated drag handle, so clicking a row still selects it; an
 
 The renderer is ordinary HTML with CSS Grid or Flexbox. No component framework, and no CSS library, per the lock in [D-UI.md](D-UI.md).
 
-Layout tokens. They are `rem`, so the shell zoom (50–300%, plan §10) scales rows with everything else; at 100% they hold the pixel values below.
+Layout tokens. They are `rem`, so the shell zoom (5–500%, plan §10) scales rows with everything else; at 100% they hold the pixel values below.
 
 ```css
 :root {
@@ -173,6 +187,69 @@ The icon slot has its own sizing and color contract rather than letting icons di
 Hover, focus, selection, and drag-over are separate states. A selected row keeps its selected background when hovered, and keyboard focus does not depend on mouse-hover styling.
 
 The tree is not a table. It is not built with Tabulator or another table library; the message list makes that call the other way.
+
+## Brainstorming: candidates, not decisions
+
+This section holds ideas users expect or would find delightful. None are locked, and none are in a phase. They are recorded here so E-1 through E-7 can accept or reject them with reasons.
+
+### Settings per tree pane
+
+- **Background:** each tree pane can carry its own background or account-color wash — the account swatch as the row's leading edge, not the whole background. Distinct from the shell theme.
+- **Zoom level:** already per-pane (`navBody`, `mailList`, …). Density (compact/comfortable/spacious) is its own setting, independent of zoom — zoom scales everything, density changes padding and icon size. Row height follows density × shell zoom × pane zoom.
+- Row background, selected background, and hover background all come from custom properties so a theme changes them centrally.
+
+### What is visible vs visible-on-hover
+
+- **Always visible:** disclosure arrow, icon, label, unread badge, selection state, sync state (dot/spinner), favorite marker.
+- **On hover:** secondary metadata (total messages, recursive size), trailing actions (favorite toggle, collapse this branch, settings for this folder), and the drag handle if it is not always visible.
+- **Sticky visible:** a selected row keeps its badge and background when hovered — hover never hides the unread count.
+
+### Top row of buttons (preset toolbar)
+
+The concept shows "Collapse all / Expand all". Extend it:
+
+- "Favorites only", "Infrequent roots hidden", "Unread folders only", "Everything".
+- A preset picker dropdown: named presets (Compact, Mail triage, Work, Everything, Custom) plus "Save as preset…".
+- A "show roots" toggle group: account roots vs favorite folders vs everything.
+- All buttons sit in the nav toolbar above the tree, never inside rows.
+
+### Right-click (context menu) options
+
+- **On a folder:** Collapse this branch / Expand this branch, Favorite this folder, Mark infrequent (hide), Rename, Add folder, Delete folder, Move folder (reparent), Copy folder path, Properties (server, size, unread count), New message here, Subscribe / unsubscribe.
+- **On an account:** Account settings, Expand all / Collapse all for this account, Hide account, Order account up/down.
+- **On whitespace:** Expand all / Collapse all, New folder, Paste, Paste as child, Settings for this tree pane.
+- Menus follow the ARIA tree pattern; Shift+F10 or the Menu key opens the context menu for the focused row.
+
+### Per-section expectations
+
+- **Mail:** unread badge primary, sync dot (idle/syncing/error), favorite star, disclosure arrow, folder icon duotone colored by account swatch.
+- **Calendars:** calendar swatch color, visibility toggle (show/hide events), shared calendar badge, color-picker swatch.
+- **Contacts:** address book icon, contact count badge, favorite book marker.
+- **Files:** folder icon, item count or size badge, sync state for cloud folders, pinned folder marker.
+
+### Keyboard expectations
+
+- Arrow keys move focus; Left collapses or moves to parent; Right expands or moves to first child; Home/End; `*` expands siblings; `+`/`-` expand/collapse the current branch; Space toggles favorite on the focused row; context-menu key opens the row menu; drag-and-drop has keyboard equivalents.
+
+### Delightful but not required
+
+- Badge pulse animation for new unread (respects `prefers-reduced-motion`).
+- The disclosure arrow "jogs" when new mail arrives in a collapsed folder.
+- Drag a message from the message list onto a folder in the tree (cross-pane drag).
+- Type-ahead: typing a letter jumps to the next folder starting with that letter.
+- Preset toolbar can be hidden for compact mode.
+
+### Drag-and-drop rearranging (important)
+
+Reorder siblings, reparent into another folder, and reorder accounts/pinned sections are all first-class interactions. A dedicated drag handle keeps row clicks as selections; an insertion indicator shows reorder-versus-nest; auto-expansion on collapsed drop targets; auto-scroll near top/bottom; keyboard equivalents. Local ordering is the default when the server's semantics are ambiguous — moving messages is never the tree's decision.
+
+### Clean UI (important)
+
+One icon family everywhere — Font Awesome Duotone Sharp for the nav and tree, one size contract for the icon slot, one color contract (primary/secondary layers) so duotone icons never dictate row dimensions. Density (compact/comfortable/spacious) is a handful of custom properties. Hover, focus, selection, and drag-over are separate states: a selected row keeps its background on hover, and keyboard focus never depends on mouse styling.
+
+### Animation (important)
+
+Container-level, interruptible transitions for collapse/expand and preset switching; rotating disclosure arrow through 90 degrees; `prefers-reduced-motion` disables or shortens motion. All of this is CSS over the row renderer — unrelated to the underlying data.
 
 ## Lock
 
@@ -211,3 +288,5 @@ A UI exit gate is the window, not a screenshot in the repo. `make test` must sti
 
 - 2026-10-15 Tree design recorded. This document holds the architecture, the lock, and the seven proposed phases. Nothing is built. The mail tree in the shell preview is still four placeholder buttons.
 - 2026-10-15 Revisions: node contract added, tokens moved to `rem` so shell zoom applies, density aligned to plan §10, `*` scoped to tree focus against §6.13, Vitest named for E-1 through E-6.
+- 2026-10-15 Root visibility filters added: star (favorites only), heart (second favorite set), ghost/hide (infrequent roots). Hidden roots stay in the model; visibility is view state, toggleable from preset toolbar buttons.
+- 2026-10-15 Brainstorming added: per-pane settings (background, zoom, density), always-visible vs hover-visible row regions, preset toolbar buttons, right-click context menus per node type, per-section expectations for mail/calendar/contacts/files, keyboard expectations, and delightful-but-not-required items. None are locked or in a phase.

@@ -65,6 +65,18 @@ int pavillion_prefs_get(PavShellPrefs *out);
    finishes. Returns 0, or -1. On failure err receives a short reason. */
 int pavillion_prefs_apply(const PavShellPrefs *in, unsigned mask, char *err, size_t err_len);
 
+/* Reads preferences.ui.icons as a JSON string (caller frees). Returns 0, or -1. */
+int pavillion_icons_get(char **out, char *err, size_t err_len);
+
+/* Writes preferences.ui.icons from a JSON object string and persists. Returns 0, or -1. */
+int pavillion_icons_apply(const char *json, char *err, size_t err_len);
+
+/* Writes preferences.ui.fontawesome_kit from `kit` and persists. Returns 0, or -1. */
+int pavillion_kit_apply(const char *kit, char *err, size_t err_len);
+
+/* Reads preferences.ui.fontawesome_kit into out. Returns 0, or -1. */
+int pavillion_kit_get(char *out, size_t out_len, char *err, size_t err_len);
+
 /* Test-only. 1 while the core thread is inside its loop, otherwise 0. */
 int pav_core_thread_alive(void);
 
@@ -77,6 +89,11 @@ int pav_core_thread_alive(void);
 /* num_args is the number of format specifiers in fmt. A mismatch is logged
    at error and fmt is not formatted. */
 void pav_log(const char *subsystem, int level, int num_args, const char *fmt, ...);
+
+/* Logs a frontend (shell) message into the core log. subsystem is a short
+   tag like "ui". level is one of PAV_ERROR/PAV_WARN/PAV_INFO/PAV_DEBUG.
+   message is logged verbatim. Returns 0, or -1. */
+int pav_ui_log(const char *subsystem, int level, const char *message);
 
 /* Test-only. Truncates path and writes later lines there. NULL closes that
    file. Returns 0, or -1 when path cannot be opened. */

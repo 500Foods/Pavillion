@@ -57,6 +57,9 @@ fn main() {
             "status",
             "prefs",
             "save_layout",
+            "save_icons",
+            "save_kit",
+            "ui_log",
         ]));
     if let Err(err) = tauri_build::try_build(attributes) {
         panic!("failed to run tauri-build: {err}");
