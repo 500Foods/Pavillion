@@ -1,6 +1,6 @@
 # J — TABS
 
-**Status:** J-1 complete (2026-10-17). Andrew accepted that window. I-2 is complete (2026-10-17) and Andrew accepted that window. J-2 is next and is not started.
+**Status:** J-2 complete (2026-10-17). Andrew accepted the window. J-3 is next, step 39. Do not start it in this sitting. J-1 and I-2 are complete.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The tabbed workspace and the shared widgets every later screen uses: context menu, tooltip, toast with undo, and dialog. Andrew confirmed the feature set for the first round on 2026-10-16: pinned tabs, keyboard shortcuts, files dropped on the strip, a right-click menu (pin, duplicate, mute, close variants), muting, session restore, vertical tabs, floating tooltips, tab widths, and sandboxed browsing from a `+` tab.
@@ -12,9 +12,9 @@ One phase is one session. Do not start the next one in the same conversation.
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
 | J-1 | Common widgets: menu, tooltip, toast with undo, dialog | Medium | Complete |
-| J-2 | Tab registry, icon and close button, sub-tabs, nav-body clicks | Medium | Not started |
+| J-2 | Tab registry, icon and close button, sub-tabs, nav-body clicks | Medium | Complete |
 | J-3 | Keyboard shortcuts, tab context menu, pinned tabs | Medium | Not started |
-| J-4 | Drag to reorder, overflow (scroll or wrap), tab widths, file drop | Medium | Not started |
+| J-4 | Keyboard reorder, overflow (scroll or wrap), tab widths, file drop | Medium | Not started |
 | J-5 | Vertical tabs and section colors | Medium | Not started |
 | J-6 | Session restore | Medium | Not started |
 | J-7 | The `+` tab: sandboxed browsing in a separate webview, Browser settings, mute | Hard | Not started |
@@ -34,11 +34,11 @@ Kind: **Easy** is one module and a test. **Medium** crosses one boundary. **Hard
 
 Leave Accomplished, Lessons learned, and Handoff off a phase that has not started. A UI exit gate is the window. Vitest covers modules that do not need a window.
 
-## What exists (2026-10-16)
+## What exists (2026-10-17)
 
 - `ui/index.html`: the `.tabs` strip with `#tablist` and a `tabs-spacer` carrying `data-tauri-drag-region`.
-- `ui/src/shell.js`: a `sections` map (mail, contacts, calendars, files, settings, activity, help), `tabs = new Map()` keyed by section id, and `openSection(id)` that creates or switches a text-only `<button role="tab">`. Home tabs are permanent. No icon, close, drag, or keyboard.
-- Nav-body buttons only set `aria-current`.
+- `ui/src/shell/tabs.js` is the registry. A home id is `section:home`. A sub-tab id is `section:kind:key`. `openSection` is now `openHome`. Every tab is closable, including a home tab. Home tabs take the nav icon. Sub-tabs take a kind icon. Middle-click closes the tab under the pointer. Pointer drag reorders the strip. A single click activates that tab and leaves the nav. A double-click opens or activates that section's home tab and switches the nav. Keyboard shortcuts, the tab menu, keyboard reorder, and session restore are still later phases.
+- A nav button, a mailbox row, a letter, and a settings heading open or activate that section's home tab and switch the nav. Mailbox and letter rows still set `aria-current`.
 
 ## Lock
 
@@ -47,7 +47,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - Full-height nav on the left, tabbed workspace on the right. The nav's right edge sets its width (`ui.nav` 320, 200–500).
 - Four icon buttons on top and four on the bottom, equal cells, no borders, icon centered, selected cell takes a background, hover is `filter: drop-shadow` on the icon, a focus ring for the keyboard, each with an accessible name. `prefers-reduced-motion` drops motion on the shadow and the update spin.
 - Top: Mail (roof mark), Contacts `fa-sharp fa-thin fa-address-book`, Calendars `fa-sharp fa-thin fa-calendar-days`, Files `fa-sharp fa-thin fa-folder`. Bottom: Activity `fa-sharp fa-thin fa-list-timeline`, Settings `fa-sharp fa-thin fa-gear`, Update `fa-sharp fa-thin fa-arrows-rotate`, Help `fa-sharp fa-thin fa-circle-question`.
-- A top button swaps the nav body and focuses that section's home tab. Settings does the same with the settings headings in the nav. Activity and Help open their tabs and leave the nav body alone. Update runs a sync and spins ([I-ACTIVITY.md](I-ACTIVITY.md)); it is not a tab.
+- A top button opens that section's home tab, or brings it forward when it is already open, and swaps the nav body. Settings does the same with the settings headings in the nav. Activity and Help open their home tabs and leave the nav body alone. Update runs a sync and spins ([I-ACTIVITY.md](I-ACTIVITY.md)); it is not a tab. A single click on an open tab does not swap the nav.
 - Navs: Mail is the mailbox tree, Files the folder tree ([E-TREE.md](E-TREE.md)); Contacts is a letter rolodex, a search field, then accounts and recents; Calendars is a continuous mini-calendar (from the week before the current month to the week after) and calendars grouped by account with a swatch. An IMAP account still shows Files, with an empty tree.
 - Home tabs: Mail is the message list beside the open message (split 0.5, 0.25–0.75); Contacts the rolodex list beside the open contact; Calendars the week view (default); Files the folder contents beside a preview; Settings the chosen heading; Activity the feed or log; Help the help page.
 - Window: placement and maximized state restored on launch (`preferences.window`). `chrome` is `system` or `hidden`; hidden uses the empty part of the tab strip as the drag region with the buttons still clickable. Per-account status dots in the nav wait.
@@ -56,14 +56,15 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 - A tab is a registry entry, not a DOM node: `{ id, section, kind, title, icon, closable, pinned, muted, context, order }`. `id` is `section:home` or `section:kind:key` (`mail:msg:<accountId>/<emailId>`). The DOM node is looked up by id in a `Map`. Rows are patched, never rebuilt.
 - One tab per id. Opening something that already has a tab switches to it. Duplicate makes `id#2`.
-- Home tabs are not closable, have no close button, and take the nav icon (including its override). Sub-tabs are closable and take their kind's icon: message `fa-sharp-duotone fa-solid fa-envelope`, contact `fa-sharp-duotone fa-solid fa-address-card`, event `fa-sharp-duotone fa-solid fa-calendar-day`, file `fa-sharp-duotone fa-solid fa-file`, draft `fa-sharp-duotone fa-solid fa-pen-to-square`, browse `fa-sharp-duotone fa-solid fa-globe`.
+- Every tab is closable, including a home tab, and has a close button. Home tabs take the nav icon (including its override). Sub-tabs take their kind's icon: message `fa-sharp-duotone fa-solid fa-envelope`, contact `fa-sharp-duotone fa-solid fa-address-card`, event `fa-sharp-duotone fa-solid fa-calendar-day`, file `fa-sharp-duotone fa-solid fa-file`, draft `fa-sharp-duotone fa-solid fa-pen-to-square`, browse `fa-sharp-duotone fa-solid fa-globe`. Andrew changed this on 2026-10-17 after trying the window: a home tab can be closed, and the nav button opens it again.
 - Markup: the tab is a `div role="tab"` containing an icon span, a title span (`textContent`), and a separate close `button` with `aria-label="Close <title>"`. No button inside a button. Tab text 0.8125rem, icon 0.875rem.
-- Close order: closing a sub-tab focuses the tab to its left, else its section's home tab. A tab with unsaved work (a composer) asks through the dialog unless its owner reports it saved (drafts autosave, so this is rare).
+- Close order: closing a tab focuses the tab to its left. Closing the leftmost tab focuses the next tab. Closing the last tab leaves the workspace empty. A tab with unsaved work (a composer) asks through the dialog unless its owner reports it saved (drafts autosave, so this is rare).
+- A single click activates that tab and leaves the nav where it is. A nav button opens that section's home tab when it is closed, or activates it when it is open, and switches the nav. A double-click on a tab opens or activates that section's home tab and switches the nav. Pointer drag reorders the strip. Keyboard reorder stays in J-4. Andrew set this on 2026-10-17 so an open message can be flipped to without changing the mailbox list.
 - A view in a tab gets `onOpen(ctx)` and `onClose()`. `onClose` releases what it holds: unsubscribe events, destroy editors, and call `view.release {handle}` when it opened a core handle. Core-side caches (body cache, blobs) are not freed on tab close; they are shared and evicted by their own policy in [L-STORE.md](L-STORE.md).
-- Shortcuts (scoped to the workspace): `Ctrl+Tab` next, `Ctrl+Shift+Tab` previous, `Ctrl+W` and `Ctrl+F4` close, `Ctrl+T` new browse tab (J-7; before it, no-op), `Ctrl+Shift+T` reopen last closed, `Alt+1`…`Alt+9` go to tab N, `Ctrl+R` reload the active view (re-run its load; never reloads the WebView), middle-click closes. `Ctrl+1/2/3` stay section switches (mail, contacts, calendar, plan §6.13); `Ctrl+4` is files.
+- Shortcuts (scoped to the workspace): `Ctrl+Tab` next, `Ctrl+Shift+Tab` previous, `Ctrl+W` and `Ctrl+F4` close, `Ctrl+T` new browse tab (J-7; before it, no-op), `Ctrl+Shift+T` reopen last closed, `Alt+1`…`Alt+9` go to tab N, `Ctrl+R` reload the active view (re-run its load; never reloads the WebView). Middle-click closes the tab under the pointer, including a home tab, and belongs to J-2, with the close button. J-3 registers the keyboard chords in this list. `Ctrl+1/2/3` stay section switches (mail, contacts, calendar, plan §6.13); `Ctrl+4` is files.
 - Context menu on a tab: Pin/Unpin, Duplicate, Mute/Unmute (browse tabs only), Close, Close others, Close to the right, Reopen closed tab. Home tabs show Pin and Duplicate disabled.
 - Pinned tabs sit left of all others, icon only, fixed width 2.25rem, and keep their order.
-- Reorder: pointer events (the nav-resize pattern), a drop indicator, and `Alt+Shift+Left/Right` on the focused tab with an `aria-live` announcement. Any tab can move anywhere except that pinned tabs stay in the pinned group.
+- Reorder: pointer events (the nav-resize pattern) and a drop indicator. Andrew pulled the pointer half into J-2 on 2026-10-17. `Alt+Shift+Left/Right` on the focused tab with an `aria-live` announcement stays in J-4. Any tab can move anywhere except that pinned tabs stay in the pinned group.
 - Overflow: `ui.tabs.overflow` is `scroll` (default) or `wrap`. Scroll shows chevrons at both ends and the native thin scrollbar under the strip; the drag spacer keeps a minimum of 3rem on the right. Wrap never splits a tab.
 - Widths: `ui.tabs.minWidth` 6rem, `ui.tabs.maxWidth` 12.5rem (200 px at 100%), `0` means no max.
 - Vertical tabs: `ui.tabs.orientation` `horizontal` (default) or `vertical`; vertical puts the strip as a column between the nav and the workspace, icon + label, full title in the tooltip, pinned icon-only, scrolls vertically. Toggled from the strip's context menu (right-click on empty strip) and from Settings → Tabs.
@@ -109,7 +110,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 ## J-2: Tab registry, appearance, and sub-tabs
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Complete (2026-10-17). Andrew accepted the window. `make test` is 69 Unity tests and 78 Vitest tests. This sitting did not push.
 
 **Goal:** Tabs are a registry with icons and close buttons, and a feature can open a sub-tab.
 
@@ -117,16 +118,22 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Work items:**
 
-- [ ] `ui/src/shell/tabs.js`: `openHome(section)`, `openTab({section, kind, key, title, icon, context})`, `closeTab(id)`, `activate(id)`, `list()`, and a change listener. `openSection` becomes `openHome`.
-- [ ] Render per the Lock: icon, title, close button; home icon from the nav icon (override included).
-- [ ] View lifecycle: a section registers `views[kind] = { create(el, ctx), onOpen, onClose }`.
-- [ ] Nav-body clicks open or switch to the home tab and pass the selection (`openHome("mail", { mailboxId })`).
-- [ ] Debug-only Help item `Open test tab` opens a closable sub-tab so the feature is testable before mail.
-- [ ] Vitest: `tabs.test.js` covers one-tab-per-id, close focus order, home not closable, change events.
+- [x] `ui/src/shell/tabs.js`: `openHome(section)`, `openTab({section, kind, key, title, icon, context})`, `closeTab(id)`, `activate(id)`, `list()`, and a change listener. `openSection` becomes `openHome`.
+- [x] Render per the Lock: icon, title, close button on every tab, including home; home icon from the nav icon (override included). Middle-click closes the tab under the pointer. Pointer drag reorders the strip.
+- [x] View lifecycle: a section registers `views[kind] = { create(el, ctx), onOpen, onClose }`.
+- [x] Nav-body clicks open or switch to the home tab and pass the selection (`openHome("mail", { mailboxId })`).
+- [x] Debug-only Help item `Open test tab` opens a closable sub-tab so the feature is testable before mail.
+- [x] Vitest: `tabs.test.js` covers one-tab-per-id, close focus order, home closable, drag reorder, double-click reveal, and change events.
 
-**Done means:** A sub-tab opens with an icon, closes with its button or middle-click, and focus returns per the Lock.
+**Done means:** A tab opens with an icon, closes with its button or middle-click, and focus returns per the Lock. A single click leaves the nav alone. A nav click or a double-click brings that section's home tab forward and switches the nav.
 
-**Exit gate:** `make test` exits 0. In `make dev`: open three test tabs, close the middle, focus moves left; home tabs show no close button.
+**Exit gate:** `make test` exits 0. In `make dev`: open three test tabs, close the middle, focus moves left. Drag a tab. Single-click between tabs and the nav stays. Double-click a tab and that section's home tab comes forward and the nav switches. Close the Mail tab, then click Mail and it opens again.
+
+**Accomplished:** `ui/src/shell/tabs.js` is the registry. A home id is `section:home`. A sub-tab id is `section:kind:key`. `openSection` is `openHome`. `createTabs` returns `openHome`, `openTab`, `closeTab`, `activate`, `list`, `subscribe`, `register`, `refreshIcons`, and `destroy`. One tab per id. The DOM node is looked up by id and patched. Every tab is closable, including a home tab, with `aria-label="Close <title>"` on a separate button inside a `div role="tab"`. Home icons come from the nav icon, including an override, through `refreshIcons`. Kind icons are `KIND_ICONS`: message, contact, event, file, draft, and browse. A view registers `{ create, onOpen, onClose, unsaved }`. `onOpen` runs when that id becomes active. `onClose` runs only on close. An unsaved tab asks through the J-1 dialog (`Close <title>?`, `This tab has unsaved work.`, OK label Close, danger). Closing a tab selects the tab on its left. Closing the leftmost selects the next tab. Closing the last hides the panels and does not reopen a home tab. Middle-click (`auxclick` button 1) closes any tab. Pointer drag uses the nav-resize pattern: pointer capture, a 4 px threshold, `.is-dragging`, and a `.tab-drop` indicator. A finished drag does not also activate. The cursor is `grab`. Those rules are in `ui/public/styles/theme.css`. `ui/styles` was left unlinked. A single click activates and leaves the nav. `showNav` is the only writer of the nav section and `aria-pressed`. A nav button, a mailbox row, a letter, a settings heading, the Activity and Logs menu, and the isolation `openMail` path call `showNav` and `openHome`. A double-click calls `onReveal`, which does the same for that tab's section. Activity and Help have `nav: false`, so their button presses and the nav body stays. Help shows `Open test tab` only when `system.status` `debug` is true, beside `Run demo activity`. Each click opens `help:test:<n>`, titled `Test n`, with the file icon and the body `Test n.` Startup still opens Mail and shows the mail nav. No new core command. `PAVILLION_API_VERSION` stays 3. `lib.rs` was not changed. Andrew accepted the window on 2026-10-17, including the model he changed after the first try. `make test` is 69 Unity tests and 78 Vitest tests, exit 0.
+
+**Lessons learned:** The first window kept home tabs unclosable and switched the nav whenever a tab became active. Andrew changed that the same day. Every tab closes. A single click only activates. A nav button or a double-click brings that section's home tab forward and switches the nav. Pointer reorder moved from J-4 into this phase. Write the Lock in the same sitting. `closeTab` chooses the left neighbor even when the closed tab is in the background. The leftmost close selects the next tab. The last close does not call `openHome`. `subscribe` must not paint the nav. `#tablist` is `display: contents`, so the drop indicator is a flex item. In jsdom, select a panel with `.panel[data-tab-id="..."]`. A bare `[data-tab-id]` matches the tab first, and an unescaped `#id` throws because the id contains colons. After a close, query the live node. Drag tests mock `getBoundingClientRect` because those rects are zero. `setPointerCapture` throws there, so the call is in try/catch. Middle-click is `auxclick` button 1. A drag sets `suppressClick` and clears it on a timeout of 0. The first click of a double-click still activates the clicked tab before the home opens. Andrew accepted that. Opening Activity while the log view is selected throws from CodeMirror `measure` in jsdom. Set the pane before `openHome`. `closeTab` stays synchronous unless `unsaved()` is true. The served sheet is `ui/public/styles/theme.css`.
+
+**Handoff:** J-3 is next, step 39, in this file. Do not start it in this sitting. Its entry gate is met. Andrew accepted this window on 2026-10-17. Do not rebuild the registry, close, middle-click, pointer drag, or the nav split. Middle-click is settled. Do not ask it again. Keyboard close (`Ctrl+W`, `Ctrl+F4`) uses `closeTab`, so a home tab closes too, with the same successor and the unsaved dialog. `Ctrl+Tab`, `Ctrl+Shift+Tab`, and `Alt+1` through `Alt+9` activate a tab and leave the nav. They do not call `showNav`. `Ctrl+1`, `Ctrl+2`, `Ctrl+3`, and `Ctrl+4` are section switches (mail, contacts, calendars, files) and call `showNav` and `openHome`, the same path as a nav button. `Ctrl+T` stays a no-op until J-7. `Ctrl+Shift+T` reopens from a 20-entry stack. One tab per id, so reopening an id that is already open activates it. `Ctrl+R` reloads the active view. The context menu uses `menu.js`. Home tabs show Pin and Duplicate disabled. The strip menu has Vertical tabs (J-5 enables the layout) and Close all sub-tabs. Pinned tabs sit left, icon only, at 2.25rem, for the run. J-6 persists them. When a tab is pinned or unpinned, and when pointer reorder runs, pinned tabs stay in the pinned group. The drag code is `reorder()` in `tabs.js`. Extend it. Do not write a second drag. Keyboard reorder, overflow, widths, and file drop stay in J-4. J-Q1 through J-Q4 stay open and do not block J-3. J-Q2 waits until a message can open. `Open test tab` is how a sub-tab exists before mail, and only when `debug` is true. `PAVILLION_API_VERSION` stays 3. No new core command. `lib.rs` stays a forwarder. Only `ui/src/transport/tauri.js` may import `@tauri-apps`. Served sheets are `ui/public/styles`. New listeners on the mount root come off in `stopShell`. Text is `textContent`. Do not drive the window.
 
 ## J-3: Shortcuts, tab menu, pinned tabs
 
@@ -140,7 +147,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 **Work items:**
 
 - [ ] `ui/src/common/keys.js`: one shortcut registry with scopes (`global`, `workspace`, `tree`, `list`, `composer`), so `*` in the tree and `*` in the message list do not collide (E Lock). Bindings are data, ready for remapping later.
-- [ ] Register the Lock's tab shortcuts. `Ctrl+Shift+T` uses a 20-entry closed-tab stack.
+- [ ] Register the Lock's keyboard shortcuts. Middle-click close is J-2. `Ctrl+Shift+T` uses a 20-entry closed-tab stack.
 - [ ] Tab context menu with the Lock's items; strip context menu with Vertical tabs (J-5 enables it) and Close all sub-tabs.
 - [ ] Pinned tabs per the Lock, persisted in the session (J-6 restores them; until then pin state lasts the run).
 - [ ] Vitest: `keys.test.js` (scope resolution, chords like `g i`).
@@ -160,7 +167,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Work items:**
 
-- [ ] Pointer reorder with an indicator; keyboard reorder with the announcement.
+- [ ] Keyboard reorder with the announcement. Pointer reorder with an indicator is in J-2 as of 2026-10-17.
 - [ ] Overflow modes with a `ResizeObserver`; chevrons scroll by one tab; the active tab is scrolled into view on activate.
 - [ ] Min and max width settings under a new Settings → Tabs heading (overflow, widths, orientation placeholder).
 - [ ] File drop on the strip (Tauri's drag-drop event through a `hostServices.onFileDrop` hook so the UI stays host-agnostic) with the Lock's routing and the interim toast.
@@ -247,3 +254,6 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - 2026-10-17 Dialog sheet radius stays `--pav-dialog-radius` (0.75rem). Buttons and the text field use `--pav-dialog-button-radius` (0.2rem), separate from the sheet. Same value in dark, light, and both starters.
 - 2026-10-17 J-1 complete. Andrew accepted the window. `make test` is 68 Unity tests and 59 Vitest tests. The next phase is I-2. Do not start it in this sitting. J-2 stays not started.
 - 2026-10-17 I-2 is complete and Andrew accepted that window. J-2's entry gate is met. J-2 has not started. Ask before editing: Done means closes a sub-tab with middle-click, and J-3's work items also own that gesture. J-Q2 waits until a message can open.
+- 2026-10-17 J-2 in progress. Andrew gave middle-click to J-2, with the close button. The registry, kind icons, home icons, sub-tab panels, the debug `Open test tab` item, and nav-body selections are in the tree. Closing a sub-tab selects the tab on its left. `make test` is 69 Unity tests and 76 Vitest tests. The window check is open. Do not start J-3.
+- 2026-10-17 J-2 still in progress. Andrew changed the tab model after that window: every tab is closable, pointer drag reorders the strip, a single click leaves the nav, a nav button opens or activates that home tab, and a double-click brings that section's home tab forward and switches the nav. Closing the last tab leaves the workspace empty. `make test` is 69 Unity tests and 78 Vitest tests. The window check is open again. Do not start J-3.
+- 2026-10-17 J-2 complete. Andrew accepted the window. `make test` is 69 Unity tests and 78 Vitest tests. J-3 is next, step 39. Do not start it in this sitting.

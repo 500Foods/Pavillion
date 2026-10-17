@@ -72,6 +72,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 - [ ] `files.download`, `files.upload` (streamed from disk, not through JSON), `files.mkdir`, `files.move`, `files.delete` with confirm; the conflict prompt.
 - [ ] Preview pane per the Lock.
+- [ ] The Grok composer from V-8 reports the open file's id (`context.type` `file`). No open file, no context.
 - [ ] Drop to upload; the tab-strip drop routing for "anything else" now opens a preview tab (J-4 Handoff).
 - [ ] Unity: `test_upload_conflict_keep_both`, `test_download_cancel`.
 

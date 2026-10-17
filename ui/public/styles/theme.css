@@ -120,15 +120,79 @@
 }
 
 .pav-root .tabs [role="tab"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   border: 0;
   border-right: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
   background: transparent;
   padding: 0.55rem 0.9rem;
+  color: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.2;
   white-space: nowrap;
+  cursor: grab;
+}
+
+.pav-root .tabs [role="tab"]:focus-visible {
+  outline: 2px solid var(--pav-accent);
+  outline-offset: -2px;
 }
 
 .pav-root .tabs [role="tab"][aria-selected="true"] {
   background: var(--pav-surface-button-active);
+}
+
+.pav-root .tab-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  line-height: 1;
+}
+
+.pav-root .tab-icon :is(i, svg, img) {
+  width: calc(0.875rem * var(--pav-bar-zoom));
+  height: calc(0.875rem * var(--pav-bar-zoom));
+  font-size: calc(0.875rem * var(--pav-bar-zoom));
+  object-fit: contain;
+}
+
+.pav-root .tab-title {
+  min-width: 0;
+}
+
+.pav-root .tab-close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0.2rem;
+  background: transparent;
+  color: inherit;
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
+.pav-root .tab-close:hover {
+  background: var(--pav-surface-button);
+}
+
+.pav-root .tabs [role="tab"].is-dragging {
+  opacity: 0.55;
+  cursor: grabbing;
+}
+
+.pav-root .tab-drop {
+  flex: none;
+  width: 2px;
+  align-self: stretch;
+  margin: 0.35rem 0;
+  background: var(--pav-accent);
 }
 
 .pav-root #tablist {

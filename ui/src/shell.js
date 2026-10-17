@@ -3,6 +3,7 @@ import { installIsolationTest } from "./common/isolation.js";
 import { createMenu } from "./common/menu.js";
 import { createToaster } from "./common/toast.js";
 import { createTooltip } from "./common/tooltip.js";
+import { createTabs, KIND_ICONS } from "./shell/tabs.js";
 import { createActivityView } from "./activity/view.js";
 import { createLogView } from "./log/view.js";
 import { DEFAULT_UI, clampUi, snapZoom } from "./prefs.js";
@@ -205,6 +206,9 @@ function applyIconOverride(key) {
     return;
   }
   paintNavIcon(el, ui.icons[key] || "");
+  if (tabCtl) {
+    tabCtl.refreshIcons();
+  }
 }
 
 function activeFile() {
@@ -247,6 +251,9 @@ function applyIcons() {
   }
   paintIconFields();
   applyThemeKit();
+  if (tabCtl) {
+    tabCtl.refreshIcons();
+  }
 }
 
 function paintIconFields() {
@@ -743,7 +750,8 @@ const sections = {
   help: { title: "Help", nav: false },
 };
 
-const tabs = new Map();
+let tabCtl = null;
+let testSerial = 0;
 let navSection = "mail";
 let logView = null;
 let activityView = null;
@@ -755,16 +763,20 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function letters(root, pressed) {
+function letters(root, pressed, onPick) {
   for (let code = 65; code <= 90; code += 1) {
     const letter = String.fromCharCode(code);
     const button = document.createElement("button");
     button.type = "button";
+    button.dataset.letter = letter;
     button.textContent = letter;
     button.setAttribute("aria-pressed", pressed && letter === "A" ? "true" : "false");
     button.addEventListener("click", () => {
       for (const other of root.querySelectorAll("button")) {
         other.setAttribute("aria-pressed", other === button ? "true" : "false");
+      }
+      if (typeof onPick === "function") {
+        onPick(letter);
       }
     });
     root.append(button);
@@ -851,7 +863,8 @@ function bindNavAffordances() {
         current: view === "activity",
         onSelect() {
           setActivityView("activity");
-          openSection("activity");
+          showNav("activity");
+          openHome("activity");
         },
       },
       {
@@ -859,7 +872,8 @@ function bindNavAffordances() {
         current: view === "log",
         onSelect() {
           setActivityView("log");
-          openSection("activity");
+          showNav("activity");
+          openHome("activity");
         },
       },
     ];
@@ -908,36 +922,55 @@ function syncLog() {
   }
 }
 
-function openSection(id) {
-  const section = sections[id];
-  if (!section) {
+function homeIconNode(section) {
+  const icon = iconElement(section);
+  if (!icon) {
+    return null;
+  }
+  const clone = icon.cloneNode(true);
+  clone.removeAttribute("id");
+  return clone;
+}
+
+function homeIconLabel(section) {
+  const icon = iconElement(section);
+  if (!icon) {
+    return "";
+  }
+  if (icon.tagName === "IMG") {
+    return icon.getAttribute("src") || "";
+  }
+  const classes = [...icon.classList].filter((name) => name !== "icon");
+  if (classes.length > 0) {
+    return classes.join(" ");
+  }
+  return icon.dataset.iconDefinition || "";
+}
+
+function showNav(section) {
+  if (!mountRoot) {
     return;
   }
-  if (section.nav) {
-    navSection = id;
+  const meta = sections[section];
+  if (!meta) {
+    return;
   }
-  for (const button of mountRoot.querySelectorAll("[data-section]")) {
-    button.setAttribute("aria-pressed", button.dataset.section === id ? "true" : "false");
+  if (meta.nav) {
+    navSection = section;
+  }
+  for (const button of mountRoot.querySelectorAll(".nav-buttons [data-section]")) {
+    button.setAttribute("aria-pressed", button.dataset.section === section ? "true" : "false");
   }
   for (const body of mountRoot.querySelectorAll("[data-nav]")) {
     body.hidden = body.dataset.nav !== navSection;
   }
-  if (!tabs.has(id)) {
-    const tab = document.createElement("button");
-    tab.type = "button";
-    tab.role = "tab";
-    tab.textContent = section.title;
-    tab.addEventListener("click", () => openSection(id));
-    tabs.set(id, tab);
-    mountRoot.querySelector("#tablist").append(tab);
+}
+
+function openHome(section, context) {
+  if (!tabCtl) {
+    return null;
   }
-  for (const [key, tab] of tabs) {
-    tab.setAttribute("aria-selected", key === id ? "true" : "false");
-  }
-  for (const panel of mountRoot.querySelectorAll(".panel")) {
-    panel.hidden = panel.id !== `panel-${id}`;
-  }
-  syncLog();
+  return tabCtl.openHome(section, context);
 }
 
 function bindNavResize() {
@@ -1235,6 +1268,8 @@ function bindSettings() {
       if (button.dataset.heading === "theme") {
         refreshThemes(session);
       }
+      showNav("settings");
+      openHome("settings", { heading: button.dataset.heading });
     });
   }
   const iconForm = mountRoot.querySelector("#icon-form");
@@ -1398,13 +1433,33 @@ function bindUpdate() {
 }
 
 function bindDemo(enabled) {
+  const shown = enabled === true;
   const button = mountRoot.querySelector("#demo-activity");
-  if (!button) {
+  if (button) {
+    button.hidden = !shown;
+    button.addEventListener("click", () => {
+      api.debug.activityDemo({ steps: 8, ms: 400 }).catch((err) => showBanner(messageOf(err)));
+    });
+  }
+  const opener = mountRoot.querySelector("#open-test-tab");
+  if (!opener) {
     return;
   }
-  button.hidden = enabled !== true;
-  button.addEventListener("click", () => {
-    api.debug.activityDemo({ steps: 8, ms: 400 }).catch((err) => showBanner(messageOf(err)));
+  opener.hidden = !shown;
+  opener.addEventListener("click", () => {
+    if (!tabCtl) {
+      return;
+    }
+    testSerial += 1;
+    const title = `Test ${testSerial}`;
+    tabCtl.openTab({
+      section: "help",
+      kind: "test",
+      key: String(testSerial),
+      title,
+      icon: KIND_ICONS.file,
+      context: { n: testSerial },
+    });
   });
 }
 
@@ -1452,7 +1507,11 @@ export function stopShell() {
   motionQuery = null;
   onMotion = null;
   syncing = 0;
-  tabs.clear();
+  if (tabCtl) {
+    tabCtl.destroy();
+    tabCtl = null;
+  }
+  testSerial = 0;
   navSection = "mail";
   canSave = false;
   dirty = false;
@@ -1476,6 +1535,38 @@ export async function startShell(surface, nextApi, nextHost, result) {
     toaster: createToaster(mountRoot),
     dialogs: createDialogs(mountRoot),
   };
+  tabCtl = createTabs(mountRoot.querySelector("#tablist"), {
+    workspace: mountRoot.querySelector(".workspace"),
+    sections,
+    homeIcon: homeIconNode,
+    iconLabel: homeIconLabel,
+    onReveal(section) {
+      showNav(section);
+      openHome(section);
+    },
+    confirm(entry) {
+      if (!widgets) {
+        return Promise.resolve(false);
+      }
+      return widgets.dialogs.confirm({
+        title: `Close ${entry.title}?`,
+        text: "This tab has unsaved work.",
+        okLabel: "Close",
+        danger: true,
+      });
+    },
+  });
+  tabCtl.register("test", {
+    create(el, ctx) {
+      const note = document.createElement("p");
+      note.className = "empty";
+      note.textContent = `${ctx.title}.`;
+      el.append(note);
+    },
+  });
+  tabCtl.subscribe(() => {
+    syncLog();
+  });
   bindNavAffordances();
   window.addEventListener("pagehide", onPageHide);
   const banner = mountRoot.querySelector("#banner");
@@ -1570,11 +1661,17 @@ export async function startShell(surface, nextApi, nextHost, result) {
       setActivityView(button.dataset.activityView);
     });
   }
-  letters(mountRoot.querySelector("#letters-nav"), true);
+  letters(mountRoot.querySelector("#letters-nav"), true, (letter) => {
+    showNav("contacts");
+    openHome("contacts", { letter });
+  });
   letters(mountRoot.querySelector("#letters-main"), true);
   fillCalendar(new Date());
-  for (const button of mountRoot.querySelectorAll("[data-section]")) {
-    button.addEventListener("click", () => openSection(button.dataset.section));
+  for (const button of mountRoot.querySelectorAll(".nav-buttons [data-section]")) {
+    button.addEventListener("click", () => {
+      showNav(button.dataset.section);
+      openHome(button.dataset.section);
+    });
   }
   bindNavResize();
   bindSplit("mail");
@@ -1588,7 +1685,8 @@ export async function startShell(surface, nextApi, nextHost, result) {
     root: mountRoot,
     enabled: result.debug === true || result.selftest === true,
     openMail() {
-      openSection("mail");
+      showNav("mail");
+      openHome("mail");
     },
     confirm(spec) {
       if (!widgets) {
@@ -1603,9 +1701,14 @@ export async function startShell(surface, nextApi, nextHost, result) {
         other.removeAttribute("aria-current");
       }
       button.setAttribute("aria-current", "true");
+      if (button.dataset.mailbox) {
+        showNav("mail");
+        openHome("mail", { mailboxId: button.dataset.mailbox });
+      }
     });
   }
-  openSection("mail");
+  showNav("mail");
+  openHome("mail");
   if (activityView) {
     await activityView.ready();
   }

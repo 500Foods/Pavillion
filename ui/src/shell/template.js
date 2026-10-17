@@ -19,10 +19,10 @@ export const shellMarkup = `<div class="shell">
         <div class="nav-body">
           <div data-nav="mail">
             <ul class="tree">
-              <li><button type="button" aria-current="true">Inbox</button></li>
-              <li><button type="button">Drafts</button></li>
-              <li><button type="button">Sent</button></li>
-              <li><button type="button">Archive</button></li>
+              <li><button type="button" data-mailbox="inbox" aria-current="true">Inbox</button></li>
+              <li><button type="button" data-mailbox="drafts">Drafts</button></li>
+              <li><button type="button" data-mailbox="sent">Sent</button></li>
+              <li><button type="button" data-mailbox="archive">Archive</button></li>
             </ul>
           </div>
           <div data-nav="contacts" hidden>
@@ -257,6 +257,7 @@ export const shellMarkup = `<div class="shell">
           <p class="empty">Help is not written yet.</p>
           <button type="button" id="isolation-test" hidden>Show isolation test</button>
           <button type="button" id="demo-activity" hidden>Run demo activity</button>
+          <button type="button" id="open-test-tab" hidden>Open test tab</button>
         </div>
       </div>
     </div>`;

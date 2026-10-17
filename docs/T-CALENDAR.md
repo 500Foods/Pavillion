@@ -101,6 +101,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - [ ] Mini-calendar nav and the calendars list with swatches and visibility.
 - [ ] Keyboard: `t` today, `w`/`d`/`m`/`a` views, arrows move by period.
 - [ ] Event popover with text fields; open in a sub-tab.
+- [ ] The Grok composer from V-8 reports the open event's id (`context.type` `event`). No open event, no context.
 
 **Done means:** A weekly recurring event with one moved and one cancelled instance displays correctly across the November DST change (plan P5 acceptance, display half).
 

@@ -41,6 +41,7 @@ test("Update calls sync.now and stays still until a sync activity is running", a
   expect(update.getAttribute("aria-label")).toBe("Update");
   expect(update.classList.contains("is-busy")).toBe(false);
   expect(root.querySelector("#demo-activity").hidden).toBe(true);
+  expect(root.querySelector("#open-test-tab").hidden).toBe(true);
   expect(root.querySelector(".activity-account-name")).toBeNull();
 
   update.click();

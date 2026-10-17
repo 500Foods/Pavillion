@@ -35,7 +35,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 ### Lua
 
 - Lua 5.5, vendored as source under `third_party/lua/` at a tagged release, built into the core library by CMake, so every platform has the same version. Not the system Lua.
-- Uses: mail rules and filters, computed views and saved searches beyond the Q syntax, templates and signatures, small automations, the hooks behind the CLI, and user-defined actions in the UI.
+- Uses: mail rules and filters, computed views and saved searches beyond the Q syntax, templates and signatures, small automations, the hooks behind the CLI, and user-defined actions in the UI. Telling a Grok Bot is not a rule action. That is a V-10 trigger. Raw Lua reaches a bot only through `P.bot.tell` (V-10), which enqueues a bot request and does not touch the network.
 - Sandbox: only `base` (without `dofile`, `loadfile`, `load` of binary chunks, `collectgarbage` options other than `count`), `string`, `table`, `math`, `utf8`, and `coroutine`. No `os`, `io`, `package`, `require`, `debug`. Text chunks only (`load(..., "t")`). An instruction-count hook (`lua_sethook` every 1,000 instructions) enforces a per-run budget (default 5,000,000 instructions, about 50 ms) and a custom allocator enforces a memory cap (default 16 MB). Exceeding either aborts the run with a named error.
 - One fresh state per run by default (simple and safe). **Decision metric (R-Q1):** R-3 runs the enabled rules over a 1,000-message initial sync on the fixture corpus. If fresh states cost more than **2 ms per message** on average (state creation and teardown included, measured on Andrew's machine in a release build), bulk runs switch to a pooled state that's reset between messages. Otherwise fresh states stay. Single-message arrival runs always use a fresh state.
 - Threading: Lua runs only on the script thread, fed by its own queue from the core. Never on the UI, the core thread, or the net thread.
@@ -153,7 +153,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - [ ] Dry run on a chosen mailbox listing intents per message; "Apply to this folder" as activity `rules.run`.
 - [ ] Run log view (from `rule_run`) with Undo per run (`undo.run` over its op ids).
 - [ ] Disabled-rule banner with a link to the rule and the error.
-- [ ] Mailbox context menu: "Apply rules here", "Create rule from this message" prefilling from and subject.
+- [ ] Mailbox context menu: "Apply rules here", "Create rule from this message" prefilling from and subject. Leave the V-10 "Tell a Grok Bot…" item on that menu.
 
 **Done means:** A rule built in the editor dry-runs, applies, and is undone from the log.
 
@@ -172,7 +172,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 - [ ] `core/src/sieve.c`: which declarative rules map (the Lock's subset), Sieve generation, one managed script `pavillion` per account, `SieveScript/validate` then `SieveScript/set` and activate.
 - [ ] Editor: "Run on server" toggle only for mappable rules; exporting flips `where` and the client skips it; un-exporting removes it from the script.
-- [ ] Unity: `test_sieve_maps_fileinto_addflag`, `test_sieve_refuses_regex_and_lua`, `test_rule_never_active_both_places`.
+- [ ] Unity: `test_sieve_maps_fileinto_addflag`, `test_sieve_refuses_regex_and_lua`, `test_rule_never_active_both_places`. A bot trigger is client-only and is not in the Sieve subset.
 
 **Done means:** A server rule files mail while Pavillion is closed.
 
@@ -183,6 +183,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - R-Q1. Decided by a metric (Lua Lock): fresh state per run unless R-3 measures more than 2 ms per message over a 1,000-message initial sync. Not a question for Andrew any more.
 - R-Q2. Does the Stalwart version in use advertise `urn:ietf:params:jmap:sieve`, and should simple rules default to the server or the client?
 - R-Q3. Does Stalwart already hold Sieve scripts for these accounts that a `pavillion` script must coexist with?
+- R-Q4. Same talk as V-Q3, at the start of V-10. How far does a suite of Lua tools and examples go, on `P.bot.tell`, before any of that is written into the core? Nothing is built for this before that phase.
 
 ## Working log
 
@@ -190,3 +191,4 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - 2026-10-16 Moved here and scoped into R-1 to R-5. Decisions: vendored Lua 5.5, exact library allowlist and caps, script manifest on the profile, a C safe-regex subset for declarative rules, a 2 s arrival budget, three-strikes disable, `rule_run` log for undo, one managed Sieve script per account.
 - 2026-10-16 Review: links point to the Philement repo on GitHub. R-Q1 is settled by a metric (2 ms per message over a 1,000-message sync, measured in R-3). `P.version` stability policy and manifest `minApi` added to the Lock.
 - 2026-10-16 Added a 50 ms wall-clock budget per message evaluation: a deadline in the instruction hook plus a watchdog for stuck C calls, counted like the instruction cap. The 2 s per-page arrival budget is kept as a separate limit. Rule writes go through the L write queue.
+- 2026-10-17 R-Q4 records the V-Q3 talk: a Lua tool suite versus more C, held until V-10.
