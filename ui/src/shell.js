@@ -1,3 +1,4 @@
+import { createLogView } from "./log/view.js";
 import { reloadIcons } from "./main.js";
 import { clampUi, snapZoom } from "./prefs.js";
 
@@ -58,6 +59,9 @@ function applyZoom() {
         svg.style.height = `${1.15 * scale}em`;
       }
     }
+  }
+  if (logView) {
+    logView.setZoom(ui.zoom.log);
   }
 }
 
@@ -156,6 +160,7 @@ async function loadPrefs() {
   ui.contacts = stored.contacts;
   ui.files = stored.files;
   ui.zoom = stored.zoom;
+  ui.activity = stored.activity;
   ui.icons = stored.icons;
   ui.fontawesome_kit = stored.fontawesome_kit;
   ui.fonts = stored.fonts;
@@ -200,6 +205,7 @@ const sections = {
 
 const tabs = new Map();
 let navSection = "mail";
+let logView = null;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -281,8 +287,39 @@ function fillCalendar(today) {
   }
 }
 
+function paintActivity() {
+  const name = ui.activity.view === "activity" ? "activity" : "log";
+  for (const button of document.querySelectorAll("[data-activity-view]")) {
+    button.setAttribute("aria-selected", button.dataset.activityView === name ? "true" : "false");
+  }
+  for (const pane of document.querySelectorAll("[data-activity-pane]")) {
+    pane.hidden = pane.dataset.activityPane !== name;
+  }
+}
+
+function syncLog() {
+  if (!logView) {
+    return;
+  }
+  const panel = document.querySelector("#panel-activity");
+  const show = panel && !panel.hidden && ui.activity.view !== "activity";
+  if (show) {
+    logView.setZoom(ui.zoom.log);
+    logView.open().then(() => {
+      logView.measure();
+    }).catch((err) => {
+      showBanner(messageOf(err));
+    });
+  } else {
+    logView.close();
+  }
+}
+
 function openSection(id) {
   const section = sections[id];
+  if (!section) {
+    return;
+  }
   if (section.nav) {
     navSection = id;
   }
@@ -307,6 +344,7 @@ function openSection(id) {
   for (const panel of document.querySelectorAll(".panel")) {
     panel.hidden = panel.id !== `panel-${id}`;
   }
+  syncLog();
 }
 
 function bindNavResize() {
@@ -368,6 +406,16 @@ function bindSettings() {
     const value = label.querySelector(".zoom-value");
     const show = () => {
       ui.zoom[key] = zoomClamp(input.value);
+      for (const other of document.querySelectorAll(`[data-zoom="${key}"]`)) {
+        const field = other.querySelector("input");
+        const reading = other.querySelector(".zoom-value");
+        if (field && field !== input) {
+          field.value = String(ui.zoom[key]);
+        }
+        if (reading) {
+          reading.textContent = zoomLabel(ui.zoom[key]);
+        }
+      }
       value.textContent = zoomLabel(ui.zoom[key]);
       applyZoom();
     };
@@ -540,6 +588,30 @@ export async function startShell(result) {
       canSave = false;
       showBanner(messageOf(err));
     }
+  }
+  let timeZone = "America/Vancouver";
+  if (banner.hidden) {
+    try {
+      const prefs = await api.prefs.get();
+      if (typeof prefs.timezone === "string" && prefs.timezone !== "") {
+        timeZone = prefs.timezone;
+      }
+    } catch (err) {
+      showBanner(messageOf(err));
+    }
+  }
+  logView = createLogView(document.querySelector("#log-editor"), api, {
+    timeZone,
+    zoom: ui.zoom.log,
+  });
+  paintActivity();
+  for (const button of document.querySelectorAll("[data-activity-view]")) {
+    button.addEventListener("click", () => {
+      ui.activity.view = button.dataset.activityView === "activity" ? "activity" : "log";
+      paintActivity();
+      persistLayout();
+      syncLog();
+    });
   }
   letters(document.querySelector("#letters-nav"), true);
   letters(document.querySelector("#letters-main"), true);

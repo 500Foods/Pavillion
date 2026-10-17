@@ -3,7 +3,8 @@ export const DEFAULT_UI = {
   mail: { split: 0.5, min: 0.25, max: 0.75 },
   contacts: { split: 0.5, min: 0.25, max: 0.75 },
   files: { split: 0.5, min: 0.25, max: 0.75 },
-  zoom: { shell: 1, navButtons: 1, navBody: 1, mailList: 1, mailDetail: 1 },
+  zoom: { shell: 1, navButtons: 1, navBody: 1, mailList: 1, mailDetail: 1, log: 1 },
+  activity: { view: "log" },
   icons: {},
   fontawesome_kit: "45801522ef",
   fonts: {
@@ -12,8 +13,8 @@ export const DEFAULT_UI = {
   },
 };
 
-const ZOOM_KEYS = ["shell", "navButtons", "navBody", "mailList", "mailDetail"];
-const KNOWN = new Set(["nav", "mail", "contacts", "files", "zoom", "icons", "fontawesome_kit", "fonts"]);
+const ZOOM_KEYS = ["shell", "navButtons", "navBody", "mailList", "mailDetail", "log"];
+const KNOWN = new Set(["nav", "mail", "contacts", "files", "zoom", "icons", "fontawesome_kit", "fonts", "activity"]);
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -99,6 +100,13 @@ function fontsOf(src) {
   return out;
 }
 
+function activityOf(src) {
+  const raw = isObject(src) ? src : {};
+  const out = { view: raw.view === "activity" ? "activity" : "log" };
+  copyUnknown(out, raw, ["view"]);
+  return out;
+}
+
 /* Fills defaults and clamps. Unknown keys are kept. */
 export function clampUi(raw) {
   const src = isObject(raw) ? raw : {};
@@ -117,6 +125,7 @@ export function clampUi(raw) {
     icons: isObject(src.icons) ? { ...src.icons } : {},
     fontawesome_kit: typeof src.fontawesome_kit === "string" ? src.fontawesome_kit : DEFAULT_UI.fontawesome_kit,
     fonts: fontsOf(src.fonts),
+    activity: activityOf(src.activity),
   };
   for (const key of Object.keys(src)) {
     if (!KNOWN.has(key)) {

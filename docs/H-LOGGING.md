@@ -1,6 +1,6 @@
 # H — LOGGING
 
-**Status:** H-1 complete (2026-10-16). The index names the next phase.
+**Status:** H-2 complete (2026-10-16). The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The core log in production, read back through a command, and the Log view in the Activity tab. It comes before tabs and before mail so every later phase can be watched from inside the app. The line format and `pav_log` are the [C-CORE.md](C-CORE.md) Lock and do not change here.
@@ -12,7 +12,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
 | H-1 | Log thread in production, a ring buffer, `log.tail`, and `log.lines` events | Medium | Complete |
-| H-2 | Log view: CodeMirror 6, live, in the Activity tab | Medium | Not started |
+| H-2 | Log view: CodeMirror 6, live, in the Activity tab | Medium | Complete |
 | H-3 | Search, level and subsystem filters, follow, copy, save, print | Medium | Not started |
 
 Kind: **Easy** is one module and a test. **Medium** crosses one boundary.
@@ -83,7 +83,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 ## H-2: Log view in the Activity tab
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Complete (2026-10-16). After the window check, the log-pane zoom slider was removed. Zoom stays on Settings → Zoom. This sitting did not push.
 
 **Goal:** The Activity tab shows the log, live, in CodeMirror, before later phases need it for debugging.
 
@@ -91,16 +91,22 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Work items:**
 
-- [ ] Add `@codemirror/view`, `@codemirror/state`, and `@codemirror/search`. `ui/src/log/view.js`: `createLogView(el, api)`, a read-only EditorView over the ring. Line decorations `pav-log-level-ERROR|WARN|INFO|DEBUG`. The document is text. The view is not an HTML sink.
-- [ ] The timestamp decoration is local time. Copy and save use the UTC line from the ring, so the bytes match the file.
-- [ ] On open: `log.tail`, scroll to the end. Subscribe to `log.lines` and append while open. Unsubscribe on close.
-- [ ] Font size for the view is `preferences.ui.zoom.log` (a new pane key, default 1). The view has its own slider, stored through the F-2 blob. Wrapping is off by default.
-- [ ] `Activity | Log` segmented control at the top of `#panel-activity`. Log is this view. Activity is an empty panel until I-2. Plain click opens the last view (`preferences.ui.activity.view`, default `log`).
-- [ ] Record the gzipped size of `ui/dist` in Accomplished. The size is a record. It is not a reason to drop CodeMirror.
+- [x] Add `@codemirror/view`, `@codemirror/state`, and `@codemirror/search`. `ui/src/log/view.js`: `createLogView(el, api)`, a read-only EditorView over the ring. Line decorations `pav-log-level-ERROR|WARN|INFO|DEBUG`. The document is text. The view is not an HTML sink.
+- [x] The timestamp decoration is local time. Copy and save use the UTC line from the ring, so the bytes match the file.
+- [x] On open: `log.tail`, scroll to the end. Subscribe to `log.lines` and append while open. Unsubscribe on close.
+- [x] Font size for the view is `preferences.ui.zoom.log` (a new pane key, default 1). The slider is on Settings → Zoom, stored through the F-2 blob. Wrapping is off by default.
+- [x] `Activity | Log` segmented control at the top of `#panel-activity`. Log is this view. Activity is an empty panel until I-2. Plain click opens the last view (`preferences.ui.activity.view`, default `log`).
+- [x] Record the gzipped size of `ui/dist` in Accomplished. The size is a record. It is not a reason to drop CodeMirror.
 
 **Done means:** Opening Activity shows the newest lines, and new lines appear without a refresh.
 
 **Exit gate:** `make test` exits 0. `make build`: open Activity, the last line is visible, trigger a log line (change zoom, which logs `prefs saved` at debug with level debug set), and it appears within a second.
+
+**Accomplished:** `@codemirror/view` 6.43.14, `@codemirror/state` 6.7.6, and `@codemirror/search` 6.7.2 are installed. `createLogView` builds a read-only `EditorView` with wrapping off. `SearchQuery` is referenced so Vite keeps `@codemirror/search`; the search field and keymap are H-3. The document text is the UTC file line (`ui/src/log/format.js` matches the C `snprintf`). One widget paints the screen line over that text. The stamp is local `HH:mm:ss.mmm` (12) in the profile timezone (`prefs.get` `timezone`, default `America/Vancouver`). The level is 5 characters (`ERROR` and `DEBUG`). The subsystem is 8 characters, the length of `activity`, the longest name the docs assign. The `log.client` maximum stays 16, and a longer name is shown in full. The log face is Vanadium Mono. Two spaces sit between the fields. The message is not padded. The line title is the UTC stamp. Level color is a line decoration: `pav-log-level-ERROR|WARN|INFO|DEBUG`, from `--pav-log-error` `#e07070`, `--pav-log-warn` `#d4a24c`, `--pav-log-info` `#e8e8e8`, and `--pav-log-debug` `#8a8a8a`. Both theme copies have the variables. The window serves `ui/public/styles`. On open the view subscribes to `log.lines`, then calls `log.tail` with `sinceSeq` 0, then appends buffered events whose `seq` is newer. Leaving the Activity tab or switching to the empty Activity segment unsubscribes. Opening again tails the ring from the start. While the log is open the view scrolls to the end. `preferences.ui.zoom.log` defaults to 1 and clamps to 5%–500% in 5% steps. Settings → Zoom is the only place with zoom sliders. Its Log row writes that key. The font size is `0.85rem` times `zoom.log`. Shell zoom still applies because the root font size is in rem. The panel itself is not CSS-zoomed, so the segmented control and the slider stay put. `preferences.ui.activity.view` is `log` or `activity`, default `log`. A plain click on the Activity nav button opens that view. The Activity segment stays empty. The index `log_level` is copied onto `PavConfigLoad` and applied in `core_boot` after a successful load, including when the profile state is an error. `pavillion_stop` sets the level back to info after `pav_log_thread_shutdown`. An unknown name stays info. A successful `preferences.ui` write then logs `pav_log("config", PAV_DEBUG, 0, "prefs saved")`. The blob is not logged. `PAVILLION_API_VERSION` stays 3. `src-tauri/src/lib.rs` is unchanged. There is no `### log.lines` heading. `make test` is 58 Unity tests and 16 Vitest tests, exit 0. The new Unity test is `test_index_log_level_and_prefs_saved`. The new Vitest files are `ui/src/log/format.test.js`, `ui/src/log/view.test.js`, and `ui/src/prefs.test.js`. `make build` exit 0. Gzip -9 of `ui/dist` is 167961 bytes across five files: `mark.png` 87567 of 91186, `assets/index-BtqNICOS.js` 75216 of 230507, `index.html` 2779 of 15629, `styles/theme.css` 2040 of 8537, `styles/dark.css` 359 of 804. Vite reports that script as 230.51 kB, gzip 75.27 kB. The window check used `dist/pavillion` and workdir `/tmp/pav-h2-AI1NYD` (`log_level` debug, timezone `America/Vancouver`). Opening Activity showed this process's newest lines, ending on the FA kit error (`18:06:43.848` for `2026-10-17T01:06:43.848Z`). Moving the log slider to 340% wrote `2026-10-17T01:07:01.454Z DEBUG config  prefs saved`, and that line was on screen within a second as `18:07:01.454 DEBUG config`. The temp profile stored `zoom.log` 3.4. The log-pane slider was removed after that check. The live `~/.local/share/pavillion/profiles/default.json` hash was still `062a24afe385860567c18ce4a8f157877ab2bc5aa53aa6387be7b8ede8b398c3` after the app was stopped.
+
+**Lessons learned:** The index `log_level` was parsed and then freed with the index, and `g_log_level` stayed `PAV_INFO`, so a debug index never kept `prefs saved`. The copy on `PavConfigLoad` is applied after load. The reset to info happens after the log thread shuts down, so a queued line still uses the level it was logged at and the next test does not inherit debug. `xdotool search --name Pavillion` returns a 10x10 leader at +10+10 and the real client. This sitting's client was 1200x800. AT-SPI sees the application, the frame, and the web document, and no controls inside the document, so the window check used client coordinates. A line decoration is a point. Add it before the replace that starts on the same character: the line decoration's `startSide` is more negative, and that order is accepted. `scrollIntoView` has to use the document length from before the change so the position maps to the new end. Subscribe first and buffer, then tail, and drop a late tail when `close` has bumped the generation. Zoom sliders stay on Settings → Zoom. The log pane stays out of `zoomPanes`. CSS zoom would scale the segmented control and the slider with the text. The font is rem, and shell zoom is the root font size. A `pagehide` flush is a successful `preferences.ui` write, so closing the window also logs `prefs saved` when the index level is debug. The FA kit line is still logged after boot. The view shows it. Served CSS is `ui/public/styles`. Both copies received the log colors. The drift already present between `ui/styles` and `ui/public/styles` was left as it was.
+
+**Handoff:** H-3 is next. Do not start it in this sitting. H-3 adds the search field, level and subsystem filters, follow, wrap, copy, save, print, and the session log level select (`prefs.set {logLevel}`). The editor document is already the UTC file line, so copy and save can take that text. The Activity segment stays empty until I-2. The right-click menu on the Activity nav button is J-1. Do not bump `PAVILLION_API_VERSION`. Do not add a `### log.lines` heading. Do not change `src-tauri/src/lib.rs`. Secrets stay `-1` until K-1. `macos-core` stays `continue-on-error` until G-6. H-Q2 stays open until M-1. The live profile was not rewritten.
 
 ## H-3: Search, filters, follow, copy, save, print
 
@@ -136,3 +142,5 @@ Resolved 2026-10-16: H-Q1. Ring size 10,000 lines, and a profile log over 10 MB 
 - 2026-10-16 Scoped into H-1 to H-3. Decisions: ring buffer in the core instead of reading the file, events for live lines, client-side filtering, the log thread started in production, `mailto:` forwarding replaced by a draft with an attachment.
 - 2026-10-16 Andrew put H-2 and H-3 immediately after H-1 and restored CodeMirror 6 as the log viewer. The icon-kit failure had no in-app log. The view exists so the next failure has a cause.
 - 2026-10-16 H-1: the log thread runs in production, the ring holds 10,000 lines, `log.tail` and `log.lines` are real. Andrew confirmed H-Q1. `make test` is 57 Unity tests and 12 Vitest tests.
+- 2026-10-16 H-2: the Activity tab shows the ring in CodeMirror. Local time is a decoration; the document is the UTC line. `zoom.log` is the log font size. A debug index keeps `prefs saved`. `make test` is 58 Unity tests and 16 Vitest tests. Gzip -9 of `ui/dist` is 167961 bytes.
+- 2026-10-16 H-2 review: the screen line is local time (12), level (5), and subsystem (16), with two spaces between fields. The message is not padded. Zoom sliders stay on Settings → Zoom. The subsystem column is then 8 (`activity`). The log face is Vanadium Mono.

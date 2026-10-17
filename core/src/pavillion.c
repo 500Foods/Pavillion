@@ -111,6 +111,7 @@ static void core_publish_unlocked(const char *state, const char *name, const cha
 
 static void set_start_err(char *err, size_t err_len, const char *msg);
 static int log_thread_running(void);
+static void apply_index_log_level(const char *name);
 static int core_prepare_prefs(char *err, size_t err_len);
 static int core_apply_prefs(char *err, size_t err_len);
 static int core_apply_icons(char *err, size_t err_len);
@@ -153,6 +154,7 @@ static void core_boot(void) {
         publish_boot("error", NULL, NULL, err[0] != '\0' ? err : "missing index");
         return;
     }
+    apply_index_log_level(g_load->log_level);
     if (strcmp(g_load->state, "ready") != 0) {
         publish_boot("error", NULL, NULL, g_load->error);
         return;
@@ -563,6 +565,7 @@ void pavillion_stop(void) {
         pthread_mutex_unlock(&g_core_mu);
         pav_event_thread_stop();
         pav_log_thread_shutdown();
+        apply_index_log_level(NULL);
         return;
     }
     g_core_stop = 1;
@@ -578,6 +581,7 @@ void pavillion_stop(void) {
     /* After the core thread has finished. A second stop joins nothing. */
     pav_event_thread_stop();
     pav_log_thread_shutdown();
+    apply_index_log_level(NULL);
 }
 
 int pavillion_status(PavillionStatus *out) {
@@ -1325,6 +1329,7 @@ int pav_core_ui_set(json_t *args, json_t **data, PavError *err) {
         return fail_profile(err, errbuf[0] != '\0' ? errbuf : "cannot write preferences.ui");
     }
     free(compact);
+    pav_log("config", PAV_DEBUG, 0, "prefs saved");
     return pav_core_ui_get_data(data, err);
 }
 
@@ -1360,6 +1365,22 @@ static char g_log_switch_path[4096];
 static int g_log_own;
 static int g_log_dest;
 static int g_log_level = PAV_INFO;
+
+/* NULL and any name other than error, warn, or debug keep info. */
+static void apply_index_log_level(const char *name) {
+    int level = PAV_INFO;
+
+    if (name != NULL && strcmp(name, "error") == 0) {
+        level = PAV_ERROR;
+    } else if (name != NULL && strcmp(name, "warn") == 0) {
+        level = PAV_WARN;
+    } else if (name != NULL && strcmp(name, "debug") == 0) {
+        level = PAV_DEBUG;
+    }
+    pthread_mutex_lock(&g_log_mu);
+    g_log_level = level;
+    pthread_mutex_unlock(&g_log_mu);
+}
 static int g_log_alive;
 static int g_log_shutdown;
 static int g_log_flush_req;

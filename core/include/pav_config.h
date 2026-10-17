@@ -78,6 +78,7 @@ typedef struct PavConfigLoad {
     char state[32]; /* "ready" or "error" */
     char error[512];
     char profile_path[4096]; /* set when profile is set */
+    char log_level[16]; /* index log_level, copied before the index is freed */
     PavProfile *profile; /* set only when state is ready */
 } PavConfigLoad;
 

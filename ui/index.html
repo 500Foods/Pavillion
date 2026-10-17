@@ -125,6 +125,10 @@
                 <input type="range" min="0.05" max="5" step="0.05" value="1" />
                 <span class="zoom-value">100%</span>
               </label>
+              <label class="zoom" data-zoom="log"><span class="zoom-label">Log</span>
+                <input type="range" min="0.05" max="5" step="0.05" value="1" />
+                <span class="zoom-value">100%</span>
+              </label>
             </div>
             <p class="muted">Shell multiplies every pane below. Each pane is its own key on the profile.</p>
             <p class="muted" id="profile-name"></p>
@@ -216,7 +220,16 @@
              <p class="muted">Icons are rendered from your registered Font Awesome kit. Use class prefixes like <code>fa-sharp-duotone fa-solid</code> for Sharp Duotone Solid, or <code>fa-solid</code> for classic Solid. Or paste raw HTML like an inline SVG.</p>
           </div>
         </div>
-        <div class="panel log" id="panel-activity" role="tabpanel" hidden></div>
+        <div class="panel" id="panel-activity" role="tabpanel" hidden>
+          <div class="log-switch" role="tablist" aria-label="Activity views">
+            <button type="button" role="tab" data-activity-view="activity" aria-selected="false">Activity</button>
+            <button type="button" role="tab" data-activity-view="log" aria-selected="true">Log</button>
+          </div>
+          <div class="log-pane" data-activity-pane="activity" hidden></div>
+          <div class="log-pane" data-activity-pane="log">
+            <div id="log-editor" class="log-editor pav-log"></div>
+          </div>
+        </div>
         <div class="panel settings" id="panel-help" role="tabpanel" hidden>
           <p class="empty">Help is not written yet.</p>
         </div>

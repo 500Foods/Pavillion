@@ -2739,6 +2739,46 @@ void test_log_before_profile_goes_to_workdir_log(void) {
     TEST_ASSERT_TRUE(stat(profile, &st) != 0);
 }
 
+void test_index_log_level_and_prefs_saved(void) {
+    char path[160];
+    char *text;
+    json_t *root;
+
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_log("core", PAV_DEBUG, 0, "debug-hidden-h2");
+    root = call_reply("prefs.ui.set", "{\"zoom\":{\"log\":1}}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    json_decref(root);
+    pav_log_flush();
+    text = slurp(g_log_path);
+    TEST_ASSERT_NULL(strstr(text, "debug-hidden-h2"));
+    TEST_ASSERT_NULL(strstr(text, "prefs saved"));
+    free(text);
+
+    pavillion_stop();
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/Pavillion.json", g_cfg_dir) < (int)sizeof(path));
+    write_text(path,
+               "{\n"
+               "  \"kind\": \"pavillion-index\",\n"
+               "  \"schema\": 1,\n"
+               "  \"active\": \"default.json\",\n"
+               "  \"profile_dir\": \"profiles\",\n"
+               "  \"log_level\": \"debug\"\n"
+               "}\n");
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_log("core", PAV_DEBUG, 0, "debug-visible-h2");
+    root = call_reply("prefs.ui.set", "{\"zoom\":{\"log\":1.05}}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    json_decref(root);
+    pav_log_flush();
+    text = slurp(g_log_path);
+    TEST_ASSERT_NOT_NULL(strstr(text, "debug-visible-h2"));
+    TEST_ASSERT_NOT_NULL(strstr(text, " DEBUG config  prefs saved"));
+    free(text);
+}
+
 void test_log_no_duplicate_after_profile_attach(void) {
     char work_path[160];
     char profile_path[160];
@@ -2830,5 +2870,6 @@ int main(void) {
     RUN_TEST(test_log_before_workdir_stderr_only);
     RUN_TEST(test_log_before_profile_goes_to_workdir_log);
     RUN_TEST(test_log_no_duplicate_after_profile_attach);
+    RUN_TEST(test_index_log_level_and_prefs_saved);
     return UNITY_END();
 }

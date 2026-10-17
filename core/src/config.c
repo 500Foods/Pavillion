@@ -426,6 +426,7 @@ int pav_config_load(const char *workdir, PavConfigLoad **out, char *err, size_t 
         cfg_err(err, err_len, "out of memory");
         return -1;
     }
+    memcpy(load->log_level, index->log_level, sizeof(load->log_level));
     if (index->active[0] == '\0') {
         load_error(load, "active profile missing: %s", "");
         pav_index_free(index);
