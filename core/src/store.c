@@ -132,3 +132,10 @@ void pav_store_close(PavStore *store) {
     }
     free(store);
 }
+
+void *pav_store_handle(const PavStore *store) {
+    if (store == NULL) {
+        return NULL;
+    }
+    return store->handle;
+}

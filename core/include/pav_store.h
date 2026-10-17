@@ -27,4 +27,8 @@ int pav_store_exec(PavStore *store, const char *sql, char *err, size_t err_len);
 /* Closes the database and frees store. The file stays on disk. NULL is safe. */
 void pav_store_close(PavStore *store);
 
+/* The engine handle. SQLite returns sqlite3 *. NULL when store is closed.
+   I-1 reads it. L-1 replaces that direct use with pav_db_write. */
+void *pav_store_handle(const PavStore *store);
+
 #endif

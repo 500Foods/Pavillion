@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
+#include "pav_activity.h"
 #include "pav_config.h"
 #include "pav_cfg.h"
 #include "pav_platform.h"
@@ -2982,6 +2983,408 @@ void test_log_no_duplicate_after_profile_attach(void) {
     free(profile);
 }
 
+static void act_text(char *dst, size_t dst_len, int64_t id) {
+    snprintf(dst, dst_len, "act-%lld", (long long)id);
+}
+
+static json_t *activity_rows(int history) {
+    json_t *root = call_reply("activity.list", history ? "{\"includeHistory\":true}" : "{}");
+    json_t *rows;
+
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    rows = json_object_get(json_object_get(root, "data"), "activities");
+    TEST_ASSERT_TRUE(json_is_array(rows));
+    json_incref(rows);
+    json_decref(root);
+    return rows;
+}
+
+static json_t *find_act(json_t *rows, const char *id) {
+    size_t i;
+
+    for (i = 0; i < json_array_size(rows); i++) {
+        json_t *item = json_array_get(rows, i);
+        const char *got = json_string_value(json_object_get(item, "id"));
+
+        if (got != NULL && strcmp(got, id) == 0) {
+            return item;
+        }
+    }
+    return NULL;
+}
+
+static int user_version(const char *path) {
+    sqlite3 *db = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int version = -1;
+
+    if (sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, NULL) != SQLITE_OK) {
+        if (db != NULL) {
+            sqlite3_close(db);
+        }
+        return -1;
+    }
+    if (sqlite3_prepare_v2(db, "PRAGMA user_version", -1, &stmt, NULL) == SQLITE_OK &&
+        sqlite3_step(stmt) == SQLITE_ROW) {
+        version = sqlite3_column_int(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+    return version;
+}
+
+void test_activity_begin_progress_end(void) {
+    json_t *rows;
+    json_t *item;
+    json_t *root;
+    int64_t parent;
+    int64_t child;
+    char parent_id[32];
+    char child_id[32];
+    char *log_text;
+    char path[160];
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(0, (int)pav_activity_begin("not.a.kind", NULL, "nope", 1, 0));
+    parent = pav_activity_begin("sync.mail", "a-500foods-andrew", "Sync andrew@500foods.com", 1, 0);
+    TEST_ASSERT_TRUE(parent > 0);
+    act_text(parent_id, sizeof(parent_id), parent);
+    TEST_ASSERT_EQUAL_INT(0, (int)pav_activity_begin("body.fetch", NULL, "orphan", 1, 99999));
+    child = pav_activity_begin("body.fetch", NULL, "Fetch body", 1, parent);
+    TEST_ASSERT_TRUE(child > parent);
+    act_text(child_id, sizeof(child_id), child);
+
+    rows = activity_rows(0);
+    item = find_act(rows, parent_id);
+    TEST_ASSERT_NOT_NULL(item);
+    TEST_ASSERT_EQUAL_STRING("running", json_string_value(json_object_get(item, "state")));
+    TEST_ASSERT_EQUAL_STRING("sync.mail", json_string_value(json_object_get(item, "kind")));
+    TEST_ASSERT_EQUAL_STRING("a-500foods-andrew", json_string_value(json_object_get(item, "accountId")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(item, "progress")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(item, "parentId")));
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(item, "cancellable")));
+    item = find_act(rows, child_id);
+    TEST_ASSERT_NOT_NULL(item);
+    TEST_ASSERT_EQUAL_STRING(parent_id, json_string_value(json_object_get(item, "parentId")));
+    json_decref(rows);
+
+    pav_activity_progress(parent, 3, 10, "messages", "Inbox");
+    rows = activity_rows(0);
+    item = find_act(rows, parent_id);
+    TEST_ASSERT_NOT_NULL(item);
+    TEST_ASSERT_EQUAL_INT(3, (int)json_integer_value(json_object_get(json_object_get(item, "progress"), "done")));
+    TEST_ASSERT_EQUAL_INT(10, (int)json_integer_value(json_object_get(json_object_get(item, "progress"), "total")));
+    TEST_ASSERT_EQUAL_STRING("messages",
+                             json_string_value(json_object_get(json_object_get(item, "progress"), "unit")));
+    TEST_ASSERT_EQUAL_STRING("Inbox", json_string_value(json_object_get(item, "detail")));
+    json_decref(rows);
+
+    pav_activity_end(parent, PAV_ACT_DONE, NULL);
+    rows = activity_rows(0);
+    TEST_ASSERT_NULL(find_act(rows, parent_id));
+    TEST_ASSERT_NOT_NULL(find_act(rows, child_id));
+    json_decref(rows);
+    rows = activity_rows(1);
+    item = find_act(rows, parent_id);
+    TEST_ASSERT_NOT_NULL(item);
+    TEST_ASSERT_EQUAL_STRING("done", json_string_value(json_object_get(item, "state")));
+    TEST_ASSERT_TRUE(json_is_integer(json_object_get(item, "endedMs")));
+    json_decref(rows);
+
+    root = call_reply("activity.list", "{\"includeHistory\":\"yes\"}");
+    assert_call_error(root, "bad_args", "includeHistory");
+    json_decref(root);
+
+    pav_log_flush();
+    snprintf(path, sizeof(path), "%s/logs/default.log", g_cfg_dir);
+    log_text = slurp(path);
+    TEST_ASSERT_NOT_NULL(strstr(log_text, "activity  begin "));
+    TEST_ASSERT_NOT_NULL(strstr(log_text, parent_id));
+    TEST_ASSERT_NOT_NULL(strstr(log_text, "sync.mail"));
+    TEST_ASSERT_NOT_NULL(strstr(log_text, "end "));
+    TEST_ASSERT_NOT_NULL(strstr(log_text, "done"));
+    free(log_text);
+    pav_activity_end(child, PAV_ACT_DONE, NULL);
+}
+
+static int wait_hist_state(const char *id, const char *state) {
+    int i;
+
+    for (i = 0; i < 50; i++) {
+        json_t *rows = activity_rows(1);
+        json_t *item = find_act(rows, id);
+        const char *got = item != NULL ? json_string_value(json_object_get(item, "state")) : NULL;
+        int match = got != NULL && strcmp(got, state) == 0;
+
+        json_decref(rows);
+        if (match) {
+            return 1;
+        }
+        usleep(20000);
+    }
+    return 0;
+}
+
+void test_activity_cancel_is_cooperative(void) {
+    json_t *rows;
+    json_t *item;
+    json_t *root;
+    int64_t id;
+    char text[32];
+    char args[64];
+    struct timespec t0;
+    struct timespec t1;
+    int64_t elapsed_ms;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+
+    id = pav_activity_begin("send", NULL, "keep", 0, 0);
+    TEST_ASSERT_TRUE(id > 0);
+    act_text(text, sizeof(text), id);
+    snprintf(args, sizeof(args), "{\"id\":\"%s\"}", text);
+    root = call_reply("activity.cancel", args);
+    assert_call_error(root, "bad_args", "cannot be cancelled");
+    json_decref(root);
+    TEST_ASSERT_EQUAL_INT(0, pav_activity_cancelled(id));
+    pav_activity_end(id, PAV_ACT_DONE, NULL);
+
+    id = pav_activity_begin("send", NULL, "stop me", 1, 0);
+    act_text(text, sizeof(text), id);
+    snprintf(args, sizeof(args), "{\"id\":\"%s\"}", text);
+    root = call_reply("activity.cancel", args);
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    item = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_STRING("running", json_string_value(json_object_get(item, "state")));
+    json_decref(root);
+    TEST_ASSERT_EQUAL_INT(1, pav_activity_cancelled(id));
+    rows = activity_rows(0);
+    item = find_act(rows, text);
+    TEST_ASSERT_NOT_NULL(item);
+    TEST_ASSERT_EQUAL_STRING("running", json_string_value(json_object_get(item, "state")));
+    json_decref(rows);
+    pav_activity_end(id, PAV_ACT_CANCELLED, NULL);
+    rows = activity_rows(1);
+    item = find_act(rows, text);
+    TEST_ASSERT_NOT_NULL(item);
+    TEST_ASSERT_EQUAL_STRING("cancelled", json_string_value(json_object_get(item, "state")));
+    json_decref(rows);
+
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    root = call_reply("debug.activity_demo", "{\"steps\":5,\"ms\":200}");
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    elapsed_ms = (int64_t)(t1.tv_sec - t0.tv_sec) * 1000 + (t1.tv_nsec - t0.tv_nsec) / 1000000;
+    TEST_ASSERT_TRUE(elapsed_ms < 180);
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    item = json_object_get(root, "data");
+    TEST_ASSERT_NOT_NULL(json_string_value(json_object_get(item, "id")));
+    snprintf(text, sizeof(text), "%s", json_string_value(json_object_get(item, "id")));
+    json_decref(root);
+    rows = activity_rows(0);
+    item = find_act(rows, text);
+    TEST_ASSERT_NOT_NULL(item);
+    TEST_ASSERT_EQUAL_STRING("running", json_string_value(json_object_get(item, "state")));
+    TEST_ASSERT_EQUAL_STRING("sync.mail", json_string_value(json_object_get(item, "kind")));
+    json_decref(rows);
+    snprintf(args, sizeof(args), "{\"id\":\"%s\"}", text);
+    root = call_reply("activity.cancel", args);
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    json_decref(root);
+    TEST_ASSERT_TRUE(wait_hist_state(text, "cancelled"));
+}
+
+void test_activity_eta_after_two_samples(void) {
+    json_t *rows;
+    json_t *item;
+    int64_t id;
+    char text[32];
+
+    pav_platform_fake_set_now_ms(1000000);
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    id = pav_activity_begin("index.rebuild", NULL, "Rebuild", 1, 0);
+    TEST_ASSERT_TRUE(id > 0);
+    act_text(text, sizeof(text), id);
+    pav_activity_progress(id, 0, 1000, "messages", NULL);
+    rows = activity_rows(0);
+    item = find_act(rows, text);
+    TEST_ASSERT_NOT_NULL(item);
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(item, "etaMs")));
+    json_decref(rows);
+
+    pav_platform_fake_set_now_ms(1011000);
+    pav_activity_progress(id, 100, 1000, "messages", NULL);
+    rows = activity_rows(0);
+    item = find_act(rows, text);
+    TEST_ASSERT_NOT_NULL(item);
+    TEST_ASSERT_EQUAL_INT(99000, (int)json_integer_value(json_object_get(item, "etaMs")));
+    json_decref(rows);
+
+    pav_platform_fake_set_now_ms(1021000);
+    pav_activity_progress(id, 150, -1, "messages", NULL);
+    rows = activity_rows(0);
+    item = find_act(rows, text);
+    TEST_ASSERT_NOT_NULL(item);
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(item, "etaMs")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(json_object_get(item, "progress"), "total")));
+    json_decref(rows);
+    pav_activity_end(id, PAV_ACT_DONE, NULL);
+}
+
+struct ActEv {
+    int n;
+    char last[2048];
+};
+
+static struct ActEv g_act_ev;
+
+static void act_ev_cb(const char *name, const char *json, void *user) {
+    struct ActEv *got = user;
+
+    if (name == NULL || strcmp(name, "activity.changed") != 0 || json == NULL) {
+        return;
+    }
+    pthread_mutex_lock(&g_ev_test_mu);
+    got->n++;
+    snprintf(got->last, sizeof(got->last), "%s", json);
+    pthread_cond_signal(&g_ev_test_cv);
+    pthread_mutex_unlock(&g_ev_test_mu);
+}
+
+static void wait_act_events(int want) {
+    struct timespec ts;
+    int rc;
+
+    pthread_mutex_lock(&g_ev_test_mu);
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 2;
+    while (g_act_ev.n < want) {
+        rc = pthread_cond_timedwait(&g_ev_test_cv, &g_ev_test_mu, &ts);
+        if (rc != 0) {
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_ev_test_mu);
+}
+
+void test_activity_events_throttled(void) {
+    int64_t id;
+
+    memset(&g_act_ev, 0, sizeof(g_act_ev));
+    pav_platform_fake_set_now_ms(5000000);
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_on_event(act_ev_cb, &g_act_ev);
+    id = pav_activity_begin("rules.run", NULL, "Rules", 1, 0);
+    TEST_ASSERT_TRUE(id > 0);
+    wait_act_events(1);
+    TEST_ASSERT_EQUAL_INT(1, g_act_ev.n);
+
+    pav_activity_progress(id, 1, 10, "rows", NULL);
+    usleep(80000);
+    TEST_ASSERT_EQUAL_INT(1, g_act_ev.n);
+
+    pav_platform_fake_set_now_ms(5000249);
+    pav_activity_progress(id, 2, 10, "rows", NULL);
+    usleep(80000);
+    TEST_ASSERT_EQUAL_INT(1, g_act_ev.n);
+
+    pav_platform_fake_set_now_ms(5000250);
+    pav_activity_progress(id, 3, 10, "rows", NULL);
+    wait_act_events(2);
+    TEST_ASSERT_EQUAL_INT(2, g_act_ev.n);
+    TEST_ASSERT_NOT_NULL(strstr(g_act_ev.last, "\"activity\""));
+
+    pav_activity_end(id, PAV_ACT_DONE, NULL);
+    wait_act_events(3);
+    TEST_ASSERT_EQUAL_INT(3, g_act_ev.n);
+    pav_on_event(NULL, NULL);
+}
+
+void test_activity_history_capped(void) {
+    json_t *rows;
+    json_t *item;
+    json_t *root;
+    int64_t first = 0;
+    int64_t failed;
+    int64_t id;
+    int i;
+    char first_text[32];
+    char failed_text[32];
+    char last_text[32];
+    char args[64];
+    char path[160];
+    int failed_seen;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    snprintf(path, sizeof(path), "%s/default.sqlite", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(0, user_version(path));
+    TEST_ASSERT_EQUAL_INT(1, user_table_count(path));
+
+    for (i = 0; i < 501; i++) {
+        id = pav_activity_begin("export", NULL, "cap", 0, 0);
+        TEST_ASSERT_TRUE(id > 0);
+        if (i == 0) {
+            first = id;
+        }
+        pav_activity_end(id, PAV_ACT_DONE, NULL);
+    }
+    act_text(first_text, sizeof(first_text), first);
+    rows = activity_rows(1);
+    TEST_ASSERT_EQUAL_INT(500, (int)json_array_size(rows));
+    TEST_ASSERT_NULL(find_act(rows, first_text));
+    json_decref(rows);
+
+    failed = pav_activity_begin("import", NULL, "broken", 1, 0);
+    TEST_ASSERT_TRUE(failed > 0);
+    pav_activity_end(failed, PAV_ACT_FAILED, "disk full");
+    act_text(failed_text, sizeof(failed_text), failed);
+    for (i = 0; i < 500; i++) {
+        id = pav_activity_begin("export", NULL, "cap", 0, 0);
+        TEST_ASSERT_TRUE(id > 0);
+        pav_activity_end(id, PAV_ACT_DONE, NULL);
+    }
+    act_text(last_text, sizeof(last_text), id);
+    rows = activity_rows(1);
+    TEST_ASSERT_EQUAL_INT(501, (int)json_array_size(rows));
+    item = find_act(rows, failed_text);
+    TEST_ASSERT_NOT_NULL(item);
+    TEST_ASSERT_EQUAL_STRING("failed", json_string_value(json_object_get(item, "state")));
+    TEST_ASSERT_EQUAL_STRING("disk full", json_string_value(json_object_get(item, "error")));
+    TEST_ASSERT_NOT_NULL(find_act(rows, last_text));
+    TEST_ASSERT_NULL(find_act(rows, first_text));
+    json_decref(rows);
+    rows = activity_rows(0);
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(rows));
+    TEST_ASSERT_NOT_NULL(find_act(rows, failed_text));
+    json_decref(rows);
+
+    pavillion_stop();
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(0, user_version(path));
+    rows = activity_rows(1);
+    TEST_ASSERT_EQUAL_INT(501, (int)json_array_size(rows));
+    TEST_ASSERT_NOT_NULL(find_act(rows, failed_text));
+    TEST_ASSERT_NOT_NULL(find_act(rows, last_text));
+    TEST_ASSERT_NULL(find_act(rows, first_text));
+    json_decref(rows);
+
+    snprintf(args, sizeof(args), "{\"id\":\"%s\"}", failed_text);
+    root = call_reply("activity.dismiss", args);
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    json_decref(root);
+    rows = activity_rows(0);
+    failed_seen = find_act(rows, failed_text) != NULL;
+    json_decref(rows);
+    TEST_ASSERT_FALSE(failed_seen);
+    rows = activity_rows(1);
+    TEST_ASSERT_NULL(find_act(rows, failed_text));
+    TEST_ASSERT_EQUAL_INT(500, (int)json_array_size(rows));
+    json_decref(rows);
+}
+
 int main(void) {
     pav_platform_install(pav_platform_fake());
     UNITY_BEGIN();
@@ -3045,5 +3448,10 @@ int main(void) {
     RUN_TEST(test_index_log_level_and_prefs_saved);
     RUN_TEST(test_log_export_filter);
     RUN_TEST(test_prefs_set_log_level);
+    RUN_TEST(test_activity_begin_progress_end);
+    RUN_TEST(test_activity_cancel_is_cooperative);
+    RUN_TEST(test_activity_eta_after_two_samples);
+    RUN_TEST(test_activity_events_throttled);
+    RUN_TEST(test_activity_history_capped);
     return UNITY_END();
 }

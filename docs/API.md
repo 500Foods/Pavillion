@@ -19,7 +19,7 @@ Commands are `noun.verb` in lowercase with dots (`mailbox.list`). Events are `no
 
 `retryable` is true only for `network` and for some `server` errors. A full command queue is `internal` and returns at once.
 
-Commands run on the core thread unless the dispatcher marks them `worker`. No command is `worker` yet. Bulk bodies and attachments do not cross this boundary as JSON; they use a file path or the `pav-cid` and `pav-blob` schemes.
+Commands run on the core thread unless the dispatcher marks them `worker`. `debug.activity_demo` is the worker command. Bulk bodies and attachments do not cross this boundary as JSON; they use a file path or the `pav-cid` and `pav-blob` schemes.
 
 `pav_on_event` registers one callback. The event thread calls it, so a slow host does not block the core thread. The callback only queues work. An event posted with no callback, or before the event thread is running, is dropped and counted. The event queue holds 256 payloads of at most 64 KB each.
 
@@ -81,15 +81,43 @@ State: planned (K-2)
 
 ### activity.cancel
 
-State: planned (I-1)
+State: real (I-1)
 
-`{id}`. Cancels a running activity.
+`{id}`. `id` is `act-<n>`. Sets the cancel flag when the activity is `running` or `queued` and `cancellable` is true. The state stays as it is until the operation ends itself. Cancel does not kill a thread.
+
+Result: the activity object.
+
+Errors: `bad_args`, `not_found`.
+
+### activity.dismiss
+
+State: real (I-1)
+
+`{id}`. The activity must be `failed`. Sets dismissed. It leaves the default list and stays in history until the 500-row cap drops it.
+
+Result: the activity object.
+
+Errors: `bad_args`, `not_found`.
 
 ### activity.list
 
-State: planned (I-1)
+State: real (I-1)
 
-`{includeHistory}`. Returns the in-memory activity registry.
+`{includeHistory?}`. Omitted or false, the result is `running`, `queued`, and `failed` activities that have not been dismissed. True adds the finished history loaded from the profile database.
+
+Result: `{activities:[activity]}`. Each activity is:
+
+```json
+{ "id": "act-42", "kind": "sync.mail", "accountId": "a-500foods-andrew",
+  "title": "Sync andrew@500foods.com", "detail": "Inbox: headers 300 of 1,200",
+  "state": "running", "startedMs": 1760630581452, "endedMs": null,
+  "progress": { "done": 300, "total": 1200, "unit": "messages" },
+  "etaMs": 4200, "cancellable": true, "error": null, "parentId": null }
+```
+
+`state` is `queued`, `running`, `done`, `failed`, or `cancelled`. `kind` is `sync.mail`, `sync.contacts`, `sync.calendar`, `sync.files`, `body.fetch`, `attachment.download`, `files.upload`, `files.download`, `send`, `index.rebuild`, `rules.run`, `import`, `export`, or `retention`. A later phase adds a kind here in the same sitting that first uses it. `progress` is null until the first progress report. `progress.total` and `etaMs` are null when the total is unknown. `etaMs` stays null until two progress samples exist. `parentId` is `act-<n>` or null. `endedMs` and `error` are null while the activity is unfinished. Finished rows are reloaded from SQLite on the next start. Running rows are not.
+
+Errors: `bad_args`.
 
 ### addressbook.list
 
@@ -162,6 +190,18 @@ Lists contacts for the current address-book view.
 State: planned (S-3)
 
 Creates or updates one contact through the op queue.
+
+### debug.activity_demo
+
+State: real (I-1)
+
+Debug builds only. A build with `NDEBUG` does not register this command. `make test` builds the core without `NDEBUG`.
+
+`{steps, ms}`. `steps` is an integer from 1 to 10000. `ms` is an integer from 0 to 60000, the pause between progress reports. This command is `worker`. It begins a cancellable `sync.mail` activity titled `Demo activity` and returns before the steps run. The stepper honors cancel. At most 8 demos are outstanding in one session.
+
+Result: `{id}`. `id` is `act-<n>`.
+
+Errors: `bad_args`, `internal`.
 
 ### draft.attach
 
@@ -639,9 +679,9 @@ Events are not commands. Payloads are JSON objects. No event is emitted yet; G-2
 ### activity.changed
 
 Kind: event
-State: planned (I-1)
+State: real (I-1)
 
-The activity registry changed. Coalesced to at most one event per 250 ms.
+`{activity}`. The activity object from `activity.list`. Posted on begin, on end, on dismiss, and on progress when at least 250 ms have passed since the last event for that same activity. Begin, end, and dismiss are not throttled.
 
 ### app.mailto
 

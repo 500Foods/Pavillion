@@ -40,8 +40,14 @@ static int cmd_prefs_ui_get(json_t *args, json_t **data, PavError *err);
 static int cmd_prefs_ui_set(json_t *args, json_t **data, PavError *err);
 static int cmd_status(json_t *args, json_t **data, PavError *err);
 
-/* strcmp order. bsearch requires it. The worker flag is unused until I-1. */
+/* strcmp order. bsearch requires it. */
 static const PavCommand k_commands[] = {
+    {"activity.cancel", pav_activity_cmd_cancel, 0},
+    {"activity.dismiss", pav_activity_cmd_dismiss, 0},
+    {"activity.list", pav_activity_cmd_list, 0},
+#ifndef NDEBUG
+    {"debug.activity_demo", pav_activity_cmd_demo, PAV_CMD_WORKER},
+#endif
     {"log.client", cmd_log_client, 0},
     {"log.export", cmd_log_export, 0},
     {"log.tail", cmd_log_tail, 0},
@@ -150,6 +156,12 @@ static int command_cmp(const void *key, const void *elem) {
 static const PavCommand *command_find(const char *name) {
     return bsearch(name, k_commands, sizeof(k_commands) / sizeof(k_commands[0]), sizeof(k_commands[0]),
                    command_cmp);
+}
+
+int pav_command_is_worker(const char *name) {
+    const PavCommand *cmd = command_find(name);
+
+    return cmd != NULL && (cmd->flags & PAV_CMD_WORKER) != 0;
 }
 
 int pav_command_count(void) {
@@ -558,7 +570,6 @@ char *pav_dispatch_reply(const char *name, json_t *args) {
         snprintf(buf, sizeof(buf), "unknown command %s", name);
         return pav_reply_error("bad_args", buf, 0);
     }
-    (void)cmd->flags;
     if (cmd->handler(args, &data, &err) != 0) {
         json_decref(data);
         if (err.code[0] == '\0') {

@@ -109,8 +109,9 @@ input:focus-visible {
 .tabs {
   display: flex;
   flex: none;
+  flex-wrap: nowrap;
   align-items: stretch;
-  min-height: 2.25rem;
+  min-height: 2.5rem;
   background: var(--surface-nav);
   border-bottom: 1px solid var(--border);
 }
@@ -119,7 +120,9 @@ input:focus-visible {
   border: 0;
   border-right: 1px solid var(--border);
   background: transparent;
-  padding: 0.4rem 0.9rem;
+  min-height: 2.5rem;
+  padding: 0.55rem 0.9rem;
+  white-space: nowrap;
 }
 
 .tabs [role="tab"][aria-selected="true"] {

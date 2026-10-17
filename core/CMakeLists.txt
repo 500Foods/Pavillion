@@ -18,6 +18,7 @@ add_library(pavillion_core STATIC
     src/config_prefs.c
     src/config_fs.c
     src/store.c
+    src/activity.c
     platform/posix/posix.c)
 target_include_directories(pavillion_core PUBLIC include)
 target_include_directories(pavillion_core PRIVATE platform)

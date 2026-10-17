@@ -2,6 +2,7 @@
 
 #include "dispatch.h"
 #include "logring.h"
+#include "pav_activity.h"
 #include "pav_cfg.h"
 #include "pav_config.h"
 #include "pav_platform.h"
@@ -117,8 +118,11 @@ static int core_apply_prefs(char *err, size_t err_len);
 static int core_apply_icons(char *err, size_t err_len);
 static int core_apply_kit(char *err, size_t err_len);
 static int core_apply_ui(char *err, size_t err_len);
+static int worker_submit(PavCall *call);
+static void worker_drain(void);
 
 static void core_release_profile(void) {
+    pav_activity_shutdown();
     pav_store_close(g_store);
     g_store = NULL;
     pav_config_load_free(g_load);
@@ -167,6 +171,10 @@ static void core_boot(void) {
     if (pav_config_prepare(g_core_workdir, profile, err, sizeof(err)) != 0 ||
         pav_store_open(&g_store, profile->engine, profile->resolved_storage, err, sizeof(err)) != 0) {
         publish_boot("error", profile->name, profile->id, err);
+        return;
+    }
+    if (pav_activity_attach(pav_store_handle(g_store)) != 0) {
+        publish_boot("error", profile->name, profile->id, "cannot open activity registry");
         return;
     }
     (void)pav_log_attach_profile(profile->resolved_logs);
@@ -305,6 +313,17 @@ static void *core_thread_main(void *arg) {
             if (call == NULL) {
                 continue;
             }
+            if (pav_command_is_worker(call->name)) {
+                pthread_mutex_unlock(&g_core_mu);
+                if (worker_submit(call) != 0) {
+                    pthread_mutex_lock(&g_core_mu);
+                    fail_call_unlocked(call, "internal", "cannot start worker");
+                    pthread_cond_broadcast(&g_core_cv);
+                } else {
+                    pthread_mutex_lock(&g_core_mu);
+                }
+                continue;
+            }
             pthread_mutex_unlock(&g_core_mu);
             reply = pav_dispatch_reply(call->name, call->args);
             json_decref(call->args);
@@ -344,6 +363,9 @@ static void *core_thread_main(void *arg) {
             pthread_cond_broadcast(&g_core_cv);
         }
     }
+    pthread_mutex_unlock(&g_core_mu);
+    worker_drain();
+    pthread_mutex_lock(&g_core_mu);
     g_core_alive = 0;
     core_fail_prefs_unlocked("core stopped");
     g_icons_rc = -1;
@@ -367,6 +389,105 @@ static void *core_thread_main(void *arg) {
     pav_window_flush();
     core_release_profile();
     return NULL;
+}
+
+#define WORKER_CAP 8
+
+static pthread_mutex_t g_worker_mu = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t g_worker_cv = PTHREAD_COND_INITIALIZER;
+static void *g_worker_thread;
+static int g_worker_alive;
+static int g_worker_stop;
+static int g_worker_busy;
+static PavCall *g_worker_q[WORKER_CAP];
+static int g_worker_n;
+
+static void worker_finish_call(PavCall *call, char *reply) {
+    pthread_mutex_lock(&g_core_mu);
+    call->reply = reply;
+    call->done = 1;
+    pthread_cond_broadcast(&g_core_cv);
+    pthread_mutex_unlock(&g_core_mu);
+}
+
+static void *worker_main(void *arg) {
+    (void)arg;
+    for (;;) {
+        PavCall *call;
+        char *reply;
+
+        pthread_mutex_lock(&g_worker_mu);
+        while (g_worker_n == 0 && !g_worker_stop) {
+            pthread_cond_wait(&g_worker_cv, &g_worker_mu);
+        }
+        if (g_worker_n == 0 && g_worker_stop) {
+            g_worker_alive = 0;
+            pthread_cond_broadcast(&g_worker_cv);
+            pthread_mutex_unlock(&g_worker_mu);
+            break;
+        }
+        call = g_worker_q[0];
+        if (g_worker_n > 1) {
+            memmove(&g_worker_q[0], &g_worker_q[1], (size_t)(g_worker_n - 1) * sizeof(g_worker_q[0]));
+        }
+        g_worker_n--;
+        g_worker_busy = 1;
+        pthread_mutex_unlock(&g_worker_mu);
+        reply = pav_dispatch_reply(call->name, call->args);
+        json_decref(call->args);
+        call->args = NULL;
+        worker_finish_call(call, reply);
+        pthread_mutex_lock(&g_worker_mu);
+        g_worker_busy = 0;
+        pthread_cond_broadcast(&g_worker_cv);
+        pthread_mutex_unlock(&g_worker_mu);
+    }
+    return NULL;
+}
+
+/* The caller does not hold g_core_mu. The worker publishes call->done. */
+static int worker_submit(PavCall *call) {
+    pthread_mutex_lock(&g_worker_mu);
+    if (!g_worker_alive) {
+        g_worker_stop = 0;
+        g_worker_n = 0;
+        g_worker_busy = 0;
+        if (pav_thread_create(&g_worker_thread, worker_main, NULL) != 0) {
+            pthread_mutex_unlock(&g_worker_mu);
+            return -1;
+        }
+        g_worker_alive = 1;
+    }
+    if (g_worker_stop || g_worker_n >= WORKER_CAP) {
+        pthread_mutex_unlock(&g_worker_mu);
+        return -1;
+    }
+    g_worker_q[g_worker_n++] = call;
+    pthread_cond_signal(&g_worker_cv);
+    pthread_mutex_unlock(&g_worker_mu);
+    return 0;
+}
+
+/* Joins the worker after the calls it already took have published done. */
+static void worker_drain(void) {
+    void *thread = NULL;
+
+    pthread_mutex_lock(&g_worker_mu);
+    if (!g_worker_alive) {
+        pthread_mutex_unlock(&g_worker_mu);
+        return;
+    }
+    g_worker_stop = 1;
+    pthread_cond_broadcast(&g_worker_cv);
+    while (g_worker_alive) {
+        pthread_cond_wait(&g_worker_cv, &g_worker_mu);
+    }
+    thread = g_worker_thread;
+    g_worker_thread = NULL;
+    pthread_mutex_unlock(&g_worker_mu);
+    if (thread != NULL) {
+        pav_thread_join(thread);
+    }
 }
 
 /* The caller is the core thread and does not hold g_core_mu.

@@ -39,6 +39,16 @@ int pav_core_ui_set(json_t *args, json_t **data, PavError *err);
 
 int pav_ui_log(const char *subsystem, int level, const char *message);
 
+int pav_activity_cmd_list(json_t *args, json_t **data, PavError *err);
+int pav_activity_cmd_cancel(json_t *args, json_t **data, PavError *err);
+int pav_activity_cmd_dismiss(json_t *args, json_t **data, PavError *err);
+#ifndef NDEBUG
+int pav_activity_cmd_demo(json_t *args, json_t **data, PavError *err);
+#endif
+
+/* 1 when the dispatcher runs this command off the core thread. */
+int pav_command_is_worker(const char *name);
+
 int pav_event_thread_start(void);
 void pav_event_thread_stop(void);
 
