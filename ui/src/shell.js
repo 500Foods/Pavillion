@@ -9,19 +9,6 @@ function log(subsystem, level, message) {
 
 export function useApi(next) {
   api = next;
-  window.onerror = function (message, source, lineno, colno, error) {
-    const text = error && error.stack
-      ? String(error.stack)
-      : `${message} (${source}:${lineno}:${colno})`;
-    log("ui", 0, `onerror: ${text}`);
-    return false;
-  };
-  window.onunhandledrejection = function (event) {
-    const reason = event && event.reason
-      ? String(event.reason.stack || event.reason)
-      : "unhandled promise rejection";
-    log("ui", 0, `onunhandledrejection: ${reason}`);
-  };
 }
 
 const ui = clampUi({});

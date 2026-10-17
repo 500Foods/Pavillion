@@ -5,6 +5,7 @@
 #include "pav_platform.h"
 #include "pav_store.h"
 #include "pavillion.h"
+#include "logring.h"
 #include "unity.h"
 
 #include <jansson.h>
@@ -46,6 +47,54 @@ static pthread_cond_t g_turn_cv = PTHREAD_COND_INITIALIZER;
 static int g_turn;
 
 static char g_log_path[64];
+static int g_saved_stderr = -1;
+static char g_err_path[64];
+
+/* PROFILE logs also go to stderr when it is a terminal. Park that stream
+   in a file for the tests that would otherwise mix lines into Unity. */
+static void restore_stderr(void) {
+    int err_fd;
+
+    if (g_saved_stderr < 0) {
+        return;
+    }
+    fflush(stderr);
+    err_fd = fileno(stderr);
+    if (err_fd >= 0) {
+        dup2(g_saved_stderr, err_fd);
+    }
+    close(g_saved_stderr);
+    g_saved_stderr = -1;
+    if (g_err_path[0] != '\0') {
+        unlink(g_err_path);
+        g_err_path[0] = '\0';
+    }
+}
+
+static void capture_stderr(void) {
+    char path[] = "/tmp/pav-err-XXXXXX";
+    int fd;
+    int err_fd;
+
+    TEST_ASSERT_TRUE(g_saved_stderr < 0);
+    fflush(stderr);
+    fd = mkstemp(path);
+    TEST_ASSERT_TRUE(fd >= 0);
+    err_fd = fileno(stderr);
+    g_saved_stderr = dup(err_fd);
+    if (g_saved_stderr < 0 || dup2(fd, err_fd) != err_fd) {
+        close(fd);
+        if (g_saved_stderr >= 0) {
+            close(g_saved_stderr);
+            g_saved_stderr = -1;
+        }
+        unlink(path);
+        TEST_FAIL_MESSAGE("cannot capture stderr");
+    }
+    TEST_ASSERT_EQUAL_INT(0, close(fd));
+    TEST_ASSERT_TRUE(strlen(path) < sizeof(g_err_path));
+    memcpy(g_err_path, path, strlen(path) + 1);
+}
 
 static int timestamp_ok(const char *s) {
     static const char shape[] = "dddd-dd-ddTdd:dd:dd.dddZ";
@@ -167,6 +216,9 @@ void tearDown(void) {
     pavillion_stop();
     pav_log_thread_shutdown();
     pav_log_set_output(NULL);
+    pav_log_set_workdir(NULL);
+    pav_logring_reset();
+    restore_stderr();
     if (g_log_path[0] != '\0') {
         unlink(g_log_path);
         g_log_path[0] = '\0';
@@ -583,6 +635,147 @@ static char *slurp(const char *path) {
     fclose(f);
     TEST_ASSERT_EQUAL_INT((int)n, (int)got);
     return buf;
+}
+
+static char *take_stderr(void) {
+    char *text;
+
+    fflush(stderr);
+    TEST_ASSERT_TRUE(g_err_path[0] != '\0');
+    text = slurp(g_err_path);
+    restore_stderr();
+    return text;
+}
+
+static int count_text(const char *haystack, const char *needle) {
+    int count = 0;
+    const char *p;
+    size_t n;
+
+    if (haystack == NULL || needle == NULL) {
+        return 0;
+    }
+    n = strlen(needle);
+    if (n == 0) {
+        return 0;
+    }
+    p = haystack;
+    while ((p = strstr(p, needle)) != NULL) {
+        count++;
+        p += n;
+    }
+    return count;
+}
+
+static void write_sized(const char *path, long size, char last) {
+    FILE *f;
+    struct stat st;
+
+    TEST_ASSERT_TRUE(size >= 1);
+    f = fopen(path, "wb");
+    TEST_ASSERT_NOT_NULL(f);
+    TEST_ASSERT_EQUAL_INT(0, fseek(f, size - 1, SEEK_SET));
+    TEST_ASSERT_EQUAL_INT(1, (int)fwrite(&last, 1, 1, f));
+    TEST_ASSERT_EQUAL_INT(0, fclose(f));
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
+    TEST_ASSERT_TRUE(st.st_size == size);
+}
+
+/* The rotation fixture is a sparse file of NUL bytes. strstr would stop
+   on the first one, so the marker is checked in the tail only. */
+static char *read_tail(const char *path, size_t max_bytes, size_t *out_n) {
+    FILE *f;
+    struct stat st;
+    off_t start;
+    char *buf;
+    size_t n;
+    size_t got;
+
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
+    f = fopen(path, "rb");
+    TEST_ASSERT_NOT_NULL(f);
+    start = st.st_size > (off_t)max_bytes ? st.st_size - (off_t)max_bytes : 0;
+    TEST_ASSERT_EQUAL_INT(0, fseek(f, (long)start, SEEK_SET));
+    n = (size_t)(st.st_size - start);
+    buf = calloc(n + 1, 1);
+    TEST_ASSERT_NOT_NULL(buf);
+    got = fread(buf, 1, n, f);
+    TEST_ASSERT_EQUAL_INT(0, fclose(f));
+    TEST_ASSERT_EQUAL_UINT((unsigned)n, (unsigned)got);
+    *out_n = n;
+    return buf;
+}
+
+static int count_bytes(const char *hay, size_t hay_n, const char *needle) {
+    size_t n = strlen(needle);
+    size_t i;
+    int count = 0;
+
+    if (n == 0 || hay_n < n) {
+        return 0;
+    }
+    for (i = 0; i + n <= hay_n; i++) {
+        if (memcmp(hay + i, needle, n) == 0) {
+            count++;
+            i += n - 1;
+        }
+    }
+    return count;
+}
+
+static char last_byte(const char *path) {
+    FILE *f;
+    unsigned char c = 0;
+
+    f = fopen(path, "rb");
+    TEST_ASSERT_NOT_NULL(f);
+    TEST_ASSERT_EQUAL_INT(0, fseek(f, -1, SEEK_END));
+    TEST_ASSERT_EQUAL_INT(1, (int)fread(&c, 1, 1, f));
+    TEST_ASSERT_EQUAL_INT(0, fclose(f));
+    return (char)c;
+}
+
+static json_t *tail_lines(json_t *root) {
+    json_t *lines = json_object_get(json_object_get(root, "data"), "lines");
+
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    TEST_ASSERT_TRUE(json_is_array(lines));
+    return lines;
+}
+
+static const char *line_text(json_t *line) {
+    return json_string_value(json_object_get(line, "text"));
+}
+
+static int lines_have(json_t *lines, const char *text) {
+    size_t i;
+
+    for (i = 0; i < json_array_size(lines); i++) {
+        const char *got = line_text(json_array_get(lines, i));
+
+        if (got != NULL && strcmp(got, text) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static json_int_t seq_of(json_t *lines, const char *text) {
+    size_t i;
+
+    for (i = 0; i < json_array_size(lines); i++) {
+        json_t *line = json_array_get(lines, i);
+        const char *got = line_text(line);
+
+        if (got != NULL && strcmp(got, text) == 0) {
+            json_t *seq = json_object_get(line, "seq");
+
+            TEST_ASSERT_TRUE(json_is_integer(seq));
+            return json_integer_value(seq);
+        }
+    }
+    TEST_FAIL_MESSAGE("line not found");
+    return -1;
 }
 
 void test_ensure_writes_defaults_once(void) {
@@ -1908,6 +2101,29 @@ void test_call_prefs_ui_and_log(void) {
 static pthread_mutex_t g_ev_test_mu = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t g_ev_test_cv = PTHREAD_COND_INITIALIZER;
 
+struct LinesGot {
+    int hit;
+    char json[8192];
+};
+
+static struct LinesGot g_lines_got;
+
+static void lines_test_cb(const char *name, const char *json, void *user) {
+    struct LinesGot *got = user;
+
+    if (name == NULL || strcmp(name, "log.lines") != 0 || json == NULL) {
+        return;
+    }
+    if (strstr(json, "batch-a-h1") == NULL || strstr(json, "batch-b-h1") == NULL) {
+        return;
+    }
+    pthread_mutex_lock(&g_ev_test_mu);
+    got->hit = 1;
+    snprintf(got->json, sizeof(got->json), "%s", json);
+    pthread_cond_signal(&g_ev_test_cv);
+    pthread_mutex_unlock(&g_ev_test_mu);
+}
+
 struct EvGot {
     int hit;
     int on_core;
@@ -1922,6 +2138,11 @@ static pthread_t g_ev_caller;
 static void ev_test_cb(const char *name, const char *json, void *user) {
     struct EvGot *got = user;
 
+    /* Boot also emits log.lines. Recording that name would replace the
+       core.state sample this test is waiting on. */
+    if (name == NULL || strcmp(name, "core.state") != 0) {
+        return;
+    }
     pthread_mutex_lock(&g_ev_test_mu);
     got->hit = 1;
     got->on_core = pav_on_core_thread();
@@ -2231,6 +2452,324 @@ void test_start_creates_workdir_0700(void) {
     TEST_ASSERT_EQUAL_INT(0700, (int)(st.st_mode & 0777));
 }
 
+void test_logring_wraps_at_capacity(void) {
+    int i;
+    json_t *root = NULL;
+    json_t *lines;
+    json_t *first;
+    json_t *last;
+    char line[80];
+
+    pav_logring_reset();
+    for (i = 1; i <= PAV_LOGRING_CAP + 1; i++) {
+        snprintf(line, sizeof(line), "2026-10-16T00:00:00.000Z INFO  core  n-%d\n", i);
+        TEST_ASSERT_EQUAL_INT(0, pav_logring_push((uint64_t)i, line));
+    }
+    TEST_ASSERT_EQUAL_INT(0, pav_logring_read(0, PAV_LOGRING_CAP, PAV_DEBUG, NULL, &root));
+    TEST_ASSERT_NOT_NULL(root);
+    lines = json_object_get(root, "lines");
+    TEST_ASSERT_TRUE(json_is_array(lines));
+    TEST_ASSERT_EQUAL_INT(PAV_LOGRING_CAP, (int)json_array_size(lines));
+    first = json_array_get(lines, 0);
+    last = json_array_get(lines, (size_t)PAV_LOGRING_CAP - 1);
+    TEST_ASSERT_EQUAL_INT(2, (int)json_integer_value(json_object_get(first, "seq")));
+    TEST_ASSERT_EQUAL_STRING("n-2", json_string_value(json_object_get(first, "text")));
+    TEST_ASSERT_EQUAL_INT(10001, (int)json_integer_value(json_object_get(last, "seq")));
+    TEST_ASSERT_EQUAL_STRING("n-10001", json_string_value(json_object_get(last, "text")));
+    json_decref(root);
+}
+
+void test_log_tail_since_seq(void) {
+    json_t *root;
+    json_t *lines;
+    json_int_t seq_a;
+    char args[64];
+    size_t i;
+    int seen_b = 0;
+    int seen_c = 0;
+
+    root = call_reply("log.tail", "{}");
+    assert_call_error(root, "not_ready", "not running");
+    json_decref(root);
+
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_log("core", PAV_INFO, 0, "tail-a");
+    pav_log("core", PAV_INFO, 0, "tail-b");
+    pav_log("core", PAV_INFO, 0, "tail-c");
+
+    root = call_reply("log.tail", "{}");
+    lines = tail_lines(root);
+    seq_a = seq_of(lines, "tail-a");
+    TEST_ASSERT_TRUE(seq_a > 0);
+    json_decref(root);
+
+    snprintf(args, sizeof(args), "{\"sinceSeq\":%lld}", (long long)seq_a);
+    root = call_reply("log.tail", args);
+    lines = tail_lines(root);
+    TEST_ASSERT_FALSE(lines_have(lines, "tail-a"));
+    for (i = 0; i < json_array_size(lines); i++) {
+        const char *text = line_text(json_array_get(lines, i));
+
+        if (text != NULL && strcmp(text, "tail-b") == 0) {
+            TEST_ASSERT_FALSE(seen_c);
+            seen_b = 1;
+        }
+        if (text != NULL && strcmp(text, "tail-c") == 0) {
+            TEST_ASSERT_TRUE(seen_b);
+            seen_c = 1;
+        }
+    }
+    TEST_ASSERT_TRUE(seen_b);
+    TEST_ASSERT_TRUE(seen_c);
+    json_decref(root);
+
+    root = call_reply("log.tail", "{\"limit\":1}");
+    lines = tail_lines(root);
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(lines));
+    TEST_ASSERT_EQUAL_STRING("tail-c", line_text(json_array_get(lines, 0)));
+    json_decref(root);
+
+    root = call_reply("log.tail", "{\"limit\":0}");
+    assert_call_error(root, "bad_args", "limit");
+    json_decref(root);
+    root = call_reply("log.tail", "{\"limit\":10001}");
+    assert_call_error(root, "bad_args", "limit");
+    json_decref(root);
+}
+
+void test_log_tail_filters_level(void) {
+    json_t *root;
+    json_t *lines;
+
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_log("core", PAV_WARN, 0, "filter-warn");
+    pav_log("core", PAV_INFO, 0, "filter-info");
+    pav_log("config", PAV_WARN, 0, "filter-config");
+
+    root = call_reply("log.tail", "{\"minLevel\":\"warn\"}");
+    lines = tail_lines(root);
+    TEST_ASSERT_TRUE(lines_have(lines, "filter-warn"));
+    TEST_ASSERT_TRUE(lines_have(lines, "filter-config"));
+    TEST_ASSERT_FALSE(lines_have(lines, "filter-info"));
+    TEST_ASSERT_FALSE(lines_have(lines, "core ready"));
+    json_decref(root);
+
+    root = call_reply("log.tail", "{\"minLevel\":\"warn\",\"subsystems\":[\"config\"]}");
+    lines = tail_lines(root);
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(lines));
+    TEST_ASSERT_EQUAL_STRING("filter-config", line_text(json_array_get(lines, 0)));
+    TEST_ASSERT_EQUAL_STRING("WARN", json_string_value(json_object_get(json_array_get(lines, 0), "level")));
+    TEST_ASSERT_EQUAL_STRING("config",
+                             json_string_value(json_object_get(json_array_get(lines, 0), "subsystem")));
+    json_decref(root);
+}
+
+void test_log_rotation_over_limit(void) {
+    const long limit = 10L * 1024L * 1024L;
+    char logs[160];
+    char exact[180];
+    char over[180];
+    char bak[180];
+    char generation[180];
+    char *text;
+    char *err;
+    struct stat st;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_TRUE(snprintf(logs, sizeof(logs), "%s/logs", g_cfg_dir) < (int)sizeof(logs));
+    TEST_ASSERT_EQUAL_INT(0, pav_platform()->mkdir_private(logs));
+    TEST_ASSERT_TRUE(snprintf(exact, sizeof(exact), "%s/exact.log", logs) < (int)sizeof(exact));
+    TEST_ASSERT_TRUE(snprintf(over, sizeof(over), "%s/over.log", logs) < (int)sizeof(over));
+    TEST_ASSERT_TRUE(snprintf(bak, sizeof(bak), "%s/over.log.1", logs) < (int)sizeof(bak));
+    write_sized(exact, limit, 'Q');
+
+    capture_stderr();
+    TEST_ASSERT_EQUAL_INT(0, pav_log_attach_profile(exact));
+    pav_log("core", PAV_INFO, 0, "exact-stays");
+    {
+        size_t n = 0;
+        FILE *f;
+        char q = 0;
+
+        text = read_tail(exact, 128, &n);
+        TEST_ASSERT_EQUAL_INT(1, count_bytes(text, n, "exact-stays"));
+        free(text);
+        f = fopen(exact, "rb");
+        TEST_ASSERT_NOT_NULL(f);
+        TEST_ASSERT_EQUAL_INT(0, fseek(f, limit - 1, SEEK_SET));
+        TEST_ASSERT_EQUAL_INT(1, (int)fread(&q, 1, 1, f));
+        TEST_ASSERT_EQUAL_INT(0, fclose(f));
+        TEST_ASSERT_EQUAL_CHAR('Q', q);
+    }
+    TEST_ASSERT_TRUE(snprintf(generation, sizeof(generation), "%s.1", exact) < (int)sizeof(generation));
+    TEST_ASSERT_TRUE(stat(generation, &st) != 0);
+    TEST_ASSERT_EQUAL_INT(0, stat(exact, &st));
+    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+
+    write_sized(over, limit + 1, 'Z');
+    write_text(bak, "old-gen\n");
+    TEST_ASSERT_EQUAL_INT(0, pav_log_attach_profile(over));
+    pav_log("core", PAV_INFO, 0, "rotated-line");
+    err = take_stderr();
+    free(err);
+
+    TEST_ASSERT_EQUAL_INT(0, stat(bak, &st));
+    TEST_ASSERT_TRUE(st.st_size > limit);
+    TEST_ASSERT_EQUAL_CHAR('Z', last_byte(bak));
+    TEST_ASSERT_EQUAL_INT(0, stat(over, &st));
+    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    TEST_ASSERT_TRUE(st.st_size < 4096);
+    text = slurp(over);
+    TEST_ASSERT_EQUAL_INT(1, count_text(text, "rotated-line"));
+    free(text);
+    TEST_ASSERT_TRUE(snprintf(generation, sizeof(generation), "%s.2", over) < (int)sizeof(generation));
+    TEST_ASSERT_TRUE(stat(generation, &st) != 0);
+}
+
+void test_log_lines_one_batch(void) {
+    struct timespec ts;
+    int rc;
+
+    memset(&g_lines_got, 0, sizeof(g_lines_got));
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    /* Flush the boot lines, then let their batch leave, so the next two
+       lines share a fresh 100 ms batch. */
+    pav_log_flush();
+    usleep(200000);
+    pav_on_event(lines_test_cb, &g_lines_got);
+    pav_log("core", PAV_INFO, 0, "batch-a-h1");
+    pav_log("core", PAV_INFO, 0, "batch-b-h1");
+
+    pthread_mutex_lock(&g_ev_test_mu);
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 2;
+    while (!g_lines_got.hit) {
+        rc = pthread_cond_timedwait(&g_ev_test_cv, &g_ev_test_mu, &ts);
+        if (rc != 0) {
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_ev_test_mu);
+    pav_on_event(NULL, NULL);
+
+    TEST_ASSERT_EQUAL_INT(1, g_lines_got.hit);
+    TEST_ASSERT_NOT_NULL(strstr(g_lines_got.json, "\"seq\""));
+    TEST_ASSERT_NOT_NULL(strstr(g_lines_got.json, "batch-a-h1"));
+    TEST_ASSERT_NOT_NULL(strstr(g_lines_got.json, "batch-b-h1"));
+}
+
+void test_log_client_sanitizes(void) {
+    json_t *root;
+    char msg[2001];
+    char args[2100];
+    char *text;
+    char *at;
+
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+
+    root = call_reply("log.client",
+                      "{\"subsystem\":\"ui\",\"level\":\"error\",\"message\":\"a\\r\\nb\"}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    json_decref(root);
+
+    memset(msg, 'b', 2000);
+    msg[2000] = '\0';
+    snprintf(args, sizeof(args),
+             "{\"subsystem\":\"ui\",\"level\":\"info\",\"message\":\"%s\"}", msg);
+    root = call_reply("log.client", args);
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    json_decref(root);
+
+    text = read_log();
+    TEST_ASSERT_NOT_NULL(strstr(text, "a\xE2\x8E\xAA" "b"));
+    at = strstr(text, msg);
+    TEST_ASSERT_NOT_NULL(at);
+    TEST_ASSERT_EQUAL_CHAR('\n', at[2000]);
+    free(text);
+}
+
+void test_log_before_workdir_stderr_only(void) {
+    char *err;
+    char path[160];
+    struct stat st;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    capture_stderr();
+    pav_log("core", PAV_INFO, 0, "stderr-only-h1");
+    pav_log_flush();
+    err = take_stderr();
+    TEST_ASSERT_EQUAL_INT(1, count_text(err, "stderr-only-h1"));
+    free(err);
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/logs/pavillion.log", g_cfg_dir) < (int)sizeof(path));
+    TEST_ASSERT_TRUE(stat(path, &st) != 0);
+}
+
+void test_log_before_profile_goes_to_workdir_log(void) {
+    char path[160];
+    char profile[160];
+    char *err;
+    char *text;
+    struct stat st;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    capture_stderr();
+    TEST_ASSERT_EQUAL_INT(0, pav_log_set_workdir(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pav_log_thread_start());
+    pav_log("core", PAV_INFO, 0, "workdir-marker-h1");
+    pav_log_flush();
+    err = take_stderr();
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/logs/pavillion.log", g_cfg_dir) < (int)sizeof(path));
+    text = slurp(path);
+    TEST_ASSERT_EQUAL_INT(1, count_text(text, "workdir-marker-h1"));
+    TEST_ASSERT_EQUAL_INT(1, count_text(err, "workdir-marker-h1"));
+    free(text);
+    free(err);
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
+    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    TEST_ASSERT_TRUE(snprintf(profile, sizeof(profile), "%s/logs/default.log", g_cfg_dir) <
+                     (int)sizeof(profile));
+    TEST_ASSERT_TRUE(stat(profile, &st) != 0);
+}
+
+void test_log_no_duplicate_after_profile_attach(void) {
+    char work_path[160];
+    char profile_path[160];
+    char *work;
+    char *profile;
+    char *err;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_TRUE(snprintf(work_path, sizeof(work_path), "%s/logs/pavillion.log", g_cfg_dir) <
+                     (int)sizeof(work_path));
+    TEST_ASSERT_TRUE(snprintf(profile_path, sizeof(profile_path), "%s/logs/default.log", g_cfg_dir) <
+                     (int)sizeof(profile_path));
+    capture_stderr();
+    TEST_ASSERT_EQUAL_INT(0, pav_log_set_workdir(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pav_log_thread_start());
+    pav_log("core", PAV_INFO, 0, "early-marker-h1");
+    TEST_ASSERT_EQUAL_INT(0, pav_log_attach_profile(profile_path));
+    pav_log("core", PAV_INFO, 0, "late-marker-h1");
+    pav_log_flush();
+    err = take_stderr();
+    free(err);
+    work = slurp(work_path);
+    profile = slurp(profile_path);
+    TEST_ASSERT_EQUAL_INT(1, count_text(work, "early-marker-h1"));
+    TEST_ASSERT_EQUAL_INT(0, count_text(profile, "early-marker-h1"));
+    TEST_ASSERT_EQUAL_INT(1, count_text(profile, "late-marker-h1"));
+    TEST_ASSERT_EQUAL_INT(0, count_text(work, "late-marker-h1"));
+    free(work);
+    free(profile);
+}
+
 int main(void) {
     pav_platform_install(pav_platform_fake());
     UNITY_BEGIN();
@@ -2282,5 +2821,14 @@ int main(void) {
     RUN_TEST(test_window_clamped_to_monitor);
     RUN_TEST(test_protocol_unknown_scheme_404);
     RUN_TEST(test_start_creates_workdir_0700);
+    RUN_TEST(test_logring_wraps_at_capacity);
+    RUN_TEST(test_log_tail_since_seq);
+    RUN_TEST(test_log_tail_filters_level);
+    RUN_TEST(test_log_rotation_over_limit);
+    RUN_TEST(test_log_lines_one_batch);
+    RUN_TEST(test_log_client_sanitizes);
+    RUN_TEST(test_log_before_workdir_stderr_only);
+    RUN_TEST(test_log_before_profile_goes_to_workdir_log);
+    RUN_TEST(test_log_no_duplicate_after_profile_attach);
     return UNITY_END();
 }

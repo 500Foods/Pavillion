@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "dispatch.h"
+#include "logring.h"
 #include "window_state.h"
 
 #include "pav_platform.h"
@@ -31,6 +32,7 @@ typedef struct EventItem {
 } EventItem;
 
 static int cmd_log_client(json_t *args, json_t **data, PavError *err);
+static int cmd_log_tail(json_t *args, json_t **data, PavError *err);
 static int cmd_prefs_get(json_t *args, json_t **data, PavError *err);
 static int cmd_prefs_set(json_t *args, json_t **data, PavError *err);
 static int cmd_prefs_ui_get(json_t *args, json_t **data, PavError *err);
@@ -40,6 +42,7 @@ static int cmd_status(json_t *args, json_t **data, PavError *err);
 /* strcmp order. bsearch requires it. The worker flag is unused until I-1. */
 static const PavCommand k_commands[] = {
     {"log.client", cmd_log_client, 0},
+    {"log.tail", cmd_log_tail, 0},
     {"prefs.get", cmd_prefs_get, 0},
     {"prefs.set", cmd_prefs_set, 0},
     {"prefs.ui.get", cmd_prefs_ui_get, 0},
@@ -324,6 +327,70 @@ static int cmd_log_client(json_t *args, json_t **data, PavError *err) {
     *data = json_object();
     if (*data == NULL) {
         pav_error_set(err, "internal", "out of memory", 0);
+        return -1;
+    }
+    return 0;
+}
+
+static int cmd_log_tail(json_t *args, json_t **data, PavError *err) {
+    const char *key;
+    json_t *value;
+    uint64_t since = 0;
+    int limit = PAV_LOGRING_CAP;
+    int min_level = PAV_DEBUG;
+    const json_t *subsystems = NULL;
+    char buf[512];
+
+    json_object_foreach(args, key, value) {
+        if (strcmp(key, "sinceSeq") == 0) {
+            if (!json_is_integer(value) || json_integer_value(value) < 0) {
+                pav_error_set(err, "bad_args", "sinceSeq must be an integer >= 0", 0);
+                return -1;
+            }
+            since = (uint64_t)json_integer_value(value);
+        } else if (strcmp(key, "limit") == 0) {
+            json_int_t n;
+
+            if (!json_is_integer(value)) {
+                pav_error_set(err, "bad_args", "limit must be an integer from 1 to 10000", 0);
+                return -1;
+            }
+            n = json_integer_value(value);
+            if (n < 1 || n > PAV_LOGRING_CAP) {
+                pav_error_set(err, "bad_args", "limit must be an integer from 1 to 10000", 0);
+                return -1;
+            }
+            limit = (int)n;
+        } else if (strcmp(key, "minLevel") == 0) {
+            if (!json_is_string(value) || level_from_name(json_string_value(value), &min_level) != 0) {
+                pav_error_set(err, "bad_args", "minLevel must be error, warn, info, or debug", 0);
+                return -1;
+            }
+        } else if (strcmp(key, "subsystems") == 0) {
+            size_t i;
+            size_t n;
+
+            if (!json_is_array(value)) {
+                pav_error_set(err, "bad_args", "subsystems must be an array of strings", 0);
+                return -1;
+            }
+            n = json_array_size(value);
+            for (i = 0; i < n; i++) {
+                if (!json_is_string(json_array_get(value, i))) {
+                    pav_error_set(err, "bad_args", "subsystems must be an array of strings", 0);
+                    return -1;
+                }
+            }
+            subsystems = value;
+        } else {
+            snprintf(buf, sizeof(buf), "unknown argument %s", key);
+            pav_error_set(err, "bad_args", buf, 0);
+            return -1;
+        }
+    }
+    pav_log_flush();
+    if (pav_logring_read(since, limit, min_level, subsystems, data) != 0 || *data == NULL) {
+        pav_error_set(err, "internal", "cannot read the log", 0);
         return -1;
     }
     return 0;

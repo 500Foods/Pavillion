@@ -1,10 +1,15 @@
 import { createApi } from "./api.js";
 import { tauriTransport } from "./transport/tauri.js";
 import { clampUi } from "./prefs.js";
+import { installLogHooks } from "./log.js";
 import { startShell, useApi } from "./shell.js";
 
 const api = createApi(tauriTransport());
 useApi(api);
+installLogHooks(api);
+if (import.meta.env.DEV) {
+  window.pav = api;
+}
 
 function log(subsystem, level, message) {
   return api.log.client({ subsystem, level, message });

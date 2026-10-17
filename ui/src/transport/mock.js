@@ -47,7 +47,7 @@ function defaultUi() {
   };
 }
 
-/* In-memory stand-in for the six real commands. emit() is for Vitest and the
+/* In-memory stand-in for the real commands. emit() is for Vitest and the
    G-4 harness. It is not part of the transport the screens call. */
 export function mockTransport() {
   const prefs = defaultPrefs();
@@ -97,6 +97,9 @@ export function mockTransport() {
         throw fail("bad_args", "log.client requires subsystem, level, and message");
       }
       return {};
+    }
+    if (cmd === "log.tail") {
+      return { lines: [] };
     }
     throw fail("bad_args", `unknown command ${cmd}`);
   }

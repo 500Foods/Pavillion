@@ -40,6 +40,9 @@ export function createApi(transport) {
       client({ subsystem, level, message }) {
         return call("log.client", { subsystem, level: levelName(level), message });
       },
+      tail(query) {
+        return call("log.tail", query ?? {});
+      },
     },
     on(name, fn) {
       return transport.on((eventName, payload) => {

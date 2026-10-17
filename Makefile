@@ -27,7 +27,8 @@ lib: $(LIB)
 
 $(LIB): core/CMakeLists.txt core/include/pavillion.h core/include/pav_config.h \
 		core/include/pav_cfg.h core/include/pav_store.h core/include/pav_platform.h \
-		core/src/pavillion.c core/src/dispatch.c core/src/dispatch.h \
+		core/src/pavillion.c core/src/logring.c core/src/logring.h \
+		core/src/dispatch.c core/src/dispatch.h \
 		core/src/window_state.c core/src/window_state.h \
 		core/src/protocol.c core/src/cli.c \
 		core/src/cfg.c core/src/config.c core/src/config_prefs.c \
@@ -40,7 +41,7 @@ $(LIB): core/CMakeLists.txt core/include/pavillion.h core/include/pav_config.h \
 $(TEST_BIN): $(LIB) $(TEST_SRC) $(PLATFORM_TEST_SRC) $(UNITY_DIR)/unity.c $(UNITY_DIR)/unity.h \
 		$(UNITY_DIR)/unity_internals.h
 	$(CC) -std=c11 -Wall -Wextra -Wpedantic -pthread -DUNITY_INCLUDE_DOUBLE \
-		-Icore/include -I$(UNITY_DIR) $(PLATFORM_TEST_INC) $(CFLAGS) \
+		-Icore/include -Icore/src -I$(UNITY_DIR) $(PLATFORM_TEST_INC) $(CFLAGS) \
 		-o $@ $(TEST_SRC) $(UNITY_DIR)/unity.c $(PLATFORM_TEST_SRC) $(LIB) \
 		-ljansson -lsqlite3 $(LDFLAGS)
 

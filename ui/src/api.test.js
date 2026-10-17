@@ -42,6 +42,15 @@ describe("createApi over the mock transport", () => {
     expect((await api.prefs.ui.get()).nav).toBeUndefined();
   });
 
+  test("log.tail sends the query object", async () => {
+    const transport = mockTransport();
+    const api = createApi(transport);
+    await expect(api.log.tail({ limit: 5 })).resolves.toEqual({ lines: [] });
+    expect(transport.seen.at(-1)).toEqual({ cmd: "log.tail", args: { limit: 5 } });
+    await api.log.tail();
+    expect(transport.seen.at(-1).args).toEqual({});
+  });
+
   test("log.client maps the old numeric levels and returns an empty object", async () => {
     const transport = mockTransport();
     const api = createApi(transport);

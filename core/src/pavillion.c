@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "dispatch.h"
+#include "logring.h"
 #include "pav_cfg.h"
 #include "pav_config.h"
 #include "pav_platform.h"
@@ -17,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 #define CORE_QUEUE_CAP 256
 #define CORE_CMD_STOP 1
@@ -107,8 +109,8 @@ static void core_publish_unlocked(const char *state, const char *name, const cha
     pthread_cond_broadcast(&g_core_cv);
 }
 
-static void attach_profile_log(const char *path);
 static void set_start_err(char *err, size_t err_len, const char *msg);
+static int log_thread_running(void);
 static int core_prepare_prefs(char *err, size_t err_len);
 static int core_apply_prefs(char *err, size_t err_len);
 static int core_apply_icons(char *err, size_t err_len);
@@ -122,6 +124,15 @@ static void core_release_profile(void) {
     g_load = NULL;
 }
 
+/* Flushes queued log lines, then publishes. The caller is the core thread
+   and does not hold g_core_mu. */
+static void publish_boot(const char *state, const char *name, const char *id, const char *error) {
+    pav_log_flush();
+    pthread_mutex_lock(&g_core_mu);
+    core_publish_unlocked(state, name, id, error);
+    pthread_mutex_unlock(&g_core_mu);
+}
+
 /* Loads the profile and, on success, opens SQLite. Publishes ready or error.
    Does not hold g_core_mu across the file and database calls. */
 static void core_boot(void) {
@@ -131,54 +142,38 @@ static void core_boot(void) {
     core_release_profile();
     err[0] = '\0';
     if (g_core_workdir[0] == '\0') {
-        pthread_mutex_lock(&g_core_mu);
-        core_publish_unlocked("error", NULL, NULL, "missing workdir");
-        pthread_mutex_unlock(&g_core_mu);
+        publish_boot("error", NULL, NULL, "missing workdir");
         return;
     }
     if (pav_config_ensure(g_core_workdir, err, sizeof(err)) != 0) {
-        pthread_mutex_lock(&g_core_mu);
-        core_publish_unlocked("error", NULL, NULL, err[0] != '\0' ? err : "cannot create profile");
-        pthread_mutex_unlock(&g_core_mu);
+        publish_boot("error", NULL, NULL, err[0] != '\0' ? err : "cannot create profile");
         return;
     }
     if (pav_config_load(g_core_workdir, &g_load, err, sizeof(err)) != 0 || g_load == NULL) {
-        pthread_mutex_lock(&g_core_mu);
-        core_publish_unlocked("error", NULL, NULL, err[0] != '\0' ? err : "missing index");
-        pthread_mutex_unlock(&g_core_mu);
+        publish_boot("error", NULL, NULL, err[0] != '\0' ? err : "missing index");
         return;
     }
     if (strcmp(g_load->state, "ready") != 0) {
-        pthread_mutex_lock(&g_core_mu);
-        core_publish_unlocked("error", NULL, NULL, g_load->error);
-        pthread_mutex_unlock(&g_core_mu);
+        publish_boot("error", NULL, NULL, g_load->error);
         return;
     }
     profile = g_load->profile;
     if (pav_profile_check_engine(profile, err, sizeof(err)) != 0) {
-        pthread_mutex_lock(&g_core_mu);
-        core_publish_unlocked("error", profile->name, profile->id, err);
-        pthread_mutex_unlock(&g_core_mu);
+        publish_boot("error", profile->name, profile->id, err);
         return;
     }
     if (pav_config_prepare(g_core_workdir, profile, err, sizeof(err)) != 0 ||
         pav_store_open(&g_store, profile->engine, profile->resolved_storage, err, sizeof(err)) != 0) {
-        pthread_mutex_lock(&g_core_mu);
-        core_publish_unlocked("error", profile->name, profile->id, err);
-        pthread_mutex_unlock(&g_core_mu);
+        publish_boot("error", profile->name, profile->id, err);
         return;
     }
-    attach_profile_log(profile->resolved_logs);
+    (void)pav_log_attach_profile(profile->resolved_logs);
     if (core_prepare_prefs(err, sizeof(err)) != 0) {
-        pthread_mutex_lock(&g_core_mu);
-        core_publish_unlocked("error", profile->name, profile->id, err);
-        pthread_mutex_unlock(&g_core_mu);
+        publish_boot("error", profile->name, profile->id, err);
         return;
     }
     pav_log("core", PAV_INFO, 0, "core ready");
-    pthread_mutex_lock(&g_core_mu);
-    core_publish_unlocked("ready", profile->name, profile->id, NULL);
-    pthread_mutex_unlock(&g_core_mu);
+    publish_boot("ready", profile->name, profile->id, NULL);
 }
 
 /* Moves an old layout into preferences.ui, then publishes the window snapshot.
@@ -483,6 +478,7 @@ int pavillion_api_version(void) {
 
 int pavillion_start(const char *workdir, char *err, size_t err_len) {
     int rc;
+    int started_log = 0;
     const PavPlatform *platform;
 
     pav_platform_install_host();
@@ -508,6 +504,9 @@ int pavillion_start(const char *workdir, char *err, size_t err_len) {
     } else {
         memcpy(g_core_workdir, workdir, strlen(workdir) + 1);
     }
+    if (g_core_workdir[0] != '\0') {
+        (void)pav_log_set_workdir(g_core_workdir);
+    }
     g_core_stop = 0;
     g_core_published = 0;
     g_prefs_ready = 0;
@@ -528,10 +527,22 @@ int pavillion_start(const char *workdir, char *err, size_t err_len) {
         set_start_err(err, err_len, "cannot start events");
         return -1;
     }
+    if (!log_thread_running()) {
+        if (pav_log_thread_start() != 0) {
+            pthread_mutex_unlock(&g_core_mu);
+            pav_event_thread_stop();
+            set_start_err(err, err_len, "cannot start log");
+            return -1;
+        }
+        started_log = 1;
+    }
     rc = pthread_create(&g_core_thread, NULL, core_thread_main, NULL);
     if (rc != 0) {
         pthread_mutex_unlock(&g_core_mu);
         pav_event_thread_stop();
+        if (started_log) {
+            pav_log_thread_shutdown();
+        }
         set_start_err(err, err_len, "cannot start core");
         return -1;
     }
@@ -1317,21 +1328,43 @@ int pav_core_ui_set(json_t *args, json_t **data, PavError *err) {
     return pav_core_ui_get_data(data, err);
 }
 
+#define PAV_LOG_MSG_MAX 4096
+#define PAV_LOG_ROTATE_BYTES (10L * 1024L * 1024L)
+#define LOG_DEST_NONE 0
+#define LOG_DEST_WORKDIR 1
+#define LOG_DEST_PROFILE 2
+#define LOG_DEST_EXPLICIT 3
+
 typedef struct LogNode {
     struct LogNode *next;
     char *line;
+    int level;
 } LogNode;
+
+typedef struct BatchNode {
+    struct BatchNode *next;
+    uint64_t seq;
+    char *line;
+} BatchNode;
 
 static pthread_mutex_t g_log_mu = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t g_log_cv = PTHREAD_COND_INITIALIZER;
-static pthread_t g_log_thread;
+static void *g_log_thread;
 static FILE *g_log_out;
 static LogNode *g_q_head;
 static LogNode *g_q_tail;
+static BatchNode *g_batch_head;
+static BatchNode *g_batch_tail;
+static int64_t g_batch_started_ms;
+static char g_log_switch_path[4096];
 static int g_log_own;
+static int g_log_dest;
 static int g_log_level = PAV_INFO;
 static int g_log_alive;
 static int g_log_shutdown;
+static int g_log_flush_req;
+static int g_log_switch_req;
+static uint64_t g_log_seq;
 
 /* Same specifier count as Hydrogen's count_format_specifiers. */
 static size_t count_format_specifiers(const char *format) {
@@ -1411,25 +1444,113 @@ static void format_stamp(char *out, size_t out_len) {
     }
 }
 
-static void emit_bytes_unlocked(const char *line) {
-    FILE *out = g_log_out != NULL ? g_log_out : stderr;
-    fputs(line, out);
-    fflush(out);
+static int64_t mono_ms(void) {
+    struct timespec ts;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+        return 0;
+    }
+    return (int64_t)ts.tv_sec * 1000 + (int64_t)(ts.tv_nsec / 1000000L);
 }
 
-static int enqueue_line_unlocked(const char *line) {
-    LogNode *node = malloc(sizeof(*node));
+static int batch_due_unlocked(void) {
+    if (g_batch_head == NULL) {
+        return 0;
+    }
+    return mono_ms() - g_batch_started_ms >= 100;
+}
+
+static int batch_wait_ms_unlocked(void) {
+    int64_t left = 100 - (mono_ms() - g_batch_started_ms);
+
+    if (left < 1) {
+        return 1;
+    }
+    if (left > 100) {
+        return 100;
+    }
+    return (int)left;
+}
+
+static void abs_after_ms(struct timespec *ts, int ms) {
+    if (clock_gettime(CLOCK_REALTIME, ts) != 0) {
+        ts->tv_sec = 0;
+        ts->tv_nsec = 0;
+        return;
+    }
+    ts->tv_sec += ms / 1000;
+    ts->tv_nsec += (long)(ms % 1000) * 1000000L;
+    if (ts->tv_nsec >= 1000000000L) {
+        ts->tv_sec += ts->tv_nsec / 1000000000L;
+        ts->tv_nsec %= 1000000000L;
+    }
+}
+
+static int stderr_too_unlocked(int level) {
+    if (g_log_dest == LOG_DEST_EXPLICIT) {
+        return 0;
+    }
+    if (g_log_dest == LOG_DEST_NONE || g_log_dest == LOG_DEST_WORKDIR) {
+        return 1;
+    }
+    return g_log_dest == LOG_DEST_PROFILE && level <= PAV_INFO && isatty(fileno(stderr));
+}
+
+static void emit_line_unlocked(int level, const char *line) {
+    if (g_log_out != NULL) {
+        fputs(line, g_log_out);
+        fflush(g_log_out);
+    }
+    if (stderr_too_unlocked(level)) {
+        fputs(line, stderr);
+        fflush(stderr);
+    }
+}
+
+static void batch_add_unlocked(uint64_t seq, const char *line) {
+    BatchNode *node = malloc(sizeof(*node));
     char *copy;
 
     if (node == NULL) {
-        return -1;
+        return;
     }
     copy = strdup(line);
     if (copy == NULL) {
         free(node);
+        return;
+    }
+    node->seq = seq;
+    node->line = copy;
+    node->next = NULL;
+    if (g_batch_tail != NULL) {
+        g_batch_tail->next = node;
+    } else {
+        g_batch_head = node;
+        g_batch_started_ms = mono_ms();
+    }
+    g_batch_tail = node;
+}
+
+/* The caller holds g_log_mu. The line is written now and copied into the ring. */
+static void commit_unlocked(int level, const char *line) {
+    uint64_t seq;
+
+    emit_line_unlocked(level, line);
+    seq = ++g_log_seq;
+    (void)pav_logring_push(seq, line);
+    if (g_log_alive) {
+        batch_add_unlocked(seq, line);
+    }
+}
+
+static int enqueue_line_unlocked(char *line, int level) {
+    LogNode *node = malloc(sizeof(*node));
+
+    if (node == NULL) {
         return -1;
     }
-    node->line = copy;
+    node->line = line;
+    node->level = level;
     node->next = NULL;
     if (g_q_tail != NULL) {
         g_q_tail->next = node;
@@ -1445,57 +1566,243 @@ static int enqueue_line_unlocked(const char *line) {
    Otherwise the caller writes them now, so a line before start is not lost. */
 static void deliver_unlocked(int level, const char *subsystem, const char *msg) {
     char stamp[32];
-    char line[1200];
+    char *line;
+    int wrote;
 
     if (!level_kept(level)) {
         return;
     }
     format_stamp(stamp, sizeof(stamp));
-    snprintf(line, sizeof(line), "%s %-5s %s  %s\n",
-             stamp, level_name(level), subsystem, msg);
-    if (g_log_alive && enqueue_line_unlocked(line) == 0) {
+    wrote = snprintf(NULL, 0, "%s %-5s %s  %s\n", stamp, level_name(level), subsystem, msg);
+    if (wrote < 0) {
         return;
     }
-    emit_bytes_unlocked(line);
+    line = malloc((size_t)wrote + 1);
+    if (line == NULL) {
+        return;
+    }
+    snprintf(line, (size_t)wrote + 1, "%s %-5s %s  %s\n", stamp, level_name(level), subsystem, msg);
+    if (g_log_alive && enqueue_line_unlocked(line, level) == 0) {
+        return;
+    }
+    commit_unlocked(level, line);
+    free(line);
+}
+
+static void free_batch(BatchNode *head) {
+    while (head != NULL) {
+        BatchNode *next = head->next;
+
+        free(head->line);
+        free(head);
+        head = next;
+    }
+}
+
+static BatchNode *take_batch_unlocked(void) {
+    BatchNode *head = g_batch_head;
+
+    g_batch_head = NULL;
+    g_batch_tail = NULL;
+    return head;
+}
+
+static void post_lines(json_t *lines) {
+    json_t *root;
+    char *text;
+    size_t n;
+    size_t i;
+    size_t mid;
+    json_t *left;
+    json_t *right;
+
+    if (lines == NULL || json_array_size(lines) == 0) {
+        json_decref(lines);
+        return;
+    }
+    root = json_object();
+    if (root == NULL || json_object_set(root, "lines", lines) != 0) {
+        json_decref(root);
+        json_decref(lines);
+        return;
+    }
+    text = json_dumps(root, JSON_COMPACT);
+    n = json_array_size(lines);
+    if (text != NULL && strlen(text) <= 60000) {
+        pav_event_post("log.lines", text);
+        free(text);
+        json_decref(root);
+        json_decref(lines);
+        return;
+    }
+    free(text);
+    json_decref(root);
+    if (n <= 1) {
+        json_decref(lines);
+        return;
+    }
+    mid = n / 2;
+    left = json_array();
+    right = json_array();
+    if (left == NULL || right == NULL) {
+        json_decref(left);
+        json_decref(right);
+        json_decref(lines);
+        return;
+    }
+    for (i = 0; i < n; i++) {
+        json_array_append(i < mid ? left : right, json_array_get(lines, i));
+    }
+    json_decref(lines);
+    post_lines(left);
+    post_lines(right);
+}
+
+static void post_batch(BatchNode *head) {
+    json_t *lines = json_array();
+    BatchNode *node;
+
+    if (lines == NULL) {
+        free_batch(head);
+        return;
+    }
+    for (node = head; node != NULL; node = node->next) {
+        json_t *obj = pav_logring_line_json(node->seq, node->line);
+
+        if (obj != NULL && json_array_append_new(lines, obj) != 0) {
+            json_decref(obj);
+        }
+    }
+    free_batch(head);
+    post_lines(lines);
+}
+
+static void emit_batch_outside_lock(void) {
+    BatchNode *batch = take_batch_unlocked();
+
+    pthread_mutex_unlock(&g_log_mu);
+    post_batch(batch);
+    pthread_mutex_lock(&g_log_mu);
+}
+
+static void rotate_if_over(const char *path) {
+    FILE *file;
+    long size;
+    char bak[4100];
+    size_t len;
+
+    file = fopen(path, "rb");
+    if (file == NULL) {
+        return;
+    }
+    if (fseek(file, 0, SEEK_END) != 0) {
+        fclose(file);
+        return;
+    }
+    size = ftell(file);
+    fclose(file);
+    if (size <= PAV_LOG_ROTATE_BYTES) {
+        return;
+    }
+    len = strlen(path);
+    if (len + 3 >= sizeof(bak)) {
+        return;
+    }
+    memcpy(bak, path, len);
+    bak[len] = '.';
+    bak[len + 1] = '1';
+    bak[len + 2] = '\0';
+    (void)remove(bak);
+    (void)rename(path, bak);
+}
+
+/* The caller holds g_log_mu. Closes the workdir file and opens path. */
+static int open_profile_unlocked(const char *path) {
+    FILE *file;
+
+    rotate_if_over(path);
+    file = fopen(path, "a");
+    if (file == NULL) {
+        return -1;
+    }
+    (void)pav_file_private(path);
+    if (g_log_own && g_log_out != NULL) {
+        fclose(g_log_out);
+    }
+    g_log_out = file;
+    g_log_own = 1;
+    g_log_dest = LOG_DEST_PROFILE;
+    return 0;
 }
 
 static void *log_thread_main(void *arg) {
     (void)arg;
     pthread_mutex_lock(&g_log_mu);
     for (;;) {
-        LogNode *node;
+        if (g_q_head != NULL) {
+            LogNode *node = g_q_head;
 
-        while (g_q_head == NULL && !g_log_shutdown) {
-            pthread_cond_wait(&g_log_cv, &g_log_mu);
+            g_q_head = node->next;
+            if (g_q_head == NULL) {
+                g_q_tail = NULL;
+            }
+            commit_unlocked(node->level, node->line);
+            free(node->line);
+            free(node);
+            if (batch_due_unlocked()) {
+                emit_batch_outside_lock();
+            }
+            continue;
         }
-        if (g_q_head == NULL && g_log_shutdown) {
+        if (g_log_switch_req) {
+            (void)open_profile_unlocked(g_log_switch_path);
+            g_log_switch_req = 0;
+            pthread_cond_broadcast(&g_log_cv);
+            continue;
+        }
+        if (g_batch_head != NULL && (g_log_shutdown || batch_due_unlocked())) {
+            emit_batch_outside_lock();
+            continue;
+        }
+        if (g_log_flush_req) {
+            g_log_flush_req = 0;
+            pthread_cond_broadcast(&g_log_cv);
+            continue;
+        }
+        if (g_log_shutdown) {
             g_log_alive = 0;
+            pthread_cond_broadcast(&g_log_cv);
             pthread_mutex_unlock(&g_log_mu);
-            break;
+            return NULL;
         }
-        node = g_q_head;
-        g_q_head = node->next;
-        if (g_q_head == NULL) {
-            g_q_tail = NULL;
+        if (g_batch_head != NULL) {
+            struct timespec ts;
+
+            abs_after_ms(&ts, batch_wait_ms_unlocked());
+            pthread_cond_timedwait(&g_log_cv, &g_log_mu, &ts);
+            continue;
         }
-        emit_bytes_unlocked(node->line);
-        free(node->line);
-        free(node);
+        pthread_cond_wait(&g_log_cv, &g_log_mu);
     }
-    return NULL;
+}
+
+static int log_thread_running(void) {
+    int alive;
+
+    pthread_mutex_lock(&g_log_mu);
+    alive = g_log_alive;
+    pthread_mutex_unlock(&g_log_mu);
+    return alive;
 }
 
 int pav_log_thread_start(void) {
-    int rc;
-
     pthread_mutex_lock(&g_log_mu);
     if (g_log_alive) {
         pthread_mutex_unlock(&g_log_mu);
         return -1;
     }
     g_log_shutdown = 0;
-    rc = pthread_create(&g_log_thread, NULL, log_thread_main, NULL);
-    if (rc != 0) {
+    if (pav_thread_create(&g_log_thread, log_thread_main, NULL) != 0) {
         pthread_mutex_unlock(&g_log_mu);
         return -1;
     }
@@ -1505,7 +1812,7 @@ int pav_log_thread_start(void) {
 }
 
 void pav_log_thread_shutdown(void) {
-    pthread_t thread;
+    void *thread;
 
     pthread_mutex_lock(&g_log_mu);
     if (!g_log_alive) {
@@ -1516,28 +1823,105 @@ void pav_log_thread_shutdown(void) {
     thread = g_log_thread;
     pthread_cond_broadcast(&g_log_cv);
     pthread_mutex_unlock(&g_log_mu);
-    pthread_join(thread, NULL);
+    pav_thread_join(thread);
 }
 
-/* Opens the profile log for append when nothing else owns the output.
-   A test that already called pav_log_set_output keeps that file. */
-static void attach_profile_log(const char *path) {
-    FILE *file;
-
-    if (path == NULL || path[0] == '\0') {
-        return;
-    }
+void pav_log_flush(void) {
     pthread_mutex_lock(&g_log_mu);
-    if (g_log_out != NULL) {
+    if (!g_log_alive) {
         pthread_mutex_unlock(&g_log_mu);
         return;
     }
-    file = fopen(path, "a");
-    if (file != NULL) {
-        g_log_out = file;
-        g_log_own = 1;
+    g_log_flush_req = 1;
+    pthread_cond_broadcast(&g_log_cv);
+    while (g_log_flush_req && g_log_alive) {
+        pthread_cond_wait(&g_log_cv, &g_log_mu);
+    }
+    g_log_flush_req = 0;
+    pthread_mutex_unlock(&g_log_mu);
+}
+
+int pav_log_set_workdir(const char *workdir) {
+    char logs[4608];
+    char path[4608];
+    FILE *file;
+    const PavPlatform *platform;
+
+    pthread_mutex_lock(&g_log_mu);
+    if (g_log_dest == LOG_DEST_EXPLICIT || g_log_dest == LOG_DEST_PROFILE) {
+        pthread_mutex_unlock(&g_log_mu);
+        return 0;
+    }
+    if (workdir == NULL || workdir[0] == '\0') {
+        if (g_log_dest == LOG_DEST_WORKDIR && g_log_own && g_log_out != NULL) {
+            fclose(g_log_out);
+            g_log_out = NULL;
+            g_log_own = 0;
+        }
+        if (g_log_dest == LOG_DEST_WORKDIR) {
+            g_log_dest = LOG_DEST_NONE;
+        }
+        pthread_mutex_unlock(&g_log_mu);
+        return 0;
     }
     pthread_mutex_unlock(&g_log_mu);
+
+    platform = pav_platform();
+    if (pav_path_join(logs, sizeof(logs), workdir, "logs") != 0 || platform == NULL ||
+        platform->mkdir_private == NULL || platform->mkdir_private(logs) != 0 ||
+        pav_path_join(path, sizeof(path), logs, "pavillion.log") != 0) {
+        return -1;
+    }
+    file = fopen(path, "a");
+    if (file == NULL) {
+        return -1;
+    }
+    (void)pav_file_private(path);
+
+    pthread_mutex_lock(&g_log_mu);
+    if (g_log_dest == LOG_DEST_EXPLICIT || g_log_dest == LOG_DEST_PROFILE) {
+        fclose(file);
+        pthread_mutex_unlock(&g_log_mu);
+        return 0;
+    }
+    if (g_log_own && g_log_out != NULL) {
+        fclose(g_log_out);
+    }
+    g_log_out = file;
+    g_log_own = 1;
+    g_log_dest = LOG_DEST_WORKDIR;
+    pthread_mutex_unlock(&g_log_mu);
+    return 0;
+}
+
+int pav_log_attach_profile(const char *path) {
+    pthread_mutex_lock(&g_log_mu);
+    if (path == NULL || path[0] == '\0' || strlen(path) >= sizeof(g_log_switch_path)) {
+        pthread_mutex_unlock(&g_log_mu);
+        return -1;
+    }
+    if (g_log_dest == LOG_DEST_EXPLICIT) {
+        pthread_mutex_unlock(&g_log_mu);
+        return 0;
+    }
+    if (!g_log_alive) {
+        int rc = open_profile_unlocked(path);
+
+        pthread_mutex_unlock(&g_log_mu);
+        return rc;
+    }
+    memcpy(g_log_switch_path, path, strlen(path) + 1);
+    g_log_switch_req = 1;
+    pthread_cond_broadcast(&g_log_cv);
+    while (g_log_switch_req && g_log_alive) {
+        pthread_cond_wait(&g_log_cv, &g_log_mu);
+    }
+    {
+        int rc = g_log_dest == LOG_DEST_PROFILE ? 0 : -1;
+
+        pthread_mutex_unlock(&g_log_mu);
+        return rc;
+    }
 }
 
 int pav_log_set_output(const char *path) {
@@ -1547,6 +1931,7 @@ int pav_log_set_output(const char *path) {
     }
     g_log_own = 0;
     g_log_out = NULL;
+    g_log_dest = LOG_DEST_NONE;
     if (path != NULL) {
         g_log_out = fopen(path, "w");
         if (g_log_out == NULL) {
@@ -1554,6 +1939,7 @@ int pav_log_set_output(const char *path) {
             return -1;
         }
         g_log_own = 1;
+        g_log_dest = LOG_DEST_EXPLICIT;
     }
     pthread_mutex_unlock(&g_log_mu);
     return 0;
@@ -1561,7 +1947,7 @@ int pav_log_set_output(const char *path) {
 
 void pav_log(const char *subsystem, int level, int num_args, const char *fmt, ...) {
     size_t specifiers;
-    char msg[1024];
+    char msg[PAV_LOG_MSG_MAX];
     va_list ap;
 
     if (subsystem == NULL || subsystem[0] == '\0') {
@@ -1592,6 +1978,6 @@ void pav_log(const char *subsystem, int level, int num_args, const char *fmt, ..
    of disappearing into the browser console. message is passed as a single %s
    argument so percent signs in it cannot break the format string. */
 int pav_ui_log(const char *subsystem, int level, const char *message) {
-    pav_log(subsystem, level, 1, "%s", message);
+    pav_log(subsystem, level, 1, "%s", message != NULL ? message : "");
     return 0;
 }

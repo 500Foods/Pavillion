@@ -8,6 +8,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 add_library(pavillion_core STATIC
     src/pavillion.c
+    src/logring.c
     src/dispatch.c
     src/window_state.c
     src/protocol.c

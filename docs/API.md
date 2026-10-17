@@ -289,7 +289,7 @@ State: real (G-2)
 
 Replaces `pav_ui_log` for hosts that speak JSON.
 
-Args: `{subsystem, level, message}`. `subsystem` matches `^[a-z][a-z0-9_]{0,15}$`. `level` is `error`, `warn`, `info`, or `debug`. `message` is a string of at most 2000 bytes. CR, LF, and CRLF become U+23CE. The formatted log line is still capped by `pav_log`'s buffer until H-1.
+Args: `{subsystem, level, message}`. `subsystem` matches `^[a-z][a-z0-9_]{0,15}$`. `level` is `error`, `warn`, `info`, or `debug`. `message` is a string of at most 2000 bytes. CR, LF, and CRLF become U+23CE. The formatted line keeps that message.
 
 Result: `{}`.
 
@@ -297,9 +297,17 @@ Errors: `bad_args`, `too_large`, `not_ready`, `internal`.
 
 ### log.tail
 
-State: planned (H-1)
+State: real (H-1)
 
-`{sinceSeq?, limit<=10000, minLevel?, subsystems?}`. Reads the in-memory ring, not the file.
+Reads the in-memory ring, not the file. The ring keeps the last 10,000 lines, the same bytes the log thread wrote.
+
+Args: `{sinceSeq?, limit?, minLevel?, subsystems?}`. `sinceSeq` is an integer; the result is lines with a greater `seq`. Omitted, it is 0. `limit` is an integer from 1 to 10000 and defaults to 10000. The result is the newest matching lines, oldest first. `minLevel` is `error`, `warn`, `info`, or `debug` and defaults to `debug`; a line numerically above it is left out (`error` is the most severe). `subsystems` is an array of subsystem names as they appear in the file (`core`, `ui`, `config`). Omitted, every subsystem is kept.
+
+Result: `{lines:[{seq, ts, level, subsystem, text}]}`. `seq` counts from 1 for the life of the process. `ts` is the file's UTC stamp. `level` is `ERROR`, `WARN`, `INFO`, or `DEBUG`. `text` is the message without the trailing newline. The file line is the stamp, a space, the level padded to five characters, a space, the subsystem, two spaces, and the message.
+
+The log thread also posts `log.lines` with that same object, at most one batch per 100 ms. There is no `log.line` event. A batch waits so a burst is one event; shutdown posts whatever is still waiting.
+
+Errors: `bad_args`, `not_ready`, `internal`.
 
 ### mailbox.create
 

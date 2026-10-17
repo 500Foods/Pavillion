@@ -84,11 +84,26 @@ int pav_cli_main(int argc, char **argv);
 int pav_on_core_thread(void);
 
 /* Test-only. Truncates path and writes later lines there. NULL closes that
-   file. Returns 0, or -1 when path cannot be opened. */
+   file and leaves later lines on stderr until a workdir or profile log is
+   attached. Returns 0, or -1 when path cannot be opened. */
 int pav_log_set_output(const char *path);
 
+/* NULL closes a workdir log that is not yet the profile log. A path appends
+   <workdir>/logs/pavillion.log (creating logs/). An explicit test file or an
+   attached profile log is left alone. Returns 0, or -1. */
+int pav_log_set_workdir(const char *workdir);
+
+/* Switches the log file to path. A profile log over 10 MB is renamed
+   path.1 first, and that generation replaces any previous path.1.
+   Does nothing when an explicit test file is set. Returns 0, or -1. */
+int pav_log_attach_profile(const char *path);
+
+/* Blocks until lines queued before this call are in the file and the ring. */
+void pav_log_flush(void);
+
 /* The log thread writes queued lines. A second start while it runs returns -1.
-   Shutdown drains the queue and joins. A second shutdown does nothing. */
+   Shutdown drains the queue and joins. A second shutdown does nothing.
+   pavillion_start starts it when it is not already running. */
 int pav_log_thread_start(void);
 void pav_log_thread_shutdown(void);
 
