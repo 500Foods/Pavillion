@@ -172,7 +172,7 @@ fn scheme_reply(scheme: &str, request: &tauri::http::Request<Vec<u8>>) -> tauri:
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run(workdir: &str) {
     start_core(workdir);
-    let mut builder = tauri::Builder::default().invoke_handler(tauri::generate_handler![core]);
+    let mut builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init()).invoke_handler(tauri::generate_handler![core]);
     for scheme in ["pav-blob", "pav-cid", "pav-link"] {
         let name = scheme.to_string();
         builder = builder.register_uri_scheme_protocol(scheme, move |_ctx, request| scheme_reply(&name, &request));

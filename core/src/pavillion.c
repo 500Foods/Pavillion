@@ -1028,6 +1028,99 @@ int pav_core_status_data(json_t **data, PavError *err) {
     return 0;
 }
 
+static char *read_capped(const char *path, size_t cap) {
+    FILE *file = fopen(path, "rb");
+    long n;
+    char *buf;
+    size_t got;
+
+    if (file == NULL) {
+        return NULL;
+    }
+    if (fseek(file, 0, SEEK_END) != 0) {
+        fclose(file);
+        return NULL;
+    }
+    n = ftell(file);
+    if (n < 0 || (size_t)n > cap) {
+        fclose(file);
+        return NULL;
+    }
+    rewind(file);
+    buf = malloc((size_t)n + 1);
+    if (buf == NULL) {
+        fclose(file);
+        return NULL;
+    }
+    got = fread(buf, 1, (size_t)n, file);
+    fclose(file);
+    if (got != (size_t)n) {
+        free(buf);
+        return NULL;
+    }
+    buf[n] = '\0';
+    return buf;
+}
+
+static int log_level_name_ok(const char *name) {
+    return name != NULL && (strcmp(name, "error") == 0 || strcmp(name, "warn") == 0 || strcmp(name, "info") == 0 ||
+                            strcmp(name, "debug") == 0);
+}
+
+/* Writes the index log_level and applies it. Does not touch the profile. */
+static int store_index_log_level(const char *level, char *err, size_t err_len) {
+    char path[4096];
+    char *text;
+    char *rewritten = NULL;
+    PavIndex *index = NULL;
+    const PavPlatform *platform;
+
+    if (g_load == NULL || g_core_workdir[0] == '\0') {
+        cfg_err(err, err_len, "missing workdir");
+        return -1;
+    }
+    if (!log_level_name_ok(level)) {
+        cfg_err(err, err_len, "logLevel must be error, warn, info, or debug");
+        return -1;
+    }
+    if (pav_path_join(path, sizeof(path), g_core_workdir, "Pavillion.json") != 0) {
+        cfg_err(err, err_len, "path is too long");
+        return -1;
+    }
+    text = read_capped(path, 1024u * 1024u);
+    if (text == NULL) {
+        cfg_err(err, err_len, "cannot read index");
+        return -1;
+    }
+    if (pav_index_parse(text, &index, err, err_len) != 0) {
+        free(text);
+        return -1;
+    }
+    free(text);
+    if (cfg_set_str(index->doc, "log_level", level, err, err_len) != 0) {
+        pav_index_free(index);
+        return -1;
+    }
+    if (pav_index_rewrite(index, &rewritten) != 0) {
+        pav_index_free(index);
+        cfg_err(err, err_len, "out of memory");
+        return -1;
+    }
+    pav_index_free(index);
+    platform = pav_platform();
+    if (platform == NULL || platform->write_private == NULL ||
+        platform->write_private(path, rewritten, strlen(rewritten)) != 0) {
+        free(rewritten);
+        cfg_err(err, err_len, "cannot write index");
+        return -1;
+    }
+    free(rewritten);
+    memset(g_load->log_level, 0, sizeof(g_load->log_level));
+    memcpy(g_load->log_level, level, strlen(level));
+    apply_index_log_level(level);
+    return 0;
+}
+
 int pav_core_prefs_get_data(json_t **data, PavError *err) {
     PavProfile *profile;
     json_t *obj;
@@ -1055,7 +1148,9 @@ int pav_core_prefs_get_data(json_t **data, PavError *err) {
                         profile->window_x_set ? json_integer(profile->window_x) : json_null(), err) != 0 ||
         json_set_or_oom(obj, "windowY",
                         profile->window_y_set ? json_integer(profile->window_y) : json_null(), err) != 0 ||
-        json_set_or_oom(obj, "chrome", json_string(profile->chrome), err) != 0) {
+        json_set_or_oom(obj, "chrome", json_string(profile->chrome), err) != 0 ||
+        json_set_or_oom(obj, "logLevel",
+                        json_string(g_load->log_level[0] != '\0' ? g_load->log_level : "info"), err) != 0) {
         return -1;
     }
     *data = obj;
@@ -1149,11 +1244,13 @@ int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
     const char *time_format = NULL;
     const char *theme = NULL;
     const char *density = NULL;
+    const char *log_level = NULL;
     const char *key;
     json_t *value;
     char errbuf[512];
     char buf[128];
     int window_touched = 0;
+    int profile_touched = 0;
     int any = 0;
 
     if (data == NULL) {
@@ -1229,6 +1326,12 @@ int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
             memset(shell.chrome, 0, sizeof(shell.chrome));
             memcpy(shell.chrome, chrome, strlen(chrome));
             window_touched = 1;
+        } else if (strcmp(key, "logLevel") == 0) {
+            if (!json_is_string(value) || !log_level_name_ok(json_string_value(value))) {
+                pav_error_set(err, "bad_args", "logLevel must be error, warn, info, or debug", 0);
+                return -1;
+            }
+            log_level = json_string_value(value);
         } else {
             snprintf(buf, sizeof(buf), "unknown preference %s", key);
             pav_error_set(err, "bad_args", buf, 0);
@@ -1240,25 +1343,32 @@ int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
         return -1;
     }
     errbuf[0] = '\0';
-    if (window_touched &&
+    if (log_level != NULL && store_index_log_level(log_level, errbuf, sizeof(errbuf)) != 0) {
+        pav_error_set(err, "internal", errbuf[0] != '\0' ? errbuf : "cannot write index", 0);
+        return -1;
+    }
+    profile_touched = window_touched || timezone != NULL || week_start != NULL || time_format != NULL ||
+                      theme != NULL || density != NULL;
+    if (profile_touched && window_touched &&
         pav_profile_write_shell(profile, &shell, PAV_PREFS_WINDOW, errbuf, sizeof(errbuf)) != 0) {
         return fail_profile(err, errbuf);
     }
-    if ((timezone != NULL &&
-         apply_pref_string(profile, "timezone", timezone, profile->timezone, sizeof(profile->timezone), errbuf,
-                           sizeof(errbuf)) != 0) ||
-        (week_start != NULL && apply_pref_string(profile, "week_start", week_start, profile->week_start,
-                                                 sizeof(profile->week_start), errbuf, sizeof(errbuf)) != 0) ||
-        (time_format != NULL && apply_pref_string(profile, "time_format", time_format, profile->time_format,
-                                                  sizeof(profile->time_format), errbuf, sizeof(errbuf)) != 0) ||
-        (theme != NULL &&
-         apply_pref_string(profile, "theme", theme, profile->theme, sizeof(profile->theme), errbuf,
-                           sizeof(errbuf)) != 0) ||
-        (density != NULL && apply_pref_string(profile, "density", density, profile->density,
-                                              sizeof(profile->density), errbuf, sizeof(errbuf)) != 0)) {
+    if (profile_touched &&
+        ((timezone != NULL &&
+          apply_pref_string(profile, "timezone", timezone, profile->timezone, sizeof(profile->timezone), errbuf,
+                            sizeof(errbuf)) != 0) ||
+         (week_start != NULL && apply_pref_string(profile, "week_start", week_start, profile->week_start,
+                                                  sizeof(profile->week_start), errbuf, sizeof(errbuf)) != 0) ||
+         (time_format != NULL && apply_pref_string(profile, "time_format", time_format, profile->time_format,
+                                                   sizeof(profile->time_format), errbuf, sizeof(errbuf)) != 0) ||
+         (theme != NULL &&
+          apply_pref_string(profile, "theme", theme, profile->theme, sizeof(profile->theme), errbuf,
+                            sizeof(errbuf)) != 0) ||
+         (density != NULL && apply_pref_string(profile, "density", density, profile->density,
+                                               sizeof(profile->density), errbuf, sizeof(errbuf)) != 0))) {
         return fail_profile(err, errbuf);
     }
-    if (pav_profile_store(g_load->profile_path, profile, errbuf, sizeof(errbuf)) != 0) {
+    if (profile_touched && pav_profile_store(g_load->profile_path, profile, errbuf, sizeof(errbuf)) != 0) {
         return fail_profile(err, errbuf[0] != '\0' ? errbuf : "cannot write profile");
     }
     if (pav_profile_read_shell(profile, &shell, errbuf, sizeof(errbuf)) != 0) {

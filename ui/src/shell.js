@@ -3,6 +3,7 @@ import { reloadIcons } from "./main.js";
 import { clampUi, snapZoom } from "./prefs.js";
 
 let api = null;
+let host = null;
 
 function log(subsystem, level, message) {
   return api.log.client({ subsystem, level, message });
@@ -12,11 +13,15 @@ export function useApi(next) {
   api = next;
 }
 
+export function useHost(next) {
+  host = next;
+}
+
 const ui = clampUi({});
 
 /* shell is the master scale on the root; each pane multiplies on top of it. */
 const zoomPanes = {
-  navButtons: ".nav-buttons",
+  navButtons: ".button-bar",
   navBody: ".nav-body",
   mailList: "#panel-mail .pane-list",
   mailDetail: "#panel-mail .pane-detail",
@@ -161,6 +166,7 @@ async function loadPrefs() {
   ui.files = stored.files;
   ui.zoom = stored.zoom;
   ui.activity = stored.activity;
+  ui.log = stored.log;
   ui.icons = stored.icons;
   ui.fontawesome_kit = stored.fontawesome_kit;
   ui.fonts = stored.fonts;
@@ -294,6 +300,10 @@ function paintActivity() {
   }
   for (const pane of document.querySelectorAll("[data-activity-pane]")) {
     pane.hidden = pane.dataset.activityPane !== name;
+  }
+  const bottom = document.querySelector(".log-bottombar");
+  if (bottom) {
+    bottom.hidden = name !== "log";
   }
 }
 
@@ -590,19 +600,38 @@ export async function startShell(result) {
     }
   }
   let timeZone = "America/Vancouver";
+  let logLevel = "info";
   if (banner.hidden) {
     try {
       const prefs = await api.prefs.get();
       if (typeof prefs.timezone === "string" && prefs.timezone !== "") {
         timeZone = prefs.timezone;
       }
+      if (typeof prefs.logLevel === "string" && prefs.logLevel !== "") {
+        logLevel = prefs.logLevel;
+      }
     } catch (err) {
       showBanner(messageOf(err));
     }
   }
-  logView = createLogView(document.querySelector("#log-editor"), api, {
+  logView = createLogView(document.querySelector("[data-activity-pane='log']"), api, {
     timeZone,
     zoom: ui.zoom.log,
+    filter: ui.log,
+    logLevel,
+    topbar: document.querySelector(".log-topbar"),
+    bottombar: document.querySelector(".log-bottombar"),
+    host,
+    onFilter(next) {
+      ui.log = next;
+      persistLayout();
+    },
+    onLogLevel(level) {
+      return api.prefs.set({ logLevel: level });
+    },
+    onError(text) {
+      showBanner(text);
+    },
   });
   paintActivity();
   for (const button of document.querySelectorAll("[data-activity-view]")) {

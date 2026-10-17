@@ -51,6 +51,24 @@ describe("createApi over the mock transport", () => {
     expect(transport.seen.at(-1).args).toEqual({});
   });
 
+  test("log.export sends the path and the filter", async () => {
+    const transport = mockTransport();
+    const api = createApi(transport);
+    const filter = { levels: ["WARN"], subsystems: ["config"], text: "saved" };
+    await expect(api.log.export({ path: "/tmp/pav.log", filter })).resolves.toEqual({ lines: 0 });
+    expect(transport.seen.at(-1)).toEqual({
+      cmd: "log.export",
+      args: { path: "/tmp/pav.log", filter },
+    });
+  });
+
+  test("prefs.set accepts logLevel", async () => {
+    const { api } = apiWith(mockTransport());
+    const saved = await api.prefs.set({ logLevel: "debug" });
+    expect(saved.logLevel).toBe("debug");
+    expect(saved.theme).toBe("system");
+  });
+
   test("log.client maps the old numeric levels and returns an empty object", async () => {
     const transport = mockTransport();
     const api = createApi(transport);

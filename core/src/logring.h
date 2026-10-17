@@ -24,4 +24,14 @@ json_t *pav_logring_line_json(uint64_t seq, const char *line);
 
 void pav_logring_reset(void);
 
+/* Copies matching file lines, including each trailing newline, into *out.
+   levels is ERROR|WARN|INFO|DEBUG; an empty array keeps nothing.
+   subsystems NULL keeps every subsystem; an empty array keeps nothing.
+   text NULL or "" keeps every line. Otherwise the line is kept when the
+   file line, without its trailing newline, contains text. The match is
+   literal and ASCII case-insensitive. *lines is the count. A result over
+   32 MB returns -2. Returns 0, -1 on allocation failure, or -2. */
+int pav_logring_export(const json_t *levels, const json_t *subsystems, const char *text,
+                       char **out, size_t *out_len, int *lines);
+
 #endif

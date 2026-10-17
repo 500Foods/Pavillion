@@ -32,6 +32,7 @@ typedef struct EventItem {
 } EventItem;
 
 static int cmd_log_client(json_t *args, json_t **data, PavError *err);
+static int cmd_log_export(json_t *args, json_t **data, PavError *err);
 static int cmd_log_tail(json_t *args, json_t **data, PavError *err);
 static int cmd_prefs_get(json_t *args, json_t **data, PavError *err);
 static int cmd_prefs_set(json_t *args, json_t **data, PavError *err);
@@ -42,6 +43,7 @@ static int cmd_status(json_t *args, json_t **data, PavError *err);
 /* strcmp order. bsearch requires it. The worker flag is unused until I-1. */
 static const PavCommand k_commands[] = {
     {"log.client", cmd_log_client, 0},
+    {"log.export", cmd_log_export, 0},
     {"log.tail", cmd_log_tail, 0},
     {"prefs.get", cmd_prefs_get, 0},
     {"prefs.set", cmd_prefs_set, 0},
@@ -326,6 +328,147 @@ static int cmd_log_client(json_t *args, json_t **data, PavError *err) {
     free(clean);
     *data = json_object();
     if (*data == NULL) {
+        pav_error_set(err, "internal", "out of memory", 0);
+        return -1;
+    }
+    return 0;
+}
+
+static int export_level_name(const char *name) {
+    return strcmp(name, "ERROR") == 0 || strcmp(name, "WARN") == 0 || strcmp(name, "INFO") == 0 ||
+           strcmp(name, "DEBUG") == 0;
+}
+
+static int cmd_log_export(json_t *args, json_t **data, PavError *err) {
+    const char *key;
+    json_t *value;
+    const char *path = NULL;
+    json_t *filter = NULL;
+    const json_t *levels = NULL;
+    const json_t *subsystems = NULL;
+    const char *text = "";
+    char *bytes = NULL;
+    size_t bytes_len = 0;
+    int lines = 0;
+    int rc;
+    char parent[4096];
+    char buf[512];
+    const PavPlatform *platform;
+    size_t i;
+    size_t n;
+
+    json_object_foreach(args, key, value) {
+        if (strcmp(key, "path") == 0) {
+            if (!json_is_string(value)) {
+                pav_error_set(err, "bad_args", "path must be a string", 0);
+                return -1;
+            }
+            path = json_string_value(value);
+        } else if (strcmp(key, "filter") == 0) {
+            if (!json_is_object(value)) {
+                pav_error_set(err, "bad_args", "filter must be an object", 0);
+                return -1;
+            }
+            filter = value;
+        } else {
+            snprintf(buf, sizeof(buf), "unknown argument %s", key);
+            pav_error_set(err, "bad_args", buf, 0);
+            return -1;
+        }
+    }
+    if (path == NULL || filter == NULL) {
+        pav_error_set(err, "bad_args", "log.export requires path and filter", 0);
+        return -1;
+    }
+    if (path[0] == '\0' || strlen(path) >= 4096 || strpbrk(path, "\r\n") != NULL || path[strlen(path) - 1] == '/') {
+        pav_error_set(err, "bad_args", "path must be an absolute file path", 0);
+        return -1;
+    }
+    if (!pav_path_is_absolute(path)) {
+        pav_error_set(err, "bad_args", "path must be an absolute file path", 0);
+        return -1;
+    }
+    if (pav_is_dir(path)) {
+        pav_error_set(err, "bad_args", "path is a directory", 0);
+        return -1;
+    }
+    if (pav_path_parent(parent, sizeof(parent), path) != 0 || !pav_is_dir(parent)) {
+        pav_error_set(err, "bad_args", "directory does not exist", 0);
+        return -1;
+    }
+    json_object_foreach(filter, key, value) {
+        if (strcmp(key, "levels") == 0) {
+            if (!json_is_array(value)) {
+                pav_error_set(err, "bad_args", "levels must be an array of level names", 0);
+                return -1;
+            }
+            n = json_array_size(value);
+            for (i = 0; i < n; i++) {
+                const char *item = json_string_value(json_array_get(value, i));
+
+                if (item == NULL || !export_level_name(item)) {
+                    pav_error_set(err, "bad_args", "levels must be an array of level names", 0);
+                    return -1;
+                }
+            }
+            levels = value;
+        } else if (strcmp(key, "subsystems") == 0) {
+            if (json_is_null(value)) {
+                subsystems = NULL;
+            } else if (!json_is_array(value)) {
+                pav_error_set(err, "bad_args", "subsystems must be an array of strings or null", 0);
+                return -1;
+            } else {
+                n = json_array_size(value);
+                for (i = 0; i < n; i++) {
+                    const char *item = json_string_value(json_array_get(value, i));
+
+                    if (item == NULL || item[0] == '\0' || strlen(item) > 128 || strpbrk(item, "\r\n") != NULL) {
+                        pav_error_set(err, "bad_args", "subsystems must be an array of strings or null", 0);
+                        return -1;
+                    }
+                }
+                subsystems = value;
+            }
+        } else if (strcmp(key, "text") == 0) {
+            if (!json_is_string(value) || strlen(json_string_value(value)) > 2000) {
+                pav_error_set(err, "bad_args", "text must be a string of at most 2000 bytes", 0);
+                return -1;
+            }
+            text = json_string_value(value);
+        } else {
+            snprintf(buf, sizeof(buf), "unknown argument %s", key);
+            pav_error_set(err, "bad_args", buf, 0);
+            return -1;
+        }
+    }
+    if (levels == NULL) {
+        pav_error_set(err, "bad_args", "levels must be an array of level names", 0);
+        return -1;
+    }
+    pav_log_flush();
+    rc = pav_logring_export(levels, subsystems, text, &bytes, &bytes_len, &lines);
+    if (rc == -2) {
+        pav_error_set(err, "too_large", "log export is too large", 0);
+        return -1;
+    }
+    if (rc != 0 || bytes == NULL) {
+        free(bytes);
+        pav_error_set(err, "internal", "cannot read the log", 0);
+        return -1;
+    }
+    platform = pav_platform();
+    if (platform == NULL || platform->write_private == NULL ||
+        platform->write_private(path, bytes, bytes_len) != 0) {
+        free(bytes);
+        pav_error_set(err, "internal", "cannot write the log", 0);
+        return -1;
+    }
+    free(bytes);
+    *data = json_object();
+    if (*data == NULL || json_object_set_new(*data, "lines", json_integer(lines)) != 0) {
+        json_decref(*data);
+        *data = NULL;
         pav_error_set(err, "internal", "out of memory", 0);
         return -1;
     }

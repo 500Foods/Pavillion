@@ -43,6 +43,9 @@ export function createApi(transport) {
       tail(query) {
         return call("log.tail", query ?? {});
       },
+      export(body) {
+        return call("log.export", body ?? {});
+      },
     },
     on(name, fn) {
       return transport.on((eventName, payload) => {

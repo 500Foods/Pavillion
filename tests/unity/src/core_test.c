@@ -2739,6 +2739,178 @@ void test_log_before_profile_goes_to_workdir_log(void) {
     TEST_ASSERT_TRUE(stat(profile, &st) != 0);
 }
 
+static int line_with(const char *text, const char *needle, char *out, size_t out_len) {
+    const char *hit;
+    const char *start;
+    const char *end;
+    size_t n;
+
+    if (text == NULL || needle == NULL) {
+        return -1;
+    }
+    hit = strstr(text, needle);
+    if (hit == NULL) {
+        return -1;
+    }
+    start = hit;
+    while (start > text && start[-1] != '\n') {
+        start--;
+    }
+    end = strchr(hit, '\n');
+    n = end == NULL ? strlen(start) : (size_t)(end - start) + 1;
+    if (n >= out_len) {
+        return -1;
+    }
+    memcpy(out, start, n);
+    out[n] = '\0';
+    return 0;
+}
+
+void test_log_export_filter(void) {
+    char args[700];
+    char path[160];
+    char line[512];
+    char other[512];
+    char dotted[512];
+    char *log_text;
+    char *exported;
+    json_t *root;
+    json_t *data;
+    struct stat st;
+
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_log("config", PAV_WARN, 0, "h3-alpha saved");
+    pav_log("config", PAV_INFO, 0, "h3-alpha hidden-level");
+    pav_log("core", PAV_WARN, 0, "h3-alpha other");
+    pav_log("config", PAV_WARN, 0, "h3-beta");
+    pav_log("config", PAV_WARN, 0, "h3 a.b kept");
+    pav_log("config", PAV_WARN, 0, "h3 axb dropped");
+    pav_log_flush();
+    log_text = slurp(g_log_path);
+    TEST_ASSERT_EQUAL_INT(0, line_with(log_text, "h3-alpha saved", line, sizeof(line)));
+    TEST_ASSERT_EQUAL_INT(0, line_with(log_text, "h3-alpha other", other, sizeof(other)));
+    TEST_ASSERT_EQUAL_INT(0, line_with(log_text, "h3 a.b kept", dotted, sizeof(dotted)));
+
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/h3-export.log", g_cfg_dir) < (int)sizeof(path));
+    TEST_ASSERT_TRUE(snprintf(args, sizeof(args),
+                              "{\"path\":\"%s\",\"filter\":{\"levels\":[\"WARN\"],\"subsystems\":[\"config\"],"
+                              "\"text\":\"h3-alpha\"}}",
+                              path) < (int)sizeof(args));
+    root = call_reply("log.export", args);
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_INT(1, (int)json_integer_value(json_object_get(data, "lines")));
+    json_decref(root);
+    exported = slurp(path);
+    TEST_ASSERT_EQUAL_STRING(line, exported);
+    free(exported);
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
+    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+
+    TEST_ASSERT_TRUE(snprintf(args, sizeof(args),
+                              "{\"path\":\"%s\",\"filter\":{\"levels\":[\"WARN\"],\"subsystems\":[\"config\"],"
+                              "\"text\":\"H3-ALPHA\"}}",
+                              path) < (int)sizeof(args));
+    root = call_reply("log.export", args);
+    TEST_ASSERT_EQUAL_INT(1, (int)json_integer_value(json_object_get(json_object_get(root, "data"), "lines")));
+    json_decref(root);
+    exported = slurp(path);
+    TEST_ASSERT_EQUAL_STRING(line, exported);
+    free(exported);
+
+    TEST_ASSERT_TRUE(snprintf(args, sizeof(args),
+                              "{\"path\":\"%s\",\"filter\":{\"levels\":[\"WARN\"],\"subsystems\":null,"
+                              "\"text\":\"h3-alpha\"}}",
+                              path) < (int)sizeof(args));
+    root = call_reply("log.export", args);
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_INT(2, (int)json_integer_value(json_object_get(data, "lines")));
+    json_decref(root);
+    exported = slurp(path);
+    TEST_ASSERT_EQUAL_INT(0, strncmp(exported, line, strlen(line)));
+    TEST_ASSERT_EQUAL_STRING(other, exported + strlen(line));
+    TEST_ASSERT_NULL(strstr(exported, "hidden-level"));
+    free(exported);
+
+    TEST_ASSERT_TRUE(snprintf(args, sizeof(args),
+                              "{\"path\":\"%s\",\"filter\":{\"levels\":[\"WARN\"],\"subsystems\":[\"config\"],"
+                              "\"text\":\"a.b\"}}",
+                              path) < (int)sizeof(args));
+    root = call_reply("log.export", args);
+    TEST_ASSERT_EQUAL_INT(1, (int)json_integer_value(json_object_get(json_object_get(root, "data"), "lines")));
+    json_decref(root);
+    exported = slurp(path);
+    TEST_ASSERT_EQUAL_STRING(dotted, exported);
+    TEST_ASSERT_NULL(strstr(exported, "axb"));
+    free(exported);
+
+    TEST_ASSERT_TRUE(snprintf(args, sizeof(args),
+                              "{\"path\":\"%s\",\"filter\":{\"levels\":[\"WARN\"],\"subsystems\":[],\"text\":\"\"}}",
+                              path) < (int)sizeof(args));
+    root = call_reply("log.export", args);
+    TEST_ASSERT_EQUAL_INT(0, (int)json_integer_value(json_object_get(json_object_get(root, "data"), "lines")));
+    json_decref(root);
+    exported = slurp(path);
+    TEST_ASSERT_EQUAL_STRING("", exported);
+    free(exported);
+
+    root = call_reply("log.export", "{\"path\":\"h3-export.log\",\"filter\":{\"levels\":[\"WARN\"]}}");
+    assert_call_error(root, "bad_args", "absolute");
+    json_decref(root);
+    free(log_text);
+}
+
+void test_prefs_set_log_level(void) {
+    char profile_path[160];
+    char index_path[160];
+    char *before;
+    char *after;
+    char *text;
+    json_t *root;
+    json_t *data;
+
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_TRUE(snprintf(profile_path, sizeof(profile_path), "%s/profiles/default.json", g_cfg_dir) <
+                     (int)sizeof(profile_path));
+    TEST_ASSERT_TRUE(snprintf(index_path, sizeof(index_path), "%s/Pavillion.json", g_cfg_dir) <
+                     (int)sizeof(index_path));
+    before = slurp(profile_path);
+    root = call_reply("prefs.get", "{}");
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_STRING("info", json_string_value(json_object_get(data, "logLevel")));
+    json_decref(root);
+
+    root = call_reply("prefs.set", "{\"logLevel\":\"warn\"}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_STRING("warn", json_string_value(json_object_get(data, "logLevel")));
+    TEST_ASSERT_EQUAL_STRING("system", json_string_value(json_object_get(data, "theme")));
+    json_decref(root);
+    after = slurp(profile_path);
+    TEST_ASSERT_EQUAL_STRING(before, after);
+    free(before);
+    free(after);
+    text = slurp(index_path);
+    TEST_ASSERT_NOT_NULL(strstr(text, "\"log_level\": \"warn\""));
+    free(text);
+
+    pav_log("core", PAV_INFO, 0, "h3-level-hidden");
+    pav_log("core", PAV_WARN, 0, "h3-level-kept");
+    pav_log_flush();
+    text = slurp(g_log_path);
+    TEST_ASSERT_NULL(strstr(text, "h3-level-hidden"));
+    TEST_ASSERT_NOT_NULL(strstr(text, "h3-level-kept"));
+    free(text);
+
+    root = call_reply("prefs.set", "{\"logLevel\":\"loud\"}");
+    assert_call_error(root, "bad_args", "logLevel");
+    json_decref(root);
+}
+
 void test_index_log_level_and_prefs_saved(void) {
     char path[160];
     char *text;
@@ -2871,5 +3043,7 @@ int main(void) {
     RUN_TEST(test_log_before_profile_goes_to_workdir_log);
     RUN_TEST(test_log_no_duplicate_after_profile_attach);
     RUN_TEST(test_index_log_level_and_prefs_saved);
+    RUN_TEST(test_log_export_filter);
+    RUN_TEST(test_prefs_set_log_level);
     return UNITY_END();
 }

@@ -10,7 +10,7 @@
   <body>
     <div class="shell">
       <nav class="nav" id="nav" aria-label="Sections">
-        <div class="nav-buttons" role="toolbar" aria-label="Sections">
+        <div class="nav-buttons button-bar" role="toolbar" aria-label="Sections">
           <button type="button" data-section="mail" aria-pressed="true" aria-label="Mail">
             <i class="icon fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270" data-icon-definition="fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270" aria-hidden="true"></i>
           </button>
@@ -59,7 +59,7 @@
             </div>
           </div>
         </div>
-        <div class="nav-buttons" role="toolbar" aria-label="Tools">
+        <div class="nav-buttons button-bar" role="toolbar" aria-label="Tools">
           <button type="button" data-section="activity" aria-pressed="false" aria-label="Activity">
             <i class="icon fa-sharp-duotone fa-solid fa-list-timeline" data-icon-definition="fa-sharp-duotone fa-solid fa-list-timeline" aria-hidden="true"></i>
           </button>
@@ -109,7 +109,7 @@
                 <input id="zoom" type="range" min="0.05" max="5" step="0.05" value="1" />
                 <span class="zoom-value" id="zoom-value">100%</span>
               </label>
-              <label class="zoom" data-zoom="navButtons"><span class="zoom-label">Nav buttons</span>
+              <label class="zoom" data-zoom="navButtons"><span class="zoom-label">Button bars</span>
                 <input type="range" min="0.05" max="5" step="0.05" value="1" />
                 <span class="zoom-value">100%</span>
               </label>
@@ -130,7 +130,7 @@
                 <span class="zoom-value">100%</span>
               </label>
             </div>
-            <p class="muted">Shell multiplies every pane below. Each pane is its own key on the profile.</p>
+            <p class="muted">Shell multiplies every row below. Button bars covers the navigation and the log bars. Each row is its own key on the profile.</p>
             <p class="muted" id="profile-name"></p>
           </div>
           <div data-settings="theme" hidden>
@@ -221,14 +221,15 @@
           </div>
         </div>
         <div class="panel" id="panel-activity" role="tabpanel" hidden>
-          <div class="log-switch" role="tablist" aria-label="Activity views">
-            <button type="button" role="tab" data-activity-view="activity" aria-selected="false">Activity</button>
-            <button type="button" role="tab" data-activity-view="log" aria-selected="true">Log</button>
+          <div class="button-bar log-topbar" role="toolbar" aria-label="Log tools">
+            <div class="log-switch" role="tablist" aria-label="Activity views">
+              <button type="button" role="tab" data-activity-view="activity" aria-selected="false">Activity</button>
+              <button type="button" role="tab" data-activity-view="log" aria-selected="true">Logs</button>
+            </div>
           </div>
           <div class="log-pane" data-activity-pane="activity" hidden></div>
-          <div class="log-pane" data-activity-pane="log">
-            <div id="log-editor" class="log-editor pav-log"></div>
-          </div>
+          <div class="log-pane" data-activity-pane="log"></div>
+          <div class="button-bar log-bottombar" role="toolbar" aria-label="Log actions"></div>
         </div>
         <div class="panel settings" id="panel-help" role="tabpanel" hidden>
           <p class="empty">Help is not written yet.</p>

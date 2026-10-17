@@ -295,6 +295,18 @@ Result: `{}`.
 
 Errors: `bad_args`, `too_large`, `not_ready`, `internal`.
 
+### log.export
+
+State: real (H-3)
+
+Writes the ring lines that match a filter. The bytes are the file lines, including each trailing newline. The ring is not changed. The view uses this same predicate for the lines it shows. Copy uses those UTC lines. Print draws the on-screen line instead.
+
+Args: `{path, filter}`. `path` is an absolute file path whose parent directory exists. `filter.levels` is an array of `ERROR`, `WARN`, `INFO`, and `DEBUG`. A line is kept only when its level is in that array. An empty array keeps nothing. `filter.subsystems` is an array of subsystem names, or null. Null and omitted both keep every subsystem. An empty array keeps nothing. `filter.text` is a string of at most 2000 bytes. Omitted or empty, it keeps every line. Otherwise the line is kept when the file line, without its trailing newline, contains that text. The match is literal and ASCII case-insensitive.
+
+Result: `{lines}`. `lines` is how many lines were written.
+
+Errors: `bad_args`, `too_large`, `internal`.
+
 ### log.tail
 
 State: real (H-1)
@@ -421,11 +433,12 @@ Result:
   "windowHeight": 800,
   "windowX": null,
   "windowY": null,
-  "chrome": "system"
+  "chrome": "system",
+  "logLevel": "info"
 }
 ```
 
-`windowX` and `windowY` are null when the position is unset. `chrome` is `system` or `hidden`.
+`windowX` and `windowY` are null when the position is unset. `chrome` is `system` or `hidden`. `logLevel` is the index `log_level`: `error`, `warn`, `info`, or `debug`.
 
 Errors: `bad_args`, `not_ready`, `internal`.
 
@@ -433,9 +446,9 @@ Errors: `bad_args`, `not_ready`, `internal`.
 
 State: real (G-2)
 
-Writes the same fields. Keys that are absent stay as stored. `{}` is `bad_args`. An unknown key is `bad_args`. The profile is written once.
+Writes the same fields. Keys that are absent stay as stored. `{}` is `bad_args`. An unknown key is `bad_args`. Profile fields are written once. `logLevel` is written on the index and applied to the running process. A request that only sets `logLevel` does not write the profile.
 
-Args: any subset of the `prefs.get` result. Booleans are JSON booleans. Width, height, and coordinates are integers. `windowX` or `windowY` set to null clears that coordinate. Strings must be non-empty and fit the profile field (`timezone` 63 bytes, `weekStart` 15, `timeFormat` 7, `theme` 15, `density` 15, `chrome` 15). Width and height are 200 to 10000. A set coordinate is -32000 to 32000. `chrome` is `system` or `hidden`.
+Args: any subset of the `prefs.get` result. Booleans are JSON booleans. Width, height, and coordinates are integers. `windowX` or `windowY` set to null clears that coordinate. Strings must be non-empty and fit the profile field (`timezone` 63 bytes, `weekStart` 15, `timeFormat` 7, `theme` 15, `density` 15, `chrome` 15). Width and height are 200 to 10000. A set coordinate is -32000 to 32000. `chrome` is `system` or `hidden`. `logLevel` is `error`, `warn`, `info`, or `debug`.
 
 Result: the `prefs.get` object after the write.
 

@@ -21,6 +21,7 @@ const PREF_KEYS = [
   "windowX",
   "windowY",
   "chrome",
+  "logLevel",
 ];
 
 function defaultPrefs() {
@@ -36,6 +37,7 @@ function defaultPrefs() {
     windowX: null,
     windowY: null,
     chrome: "system",
+    logLevel: "info",
   };
 }
 
@@ -100,6 +102,12 @@ export function mockTransport() {
     }
     if (cmd === "log.tail") {
       return { lines: [] };
+    }
+    if (cmd === "log.export") {
+      if (typeof input.path !== "string" || !isObject(input.filter)) {
+        throw fail("bad_args", "log.export requires path and filter");
+      }
+      return { lines: 0 };
     }
     throw fail("bad_args", `unknown command ${cmd}`);
   }

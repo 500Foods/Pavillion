@@ -298,3 +298,155 @@ int pav_logring_read(uint64_t since_seq, int limit, int min_level, const json_t 
     *out = root;
     return 0;
 }
+
+#define PAV_LOG_EXPORT_MAX (32u * 1024u * 1024u)
+
+static int level_listed(const json_t *levels, const char *level) {
+    size_t i;
+    size_t n;
+
+    if (!json_is_array(levels)) {
+        return 0;
+    }
+    n = json_array_size(levels);
+    for (i = 0; i < n; i++) {
+        const char *item = json_string_value(json_array_get(levels, i));
+
+        if (item != NULL && strcmp(item, level) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static char fold_ascii(char c) {
+    if (c >= 'A' && c <= 'Z') {
+        return (char)(c - 'A' + 'a');
+    }
+    return c;
+}
+
+static int ascii_has(const char *hay, size_t hay_n, const char *needle) {
+    size_t needle_n;
+    size_t i;
+    size_t j;
+
+    if (needle == NULL) {
+        return 1;
+    }
+    needle_n = strlen(needle);
+    if (needle_n == 0) {
+        return 1;
+    }
+    if (needle_n > hay_n) {
+        return 0;
+    }
+    for (i = 0; i + needle_n <= hay_n; i++) {
+        for (j = 0; j < needle_n; j++) {
+            if (fold_ascii(hay[i + j]) != fold_ascii(needle[j])) {
+                break;
+            }
+        }
+        if (j == needle_n) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int export_kept(const char *line, const json_t *levels, const json_t *subsystems, const char *text) {
+    char ts[32];
+    char level[8];
+    char subsystem[128];
+    const char *message = NULL;
+    size_t n;
+
+    if (parse_line(line, ts, sizeof(ts), level, sizeof(level), subsystem, sizeof(subsystem), &message) != 0) {
+        return 0;
+    }
+    if (!level_listed(levels, level) || !subsystem_wanted(subsystems, subsystem)) {
+        return 0;
+    }
+    n = strlen(line);
+    if (n > 0 && line[n - 1] == '\n') {
+        n--;
+    }
+    return ascii_has(line, n, text);
+}
+
+int pav_logring_export(const json_t *levels, const json_t *subsystems, const char *text, char **out,
+                       size_t *out_len, int *lines) {
+    char **kept = NULL;
+    size_t n = 0;
+    size_t i;
+    size_t total = 0;
+    char *buf;
+    size_t off;
+
+    if (out == NULL || out_len == NULL || lines == NULL) {
+        return -1;
+    }
+    *out = NULL;
+    *out_len = 0;
+    *lines = 0;
+    pthread_mutex_lock(&g_ring_mu);
+    if (g_ring_count > 0) {
+        kept = calloc(g_ring_count, sizeof(*kept));
+        if (kept == NULL) {
+            pthread_mutex_unlock(&g_ring_mu);
+            return -1;
+        }
+        for (i = 0; i < g_ring_count; i++) {
+            RingSlot *slot = &g_ring[(g_ring_start + i) % PAV_LOGRING_CAP];
+            size_t len;
+
+            if (!export_kept(slot->line, levels, subsystems, text)) {
+                continue;
+            }
+            len = strlen(slot->line);
+            if (total > PAV_LOG_EXPORT_MAX || len > PAV_LOG_EXPORT_MAX - total) {
+                pthread_mutex_unlock(&g_ring_mu);
+                for (i = 0; i < n; i++) {
+                    free(kept[i]);
+                }
+                free(kept);
+                return -2;
+            }
+            kept[n] = strdup(slot->line);
+            if (kept[n] == NULL) {
+                pthread_mutex_unlock(&g_ring_mu);
+                for (i = 0; i < n; i++) {
+                    free(kept[i]);
+                }
+                free(kept);
+                return -1;
+            }
+            total += len;
+            n++;
+        }
+    }
+    pthread_mutex_unlock(&g_ring_mu);
+
+    buf = malloc(total + 1);
+    if (buf == NULL) {
+        for (i = 0; i < n; i++) {
+            free(kept[i]);
+        }
+        free(kept);
+        return -1;
+    }
+    off = 0;
+    for (i = 0; i < n; i++) {
+        size_t len = strlen(kept[i]);
+
+        memcpy(buf + off, kept[i], len);
+        off += len;
+        free(kept[i]);
+    }
+    free(kept);
+    buf[off] = '\0';
+    *out = buf;
+    *out_len = off;
+    *lines = (int)n;
+    return 0;
+}

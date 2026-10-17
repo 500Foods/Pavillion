@@ -1,11 +1,12 @@
 import { createApi } from "./api.js";
-import { tauriTransport } from "./transport/tauri.js";
+import { tauriHost, tauriTransport } from "./transport/tauri.js";
 import { clampUi } from "./prefs.js";
 import { installLogHooks } from "./log.js";
-import { startShell, useApi } from "./shell.js";
+import { startShell, useApi, useHost } from "./shell.js";
 
 const api = createApi(tauriTransport());
 useApi(api);
+useHost(tauriHost());
 installLogHooks(api);
 if (import.meta.env.DEV) {
   window.pav = api;

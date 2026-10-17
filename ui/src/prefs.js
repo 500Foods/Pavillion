@@ -1,3 +1,5 @@
+import { normalizeFilter } from "./log/filter.js";
+
 export const DEFAULT_UI = {
   nav: { width: 320, min: 200, max: 500 },
   mail: { split: 0.5, min: 0.25, max: 0.75 },
@@ -5,6 +7,13 @@ export const DEFAULT_UI = {
   files: { split: 0.5, min: 0.25, max: 0.75 },
   zoom: { shell: 1, navButtons: 1, navBody: 1, mailList: 1, mailDetail: 1, log: 1 },
   activity: { view: "log" },
+  log: {
+    levels: ["ERROR", "WARN", "INFO", "DEBUG"],
+    subsystems: null,
+    text: "",
+    follow: true,
+    wrap: false,
+  },
   icons: {},
   fontawesome_kit: "45801522ef",
   fonts: {
@@ -14,7 +23,7 @@ export const DEFAULT_UI = {
 };
 
 const ZOOM_KEYS = ["shell", "navButtons", "navBody", "mailList", "mailDetail", "log"];
-const KNOWN = new Set(["nav", "mail", "contacts", "files", "zoom", "icons", "fontawesome_kit", "fonts", "activity"]);
+const KNOWN = new Set(["nav", "mail", "contacts", "files", "zoom", "icons", "fontawesome_kit", "fonts", "activity", "log"]);
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -126,6 +135,7 @@ export function clampUi(raw) {
     fontawesome_kit: typeof src.fontawesome_kit === "string" ? src.fontawesome_kit : DEFAULT_UI.fontawesome_kit,
     fonts: fontsOf(src.fonts),
     activity: activityOf(src.activity),
+    log: normalizeFilter(src.log === undefined ? DEFAULT_UI.log : src.log),
   };
   for (const key of Object.keys(src)) {
     if (!KNOWN.has(key)) {
