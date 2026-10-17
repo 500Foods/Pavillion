@@ -37,12 +37,60 @@
   z-index: 40;
   max-width: 16rem;
   margin: 0;
-  padding: 0.25rem 0.5rem;
-  color: var(--pav-text);
-  background: var(--pav-surface-button);
-  border: 1px solid var(--pav-border);
+  padding: 0.4rem 0.75rem;
+  color: var(--pav-tooltip-text);
+  background: var(--pav-tooltip-bg);
+  border: var(--pav-tooltip-border-width) solid var(--pav-tooltip-border);
+  border-radius: var(--pav-tooltip-radius);
   font-size: 0.8125rem;
+  line-height: 1.35;
   pointer-events: none;
+  filter: var(--pav-tooltip-shadow);
+}
+
+.pav-root .pav-tooltip::before,
+.pav-root .pav-tooltip::after {
+  content: "";
+  position: absolute;
+  left: var(--pav-tooltip-shift, 50%);
+  width: 0;
+  height: 0;
+  border-style: solid;
+  transform: translateX(-50%);
+}
+
+.pav-root .pav-tooltip[data-side="top"]::before,
+.pav-root .pav-tooltip[data-side="top"]::after {
+  top: 100%;
+}
+
+.pav-root .pav-tooltip[data-side="top"]::before {
+  border-width: var(--pav-tooltip-arrow) var(--pav-tooltip-arrow) 0;
+  border-color: var(--pav-tooltip-border) transparent transparent;
+}
+
+.pav-root .pav-tooltip[data-side="top"]::after {
+  top: calc(100% - 1px);
+  border-width: max(0px, calc(var(--pav-tooltip-arrow) - var(--pav-tooltip-border-width)))
+    max(0px, calc(var(--pav-tooltip-arrow) - var(--pav-tooltip-border-width))) 0;
+  border-color: var(--pav-tooltip-bg) transparent transparent;
+}
+
+.pav-root .pav-tooltip[data-side="bottom"]::before,
+.pav-root .pav-tooltip[data-side="bottom"]::after {
+  bottom: 100%;
+}
+
+.pav-root .pav-tooltip[data-side="bottom"]::before {
+  border-width: 0 var(--pav-tooltip-arrow) var(--pav-tooltip-arrow);
+  border-color: transparent transparent var(--pav-tooltip-border);
+}
+
+.pav-root .pav-tooltip[data-side="bottom"]::after {
+  bottom: calc(100% - 1px);
+  border-width: 0 max(0px, calc(var(--pav-tooltip-arrow) - var(--pav-tooltip-border-width)))
+    max(0px, calc(var(--pav-tooltip-arrow) - var(--pav-tooltip-border-width)));
+  border-color: transparent transparent var(--pav-tooltip-bg);
 }
 
 .pav-root .pav-toasts {
@@ -83,10 +131,13 @@
 
 .pav-root .pav-dialog {
   max-width: 36rem;
-  padding: 1rem 1.25rem;
-  color: var(--pav-text);
-  background: var(--pav-surface-button);
-  border: 1px solid var(--pav-border);
+  padding: 1.15rem 1.35rem;
+  color: var(--pav-dialog-text);
+  background: var(--pav-dialog-bg);
+  color-scheme: var(--pav-dialog-scheme);
+  border: var(--pav-dialog-border-width) solid var(--pav-dialog-border);
+  border-radius: var(--pav-dialog-radius);
+  box-shadow: var(--pav-dialog-shadow);
 }
 
 .pav-root .pav-dialog::backdrop {
@@ -110,9 +161,10 @@
   box-sizing: border-box;
   margin: 0 0 0.75rem;
   padding: 0.35rem 0.5rem;
-  color: var(--pav-text);
-  background: var(--pav-surface-canvas);
-  border: 1px solid var(--pav-border);
+  color: var(--pav-dialog-text);
+  background: var(--pav-dialog-control);
+  border: var(--pav-dialog-border-width) solid var(--pav-dialog-border);
+  border-radius: var(--pav-dialog-button-radius);
 }
 
 .pav-root .pav-dialog-actions {
@@ -124,9 +176,10 @@
 
 .pav-root .pav-dialog-actions button {
   padding: 0.35rem 0.8rem;
-  color: var(--pav-text);
-  background: var(--pav-surface-canvas);
-  border: 1px solid var(--pav-border);
+  color: var(--pav-dialog-text);
+  background: var(--pav-dialog-control);
+  border: var(--pav-dialog-border-width) solid var(--pav-dialog-border);
+  border-radius: var(--pav-dialog-button-radius);
 }
 
 .pav-root .pav-dialog-ok.is-danger {

@@ -21,6 +21,20 @@ test("dark.css and light.css define the same variables", () => {
   expect(light).toEqual(dark);
 });
 
+test("widgets.css only references variables", () => {
+  const css = readFileSync(join(styles, "widgets.css"), "utf8");
+  expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+  expect(css).not.toMatch(/rgba?\(/);
+  expect(css).toMatch(/var\(--pav-tooltip-bg\)/);
+  expect(css).toMatch(/var\(--pav-tooltip-border\)/);
+  expect(css).toMatch(/filter:\s*var\(--pav-tooltip-shadow\)/);
+  expect(css).toMatch(/var\(--pav-dialog-bg\)/);
+  expect(css).toMatch(/var\(--pav-dialog-border\)/);
+  expect(css).toMatch(/box-shadow:\s*var\(--pav-dialog-shadow\)/);
+  expect(css).toMatch(/var\(--pav-dialog-radius\)/);
+  expect(css).toMatch(/var\(--pav-dialog-button-radius\)/);
+});
+
 test("theme.css only references variables", () => {
   const css = readFileSync(join(styles, "theme.css"), "utf8");
   expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);

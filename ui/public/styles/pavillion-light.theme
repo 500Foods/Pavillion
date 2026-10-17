@@ -131,6 +131,54 @@
 
   /* Help nav icon. Same three forms as Mail. */
   --pav-icon-help: "<i class='fa-sharp-duotone fa-solid fa-circle-question'></i>";
+
+  /* Tooltip fill. Light uses a dark bubble, the inverse of the window. */
+  --pav-tooltip-bg: #1c1212;
+
+  /* Tooltip text. */
+  --pav-tooltip-text: #f7f4f2;
+
+  /* Tooltip outline. A different color from the fill. The arrow uses it too. */
+  --pav-tooltip-border: #cc9999;
+
+  /* Tooltip outline thickness. */
+  --pav-tooltip-border-width: 1px;
+
+  /* Tooltip corner radius. */
+  --pav-tooltip-radius: 0.55rem;
+
+  /* Tooltip shadow. The whole filter, so none removes it. drop-shadow follows the arrow. */
+  --pav-tooltip-shadow: drop-shadow(0 0.28rem 0.55rem rgb(28 18 18 / 35%));
+
+  /* Arrow length. The point sits this far outside the bubble. */
+  --pav-tooltip-arrow: 0.5rem;
+
+  /* Dialog fill. Separate from the tooltip, same idea: a dark sheet on the light window. */
+  --pav-dialog-bg: #1c1212;
+
+  /* Dialog text. */
+  --pav-dialog-text: #f7f4f2;
+
+  /* Dialog outline. A different color from the fill. */
+  --pav-dialog-border: #cc9999;
+
+  /* Dialog outline thickness. */
+  --pav-dialog-border-width: 1px;
+
+  /* Dialog corner radius. The sheet only. */
+  --pav-dialog-radius: 0.75rem;
+
+  /* Dialog button and text-field corner radius. A little, separate from the sheet. */
+  --pav-dialog-button-radius: 0.2rem;
+
+  /* Dialog shadow. The whole box-shadow, so none removes it. */
+  --pav-dialog-shadow: 0 0.75rem 1.6rem rgb(28 18 18 / 35%);
+
+  /* Dialog fields and buttons. */
+  --pav-dialog-control: #342424;
+
+  /* light or dark. Form controls inside the dialog follow this, not the window. */
+  --pav-dialog-scheme: dark;
 }
 
 /*

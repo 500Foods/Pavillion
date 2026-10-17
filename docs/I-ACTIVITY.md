@@ -1,6 +1,6 @@
 # I — ACTIVITY
 
-**Status:** I-1 complete (2026-10-16). I-2 has not started.
+**Status:** I-1 complete (2026-10-16). I-2 has not started. Its entry gate is met (2026-10-17).
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The user-facing feed of work in progress: syncing a mailbox, fetching bodies, downloading an attachment, sending, indexing, importing, running rules. Each has a status, progress, an estimate, and a cancel button. The registry lives in the core; every long operation in M, N, O, Q, R, S, T, and U registers with it. The Update button's spin reads it.
@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS activity (
 ## I-2: Activity view and the Update button
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Not started. Entry gate met 2026-10-17 (I-1 and J-1 complete). Do not start it in the J-1 sitting.
 
 **Goal:** The Activity tab shows live work with cancel, and the Update button reflects it.
 
@@ -143,3 +143,4 @@ Resolved 2026-10-16: I-Q1. Finished activities persist in the profile SQLite tab
 - 2026-10-16 H-2 now precedes I-2 and owns the CodeMirror log. I-2 fills the Activity side of that control and does not ship a log tail.
 - 2026-10-16 I-Q1: finished activities persist in the profile SQLite table `activity`. Running work is not resumed. `user_version` stays unset.
 - 2026-10-16 I-1: registry, cancel, dismiss, `activity.changed`, and `debug.activity_demo` on a worker. `make test` is 65 Unity tests and 23 Vitest tests.
+- 2026-10-17 J-1 is complete, so I-2's entry gate is met. I-2 has not started. It fills the Activity side and does not rebuild the log. The J-1 menu items are Activity and Logs. `--pav-status-running`, `--pav-status-done`, `--pav-status-failed`, and `--pav-status-cancelled` are not in the theme files yet.

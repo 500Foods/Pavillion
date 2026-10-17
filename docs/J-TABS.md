@@ -1,6 +1,6 @@
 # J — TABS
 
-**Status:** J-1 in progress (2026-10-17). The window check is open. J-2 is not started.
+**Status:** J-1 complete (2026-10-17). Andrew accepted the window. J-2 is not started. The next phase is I-2.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The tabbed workspace and the shared widgets every later screen uses: context menu, tooltip, toast with undo, and dialog. Andrew confirmed the feature set for the first round on 2026-10-16: pinned tabs, keyboard shortcuts, files dropped on the strip, a right-click menu (pin, duplicate, mute, close variants), muting, session restore, vertical tabs, floating tooltips, tab widths, and sandboxed browsing from a `+` tab.
@@ -11,7 +11,7 @@ One phase is one session. Do not start the next one in the same conversation.
 
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
-| J-1 | Common widgets: menu, tooltip, toast with undo, dialog | Medium | In progress |
+| J-1 | Common widgets: menu, tooltip, toast with undo, dialog | Medium | Complete |
 | J-2 | Tab registry, icon and close button, sub-tabs, nav-body clicks | Medium | Not started |
 | J-3 | Keyboard shortcuts, tab context menu, pinned tabs | Medium | Not started |
 | J-4 | Drag to reorder, overflow (scroll or wrap), tab widths, file drop | Medium | Not started |
@@ -83,7 +83,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 ## J-1: Common widgets
 
 **Kind:** Medium
-**Status:** In progress (2026-10-17). The modules, the shell uses, and Vitest passed. The exit gate's window check is still open.
+**Status:** Complete (2026-10-17). Andrew accepted the window. This sitting did not push.
 
 **Goal:** Menu, tooltip, toast, and dialog exist and are used once each in the shell.
 
@@ -99,6 +99,12 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 **Done means:** The four widgets work by mouse and keyboard and replace any ad hoc versions.
 
 **Exit gate:** `make test` exits 0. In `make dev`: right-click Activity, choose Log; hover a nav button for the tooltip; tab to a nav button and see the tooltip on focus.
+
+**Accomplished:** `ui/src/common/menu.js`, `tooltip.js`, `toast.js`, and `dialog.js` are the four widgets. CSS is `ui/public/styles/widgets.css`, linked from `ui/index.html` and `ui/harness.html`. `ui/styles` was left unlinked. The Activity nav menu items are Activity and Logs. Choosing one sets `preferences.ui.activity.view` and then opens the Activity section. Tooltips are on the eight nav buttons: one floating element, anchored, 500 ms hover or keyboard focus, flipped into the viewport, `role="tooltip"` and `aria-describedby`. A click does not show one. The bubble is rounded, with an arrow on the anchor, a border color separate from the fill, and `filter: drop-shadow` so the shadow follows the arrow. Dark defaults are a light bubble. Light defaults are a dark bubble. Dialogs use the same kind of sheet on `--pav-dialog-*`. The sheet radius is `--pav-dialog-radius` (`0.75rem`). Buttons and the text field use `--pav-dialog-button-radius` (`0.2rem`). A failed `prefs.ui.set` or theme `prefs.set` toasts `Could not save the profile.` plus the error. Other errors stay on `#banner`. The F-4 link confirm is this dialog: title `This link wants to open:`, the isolation URL, OK label Close. Close, Cancel, and Escape dismiss it and do not open a browser. `#link-confirm` is gone. Its old rules remain in `theme.css`. Text is `textContent` only. Listeners sit on `.pav-root` and come off in `stopShell`. `PAVILLION_API_VERSION` stays 3. `lib.rs` was not changed. Andrew accepted the window on 2026-10-17. `make test` is 68 Unity tests and 59 Vitest tests, exit 0.
+
+**Lessons learned:** The served sheet is `ui/public/styles/widgets.css`. The copy named `ui/styles` is not linked. The segment label is Logs, so the menu item is Logs. Opening the Activity section before setting the view still has `activity.view` `log`, and CodeMirror's `EditorView.measure` throws in jsdom because `getClientRects` is missing. Set the view first. Menu rows are `div`s. A `button` row activates twice on Enter. The tooltip arrow is a pseudo-element, so the border box does not include it. The gap adds the arrow length, read from `rem` against the root font-size, because shell zoom changes that font-size. `drop-shadow` follows the arrow. A dialog has no arrow, so it uses `box-shadow`. A black shadow does not show on the black canvas, so the dark theme's shadow is a slight warm one. A new `--pav-*` name goes in `dark.css`, `light.css`, and both starter `.theme` files in the same change, with the same parsed value. An already saved Pavillion Dark.theme or Light.theme then lists as Custom until that file is deleted. Button radius is its own variable. A fraction of the sheet radius would change the buttons whenever the sheet radius changed.
+
+**Handoff:** I-2 is next, step 37, in [I-ACTIVITY.md](I-ACTIVITY.md). Do not start it in this sitting. Its entry gate is met. It fills the Activity side of the control H-2 built. It does not replace the CodeMirror log and does not add a `<pre>` tail. The J-1 menu already switches the two views. The items are Activity and Logs. Plain click on the Activity nav opens the last view (`preferences.ui.activity.view`, default `log`). `--pav-status-running`, `--pav-status-done`, `--pav-status-failed`, and `--pav-status-cancelled` are not in the theme files yet. Add them to `dark.css`, `light.css`, and both starters in that change. The table is plain DOM, patched by id. The Update button calls `sync.now`, a no-op `ok` until M-3, and spins while a `sync.*` activity runs. `prefers-reduced-motion` stops the spin. The debug Help item `Run demo activity` calls `debug.activity_demo`. A release build that defines `NDEBUG` does not register that command. Opening the log view in jsdom throws from CodeMirror measure. Keep the Activity pane on `activity` in those tests. New listeners stay on the mount root and come off in `stopShell`. J-2 is step 38 and waits. J-Q1 through J-Q4 stay open and do not block I-2. K-Q4 and 1Password stay in K. Do not add a Floating UI library. A new `--pav-*` ships in all four theme files. `PAVILLION_API_VERSION` stays 3. `lib.rs` stays a forwarder. Do not add `https:` to `img-src` or `navigate-to`. Only `ui/src/transport/tauri.js` may import `@tauri-apps`. Do not drive the window.
 
 ## J-2: Tab registry, appearance, and sub-tabs
 
@@ -237,3 +243,6 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - 2026-10-16 Exploration (`TABS-DESIGN.md`): seventeen topics, current code, tier impact; Andrew confirmed the first-round feature set and browsing.
 - 2026-10-16 Absorbed into this document and scoped into J-1 to J-7. Decisions: registry by id, one tab per id, kind icons, close focus order, shortcut scopes, pinned group, scroll as the default overflow, 12.5rem max width, session restore with lazy load, section colors as a tint, tooltips anchored, browsing in a separate child webview instead of an iframe, core caches not freed on tab close. `TABS-DESIGN.md` removed; it is in git history at commit 83f2f04.
 - 2026-10-17 J-1 in progress. Menu, tooltip, toast, and dialog are in `ui/src/common` and `ui/public/styles/widgets.css`. The Activity button's menu says Activity and Logs, matching the segment. A failed profile save toasts. The link confirm is the shared dialog. `make test` is 68 Unity tests and 58 Vitest tests. The window check is open. Do not start J-2.
+- 2026-10-17 Tooltip and dialog chrome, still inside J-1. Tooltips stay in `tooltip.js`. No Floating UI library. The bubble is rounded, the arrow sits on the anchor, the border color is separate from the fill, and the shadow is a `drop-shadow` so it follows the arrow. Dialogs use the same kind of sheet on `--pav-dialog-*`, separate from `--pav-tooltip-*`. Dark defaults are a light bubble and dialog. Light defaults are dark. `widgets.css` only references variables. `make test` is 68 Unity tests and 59 Vitest tests. The window check should look at the bubble and the link dialog. A Pavillion Dark.theme or Light.theme already saved lists as Custom until it is deleted, because the starters gained these variables. J-1 stays in progress. Do not start J-2.
+- 2026-10-17 Dialog sheet radius stays `--pav-dialog-radius` (0.75rem). Buttons and the text field use `--pav-dialog-button-radius` (0.2rem), separate from the sheet. Same value in dark, light, and both starters.
+- 2026-10-17 J-1 complete. Andrew accepted the window. `make test` is 68 Unity tests and 59 Vitest tests. The next phase is I-2. Do not start it in this sitting. J-2 stays not started.

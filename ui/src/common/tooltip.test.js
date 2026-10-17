@@ -36,6 +36,8 @@ test("a hover waits 500 ms and a pointer leave cancels it", () => {
   expect(tip.hidden).toBe(false);
   expect(tip.textContent).toBe("Mail");
   expect(tip.getAttribute("role")).toBe("tooltip");
+  expect(tip.dataset.side).toBe("bottom");
+  expect(tip.style.getPropertyValue("--pav-tooltip-shift")).not.toBe("");
   expect(button.getAttribute("aria-describedby")).toBe("pav-tooltip");
   tips.destroy();
 });
@@ -50,6 +52,7 @@ test("keyboard focus shows the tooltip and a click does not", () => {
   const tip = root.querySelector(".pav-tooltip");
   expect(tip.hidden).toBe(false);
   expect(tip.textContent).toBe("Mail");
+  expect(tip.dataset.side).toBe("bottom");
   expect(button.getAttribute("aria-describedby")).toBe("pav-tooltip");
   tips.destroy();
   expect(root.querySelector(".pav-tooltip")).toBeNull();

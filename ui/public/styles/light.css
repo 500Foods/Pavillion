@@ -36,6 +36,22 @@
   --pav-icon-settings: "<i class='fa-sharp-duotone fa-solid fa-gear'></i>";
   --pav-icon-update: "<i class='fa-sharp-duotone fa-solid fa-arrows-rotate'></i>";
   --pav-icon-help: "<i class='fa-sharp-duotone fa-solid fa-circle-question'></i>";
+  --pav-tooltip-bg: #1c1212;
+  --pav-tooltip-text: #f7f4f2;
+  --pav-tooltip-border: #cc9999;
+  --pav-tooltip-border-width: 1px;
+  --pav-tooltip-radius: 0.55rem;
+  --pav-tooltip-shadow: drop-shadow(0 0.28rem 0.55rem rgb(28 18 18 / 35%));
+  --pav-tooltip-arrow: 0.5rem;
+  --pav-dialog-bg: #1c1212;
+  --pav-dialog-text: #f7f4f2;
+  --pav-dialog-border: #cc9999;
+  --pav-dialog-border-width: 1px;
+  --pav-dialog-radius: 0.75rem;
+  --pav-dialog-button-radius: 0.2rem;
+  --pav-dialog-shadow: 0 0.75rem 1.6rem rgb(28 18 18 / 35%);
+  --pav-dialog-control: #342424;
+  --pav-dialog-scheme: dark;
 }
 
 html[data-pav-theme="light"] {
