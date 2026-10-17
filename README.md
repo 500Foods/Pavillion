@@ -4,6 +4,14 @@ A desktop mail, contacts, calendars, and files client for self-hosted Stalwart (
 
 The plan and the implementation order are in [PAVILLION_PLAN.md](PAVILLION_PLAN.md); the phase documents are in [docs/](docs/).
 
+## Preview Features
+
+Some things that set this apart from your average email program.
+
+- Stalwart-first thinking. JMAP is the first protocol implemented out of the gate, and Mail, Contacts, Calendars, and Files are all first-class citizens.
+- 1Password integration. Set up a service worker token and link it to the accounts you want to use and never think about passwords again.
+- Grok Bot integration. Add a webhook url+key and then send your favorite Grok Bot your requests. "File this over there". "Add the third timeslot for this event to my work calendar and tell Fred about it". "Convert this Word document to a PDF and email it to Alice". So fun. Believe me.
+
 ## Build
 
 On Fedora, install the packages named in [scripts/fedora-deps.txt](scripts/fedora-deps.txt). The file has names only, with no versions:
@@ -15,9 +23,11 @@ dnf install $(grep -vE '^[[:space:]]*(#|$)' scripts/fedora-deps.txt)
 `make test` runs the Unity suite. `make build` writes `dist/pavillion`. `.github/workflows/ci.yml` installs that same list, then runs those two targets.
 
 ## Additional Notes
+
 While this project is currently under active development, feel free to give it a try and post any issues you encounter.  Or start a discussion if you would like to help steer the project in a particular direction.  Early days yet, so a good time to have your voice heard.  As the project unfolds, additional resources will be made available, including platform binaries, more documentation, demos, and so on.
 
-## Repository Information 
+## Repository Information
+
 [![Count Lines of Code](https://github.com/500Foods/Pavillion/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/main.yml)
 <!--CLOC-START -->
 ```cloc
@@ -53,4 +63,5 @@ SUM:                           137           4749            768          31816
 <!--CLOC-END-->
 
 ## Sponsor / Donate / Support
+
 If you find this work interesting, helpful, or valuable, or that it has saved you time, money, or both, please consider directly supporting these efforts financially via [GitHub Sponsors](https://github.com/sponsors/500Foods) or donating via [Buy Me a Pizza](https://www.buymeacoffee.com/andrewsimard500). Also, check out these other [GitHub Repositories](https://github.com/500Foods?tab=repositories&q=&sort=stargazers) that may interest you.
