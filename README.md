@@ -63,15 +63,15 @@ dnf install $(grep -vE '^[[:space:]]*(#|$)' scripts/fedora-deps.txt)
 [![Count Lines of Code](https://github.com/500Foods/Pavillion/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/main.yml)
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-17 23:00:49 UTC
+Last updated at 2026-10-17 23:28:08 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
 C                               19           1425            235          13270
-JavaScript                      55            667            115           9636
-Markdown                        27           2207              2           4437
+JavaScript                      58            684            122          10117
+Markdown                        27           2216              2           4455
 JSON                             7              0              0           2648
-CSS                              6            300              2           1854
+CSS                              6            310              2           1909
 C/C++ Header                    14            345            406           1826
 Rust                             3             19              7            402
 YAML                             3             21             17             92
@@ -81,7 +81,7 @@ make                             1             11              3             51
 CMake                            1              3              1             30
 TOML                             1              4              0             21
 -------------------------------------------------------------------------------
-SUM:                           142           5013            788          34400
+SUM:                           145           5049            795          34954
 -------------------------------------------------------------------------------
 25 Files were skipped (duplicate, binary, or without source code):
   png: 17
