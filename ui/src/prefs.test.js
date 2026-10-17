@@ -22,6 +22,10 @@ test("log zoom snaps and the activity view defaults to log", () => {
   expect(stored.activity.view).toBe("activity");
   expect(stored.activity.note).toBe("kept");
   expect(stored.later).toBe(true);
+  expect(clampUi({ themeChoice: "file:Warm.theme" }).themeChoice).toBe("file:Warm.theme");
+  expect(clampUi({ themeChoice: "file:../x.theme" }).themeChoice).toBeUndefined();
+  expect(clampUi({ fontSource: "override", iconSource: "theme" }).fontSource).toBe("override");
+  expect(clampUi({}).fontSource).toBeUndefined();
   expect(clampUi({ activity: { view: "nope" } }).activity.view).toBe("log");
   expect(blank.log).toEqual({
     levels: ["ERROR", "WARN", "INFO", "DEBUG"],

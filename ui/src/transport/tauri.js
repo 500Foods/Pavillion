@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { save } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 
 function asError(err) {
   if (err instanceof Error && err.code) {
@@ -43,6 +43,14 @@ export function tauriHost() {
           title: typeof opts.title === "string" ? opts.title : "Save log",
           defaultPath: typeof opts.defaultPath === "string" ? opts.defaultPath : "pavillion.log",
           filters: Array.isArray(opts.filters) ? opts.filters : [{ name: "Log", extensions: ["log", "txt"] }],
+        });
+      },
+      open(options) {
+        const opts = options && typeof options === "object" ? options : {};
+        return open({
+          directory: opts.directory === true,
+          multiple: false,
+          title: typeof opts.title === "string" ? opts.title : "Open",
         });
       },
     },

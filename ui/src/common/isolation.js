@@ -13,40 +13,18 @@ export function isolationLinkUrl(paneId, n) {
   return ISOLATION_LINKS[n];
 }
 
-function linkDialog(root) {
-  let dialog = root.querySelector("#link-confirm");
-  if (dialog) {
-    return dialog;
+function showLinkDialog(confirm, text) {
+  if (typeof confirm !== "function") {
+    return;
   }
-  dialog = document.createElement("dialog");
-  dialog.id = "link-confirm";
-  const label = document.createElement("p");
-  label.id = "link-confirm-label";
-  label.textContent = "This link wants to open:";
-  const url = document.createElement("p");
-  url.id = "link-confirm-url";
-  const form = document.createElement("form");
-  form.method = "dialog";
-  const close = document.createElement("button");
-  close.type = "submit";
-  close.value = "close";
-  close.textContent = "Close";
-  form.append(close);
-  dialog.append(label, url, form);
-  dialog.setAttribute("aria-labelledby", "link-confirm-label");
-  root.append(dialog);
-  return dialog;
+  Promise.resolve(confirm({
+    title: "This link wants to open:",
+    text,
+    okLabel: "Close",
+  })).then(() => {}, () => {});
 }
 
-function showLinkDialog(root, text) {
-  const dialog = linkDialog(root);
-  dialog.querySelector("#link-confirm-url").textContent = text;
-  if (typeof dialog.showModal === "function" && !dialog.open) {
-    dialog.showModal();
-  }
-}
-
-export function installIsolationTest({ api, enabled, openMail, root }) {
+export function installIsolationTest({ api, enabled, openMail, root, confirm }) {
   if (!enabled || !root) {
     return () => {};
   }
@@ -76,6 +54,6 @@ export function installIsolationTest({ api, enabled, openMail, root }) {
   });
   return api.on("link.clicked", (payload) => {
     const url = isolationLinkUrl(payload && payload.paneId, payload && payload.n);
-    showLinkDialog(root, url == null ? MISSING : url);
+    showLinkDialog(confirm, url == null ? MISSING : url);
   });
 }

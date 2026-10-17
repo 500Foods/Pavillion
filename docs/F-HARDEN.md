@@ -20,7 +20,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | F-8 | Icon settings: the icon tree and the three-preview editor | Medium | Not started |
 | F-6 | Decide where JMAP and sync live | Easy (decision) | Superseded (2026-10-16) |
 
-The table is in sequence order, not number order. F-5 runs before F-2 so the blob work lands on the new helpers. F-4 is index step 33. It follows G-8 and does not wait on the icon phases. F-3, F-7, and F-8 are milestone 6: no phase before F-3 adds a settings field that accepts icon HTML or a new script URL. The preview's existing kit field stays as it is until F-3 migrates it.
+The table is in sequence order, not number order. F-5 runs before F-2 so the blob work lands on the new helpers. F-4 is index step 33. It follows G-8 and does not wait on the icon phases. F-3, F-7, and F-8 are milestone 6: no phase before F-3 adds a settings field that accepts icon HTML or a new script URL. The preview's existing kit field stays as it is until F-3 migrates it. Exception, Andrew on 2026-10-17: D-7 reads `--pav-icon-*` from a theme file before F-7 exists. A value may be a class string, one `<i class='...'>`, or an image filename. It does not add a script URL. F-7 still adds the shared sanitizer. F-8 still replaces this painting with the icon editor.
 
 Kind: **Easy** is one module and a test, or a static page. **Medium** crosses one boundary (the window, the filesystem, a thread, the FFI). **Hard** joins two build systems or two processes for the first time.
 
@@ -44,7 +44,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - Families in use: Duotone, Sharp, and Thin. Mail keeps the roof mark (`ui/public/mark.png`).
 - The kit loader fetches `pro-plus.min.js` from `ka-p.fontawesome.com` with `fetch()` and runs it as an **inline** `<script>`. That is why `script-src` carries `'unsafe-inline'` in the release build. `make dev` never shows the problem, because the Vite page is not served with the Tauri CSP.
 - `'unsafe-inline'` is effective only because `dangerousDisableAssetCspModification` is `true`. If Tauri adds a hash or a nonce to `script-src`, browsers ignore `'unsafe-inline'` and the icons vanish in `make build` only. Keep the flag, and keep a comment beside it in the docs (JSON has no comments).
-- `font-src 'self' data: https://ka-p.fontawesome.com` covers the kit's v4 and v5 font-face shims. `kit-uploads.fontawesome.com` is not allowed.
+- `font-src 'self' data: https://ka-p.fontawesome.com pav-theme:` covers the kit's v4 and v5 font-face shims and a theme file's local font. `kit-uploads.fontawesome.com` is not allowed. `blob:` stays out.
 - The kit's domain list stays open. `make dev` is `http://localhost:1420` and the packaged window is `http://tauri.localhost`, which a domain-limited kit rejects and will not let you add. Loads count as pageviews on that subscription. Revisit if the app is widely used or the embed is misused.
 - **Pin the kit version.** In the Font Awesome kit settings, set the version to `7.3.1` rather than "latest 7.x", so icon names do not shift between builds. Record the pinned version here when it changes. A version bump is its own commit with a visual check of every icon in the shell.
 
@@ -55,14 +55,14 @@ This is the exact `app.security.csp` in `src-tauri/tauri.conf.json`. A change to
 ```
 default-src 'self';
 script-src 'self' 'unsafe-inline' https://kit.fontawesome.com https://ka-p.fontawesome.com;
-font-src 'self' data: https://ka-p.fontawesome.com https://fonts.gstatic.com;
+font-src 'self' data: https://ka-p.fontawesome.com https://fonts.gstatic.com pav-theme:;
 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-img-src 'self' pav-cid: data:;
+img-src 'self' pav-cid: data: pav-theme:;
 frame-src 'self' pav-link:;
 connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhost:1420
 ```
 
-`ws://localhost:1420` is for the dev server only and is harmless in release. `fonts.googleapis.com` (stylesheet) and `fonts.gstatic.com` (font files) are there for the Material Symbols preset (F-3). No other host is added to the main window's CSP except through the icon-library allowlist rule below. JMAP traffic is made by the C core with libcurl, not by the page, so `connect-src` never names a mail server.
+`ws://localhost:1420` is for the dev server only and is harmless in release. `fonts.googleapis.com` (stylesheet) and `fonts.gstatic.com` (font files) are there for the Material Symbols preset (F-3) and are not in `tauri.conf.json` until F-3. `pav-theme:` is on `img-src` and `font-src` as of D-6 (2026-10-17). The file today is this fence without the two Google font hosts. `blob:` stays out. Do not add `https:` to `img-src`, `frame-src`, or `navigate-to`. No other host is added to the main window's CSP except through the icon-library allowlist rule below. JMAP traffic is made by the C core with libcurl, not by the page, so `connect-src` never names a mail server.
 
 ### Outside HTML never enters the main DOM
 
@@ -321,3 +321,4 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 - 2026-10-16 F-4 rebuild: `make test` is 67 Unity tests and 29 Vitest tests. `make build` produced `dist/pavillion` with `frame-src 'self' pav-link:` and no `navigate-to`. The dialog is still unconfirmed. Do not start G-4.
 - 2026-10-16 F-4 window check: the dialog showed `https://example.com/pavillion-isolation-test`. The frame then stayed empty. WebKit replaces the srcdoc on the 204, and that document has no URL to reload. `createHtmlPane` writes the same HTML back on that load. `make test` is 67 Unity tests and 30 Vitest tests. `make build` produced `dist/pavillion` with that restore. The restored frame is still unconfirmed.
 - 2026-10-16 F-4 complete. Andrew confirmed the dialog, an empty network panel, and no page load. The console block is the sandbox and the CSP, and it printed again when the srcdoc was written back. `make test` is 67 Unity tests and 30 Vitest tests. `PAVILLION_API_VERSION` stays 3. `lib.rs` is 199 lines. G-4 is next.
+- 2026-10-17 D-6 added `pav-theme:` to `img-src` and `font-src` only. `blob:` stays out. `https:` was not added to `img-src`. D-7 may put one `<i class>` from a theme file into the nav before F-7's sanitizer exists. F-7 and F-8 are unchanged.

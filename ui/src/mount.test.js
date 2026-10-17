@@ -11,11 +11,22 @@ import { mockTransport } from "./transport/mock.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
+const darkCss = readFileSync(join(here, "../public/styles/dark.css"), "utf8");
+
+function tokenValue(name) {
+  const match = darkCss.match(new RegExp(`${name}\\s*:\\s*([^;]+)`));
+  if (!match) {
+    throw new Error(`missing ${name}`);
+  }
+  return match[1].trim();
+}
+
 function cssText() {
   return [
-    readFileSync(join(here, "../public/styles/dark.css"), "utf8"),
+    darkCss,
+    readFileSync(join(here, "../public/styles/light.css"), "utf8"),
     readFileSync(join(here, "../public/styles/theme.css"), "utf8"),
-    ":root { --bg: lime; --pav-bg: lime; }",
+    ":root { --bg: lime; --pav-surface-canvas: lime; }",
     "button { background-color: lime; color: purple; border: 4px solid purple; }",
     "body { background: lime; font-family: serif; }",
   ].join("\n");
@@ -100,8 +111,8 @@ test("mount renders inside the element and unmount leaves the page", async () =>
     expect([...document.body.childNodes].map((node) => node.nodeName)).toEqual(["BUTTON", "DIV"]);
     expect(document.documentElement.style.fontSize).toBe("");
     expect(scales).toEqual([1]);
-    expect(getComputedStyle(root).getPropertyValue("--pav-bg").trim()).toBe("#000");
-    expect(getComputedStyle(document.documentElement).getPropertyValue("--pav-bg").trim()).toBe("lime");
+    expect(getComputedStyle(root).getPropertyValue("--pav-surface-canvas").trim()).toBe(tokenValue("--pav-surface-canvas"));
+    expect(getComputedStyle(document.documentElement).getPropertyValue("--pav-surface-canvas").trim()).toBe("lime");
     expect(getComputedStyle(foreign).backgroundColor).toMatch(/lime|rgb\(0,\s*255,\s*0\)/);
     expect(getComputedStyle(foreign).color).toMatch(/purple|rgb\(128,\s*0,\s*128\)/);
     const shellZoom = root.querySelector('[data-zoom="shell"] input');

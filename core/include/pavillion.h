@@ -21,6 +21,9 @@ int pavillion_api_version(void);
    does not fit, or the thread cannot be created. */
 int pavillion_start(const char *workdir, char *err, size_t err_len);
 
+/* The working directory passed to pavillion_start. Empty before start. */
+const char *pav_core_workdir(void);
+
 /* Pushes stop and joins the core thread. A second call does nothing. */
 void pavillion_stop(void);
 

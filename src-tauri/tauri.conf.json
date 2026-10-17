@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https://kit.fontawesome.com https://ka-p.fontawesome.com; font-src 'self' data: https://ka-p.fontawesome.com; style-src 'self' 'unsafe-inline'; img-src 'self' pav-cid: data:; frame-src 'self' pav-link:; connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhost:1420",
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https://kit.fontawesome.com https://ka-p.fontawesome.com; font-src 'self' data: https://ka-p.fontawesome.com pav-theme:; style-src 'self' 'unsafe-inline'; img-src 'self' pav-cid: data: pav-theme:; frame-src 'self' pav-link:; connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhost:1420",
       "dangerousDisableAssetCspModification": true
     }
   },

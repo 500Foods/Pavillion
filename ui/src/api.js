@@ -36,6 +36,19 @@ export function createApi(transport) {
         },
       },
     },
+    themes: {
+      list() {
+        return call("themes.list", {});
+      },
+      ensure(body) {
+        return call("themes.ensure", body ?? {});
+      },
+      folder: {
+        set(folder) {
+          return call("themes.folder.set", { folder });
+        },
+      },
+    },
     log: {
       client({ subsystem, level, message }) {
         return call("log.client", { subsystem, level: levelName(level), message });

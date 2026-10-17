@@ -51,8 +51,8 @@ static char g_log_path[64];
 static int g_saved_stderr = -1;
 static char g_err_path[64];
 
-/* PROFILE logs also go to stderr when it is a terminal. Park that stream
-   in a file for the tests that would otherwise mix lines into Unity. */
+/* A profile warn or error still copies to stderr when it is a terminal.
+   Park that stream so those lines do not mix into Unity. */
 static void restore_stderr(void) {
     int err_fd;
 
@@ -2596,6 +2596,158 @@ void test_protocol_unknown_scheme_404(void) {
     pavillion_free(out.body);
 }
 
+void test_themes_catalog_and_asset(void) {
+    json_t *root;
+    json_t *data;
+    json_t *themes;
+    json_t *wrote;
+    char path[256];
+    char brand[256];
+    char index_path[256];
+    char *index_text = NULL;
+    FILE *file;
+    struct stat st;
+    PavBytes out;
+    unsigned char png[8] = {0x89, 'P', 'N', 'G', 0x00, 0x0d, 0x0a, 0x1a};
+    char stored[64];
+    size_t got;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+
+    root = call_reply("themes.list", "{}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_STRING(g_cfg_dir, json_string_value(json_object_get(data, "folder")));
+    TEST_ASSERT_EQUAL_STRING("", json_string_value(json_object_get(data, "chosen")));
+    TEST_ASSERT_EQUAL_STRING(g_cfg_dir, json_string_value(json_object_get(data, "fallback")));
+    TEST_ASSERT_EQUAL_INT(0, (int)json_array_size(json_object_get(data, "themes")));
+    TEST_ASSERT_NULL(json_object_get(data, "missing"));
+    json_decref(root);
+
+    root = call_reply("themes.list", "{\"extra\":1}");
+    assert_call_error(root, "bad_args", "unknown argument extra");
+    json_decref(root);
+
+    root = call_reply("themes.ensure", "{\"files\":[{\"name\":\"../x.theme\",\"text\":\"a\"}]}");
+    assert_call_error(root, "bad_args", "bad theme name");
+    json_decref(root);
+
+    root = call_reply("themes.ensure",
+                      "{\"files\":[{\"name\":\"Pavillion Dark.theme\",\"text\":\"/* Title: Dark */\\n\"}]}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    wrote = json_object_get(json_object_get(root, "data"), "wrote");
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(wrote));
+    TEST_ASSERT_EQUAL_STRING("Pavillion Dark.theme", json_string_value(json_array_get(wrote, 0)));
+    json_decref(root);
+
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/Pavillion Dark.theme", g_cfg_dir) < (int)sizeof(path));
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
+    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+
+    root = call_reply("themes.ensure",
+                      "{\"files\":[{\"name\":\"Pavillion Dark.theme\",\"text\":\"changed\"}]}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    TEST_ASSERT_EQUAL_INT(0, (int)json_array_size(json_object_get(json_object_get(root, "data"), "wrote")));
+    json_decref(root);
+    file = fopen(path, "rb");
+    TEST_ASSERT_NOT_NULL(file);
+    got = fread(stored, 1, sizeof(stored) - 1, file);
+    stored[got] = '\0';
+    fclose(file);
+    TEST_ASSERT_EQUAL_STRING("/* Title: Dark */\n", stored);
+
+    root = call_reply("themes.list", "{}");
+    themes = json_object_get(json_object_get(root, "data"), "themes");
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(themes));
+    TEST_ASSERT_EQUAL_STRING("/* Title: Dark */\n", json_string_value(json_object_get(json_array_get(themes, 0), "text")));
+    json_decref(root);
+
+    TEST_ASSERT_TRUE(snprintf(brand, sizeof(brand), "%s/brand", g_cfg_dir) < (int)sizeof(brand));
+    TEST_ASSERT_EQUAL_INT(0, mkdir(brand, 0700));
+    root = call_reply("themes.folder.set", "{\"folder\":\"brand\"}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    TEST_ASSERT_EQUAL_STRING(brand, json_string_value(json_object_get(json_object_get(root, "data"), "folder")));
+    json_decref(root);
+
+    TEST_ASSERT_TRUE(snprintf(index_path, sizeof(index_path), "%s/Pavillion.json", g_cfg_dir) < (int)sizeof(index_path));
+    file = fopen(index_path, "rb");
+    TEST_ASSERT_NOT_NULL(file);
+    TEST_ASSERT_EQUAL_INT(0, fseek(file, 0, SEEK_END));
+    got = (size_t)ftell(file);
+    TEST_ASSERT_TRUE(got > 0 && got < 100000);
+    rewind(file);
+    index_text = malloc(got + 1);
+    TEST_ASSERT_NOT_NULL(index_text);
+    TEST_ASSERT_EQUAL_UINT(got, fread(index_text, 1, got, file));
+    index_text[got] = '\0';
+    fclose(file);
+    TEST_ASSERT_NOT_NULL(strstr(index_text, "\"themes_folder\": \"brand\""));
+    free(index_text);
+
+    root = call_reply("themes.list", "{}");
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_STRING(brand, json_string_value(json_object_get(data, "folder")));
+    TEST_ASSERT_EQUAL_STRING("brand", json_string_value(json_object_get(data, "chosen")));
+    TEST_ASSERT_EQUAL_STRING(g_cfg_dir, json_string_value(json_object_get(data, "fallback")));
+    TEST_ASSERT_EQUAL_INT(0, (int)json_array_size(json_object_get(data, "themes")));
+    json_decref(root);
+
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/Extra.theme", brand) < (int)sizeof(path));
+    write_text(path, "/* Title: Extra */\n");
+    root = call_reply("themes.list", "{}");
+    themes = json_object_get(json_object_get(root, "data"), "themes");
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(themes));
+    TEST_ASSERT_EQUAL_STRING("Extra.theme", json_string_value(json_object_get(json_array_get(themes, 0), "name")));
+    json_decref(root);
+
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/logo.png", brand) < (int)sizeof(path));
+    file = fopen(path, "wb");
+    TEST_ASSERT_NOT_NULL(file);
+    TEST_ASSERT_EQUAL_UINT(sizeof(png), fwrite(png, 1, sizeof(png), file));
+    fclose(file);
+
+    memset(&out, 0, sizeof(out));
+    TEST_ASSERT_EQUAL_INT(0, pav_protocol("{\"scheme\":\"pav-theme\",\"url\":\"pav-theme://logo.png\"}", &out));
+    TEST_ASSERT_EQUAL_INT(200, out.status);
+    TEST_ASSERT_EQUAL_UINT(sizeof(png), (unsigned)out.body_len);
+    TEST_ASSERT_EQUAL_MEMORY(png, out.body, sizeof(png));
+    TEST_ASSERT_NOT_NULL(strstr(out.headers_json, "image/png"));
+    pavillion_free(out.headers_json);
+    pavillion_free(out.body);
+
+    memset(&out, 0, sizeof(out));
+    TEST_ASSERT_EQUAL_INT(0, pav_protocol("{\"scheme\":\"pav-theme\",\"url\":\"pav-theme://../logo.png\"}", &out));
+    TEST_ASSERT_EQUAL_INT(404, out.status);
+    pavillion_free(out.headers_json);
+    pavillion_free(out.body);
+
+    root = call_reply("themes.folder.set", "{\"folder\":\"no-such\"}");
+    assert_call_error(root, "bad_args", "not a directory");
+    json_decref(root);
+
+    unlink(path);
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/Extra.theme", brand) < (int)sizeof(path));
+    unlink(path);
+    TEST_ASSERT_EQUAL_INT(0, rmdir(brand));
+    root = call_reply("themes.list", "{}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    data = json_object_get(root, "data");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(data, "missing")));
+    TEST_ASSERT_EQUAL_INT(0, (int)json_array_size(json_object_get(data, "themes")));
+    json_decref(root);
+
+    root = call_reply("themes.folder.set", "{\"folder\":\"\"}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    TEST_ASSERT_EQUAL_STRING(g_cfg_dir, json_string_value(json_object_get(json_object_get(root, "data"), "folder")));
+    json_decref(root);
+    root = call_reply("themes.list", "{}");
+    themes = json_object_get(json_object_get(root, "data"), "themes");
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(themes));
+    TEST_ASSERT_EQUAL_STRING("Pavillion Dark.theme", json_string_value(json_object_get(json_array_get(themes, 0), "name")));
+    json_decref(root);
+}
+
 void test_start_creates_workdir_0700(void) {
     char parent[] = "/tmp/pav-g8-XXXXXX";
     char nested[96];
@@ -3597,6 +3749,7 @@ int main(void) {
     RUN_TEST(test_status_reports_host_flags);
     RUN_TEST(test_protocol_pav_link_emits_and_204);
     RUN_TEST(test_protocol_unknown_scheme_404);
+    RUN_TEST(test_themes_catalog_and_asset);
     RUN_TEST(test_start_creates_workdir_0700);
     RUN_TEST(test_logring_wraps_at_capacity);
     RUN_TEST(test_log_tail_since_seq);

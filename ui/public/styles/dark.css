@@ -1,8 +1,8 @@
 .pav-root {
   color-scheme: dark;
-  --pav-bg: #000;
-  --pav-fg: #e8e8e8;
-  --pav-muted: #9a9a9a;
+  --pav-surface-canvas: #000;
+  --pav-text: #e8e8e8;
+  --pav-text-muted: #9a9a9a;
   --pav-accent: #2a7;
   --pav-border: #333;
   --pav-font: "Vanadium Sans", system-ui, sans-serif;
@@ -14,12 +14,26 @@
   --pav-surface-detail: linear-gradient(160deg, #0e0505 0%, #000 82%);
   --pav-surface-button: linear-gradient(160deg, #1c0a0a 0%, #050505 100%);
   --pav-surface-button-active: linear-gradient(160deg, #2a1010 0%, #0a0a0a 100%);
+  --pav-surface-scrim: rgb(0 0 0 / 40%);
   --pav-swatch-1: #800000;
   --pav-swatch-2: #cc9999;
+  --pav-status-error: #e07070;
+  --pav-status-warn: #d4a24c;
+  --pav-status-ok: #7dcea0;
   --pav-log-error: #e07070;
   --pav-log-print: #1a1a1a;
   --pav-log-print-paper: #ffffff;
   --pav-log-warn: #d4a24c;
   --pav-log-info: #e8e8e8;
   --pav-log-debug: #8a8a8a;
+  --pav-mark: none;
+  --pav-icon-kit: "45801522ef";
+  --pav-icon-mail: "<i class='fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270'></i>";
+  --pav-icon-contacts: "<i class='fa-sharp-duotone fa-solid fa-address-book'></i>";
+  --pav-icon-calendars: "<i class='fa-sharp-duotone fa-solid fa-calendar-days'></i>";
+  --pav-icon-files: "<i class='fa-sharp-duotone fa-solid fa-folder'></i>";
+  --pav-icon-activity: "<i class='fa-sharp-duotone fa-solid fa-list-timeline'></i>";
+  --pav-icon-settings: "<i class='fa-sharp-duotone fa-solid fa-gear'></i>";
+  --pav-icon-update: "<i class='fa-sharp-duotone fa-solid fa-arrows-rotate'></i>";
+  --pav-icon-help: "<i class='fa-sharp-duotone fa-solid fa-circle-question'></i>";
 }

@@ -652,6 +652,36 @@ State: planned (M-6)
 
 `{opId}`. Runs the undo payload for a held or applied op.
 
+### themes.ensure
+
+State: real (D-6)
+
+Args: `{files}`. `files` is an array of `{name, text}`. `name` is one path component, ends with `.theme`, does not start with `.`, and is at most 200 characters. `text` is at most 256 KB.
+
+Result: `{wrote}`. `wrote` lists the names that were created. A name that is already on disk is left unchanged, including when the text differs. The files are written into the themes folder from the index, or into the working directory when `themes_folder` is absent. A missing folder writes nothing and returns `wrote: []`. It does not create the folder and it does not fail startup.
+
+Errors: `bad_args`, `not_ready`, `internal`.
+
+### themes.folder.set
+
+State: real (D-6)
+
+Args: `{folder}`. `folder` is a string. Empty clears `themes_folder` on the index, and themes are read from the working directory. Any other value must be an existing directory. A relative path is resolved from the working directory. The index stores the string that was sent.
+
+Result: `{folder}`. `folder` is the absolute directory that `themes.list` will read.
+
+Errors: `bad_args`, `not_ready`, `internal`.
+
+### themes.list
+
+State: real (D-6)
+
+Args: `{}`.
+
+Result: `{folder, chosen, fallback, themes, missing?}`. `folder` is the absolute directory being read. `chosen` is the stored `themes_folder` string, or `""` when the index has none. `fallback` is the working directory, which is the directory read when `chosen` is empty. `themes` is `[{name, text}]`, sorted by name, one level only, and only names that end with `.theme`. A file over 256 KB, a file that cannot be read, or a file that is not text is skipped. At most 128 files are returned. `missing` is true when that directory cannot be read. `themes` is then empty. Startup still succeeds. `chosen` and `fallback` are still present when `missing` is true.
+
+Errors: `bad_args`, `not_ready`, `internal`.
+
 ### window.initial
 
 State: real (G-8)

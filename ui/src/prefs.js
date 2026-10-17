@@ -1,4 +1,5 @@
 import { normalizeFilter } from "./log/filter.js";
+import { themeNameOk } from "./theme-catalog.js";
 
 export const DEFAULT_UI = {
   nav: { width: 320, min: 200, max: 500 },
@@ -23,7 +24,21 @@ export const DEFAULT_UI = {
 };
 
 export const ZOOM_KEYS = ["shell", "navButtons", "navBody", "mailList", "mailDetail", "log"];
-const KNOWN = new Set(["nav", "mail", "contacts", "files", "zoom", "icons", "fontawesome_kit", "fonts", "activity", "log"]);
+const KNOWN = new Set([
+  "nav",
+  "mail",
+  "contacts",
+  "files",
+  "zoom",
+  "icons",
+  "fontawesome_kit",
+  "fonts",
+  "activity",
+  "log",
+  "themeChoice",
+  "fontSource",
+  "iconSource",
+]);
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -119,6 +134,21 @@ function activityOf(src) {
   return out;
 }
 
+function choiceOf(value) {
+  if (value === "dark" || value === "light" || value === "system") {
+    return value;
+  }
+  if (typeof value !== "string" || !value.startsWith("file:")) {
+    return "";
+  }
+  const name = value.slice(5);
+  return themeNameOk(name) ? value : "";
+}
+
+function sourceOf(value) {
+  return value === "theme" || value === "override" ? value : "";
+}
+
 /* Fills defaults and clamps. Unknown keys are kept. */
 export function clampUi(raw) {
   const src = isObject(raw) ? raw : {};
@@ -140,6 +170,18 @@ export function clampUi(raw) {
     activity: activityOf(src.activity),
     log: normalizeFilter(src.log === undefined ? DEFAULT_UI.log : src.log),
   };
+  const themeChoice = choiceOf(src.themeChoice);
+  if (themeChoice) {
+    out.themeChoice = themeChoice;
+  }
+  const fontSource = sourceOf(src.fontSource);
+  if (fontSource) {
+    out.fontSource = fontSource;
+  }
+  const iconSource = sourceOf(src.iconSource);
+  if (iconSource) {
+    out.iconSource = iconSource;
+  }
   for (const key of Object.keys(src)) {
     if (!KNOWN.has(key)) {
       out[key] = src[key];

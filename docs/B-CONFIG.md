@@ -70,6 +70,8 @@ The app writes this on first run. Unknown keys are preserved on a later rewrite.
 
 `log_level` is `error`, `warn`, `info`, or `debug`. Default `info`. It lives on the index because logging starts before a profile is usable.
 
+`themes_folder` is optional and is omitted on first run. Absent or empty means `*.theme` files sit in the working directory beside this index. A relative path resolves against the working directory. An absolute path is stored as the user typed it. The folder is one level, shared by every profile in that working directory. The page does not read the index. D-6 sets the key through `themes.folder.set` and clears it when the field is empty. A missing folder does not fail startup. Unknown keys, including this one, survive a rewrite.
+
 When the index is absent, create it and create `profiles/default.json`. When the index exists and `active` is missing or broken, start in state `error`. Do not invent a replacement profile.
 
 ### Profile
@@ -295,3 +297,4 @@ The core is the only writer. Hand-edits are allowed while the process is stopped
 - 2026-10-14 B-3: The scan ignores a stray JSON file and a copied index, warns on an id mismatch, and returns error for a missing or unparsable active profile without creating a file. An omitted profile_dir means profiles. An absolute profile_dir is used as given.
 - 2026-10-14 B-4: `pav_config_prepare` resolves logs, blobs, cache, and the SQLite path. It creates the log file mode 0600 and the blobs and cache directories. It does not create the SQLite file. A blocked parent names the resolved path.
 - 2026-10-14 B-5: An omitted engine is sqlite. `db2` parses and fails the check with that name in the error. The test binary does not link SQLite.
+- 2026-10-17 D-6: optional index key `themes_folder`. Absent means `*.theme` files sit beside `Pavillion.json`. The page does not read the index.

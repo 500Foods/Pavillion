@@ -1,9 +1,38 @@
 #include "pavillion.h"
+#include "themes.h"
 
 #include <jansson.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static int fill_bytes(PavBytes *out, int status, const char *content_type, const void *body, size_t n) {
+    char headers[160];
+    int wrote;
+
+    wrote = snprintf(headers, sizeof(headers), "{\"Content-Type\":\"%s\",\"Cache-Control\":\"no-store\"}",
+                     content_type != NULL ? content_type : "text/plain");
+    if (wrote < 0 || (size_t)wrote >= sizeof(headers)) {
+        return -1;
+    }
+    out->status = status;
+    out->headers_json = malloc((size_t)wrote + 1);
+    out->body = n > 0 ? malloc(n) : NULL;
+    if (out->headers_json == NULL || (n > 0 && out->body == NULL)) {
+        free(out->headers_json);
+        free(out->body);
+        out->headers_json = NULL;
+        out->body = NULL;
+        out->body_len = 0;
+        return -1;
+    }
+    memcpy(out->headers_json, headers, (size_t)wrote + 1);
+    if (n > 0) {
+        memcpy(out->body, body, n);
+    }
+    out->body_len = n;
+    return 0;
+}
 
 static int fill_status(PavBytes *out, int status, const char *body) {
     const char *headers = "{\"Content-Type\":\"text/plain\",\"Cache-Control\":\"no-store\"}";
@@ -89,6 +118,21 @@ static int parse_pav_link(const char *url, char *pane, size_t pane_cap, unsigned
     return 0;
 }
 
+static int handle_pav_theme(json_t *root, PavBytes *out) {
+    const char *url = json_string_value(json_object_get(root, "url"));
+    void *body = NULL;
+    size_t len = 0;
+    const char *type = NULL;
+    int rc;
+
+    if (pav_theme_read_asset(url, &body, &len, &type) != 0) {
+        return fill_status(out, 404, "not found");
+    }
+    rc = fill_bytes(out, 200, type, body, len);
+    free(body);
+    return rc;
+}
+
 static int handle_pav_link(json_t *root, PavBytes *out) {
     const char *url = json_string_value(json_object_get(root, "url"));
     char pane[65];
@@ -127,6 +171,8 @@ int pav_protocol(const char *req_json, PavBytes *out) {
         rc = handle_pav_blob(root, out);
     } else if (scheme != NULL && strcmp(scheme, "pav-link") == 0) {
         rc = handle_pav_link(root, out);
+    } else if (scheme != NULL && strcmp(scheme, "pav-theme") == 0) {
+        rc = handle_pav_theme(root, out);
     } else {
         rc = fill_status(out, 404, "not found");
     }

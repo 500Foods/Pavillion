@@ -1,0 +1,134 @@
+.pav-root .pav-menu {
+  position: fixed;
+  z-index: 30;
+  min-width: 10rem;
+  margin: 0;
+  padding: 0.3rem 0;
+  color: var(--pav-text);
+  background: var(--pav-surface-workspace);
+  border: 1px solid var(--pav-border);
+}
+
+.pav-root .pav-menuitem {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0.35rem 0.85rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.pav-root .pav-menuitem:focus,
+.pav-root .pav-menuitem[aria-current="true"] {
+  background: var(--pav-surface-button-active);
+}
+
+.pav-root .pav-menuitem[aria-disabled="true"] {
+  color: var(--pav-text-muted);
+}
+
+.pav-root .pav-tooltip {
+  position: fixed;
+  z-index: 40;
+  max-width: 16rem;
+  margin: 0;
+  padding: 0.25rem 0.5rem;
+  color: var(--pav-text);
+  background: var(--pav-surface-button);
+  border: 1px solid var(--pav-border);
+  font-size: 0.8125rem;
+  pointer-events: none;
+}
+
+.pav-root .pav-toasts {
+  position: fixed;
+  z-index: 35;
+  right: 1rem;
+  bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: max-content;
+  max-width: 22rem;
+  pointer-events: none;
+}
+
+.pav-root .pav-toast {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  color: var(--pav-text);
+  background: var(--pav-surface-button);
+  border: 1px solid var(--pav-border);
+  pointer-events: auto;
+}
+
+.pav-root .pav-toast p {
+  margin: 0;
+}
+
+.pav-root .pav-toast button {
+  border: 0;
+  background: transparent;
+  color: var(--pav-accent);
+  padding: 0.2rem 0.35rem;
+}
+
+.pav-root .pav-dialog {
+  max-width: 36rem;
+  padding: 1rem 1.25rem;
+  color: var(--pav-text);
+  background: var(--pav-surface-button);
+  border: 1px solid var(--pav-border);
+}
+
+.pav-root .pav-dialog::backdrop {
+  background: var(--pav-surface-scrim);
+}
+
+.pav-root .pav-dialog-title {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.pav-root .pav-dialog-text {
+  margin: 0 0 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.pav-root .pav-dialog-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 0.75rem;
+  padding: 0.35rem 0.5rem;
+  color: var(--pav-text);
+  background: var(--pav-surface-canvas);
+  border: 1px solid var(--pav-border);
+}
+
+.pav-root .pav-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.pav-root .pav-dialog-actions button {
+  padding: 0.35rem 0.8rem;
+  color: var(--pav-text);
+  background: var(--pav-surface-canvas);
+  border: 1px solid var(--pav-border);
+}
+
+.pav-root .pav-dialog-ok.is-danger {
+  color: var(--pav-status-error);
+}

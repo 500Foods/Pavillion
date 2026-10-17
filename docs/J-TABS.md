@@ -1,6 +1,6 @@
 # J — TABS
 
-**Status:** Not started (exploration in `TABS-DESIGN.md` 2026-10-16, absorbed and scoped the same day).
+**Status:** J-1 in progress (2026-10-17). The window check is open. J-2 is not started.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The tabbed workspace and the shared widgets every later screen uses: context menu, tooltip, toast with undo, and dialog. Andrew confirmed the feature set for the first round on 2026-10-16: pinned tabs, keyboard shortcuts, files dropped on the strip, a right-click menu (pin, duplicate, mute, close variants), muting, session restore, vertical tabs, floating tooltips, tab widths, and sandboxed browsing from a `+` tab.
@@ -11,7 +11,7 @@ One phase is one session. Do not start the next one in the same conversation.
 
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
-| J-1 | Common widgets: menu, tooltip, toast with undo, dialog | Medium | Not started |
+| J-1 | Common widgets: menu, tooltip, toast with undo, dialog | Medium | In progress |
 | J-2 | Tab registry, icon and close button, sub-tabs, nav-body clicks | Medium | Not started |
 | J-3 | Keyboard shortcuts, tab context menu, pinned tabs | Medium | Not started |
 | J-4 | Drag to reorder, overflow (scroll or wrap), tab widths, file drop | Medium | Not started |
@@ -83,7 +83,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 ## J-1: Common widgets
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** In progress (2026-10-17). The modules, the shell uses, and Vitest passed. The exit gate's window check is still open.
 
 **Goal:** Menu, tooltip, toast, and dialog exist and are used once each in the shell.
 
@@ -91,10 +91,10 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Work items:**
 
-- [ ] The four modules in the Lock, with CSS in `ui/styles/widgets.css`.
-- [ ] Tab icons use the shell's existing icon classes. F-7 moves them onto registry keys `tab.kind.*`. This phase does not take icon HTML.
-- [ ] Use them: the Activity nav button's right-click menu (Activity, Log). H-2 has already built the log view and the segmented control; this menu switches those views. I-2 fills the Activity side. Tooltips on the eight nav buttons, a toast on profile save failure, a dialog for the F-4 link confirm. F-4 has landed, so the dialog has a caller.
-- [ ] Vitest with jsdom: `menu.test.js` (keyboard navigation, Escape), `dialog.test.js` (resolve values), `toast.test.js` (action fires once, timeout).
+- [x] The four modules in the Lock, with CSS in `ui/public/styles/widgets.css`. `ui/styles` is the unlinked copy, so the sheet is served from `ui/public/styles` with the other sheets.
+- [x] Tab icons use the shell's existing icon classes. F-7 moves them onto registry keys `tab.kind.*`. This phase does not take icon HTML.
+- [x] Use them: the Activity nav button's right-click menu (Activity, Logs). H-2 has already built the log view and the segmented control; this menu switches those views and opens the Activity section. I-2 fills the Activity side. Tooltips on the eight nav buttons, a toast on profile save failure, a dialog for the F-4 link confirm. F-4 has landed, so the dialog has a caller.
+- [x] Vitest with jsdom: `menu.test.js` (keyboard navigation, Escape), `dialog.test.js` (resolve values), `toast.test.js` (action fires once, timeout).
 
 **Done means:** The four widgets work by mouse and keyboard and replace any ad hoc versions.
 
@@ -236,3 +236,4 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 - 2026-10-16 Exploration (`TABS-DESIGN.md`): seventeen topics, current code, tier impact; Andrew confirmed the first-round feature set and browsing.
 - 2026-10-16 Absorbed into this document and scoped into J-1 to J-7. Decisions: registry by id, one tab per id, kind icons, close focus order, shortcut scopes, pinned group, scroll as the default overflow, 12.5rem max width, session restore with lazy load, section colors as a tint, tooltips anchored, browsing in a separate child webview instead of an iframe, core caches not freed on tab close. `TABS-DESIGN.md` removed; it is in git history at commit 83f2f04.
+- 2026-10-17 J-1 in progress. Menu, tooltip, toast, and dialog are in `ui/src/common` and `ui/public/styles/widgets.css`. The Activity button's menu says Activity and Logs, matching the segment. A failed profile save toasts. The link confirm is the shared dialog. `make test` is 68 Unity tests and 58 Vitest tests. The window check is open. Do not start J-2.

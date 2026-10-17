@@ -1,25 +1,38 @@
+import { createDialogs } from "./common/dialog.js";
 import { installIsolationTest } from "./common/isolation.js";
+import { createMenu } from "./common/menu.js";
+import { createToaster } from "./common/toast.js";
+import { createTooltip } from "./common/tooltip.js";
 import { createLogView } from "./log/view.js";
-import { DEFAULT_UI, ZOOM_KEYS, clampUi, snapZoom } from "./prefs.js";
-import { createZoomHistory } from "./zoom-history.js";
+import { DEFAULT_UI, clampUi, snapZoom } from "./prefs.js";
+import {
+  THEME_TEMPLATES,
+  buildCatalog,
+  effectiveChoice,
+  iconFromHtml,
+  liveThemeCss,
+  safeAssetUrl,
+  schemeOf,
+  themeMap,
+  unquote,
+} from "./theme-catalog.js";
+import { normalizeTheme, schemeQuery } from "./theme.js";
 
 let api = null;
 let host = null;
 let mountRoot = null;
 let session = null;
+let widgets = null;
 
 function log(subsystem, level, message) {
   return api.log.client({ subsystem, level, message });
 }
 
 let ui = clampUi({});
-let zoomHistory = createZoomHistory(ZOOM_KEYS);
-let zoomBefore = null;
 
-/* shell is the master scale on the root; each pane multiplies on top of it.
-   The zoom action bar is excluded so a large Button bars value cannot push it off. */
+/* shell is the master scale on the root; each pane multiplies on top of it. */
 const zoomPanes = {
-  navButtons: ".button-bar:not(.zoom-actions)",
+  navButtons: ".button-bar",
   navBody: ".nav-body",
   mailList: "#panel-mail .pane-list",
   mailDetail: "#panel-mail .pane-detail",
@@ -50,58 +63,42 @@ function paintZoomSliders() {
   }
 }
 
-function zoomAtDefault() {
-  return ZOOM_KEYS.every((key) => ui.zoom[key] === DEFAULT_UI.zoom[key]);
-}
-
-function paintZoomActions() {
-  const undo = mountRoot.querySelector("#zoom-undo");
-  const redo = mountRoot.querySelector("#zoom-redo");
-  const defaults = mountRoot.querySelector("#zoom-default");
-  if (undo) {
-    undo.disabled = !zoomHistory.canUndo;
-  }
-  if (redo) {
-    redo.disabled = !zoomHistory.canRedo;
-  }
-  if (defaults) {
-    defaults.disabled = zoomAtDefault();
-  }
-}
-
-function rememberZoom() {
-  if (zoomBefore) {
-    return;
-  }
-  zoomBefore = {};
-  for (const key of ZOOM_KEYS) {
-    zoomBefore[key] = ui.zoom[key];
-  }
-}
-
-function commitZoom() {
-  if (!zoomBefore) {
-    return;
-  }
-  const before = zoomBefore;
-  zoomBefore = null;
-  zoomHistory.push(before, ui.zoom);
-  paintZoomActions();
-}
-
-function applyZoomState(next) {
-  for (const key of ZOOM_KEYS) {
-    ui.zoom[key] = next[key];
-  }
-  paintZoomSliders();
-  applyZoom();
-  paintZoomActions();
-  persistLayout();
-}
-
 function applyFonts() {
-  mountRoot.style.setProperty("--pav-font", ui.fonts.body);
-  mountRoot.style.setProperty("--pav-font-mono", ui.fonts.mono);
+  if (!mountRoot) {
+    return;
+  }
+  if (ui.fontSource === "override") {
+    mountRoot.style.setProperty("--pav-font", ui.fonts.body);
+    mountRoot.style.setProperty("--pav-font-mono", ui.fonts.mono);
+  } else {
+    mountRoot.style.removeProperty("--pav-font");
+    mountRoot.style.removeProperty("--pav-font-mono");
+  }
+  paintFontFields();
+}
+
+function paintFontFields() {
+  if (!mountRoot) {
+    return;
+  }
+  const themeMode = ui.fontSource !== "override";
+  const source = mountRoot.querySelector("#font-source");
+  if (source) {
+    source.value = themeMode ? "theme" : "override";
+  }
+  const computed = getComputedStyle(mountRoot);
+  for (const [id, key, prop] of [
+    ["#body-font", "body", "--pav-font"],
+    ["#mono-font", "mono", "--pav-font-mono"],
+  ]) {
+    const select = mountRoot.querySelector(id);
+    if (!select) {
+      continue;
+    }
+    select.disabled = themeMode;
+    const value = themeMode ? unquote(computed.getPropertyValue(prop)).trim() || ui.fonts[key] : ui.fonts[key];
+    showFont(select, value);
+  }
 }
 
 function showFont(select, value) {
@@ -143,21 +140,198 @@ function applyZoom() {
   }
 }
 
-function applyIconOverride(key) {
-  const navIcon = mountRoot.querySelector(`.nav [data-section="${key}"] .icon`);
-  if (!navIcon) {
+const ICON_KEYS = ["mail", "contacts", "calendars", "files", "activity", "settings", "update", "help"];
+
+function iconElement(key) {
+  if (key === "update") {
+    return mountRoot.querySelector("#update .icon");
+  }
+  return mountRoot.querySelector(`.nav [data-section="${key}"] .icon`);
+}
+
+/* WebKit's SVG className is read-only. Font Awesome swaps <i> for <svg>, so always replace the node. */
+function paintNavIcon(el, value) {
+  const definition = el.dataset.iconDefinition || "";
+  const raw = unquote(value).trim();
+  const fallback = definition ? `icon ${definition}` : "icon";
+  if (!raw || raw === "none") {
+    el.replaceWith(freshIcon(fallback, definition));
     return;
   }
-  const override = ui.icons[key];
-  if (override) {
-    if (override.trim().startsWith('<')) {
-      navIcon.innerHTML = override;
-    } else {
-      navIcon.className = `icon ${override}`;
+  if (raw.startsWith("<")) {
+    const parsed = iconFromHtml(raw);
+    if (!parsed) {
+      el.replaceWith(freshIcon(fallback, definition));
+      return;
     }
-  } else {
-    navIcon.className = navIcon.dataset.iconDefinition || navIcon.className;
+    parsed.classList.add("icon");
+    parsed.setAttribute("aria-hidden", "true");
+    if (definition) {
+      parsed.dataset.iconDefinition = definition;
+    }
+    el.replaceWith(parsed);
+    return;
   }
+  const asset = /\s/.test(raw) ? "" : safeAssetUrl(raw);
+  if (asset) {
+    const img = document.createElement("img");
+    img.alt = "";
+    img.className = "icon";
+    img.src = asset;
+    img.setAttribute("aria-hidden", "true");
+    if (definition) {
+      img.dataset.iconDefinition = definition;
+    }
+    el.replaceWith(img);
+    return;
+  }
+  el.replaceWith(freshIcon(`icon ${raw}`, definition));
+}
+
+function freshIcon(className, definition) {
+  const node = document.createElement("i");
+  node.className = className;
+  node.setAttribute("aria-hidden", "true");
+  if (definition) {
+    node.dataset.iconDefinition = definition;
+  }
+  return node;
+}
+
+function applyIconOverride(key) {
+  const el = iconElement(key);
+  if (!el) {
+    return;
+  }
+  paintNavIcon(el, ui.icons[key] || "");
+}
+
+function activeFile() {
+  const shown = effectiveChoice(themeChoice, catalog.themes);
+  if (typeof shown !== "string" || !shown.startsWith("file:")) {
+    return null;
+  }
+  return catalog.themes.find((item) => `file:${item.name}` === shown) || null;
+}
+
+function fileDecl(name) {
+  const theme = activeFile();
+  if (!theme) {
+    return "";
+  }
+  return unquote(themeMap(theme.text).get(name) || "").trim();
+}
+
+function applyIcons() {
+  if (!mountRoot) {
+    return;
+  }
+  const file = activeFile();
+  const themeMode = Boolean(file) || ui.iconSource !== "override";
+  const computed = getComputedStyle(mountRoot);
+  for (const key of ICON_KEYS) {
+    const el = iconElement(key);
+    if (!el) {
+      continue;
+    }
+    if (file) {
+      paintNavIcon(el, fileDecl(`--pav-icon-${key}`));
+      continue;
+    }
+    if (!themeMode) {
+      paintNavIcon(el, ui.icons[key] || "");
+      continue;
+    }
+    paintNavIcon(el, computed.getPropertyValue(`--pav-icon-${key}`));
+  }
+  paintIconFields();
+  applyThemeKit();
+}
+
+function paintIconFields() {
+  if (!mountRoot) {
+    return;
+  }
+  const themeMode = ui.iconSource !== "override";
+  const source = mountRoot.querySelector("#icon-source");
+  if (source) {
+    source.value = themeMode ? "theme" : "override";
+  }
+  const computed = getComputedStyle(mountRoot);
+  for (const input of mountRoot.querySelectorAll("#icon-list .icon-input")) {
+    const key = input.dataset.iconKey;
+    input.disabled = themeMode;
+    if (themeMode) {
+      const shown = unquote(computed.getPropertyValue(`--pav-icon-${key}`)).trim();
+      if (shown) {
+        input.value = shown;
+      }
+    } else if (ui.icons[key]) {
+      input.value = ui.icons[key];
+    }
+  }
+  const kit = mountRoot.querySelector("#fa-kit-html");
+  if (kit) {
+    kit.disabled = themeMode;
+    if (themeMode) {
+      const shown = unquote(computed.getPropertyValue("--pav-icon-kit")).trim();
+      if (shown) {
+        kit.value = shown;
+      }
+    } else {
+      kit.value = ui.fontawesome_kit;
+    }
+  }
+}
+
+function applyThemeKit() {
+  const file = activeFile();
+  if (!mountRoot || (!file && ui.iconSource === "override") || !host || typeof host.loadKit !== "function") {
+    return;
+  }
+  const kit = file
+    ? fileDecl("--pav-icon-kit")
+    : unquote(getComputedStyle(mountRoot).getPropertyValue("--pav-icon-kit")).trim();
+  if (!kit || kit.startsWith("<")) {
+    return;
+  }
+  host.loadKit(kit);
+}
+
+function applyMark() {
+  if (!mountRoot) {
+    return;
+  }
+  const img = mountRoot.querySelector(".nav-mark");
+  if (!img) {
+    return;
+  }
+  const file = activeFile();
+  const declared = file ? themeMap(file.text).has("--pav-mark") : false;
+  const raw = declared ? fileDecl("--pav-mark") : getComputedStyle(mountRoot).getPropertyValue("--pav-mark");
+  const src = safeAssetUrl(raw);
+  if (!src) {
+    img.removeAttribute("src");
+    img.classList.remove("is-shown");
+    return;
+  }
+  img.src = src;
+  img.classList.add("is-shown");
+}
+
+function paintPreview(preview, value) {
+  const key = preview.dataset.iconKey || "";
+  const raw = String(value || "").trim();
+  let node = raw.startsWith("<") ? iconFromHtml(raw) : null;
+  if (!node) {
+    node = document.createElement("i");
+    node.className = raw.startsWith("<") || raw === "" ? "icon" : `icon ${raw}`;
+  }
+  node.classList.add("icon");
+  if (key) {
+    node.dataset.iconKey = key;
+  }
+  preview.replaceWith(node);
 }
 
 function refreshIconPreviews() {
@@ -165,18 +339,263 @@ function refreshIconPreviews() {
     const key = input.dataset.iconKey;
     const preview = mountRoot.querySelector(`#icon-list .icon[data-icon-key="${key}"]`);
     if (preview) {
-      preview.innerHTML = "";
-      const value = input.value || input.defaultValue;
-      if (value.trim().startsWith('<')) {
-        preview.innerHTML = value;
-      } else {
-        preview.className = `icon ${value}`;
-      }
+      paintPreview(preview, input.value || input.defaultValue);
     }
   }
 }
 
 let canSave = false;
+let themeChoice = "system";
+let themePast = [];
+let themeFuture = [];
+let catalog = { folder: "", chosen: "", fallback: "", missing: false, themes: [] };
+let folderField = "";
+let listEpoch = 0;
+let schemeList = null;
+let onScheme = null;
+let hostThemeSent = "";
+
+function systemPrefersLight() {
+  const query = schemeQuery();
+  return Boolean(query && query.matches);
+}
+
+function detachScheme() {
+  if (schemeList && onScheme) {
+    schemeList.removeEventListener("change", onScheme);
+  }
+  schemeList = null;
+  onScheme = null;
+}
+
+function watchScheme() {
+  detachScheme();
+  const query = schemeQuery();
+  if (!query || typeof query.addEventListener !== "function") {
+    return;
+  }
+  onScheme = () => {
+    if (mountRoot) {
+      paintTheme();
+    }
+  };
+  schemeList = query;
+  schemeList.addEventListener("change", onScheme);
+}
+
+function applyFileStyle(text) {
+  let style = document.getElementById("pav-file-theme");
+  if (!text) {
+    if (style) {
+      style.remove();
+    }
+    return;
+  }
+  if (!style) {
+    style = document.createElement("style");
+    style.id = "pav-file-theme";
+    document.head.append(style);
+  }
+  style.textContent = liveThemeCss(text);
+}
+
+function renderThemeList(shown) {
+  const list = mountRoot.querySelector("#theme-list");
+  if (!list) {
+    return;
+  }
+  const rows = buildCatalog(catalog.themes, systemPrefersLight());
+  list.replaceChildren();
+  rows.forEach((row, index) => {
+    if (index === 3) {
+      const divider = document.createElement("div");
+      divider.className = "theme-divider";
+      divider.setAttribute("role", "separator");
+      list.append(divider);
+    }
+    const label = document.createElement("label");
+    label.className = "theme-row";
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "pav-theme";
+    input.value = row.id;
+    input.checked = row.id === shown;
+    const preview = document.createElement("span");
+    preview.className = "theme-preview";
+    preview.setAttribute("aria-hidden", "true");
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "");
+    frame.tabIndex = -1;
+    try {
+      frame.inert = true;
+    } catch {
+      /* The frame is already pointer-events: none. */
+    }
+    frame.srcdoc = row.srcdoc;
+    frame.setAttribute("srcdoc", row.srcdoc);
+    preview.append(frame);
+    const copy = document.createElement("span");
+    copy.className = "theme-copy";
+    const title = document.createElement("span");
+    title.className = "theme-title";
+    title.textContent = row.label;
+    title.title = row.titleFull;
+    const author = document.createElement("span");
+    author.className = "theme-author";
+    author.textContent = row.author;
+    author.title = row.authorFull;
+    const meta = document.createElement("span");
+    meta.className = "theme-meta";
+    meta.textContent = row.meta;
+    meta.title = row.metaFull;
+    copy.append(title, author, meta);
+    label.append(input, preview, copy);
+    list.append(label);
+  });
+  if (rows.length === 3) {
+    const divider = document.createElement("div");
+    divider.className = "theme-divider";
+    divider.setAttribute("role", "separator");
+    list.append(divider);
+  }
+  for (const frame of list.querySelectorAll("iframe")) {
+    const height = frame.parentElement.getBoundingClientRect().height;
+    if (height > 0) {
+      frame.style.transform = `scale(${height / 768})`;
+    }
+  }
+}
+
+function paintThemeActions() {
+  if (!mountRoot) {
+    return;
+  }
+  const undo = mountRoot.querySelector("#theme-undo");
+  const redo = mountRoot.querySelector("#theme-redo");
+  const defaults = mountRoot.querySelector("#theme-default");
+  if (undo) {
+    undo.disabled = themePast.length === 0;
+  }
+  if (redo) {
+    redo.disabled = themeFuture.length === 0;
+  }
+  if (defaults) {
+    defaults.disabled = effectiveChoice(themeChoice, catalog.themes) === "system";
+  }
+}
+
+function paintFolder() {
+  const input = mountRoot.querySelector("#theme-folder");
+  const note = mountRoot.querySelector("#theme-folder-note");
+  if (input && document.activeElement !== input) {
+    const chosen = typeof catalog.chosen === "string" ? catalog.chosen : "";
+    input.value = chosen;
+    folderField = chosen;
+    const fallback = catalog.fallback || catalog.folder || "";
+    input.placeholder = fallback ? `Default:${fallback}` : "";
+  }
+  if (note) {
+    note.hidden = catalog.missing !== true;
+  }
+}
+
+function paintTheme() {
+  if (!mountRoot) {
+    return;
+  }
+  try {
+    paintThemeBody();
+  } catch (err) {
+    showBanner(messageOf(err));
+  }
+  paintThemeActions();
+}
+
+function paintThemeBody() {
+  const shown = effectiveChoice(themeChoice, catalog.themes);
+  const light = systemPrefersLight();
+  let dataset = "dark";
+  let hostTheme = "dark";
+  let noteText = "";
+  if (shown === "system") {
+    dataset = light ? "light" : "dark";
+    hostTheme = dataset;
+    noteText = `Following the system: ${hostTheme}.`;
+    applyFileStyle("");
+  } else if (shown === "light" || shown === "dark") {
+    dataset = shown;
+    hostTheme = shown;
+    noteText = `${shown === "light" ? "Light" : "Dark"} is in use.`;
+    applyFileStyle("");
+  } else {
+    const theme = catalog.themes.find((item) => `file:${item.name}` === shown);
+    dataset = "file";
+    hostTheme = theme ? schemeOf(theme.text) : "dark";
+    noteText = `${theme ? theme.name : "Theme"} is in use.`;
+    applyFileStyle(theme ? theme.text : "");
+    const row = buildCatalog(catalog.themes, light).find((item) => item.id === shown);
+    if (row) {
+      noteText = `${row.label} is in use.`;
+    }
+  }
+  mountRoot.dataset.theme = dataset;
+  const note = mountRoot.querySelector("#theme-resolved");
+  if (note) {
+    note.textContent = noteText;
+  }
+  renderThemeList(shown);
+  applyFonts();
+  applyIcons();
+  applyMark();
+  if (host && typeof host.onTheme === "function" && hostThemeSent !== hostTheme) {
+    hostThemeSent = hostTheme;
+    host.onTheme(hostTheme);
+  }
+}
+
+async function refreshThemes(mine) {
+  const epoch = ++listEpoch;
+  if (!api || typeof api.themes === "undefined") {
+    paintTheme();
+    watchScheme();
+    return;
+  }
+  try {
+    await api.themes.ensure({ files: THEME_TEMPLATES });
+  } catch (err) {
+    if (mountRoot) {
+      showBanner(messageOf(err));
+    }
+  }
+  if (epoch !== listEpoch || (mine && !alive(mine))) {
+    return;
+  }
+  try {
+    const listed = await api.themes.list();
+    if (epoch !== listEpoch || (mine && !alive(mine))) {
+      return;
+    }
+    catalog = {
+      folder: typeof listed.folder === "string" ? listed.folder : "",
+      chosen: typeof listed.chosen === "string" ? listed.chosen : "",
+      fallback: typeof listed.fallback === "string" ? listed.fallback : "",
+      missing: listed.missing === true,
+      themes: Array.isArray(listed.themes)
+        ? listed.themes.filter((item) => item && typeof item.name === "string" && typeof item.text === "string")
+        : [],
+    };
+  } catch (err) {
+    if (mountRoot) {
+      showBanner(messageOf(err));
+    }
+  }
+  if (epoch !== listEpoch || !mountRoot || (mine && !alive(mine))) {
+    return;
+  }
+  paintFolder();
+  paintTheme();
+  watchScheme();
+}
 
 function messageOf(err) {
   if (err instanceof Error) {
@@ -191,9 +610,32 @@ function showBanner(text) {
   banner.textContent = text;
 }
 
+function showSaveFailure(err) {
+  const detail = messageOf(err);
+  const text = detail ? `Could not save the profile. ${detail}` : "Could not save the profile.";
+  if (widgets) {
+    widgets.toaster.toast(text);
+    return;
+  }
+  showBanner(text);
+}
+
+function destroyWidgets() {
+  const set = widgets;
+  widgets = null;
+  if (!set) {
+    return;
+  }
+  set.menus.destroy();
+  set.tooltips.destroy();
+  set.toaster.destroy();
+  set.dialogs.destroy();
+}
+
 const SAVE_MS = 300;
 let saveTimer = 0;
 let dirty = false;
+let saveChain = Promise.resolve();
 
 function scheduleUiSave() {
   if (!canSave) {
@@ -211,12 +653,22 @@ function scheduleUiSave() {
 
 function flushUiSave() {
   if (!canSave || !dirty) {
-    return Promise.resolve();
+    return saveChain;
   }
   dirty = false;
-  return api.prefs.ui.set(clampUi(ui)).catch((err) => {
-    showBanner(messageOf(err));
+  const snapshot = clampUi(ui);
+  const writer = api;
+  saveChain = saveChain.catch(() => {}).then(() => {
+    if (!writer || writer !== api) {
+      return undefined;
+    }
+    return writer.prefs.ui.set(snapshot);
+  }).catch((err) => {
+    if (mountRoot && writer === api) {
+      showSaveFailure(err);
+    }
   });
+  return saveChain;
 }
 
 function onPageHide() {
@@ -243,18 +695,32 @@ async function loadPrefs() {
   ui.icons = stored.icons;
   ui.fontawesome_kit = stored.fontawesome_kit;
   ui.fonts = stored.fonts;
+  if (stored.fontSource === "theme" || stored.fontSource === "override") {
+    ui.fontSource = stored.fontSource;
+  } else {
+    ui.fontSource =
+      stored.fonts.body !== DEFAULT_UI.fonts.body || stored.fonts.mono !== DEFAULT_UI.fonts.mono ? "override" : "theme";
+  }
+  if (stored.iconSource === "theme" || stored.iconSource === "override") {
+    ui.iconSource = stored.iconSource;
+  } else {
+    ui.iconSource = stored.icons && Object.keys(stored.icons).length > 0 ? "override" : "theme";
+  }
+  if (stored.themeChoice) {
+    ui.themeChoice = stored.themeChoice;
+    themeChoice = stored.themeChoice;
+  }
   const kitInput = mountRoot.querySelector("#fa-kit-html");
   if (kitInput) {
     kitInput.value = ui.fontawesome_kit;
   }
   paintZoomSliders();
   applyZoom();
-  paintZoomActions();
   applyFonts();
-  showFont(mountRoot.querySelector("#body-font"), ui.fonts.body);
-  showFont(mountRoot.querySelector("#mono-font"), ui.fonts.mono);
-  for (const key of Object.keys(ui.icons)) {
-    applyIconOverride(key);
+  if (ui.iconSource === "override") {
+    for (const key of Object.keys(ui.icons)) {
+      applyIconOverride(key);
+    }
   }
   for (const input of mountRoot.querySelectorAll("#icon-list .icon-input")) {
     const key = input.dataset.iconKey;
@@ -358,6 +824,41 @@ function fillCalendar(today) {
     }
     mini.append(week);
   }
+}
+
+function setActivityView(name) {
+  ui.activity.view = name === "activity" ? "activity" : "log";
+  paintActivity();
+  persistLayout();
+  syncLog();
+}
+
+function bindNavAffordances() {
+  for (const button of mountRoot.querySelectorAll(".nav-buttons button")) {
+    widgets.tooltips.bind(button, button.getAttribute("aria-label") || "");
+  }
+  const activity = mountRoot.querySelector('.nav-buttons [data-section="activity"]');
+  widgets.menus.bind(activity, () => {
+    const view = ui.activity.view === "activity" ? "activity" : "log";
+    return [
+      {
+        label: "Activity",
+        current: view === "activity",
+        onSelect() {
+          setActivityView("activity");
+          openSection("activity");
+        },
+      },
+      {
+        label: "Logs",
+        current: view === "log",
+        onSelect() {
+          setActivityView("log");
+          openSection("activity");
+        },
+      },
+    ];
+  });
 }
 
 function paintActivity() {
@@ -473,6 +974,54 @@ function bindSplit(name) {
   });
 }
 
+function chooseTheme(next, record, onFail) {
+  if (!mountRoot) {
+    return;
+  }
+  const previous = themeChoice;
+  const previousUi = ui.themeChoice;
+  const pushed = Boolean(record) && next !== previous;
+  if (pushed) {
+    themePast.push(previous);
+    themeFuture = [];
+  }
+  themeChoice = next;
+  ui.themeChoice = next;
+  paintTheme();
+  watchScheme();
+  const core = next === "light" || next === "system" ? next : "dark";
+  dirty = true;
+  if (saveTimer) {
+    window.clearTimeout(saveTimer);
+    saveTimer = 0;
+  }
+  flushUiSave();
+  if (!api || typeof api.prefs === "undefined") {
+    refreshThemes(session);
+    return;
+  }
+  api.prefs.set({ theme: core }).then(() => {
+    if (mountRoot && themeChoice === next) {
+      refreshThemes(session);
+    }
+  }).catch((err) => {
+    if (!mountRoot) {
+      return;
+    }
+    if (pushed) {
+      themePast.pop();
+    }
+    if (typeof onFail === "function") {
+      onFail();
+    }
+    themeChoice = previous;
+    ui.themeChoice = previousUi;
+    paintTheme();
+    watchScheme();
+    showSaveFailure(err);
+  });
+}
+
 function bindSettings() {
   for (const label of mountRoot.querySelectorAll("[data-zoom]")) {
     const key = label.dataset.zoom;
@@ -496,54 +1045,51 @@ function bindSettings() {
       value.textContent = zoomLabel(ui.zoom[key]);
       applyZoom();
     };
-    input.addEventListener("input", () => {
-      rememberZoom();
-      show();
-    });
+    input.addEventListener("input", show);
     input.addEventListener("change", () => {
-      rememberZoom();
       show();
-      commitZoom();
       persistLayout();
     });
   }
-  const defaults = mountRoot.querySelector("#zoom-default");
-  const undo = mountRoot.querySelector("#zoom-undo");
-  const redo = mountRoot.querySelector("#zoom-redo");
-  if (defaults) {
-    defaults.addEventListener("click", () => {
-      zoomBefore = null;
-      const before = {};
-      const next = {};
-      for (const key of ZOOM_KEYS) {
-        before[key] = ui.zoom[key];
-        next[key] = DEFAULT_UI.zoom[key];
-      }
-      if (!zoomHistory.push(before, next)) {
+  const themeDefault = mountRoot.querySelector("#theme-default");
+  const themeUndo = mountRoot.querySelector("#theme-undo");
+  const themeRedo = mountRoot.querySelector("#theme-redo");
+  if (themeDefault) {
+    themeDefault.addEventListener("click", () => {
+      if (effectiveChoice(themeChoice, catalog.themes) === "system") {
         return;
       }
-      applyZoomState(next);
+      chooseTheme("system", true);
     });
   }
-  if (undo) {
-    undo.addEventListener("click", () => {
-      zoomBefore = null;
-      const next = zoomHistory.undo(ui.zoom);
-      if (next) {
-        applyZoomState(next);
+  if (themeUndo) {
+    themeUndo.addEventListener("click", () => {
+      if (themePast.length === 0) {
+        return;
       }
+      const current = themeChoice;
+      const next = themePast.pop();
+      themeFuture.push(current);
+      chooseTheme(next, false, () => {
+        themeFuture.pop();
+        themePast.push(next);
+      });
     });
   }
-  if (redo) {
-    redo.addEventListener("click", () => {
-      zoomBefore = null;
-      const next = zoomHistory.redo(ui.zoom);
-      if (next) {
-        applyZoomState(next);
+  if (themeRedo) {
+    themeRedo.addEventListener("click", () => {
+      if (themeFuture.length === 0) {
+        return;
       }
+      const current = themeChoice;
+      const next = themeFuture.pop();
+      themePast.push(current);
+      chooseTheme(next, false, () => {
+        themePast.pop();
+        themeFuture.push(next);
+      });
     });
   }
-  paintZoomActions();
   for (const [id, key] of [["#body-font", "body"], ["#mono-font", "mono"]]) {
     const select = mountRoot.querySelector(id);
     if (!select) {
@@ -551,9 +1097,115 @@ function bindSettings() {
     }
     showFont(select, ui.fonts[key]);
     select.addEventListener("change", () => {
+      if (ui.fontSource !== "override") {
+        return;
+      }
       ui.fonts[key] = select.value;
       applyFonts();
       persistLayout();
+    });
+  }
+  const fontSource = mountRoot.querySelector("#font-source");
+  if (fontSource) {
+    fontSource.addEventListener("change", () => {
+      const next = fontSource.value === "override" ? "override" : "theme";
+      if (next === "override" && ui.fontSource !== "override") {
+        const computed = getComputedStyle(mountRoot);
+        const body = unquote(computed.getPropertyValue("--pav-font")).trim();
+        const mono = unquote(computed.getPropertyValue("--pav-font-mono")).trim();
+        if (body) {
+          ui.fonts.body = body;
+        }
+        if (mono) {
+          ui.fonts.mono = mono;
+        }
+      }
+      ui.fontSource = next;
+      applyFonts();
+      persistLayout();
+    });
+  }
+  const iconSource = mountRoot.querySelector("#icon-source");
+  if (iconSource) {
+    iconSource.addEventListener("change", () => {
+      const next = iconSource.value === "override" ? "override" : "theme";
+      if (next === "override" && ui.iconSource !== "override") {
+        const computed = getComputedStyle(mountRoot);
+        ui.icons = { ...ui.icons };
+        for (const key of ICON_KEYS) {
+          const shown = unquote(computed.getPropertyValue(`--pav-icon-${key}`)).trim();
+          if (shown) {
+            ui.icons[key] = shown;
+          }
+        }
+        const kit = unquote(computed.getPropertyValue("--pav-icon-kit")).trim();
+        if (kit) {
+          ui.fontawesome_kit = kit;
+        }
+      }
+      ui.iconSource = next;
+      applyIcons();
+      persistLayout();
+    });
+  }
+  const themeList = mountRoot.querySelector("#theme-list");
+  if (themeList) {
+    themeList.addEventListener("change", (event) => {
+      const input = event.target;
+      if (!(input instanceof HTMLInputElement) || input.name !== "pav-theme") {
+        return;
+      }
+      chooseTheme(input.value, true);
+    });
+  }
+  const themeFolder = mountRoot.querySelector("#theme-folder");
+  if (themeFolder) {
+    const commitFolder = () => {
+      const next = themeFolder.value.trim();
+      if (next === folderField) {
+        return;
+      }
+      api.themes.folder.set(next).then(() => refreshThemes(session)).catch((err) => {
+        if (!mountRoot) {
+          return;
+        }
+        themeFolder.value = folderField;
+        showBanner(messageOf(err));
+      });
+    };
+    themeFolder.addEventListener("change", commitFolder);
+    themeFolder.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        commitFolder();
+      }
+    });
+    const pick = mountRoot.querySelector("#theme-folder-pick");
+    if (pick) {
+      pick.addEventListener("click", () => {
+        const dialog = host && host.dialog;
+        if (!dialog || typeof dialog.open !== "function") {
+          showBanner("Folder picker is not available.");
+          return;
+        }
+        dialog.open({ directory: true, title: "Themes folder" }).then((picked) => {
+          if (!mountRoot || picked == null || picked === "" || Array.isArray(picked)) {
+            return;
+          }
+          themeFolder.value = String(picked);
+          commitFolder();
+        }).catch((err) => {
+          if (mountRoot) {
+            showBanner(messageOf(err));
+          }
+        });
+      });
+    }
+  }
+  const themeRefresh = mountRoot.querySelector("#theme-refresh");
+  if (themeRefresh) {
+    themeRefresh.addEventListener("click", () => {
+      refreshThemes(session);
     });
   }
   for (const button of mountRoot.querySelectorAll("[data-heading]")) {
@@ -565,6 +1217,9 @@ function bindSettings() {
       for (const pane of mountRoot.querySelectorAll("[data-settings]")) {
         pane.hidden = pane.dataset.settings !== button.dataset.heading;
       }
+      if (button.dataset.heading === "theme") {
+        refreshThemes(session);
+      }
     });
   }
   const iconForm = mountRoot.querySelector("#icon-form");
@@ -572,12 +1227,13 @@ function bindSettings() {
     const previewBtn = iconForm.querySelector("#icon-preview");
     const reloadBtn = iconForm.querySelector("#icon-reload");
 
-    function setDirty(dirty) {
+    function setDirty(isDirty) {
+      const locked = ui.iconSource !== "override";
       if (previewBtn) {
-        previewBtn.disabled = !dirty;
+        previewBtn.disabled = locked || !isDirty;
       }
       if (reloadBtn) {
-        reloadBtn.disabled = !dirty;
+        reloadBtn.disabled = locked || !isDirty;
       }
     }
 
@@ -586,30 +1242,21 @@ function bindSettings() {
         const key = input.dataset.iconKey;
         const preview = mountRoot.querySelector(`#icon-list .icon[data-icon-key="${key}"]`);
         if (preview) {
-          preview.innerHTML = "";
-          const value = input.value || input.defaultValue;
-          if (value.trim().startsWith('<')) {
-            preview.innerHTML = value;
-          } else {
-            preview.className = `icon ${value}`;
-          }
+          paintPreview(preview, input.value || input.defaultValue);
         }
       }
     }
 
     for (const input of iconForm.querySelectorAll(".icon-input")) {
       input.addEventListener("input", () => {
+        if (ui.iconSource !== "override") {
+          return;
+        }
         const key = input.dataset.iconKey;
         ui.icons[key] = input.value;
         const preview = mountRoot.querySelector(`#icon-list .icon[data-icon-key="${key}"]`);
         if (preview) {
-          preview.innerHTML = "";
-          const value = input.value || input.defaultValue;
-          if (value.trim().startsWith('<')) {
-            preview.innerHTML = value;
-          } else {
-            preview.className = `icon ${value}`;
-          }
+          paintPreview(preview, input.value || input.defaultValue);
         }
         for (const other of iconForm.querySelectorAll(".icon-input")) {
           if (other.value !== other.defaultValue) {
@@ -629,6 +1276,9 @@ function bindSettings() {
     const kitInput = iconForm.querySelector("#fa-kit-html");
     if (kitInput) {
       kitInput.addEventListener("input", () => {
+        if (ui.iconSource !== "override") {
+          return;
+        }
         ui.fontawesome_kit = kitInput.value;
         let dirty = false;
         for (const input of iconForm.querySelectorAll(".icon-input")) {
@@ -707,8 +1357,21 @@ function alive(mine) {
 }
 
 export function stopShell() {
+  destroyWidgets();
   const current = session;
   session = null;
+  detachScheme();
+  themeChoice = "system";
+  themePast = [];
+  themeFuture = [];
+  hostThemeSent = "";
+  listEpoch += 1;
+  catalog = { folder: "", chosen: "", fallback: "", missing: false, themes: [] };
+  folderField = "";
+  const fileTheme = document.getElementById("pav-file-theme");
+  if (fileTheme) {
+    fileTheme.remove();
+  }
   if (current) {
     window.removeEventListener("pagehide", onPageHide);
     if (current.updateTimer) {
@@ -730,8 +1393,7 @@ export function stopShell() {
   navSection = "mail";
   canSave = false;
   dirty = false;
-  zoomHistory = createZoomHistory(ZOOM_KEYS);
-  zoomBefore = null;
+  saveChain = Promise.resolve();
   mountRoot = null;
   api = null;
   host = null;
@@ -745,6 +1407,13 @@ export async function startShell(surface, nextApi, nextHost, result) {
   mountRoot = surface;
   api = nextApi;
   host = nextHost || {};
+  widgets = {
+    menus: createMenu(mountRoot),
+    tooltips: createTooltip(mountRoot),
+    toaster: createToaster(mountRoot),
+    dialogs: createDialogs(mountRoot),
+  };
+  bindNavAffordances();
   window.addEventListener("pagehide", onPageHide);
   const banner = mountRoot.querySelector("#banner");
   if (result.state === "error") {
@@ -779,6 +1448,8 @@ export async function startShell(surface, nextApi, nextHost, result) {
       if (typeof prefs.logLevel === "string" && prefs.logLevel !== "") {
         logLevel = prefs.logLevel;
       }
+      themeChoice = ui.themeChoice || normalizeTheme(prefs.theme);
+      await refreshThemes(mine);
     } catch (err) {
       if (!alive(mine)) {
         return;
@@ -812,10 +1483,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
   paintActivity();
   for (const button of mountRoot.querySelectorAll("[data-activity-view]")) {
     button.addEventListener("click", () => {
-      ui.activity.view = button.dataset.activityView === "activity" ? "activity" : "log";
-      paintActivity();
-      persistLayout();
-      syncLog();
+      setActivityView(button.dataset.activityView);
     });
   }
   letters(mountRoot.querySelector("#letters-nav"), true);
@@ -836,6 +1504,12 @@ export async function startShell(surface, nextApi, nextHost, result) {
     enabled: result.debug === true || result.selftest === true,
     openMail() {
       openSection("mail");
+    },
+    confirm(spec) {
+      if (!widgets) {
+        return Promise.resolve(false);
+      }
+      return widgets.dialogs.confirm(spec);
     },
   });
   for (const button of mountRoot.querySelectorAll(".tree button")) {

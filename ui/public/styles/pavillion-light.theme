@@ -1,0 +1,149 @@
+/* Title: Pavillion Light
+   Author: Pavillion
+   Version: 1
+   Released: 2026-10-17
+*/
+/*
+  Pavillion theme. Copy this file, change the values, and Refresh on
+  Settings → Theme. The first ten lines are the only header: Title,
+  Author, Version, Released. The row name is the Title. Two rows with
+  the same Title show the filename in brackets.
+
+  Start from this file for a light skin. Copying Dark and changing one color leaves the other surfaces dark.
+  The shell reads color-scheme, these custom properties, and a live
+  @font-face. It does not copy other rules onto the window. The preview
+  shows this file inside a frame that cannot run scripts. That frame does
+  not load the icon kit, so a Font Awesome glyph appears on the real
+  window and not in the small poster.
+
+  A new variable the shell reads is added to both default files in the
+  same change. Do not invent names the shell ignores.
+*/
+
+.pav-root {
+  /* light or dark. The shell uses the first word for the window and the host page. A short file that omits this stays dark, because Dark is always underneath. */
+  color-scheme: light;
+
+  /* Page behind the shell. The host page uses the same color when this theme is light or dark. */
+  --pav-surface-canvas: #f7f4f2;
+
+  /* Primary text. */
+  --pav-text: #1c1212;
+
+  /* Secondary text, authors, and versions in the theme list. */
+  --pav-text-muted: #6b5e5e;
+
+  /* Accent for the few controls that need one. Shared by Dark and Light. */
+  --pav-accent: #2a7;
+
+  /* Hairlines, theme-row borders, and the preview frame. */
+  --pav-border: #d9cfcf;
+
+  /* Body face. Used when Settings → Fonts → Source is Theme. Packaging the font files is still open, so keep a generic fallback. */
+  --pav-font: "Vanadium Sans", system-ui, sans-serif;
+
+  /* Monospace for logs and the icon fields. Settings → Fonts can override it. */
+  --pav-font-mono: ui-monospace, monospace;
+
+  /* Drop shadow on a hovered nav icon. */
+  --pav-icon-glow: #800000;
+
+  /* Navigation column. One 160 degree wash. Dark starts near the roof red and ends on the canvas. Light uses a pale roof tint. */
+  --pav-surface-nav: linear-gradient(160deg, #f3e4e4 0%, #f7f4f2 55%);
+
+  /* Workspace behind the open section. */
+  --pav-surface-workspace: linear-gradient(160deg, #f6ecec 0%, #f7f4f2 72%);
+
+  /* List half of a split. */
+  --pav-surface-list: linear-gradient(160deg, #f4e8e8 0%, #f7f4f2 64%);
+
+  /* Detail half of a split. */
+  --pav-surface-detail: linear-gradient(160deg, #f8f1f1 0%, #fbf9f8 80%);
+
+  /* Buttons and the unselected theme row. */
+  --pav-surface-button: linear-gradient(160deg, #f0dede 0%, #f7f4f2 100%);
+
+  /* Selected button, selected theme row, and the error banner. */
+  --pav-surface-button-active: linear-gradient(160deg, #e8d0d0 0%, #f4eeec 100%);
+
+  /* Dimmer behind a dialog. */
+  --pav-surface-scrim: rgb(28 18 18 / 35%);
+
+  /* Roof red. Also the small mark in a theme preview. */
+  --pav-swatch-1: #800000;
+
+  /* Roof rose. The mail icon's second duotone color. */
+  --pav-swatch-2: #cc9999;
+
+  /* Error text. */
+  --pav-status-error: #9b2c2c;
+
+  /* Warning text. */
+  --pav-status-warn: #8a5a12;
+
+  /* Success text. */
+  --pav-status-ok: #1f7a4d;
+
+  /* Log row, severity ERROR. */
+  --pav-log-error: #9b2c2c;
+
+  /* Printed log text. */
+  --pav-log-print: #1a1a1a;
+
+  /* Printed log paper. */
+  --pav-log-print-paper: #ffffff;
+
+  /* Log row, severity WARN. */
+  --pav-log-warn: #8a5a12;
+
+  /* Log row, severity INFO. */
+  --pav-log-info: #1c1212;
+
+  /* Log row, severity DEBUG. */
+  --pav-log-debug: #6b6560;
+
+  /* Logo file beside this theme. none hides the image. The shell owns the img. To show a logo, use a file name such as logo.svg. https URLs are refused. */
+  --pav-mark: none;
+
+  /* Font Awesome kit id already used by the shell. Nothing here is secret. The kit script is https://kit.fontawesome.com/45801522ef.js. Settings → Icons can override it. */
+  --pav-icon-kit: "45801522ef";
+
+  /* Mail nav icon. A value may be an <i class='...'> element, a Font Awesome class string, or an image file name beside this theme. The shell reads the variable and uses that icon. */
+  --pav-icon-mail: "<i class='fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270'></i>";
+
+  /* Contacts nav icon. Same three forms as Mail. */
+  --pav-icon-contacts: "<i class='fa-sharp-duotone fa-solid fa-address-book'></i>";
+
+  /* Calendars nav icon. Same three forms as Mail. */
+  --pav-icon-calendars: "<i class='fa-sharp-duotone fa-solid fa-calendar-days'></i>";
+
+  /* Files nav icon. Same three forms as Mail. */
+  --pav-icon-files: "<i class='fa-sharp-duotone fa-solid fa-folder'></i>";
+
+  /* Activity nav icon. Same three forms as Mail. */
+  --pav-icon-activity: "<i class='fa-sharp-duotone fa-solid fa-list-timeline'></i>";
+
+  /* Settings nav icon. Same three forms as Mail. */
+  --pav-icon-settings: "<i class='fa-sharp-duotone fa-solid fa-gear'></i>";
+
+  /* Update nav icon. Same three forms as Mail. This button is not a section tab. */
+  --pav-icon-update: "<i class='fa-sharp-duotone fa-solid fa-arrows-rotate'></i>";
+
+  /* Help nav icon. Same three forms as Mail. */
+  --pav-icon-help: "<i class='fa-sharp-duotone fa-solid fa-circle-question'></i>";
+}
+
+/*
+  A font file that sits beside this theme. Leave this commented until
+  the file is there. A live @font-face that names a missing file fails
+  to load. The shell rewrites a local file name to pav-theme:// so the
+  font is read from this folder. Remote http and https addresses are
+  dropped.
+
+  @font-face {
+    font-family: "Example";
+    src: url("Example.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+  }
+*/

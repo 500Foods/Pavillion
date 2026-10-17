@@ -77,6 +77,16 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - The Credentials page stores and replaces a secret and never renders one. It shows "stored" or "missing" and the date it was set (kept in `account_state`, not the keyring).
 - Adding an account: name, email address, kind (JMAP by default; IMAP and DAV stay greyed out until M-8 and S-5 land), username (defaults to the email address), password, and color. The session URL comes from `https://<email domain>/.well-known/jmap`, and an "Override session URL" field replaces it. Auth method shows `basic` (password), and OIDC stays greyed out until K-4. "Test" runs `account.test` and shows the capabilities found (mail, submission, contacts, calendars, sieve, files) before Save is enabled.
 
+### 1Password (recorded 2026-10-17, build it in K, not before)
+
+Andrew asked for this beside the usual URL, username, and password. It is not part of J-1. The picker uses the J-1 dialog when K-3 builds the Accounts panel.
+
+- A service-account token lets Pavillion list vaults and item secrets. The user picks one in a small dialog. The choice fills that account's username and password.
+- Three things are stored in the secure store, not held only in memory: the service token, the vault and item list the picker shows, and the username and password the account actually uses. A restart must not ask 1Password again while that stored copy is still current.
+- The cap he named is the 1Password service-account limit of 1000. The published table, checked the same day, puts 1000 on token writes per hour for Business, on token reads per hour for personal accounts, and on the personal and families daily cap. Caching is what keeps ordinary use off that API.
+- If a stored username and password are rejected, refresh that one item from 1Password once. If the new value is rejected too, do not prompt in a loop and do not keep calling 1Password. Surface it on the Activity control (a yellow state or similar). I-2 owns that control; K does not paint it early.
+- The store he named is Tauri Stronghold (`tauri-plugin-stronghold` v2, IOTA Stronghold), because it is the same library on every platform. The Secrets bullets above still say libsecret. K-1 changes those bullets before any secret code. The platform function table stays. The WebView still drops the token when the form closes. Stronghold asks for a snapshot password on every launch; K-Q4 is how that password is supplied without a second prompt. Do not implement libsecret as the only store.
+
 ## K-1: Secrets through the platform
 
 **Kind:** Medium
@@ -164,8 +174,10 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - K-Q1. Which accounts to add first at K-3? Name two or three, ideally from two tenants, with their hostnames. (Still open, not blocking until K-3.)
 - K-Q2. Resolved 2026-10-16: username and password for every account (Basic or SASL PLAIN over TLS), stored in the keyring. OIDC comes later (K-4).
 - K-Q3. Resolved 2026-10-16: discovery uses `https://<email domain>/.well-known/jmap` with a manual override. Andrew gives the hostnames at K-3.
+- K-Q4. Open before K-1 writes secret code. Stronghold needs a snapshot password every launch. How is that password supplied so Pavillion does not prompt again while the stored 1Password copy is current? The rest of the 1Password request is recorded above.
 
 ## Working log
 
 - 2026-10-16 Opened from plan §3, §10 (Accounts panel), §11 (credentials), and the B Lock. Decisions: `number` with a never-reused counter on the index, keyring label and attribute, locked-keyring state, OIDC as its own Hard phase, account removal order, add-then-test flow.
 - 2026-10-16 Andrew: protocol order is JMAP, then IMAP/SMTP, then CalDAV/CardDAV, with OIDC late. v1 auth is username and password (Basic or SASL PLAIN over TLS) with keyring storage, and "plaintext passwords" means the auth method, not storage. Added the `auth` method field and the `PavAuth` interface so K-4 slots in. K-Q2 and K-Q3 resolved, K-Q1 simplified.
+- 2026-10-17 Andrew: 1Password service accounts are a first-class source next to URL, username, and password. Persist the token, the picker list, and the chosen username and password in Tauri Stronghold. Refresh once on auth failure, then show it on the Activity control. K-Q4 (the snapshot password) is open. Not built in J-1.

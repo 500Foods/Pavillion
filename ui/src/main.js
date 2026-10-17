@@ -6,6 +6,10 @@ import { installLogHooks } from "./log.js";
 
 const api = createApi(tauriTransport());
 const hostServices = tauriHost();
+hostServices.onTheme = (resolved) => {
+  document.documentElement.dataset.pavTheme = resolved === "light" ? "light" : "dark";
+};
+hostServices.loadKit = loadFontAwesomeKit;
 installLogHooks(api);
 if (import.meta.env.DEV) {
   window.pav = api;
@@ -23,7 +27,8 @@ function isFontAwesomeLoaded() {
 }
 
 export function loadFontAwesomeKit(kitHtml) {
-  const isHtml = kitHtml.trim().startsWith('<');
+  const raw = String(kitHtml || "").trim();
+  const isHtml = raw.startsWith("<");
   if (isHtml) {
     const temp = document.createElement('div');
     temp.innerHTML = kitHtml;
@@ -42,14 +47,23 @@ export function loadFontAwesomeKit(kitHtml) {
     }
     return;
   }
-  if (isFontAwesomeLoaded()) {
+  const existing = document.querySelector("script[data-kit-id]");
+  if (existing && existing.dataset.kitId === raw) {
+    return;
+  }
+  if (existing) {
+    existing.remove();
+  } else if (isFontAwesomeLoaded()) {
     return;
   }
   const script = document.createElement("script");
-  script.src = `https://kit.fontawesome.com/${kitHtml}.js`;
+  script.src = `https://kit.fontawesome.com/${raw}.js`;
   script.setAttribute("data-auto-replace-svg", "svg");
-  script.setAttribute("data-kit-id", kitHtml);
+  script.setAttribute("data-kit-id", raw);
   script.setAttribute("crossorigin", "anonymous");
+  script.addEventListener("error", () => {
+    log("ui", 0, "FA kit: script failed to load");
+  });
   document.head.appendChild(script);
   return script;
 }
@@ -61,24 +75,6 @@ export function reloadIcons() {
   }
   window.location.reload();
 }
-
-window.addEventListener("load", () => {
-  const kitScript = document.querySelector('script[src*="kit.fontawesome.com"]');
-  if (kitScript) {
-    if (kitScript.dataset.fontawesome) {
-      log("ui", 2, `FA kit: ${kitScript.dataset.fontawesome}`);
-    } else {
-      log("ui", 0, "FA kit: dataset absent, kit may not have executed");
-      const svgs = document.querySelectorAll(".nav-buttons svg");
-      log("ui", 2, `FA kit: ${svgs.length} SVG(s) found in nav (expected 8)`);
-      if (svgs.length === 0) {
-        log("ui", 0, "FA kit: no SVGs in nav — kit JS did not replace <i> elements");
-      }
-    }
-  } else {
-    log("ui", 0, "FA kit: script tag not found in DOM");
-  }
-});
 
 async function initIcons() {
   try {

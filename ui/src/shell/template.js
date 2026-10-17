@@ -3,6 +3,7 @@ export const shellMarkup = `<div class="shell">
       <nav class="nav" id="nav" aria-label="Sections">
         <div class="nav-buttons button-bar" role="toolbar" aria-label="Sections">
           <button type="button" data-section="mail" aria-pressed="true" aria-label="Mail">
+            <img class="nav-mark" alt="">
             <i class="icon fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270" data-icon-definition="fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270" aria-hidden="true"></i>
           </button>
           <button type="button" data-section="contacts" aria-pressed="false" aria-label="Contacts">
@@ -93,11 +94,6 @@ export const shellMarkup = `<div class="shell">
           <div class="pane pane-detail"></div>
         </div>
         <div class="panel settings" id="panel-settings" role="tabpanel" hidden>
-          <div class="button-bar zoom-actions" role="toolbar" aria-label="Zoom">
-            <button type="button" id="zoom-default">Default</button>
-            <button type="button" id="zoom-undo" disabled>Undo</button>
-            <button type="button" id="zoom-redo" disabled>Redo</button>
-          </div>
           <div data-settings="zoom">
             <h2>Zoom</h2>
             <div class="zoom-list">
@@ -126,15 +122,38 @@ export const shellMarkup = `<div class="shell">
                 <span class="zoom-value">100%</span>
               </label>
             </div>
-            <p class="muted">Shell multiplies every row below. Button bars covers the navigation, the main tabs, and the log bars. Default, Undo, and Redo on the bar above apply to these rows. Each row is its own key on the profile.</p>
+            <p class="muted">Shell multiplies every row below. Button bars covers the navigation, the main tabs, the log bars, and the bars on other settings pages. Each row is its own key on the profile.</p>
             <p class="muted" id="profile-name"></p>
           </div>
           <div data-settings="theme" hidden>
-            <h2>Theme</h2>
-            <p>System. Dark is the theme in use.</p>
+            <div class="theme-head">
+              <h2>Theme</h2>
+              <p class="muted">Light, Dark, and System are built in. System follows the desktop, and Dark is used when that scheme cannot be read. A theme file is plain CSS. The row name is the Title inside the file. The same Title twice shows the filename in brackets. A selected theme file sets the rail icons. Settings → Icons Override puts this profile's icons back on Light, Dark, and System.</p>
+            </div>
+            <div class="button-bar theme-actions" role="toolbar" aria-label="Theme">
+              <button type="button" id="theme-default">Default</button>
+              <button type="button" id="theme-undo" disabled>Undo</button>
+              <button type="button" id="theme-redo" disabled>Redo</button>
+            </div>
+            <p class="muted" id="theme-resolved">Following the system: dark.</p>
+            <div id="theme-list" class="theme-list" role="radiogroup" aria-label="Theme"></div>
+            <p class="muted" id="theme-folder-note" hidden>That folder is missing. Built-in themes are still available.</p>
+            <div class="button-bar theme-bar" role="toolbar" aria-label="Themes">
+              <button type="button" id="theme-refresh">Refresh</button>
+              <label class="theme-folder">Themes folder
+                <input id="theme-folder" type="text" spellcheck="false" autocomplete="off">
+              </label>
+              <button type="button" id="theme-folder-pick">Browse</button>
+            </div>
           </div>
           <div data-settings="fonts" hidden>
             <h2>Fonts</h2>
+            <label class="font-row">Source
+              <select id="font-source">
+                <option value="theme" selected>Theme</option>
+                <option value="override">Override</option>
+              </select>
+            </label>
             <label class="font-row">Body font
               <select id="body-font">
                 <option value="&quot;Vanadium Sans&quot;, system-ui, sans-serif">Vanadium Sans</option>
@@ -153,7 +172,13 @@ export const shellMarkup = `<div class="shell">
           </div>
           <div data-settings="icons" hidden>
             <h2>Icons</h2>
-             <p class="muted">Each nav icon can be a Font Awesome class string (e.g. <code>fa-sharp-duotone fa-solid fa-paper-plane</code>) or raw HTML (e.g. an inline SVG). Edit to change the icon. The preview updates live.</p>
+            <label class="font-row">Source
+              <select id="icon-source">
+                <option value="theme" selected>Theme</option>
+                <option value="override">Override</option>
+              </select>
+            </label>
+             <p class="muted">Theme reads each <code>--pav-icon-*</code> value. That value may be a Font Awesome class string or an <code>&lt;i class='...'&gt;</code> element. Override keeps the values below on this profile.</p>
              <label class="font-row kit-row">Font Awesome kit
                <textarea type="text" id="fa-kit-html" class="kit-input" rows="3" spellcheck="false">45801522ef</textarea>
              </label>

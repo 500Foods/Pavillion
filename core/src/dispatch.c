@@ -2,6 +2,7 @@
 
 #include "dispatch.h"
 #include "logring.h"
+#include "themes.h"
 #include "window_state.h"
 
 #include "pav_platform.h"
@@ -56,6 +57,9 @@ static const PavCommand k_commands[] = {
     {"prefs.ui.get", cmd_prefs_ui_get, 0},
     {"prefs.ui.set", cmd_prefs_ui_set, 0},
     {"system.status", cmd_status, 0},
+    {"themes.ensure", pav_themes_ensure, 0},
+    {"themes.folder.set", pav_themes_folder_set, 0},
+    {"themes.list", pav_themes_list, 0},
     {"window.initial", pav_cmd_window_initial, 0},
     {"window.report", pav_cmd_window_report, 0},
 };

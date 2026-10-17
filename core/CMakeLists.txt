@@ -12,6 +12,7 @@ add_library(pavillion_core STATIC
     src/dispatch.c
     src/window_state.c
     src/protocol.c
+    src/themes.c
     src/cli.c
     src/cfg.c
     src/config.c

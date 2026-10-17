@@ -84,7 +84,7 @@ Levels: `PAV_ERROR`, `PAV_WARN`, `PAV_INFO`, `PAV_DEBUG`. A line below the index
 2026-10-14T17:04:01.123Z INFO  core  core ready
 ```
 
-The clock is `CLOCK_REALTIME`. Three digits, zero-padded. The Activity view may show the same instant in local time as `HH:mm:ss.mmm`. The file stays this line. Before a profile is loaded, lines also go to stderr and to `<workdir>/logs/pavillion.log` when that directory exists. After load, the profile log is the file. `info` and above also go to stderr when stderr is a terminal.
+The clock is `CLOCK_REALTIME`. Three digits, zero-padded. The Activity view may show the same instant in local time as `HH:mm:ss.mmm`. The file stays this line. Before a profile is loaded, lines also go to stderr and to `<workdir>/logs/pavillion.log` when that directory exists. After load, the profile log is the file. `warn` and `error` also go to stderr when stderr is a terminal. `info` and `debug` stay in the file and the ring.
 
 When the log thread is running, `pav_log` queues the formatted line and returns. `pav_log_thread_shutdown` drains that queue and joins. A line logged while the thread is not running is written by the caller. `pavillion_start` opens `<workdir>/logs/pavillion.log` before the profile log is attached. A line logged before that file exists goes to stderr only.
 

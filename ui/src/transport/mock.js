@@ -56,6 +56,9 @@ export function mockTransport() {
   let ui = defaultUi();
   const listeners = new Set();
   const seen = [];
+  const themeFiles = new Map();
+  const themeFallback = "/pavillion";
+  let themeFolder = "";
 
   async function call(cmd, args) {
     const input = args ?? {};
@@ -95,6 +98,44 @@ export function mockTransport() {
     if (cmd === "prefs.ui.set") {
       ui = structuredClone(input);
       return structuredClone(ui);
+    }
+    if (cmd === "themes.list") {
+      const themes = [...themeFiles.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([name, text]) => ({ name, text }));
+      if (themeFolder === "missing") {
+        return { folder: themeFolder, chosen: "", fallback: themeFallback, themes: [], missing: true };
+      }
+      const chosen = themeFolder;
+      return {
+        folder: chosen === "" ? themeFallback : chosen,
+        chosen,
+        fallback: themeFallback,
+        themes,
+      };
+    }
+    if (cmd === "themes.ensure") {
+      if (!Array.isArray(input.files)) {
+        throw fail("bad_args", "files is required");
+      }
+      const wrote = [];
+      for (const file of input.files) {
+        if (!file || typeof file.name !== "string" || typeof file.text !== "string" || !file.name.endsWith(".theme") || file.name.includes("/") || file.name.includes("\\") || file.name.includes("..")) {
+          throw fail("bad_args", "bad theme name");
+        }
+        if (!themeFiles.has(file.name)) {
+          themeFiles.set(file.name, file.text);
+          wrote.push(file.name);
+        }
+      }
+      return { wrote };
+    }
+    if (cmd === "themes.folder.set") {
+      if (typeof input.folder !== "string") {
+        throw fail("bad_args", "folder is required");
+      }
+      themeFolder = input.folder;
+      return { folder: input.folder };
     }
     if (cmd === "log.client") {
       if (typeof input.subsystem !== "string" || typeof input.level !== "string" || typeof input.message !== "string") {

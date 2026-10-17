@@ -1,0 +1,44 @@
+.pav-root[data-theme="light"] {
+  color-scheme: light;
+  --pav-surface-canvas: #f7f4f2;
+  --pav-text: #1c1212;
+  --pav-text-muted: #6b5e5e;
+  --pav-accent: #2a7;
+  --pav-border: #d9cfcf;
+  --pav-font: "Vanadium Sans", system-ui, sans-serif;
+  --pav-font-mono: ui-monospace, monospace;
+  --pav-icon-glow: #800000;
+  --pav-surface-nav: linear-gradient(160deg, #f3e4e4 0%, #f7f4f2 55%);
+  --pav-surface-workspace: linear-gradient(160deg, #f6ecec 0%, #f7f4f2 72%);
+  --pav-surface-list: linear-gradient(160deg, #f4e8e8 0%, #f7f4f2 64%);
+  --pav-surface-detail: linear-gradient(160deg, #f8f1f1 0%, #fbf9f8 80%);
+  --pav-surface-button: linear-gradient(160deg, #f0dede 0%, #f7f4f2 100%);
+  --pav-surface-button-active: linear-gradient(160deg, #e8d0d0 0%, #f4eeec 100%);
+  --pav-surface-scrim: rgb(28 18 18 / 35%);
+  --pav-swatch-1: #800000;
+  --pav-swatch-2: #cc9999;
+  --pav-status-error: #9b2c2c;
+  --pav-status-warn: #8a5a12;
+  --pav-status-ok: #1f7a4d;
+  --pav-log-error: #9b2c2c;
+  --pav-log-print: #1a1a1a;
+  --pav-log-print-paper: #ffffff;
+  --pav-log-warn: #8a5a12;
+  --pav-log-info: #1c1212;
+  --pav-log-debug: #6b6560;
+  --pav-mark: none;
+  --pav-icon-kit: "45801522ef";
+  --pav-icon-mail: "<i class='fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270'></i>";
+  --pav-icon-contacts: "<i class='fa-sharp-duotone fa-solid fa-address-book'></i>";
+  --pav-icon-calendars: "<i class='fa-sharp-duotone fa-solid fa-calendar-days'></i>";
+  --pav-icon-files: "<i class='fa-sharp-duotone fa-solid fa-folder'></i>";
+  --pav-icon-activity: "<i class='fa-sharp-duotone fa-solid fa-list-timeline'></i>";
+  --pav-icon-settings: "<i class='fa-sharp-duotone fa-solid fa-gear'></i>";
+  --pav-icon-update: "<i class='fa-sharp-duotone fa-solid fa-arrows-rotate'></i>";
+  --pav-icon-help: "<i class='fa-sharp-duotone fa-solid fa-circle-question'></i>";
+}
+
+html[data-pav-theme="light"] {
+  color-scheme: light;
+  background: #f7f4f2;
+}

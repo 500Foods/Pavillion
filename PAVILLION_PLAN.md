@@ -2,7 +2,7 @@
 
 Status: v0.7 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 
-**Resume:** The hello-world sequence (steps 1–20) is complete, and the shell preview is in the tree. F-1 landed 2026-10-16: `pavillion_api_version()` returns `PAVILLION_API_VERSION` (1), `build.rs` copies that macro into the shell, and a mismatch prints `API version mismatch: core=<n> shell=<m>` to stderr and exits 1 before the window. It does not call `pav_log` and it does not create the working directory. v0.7 puts the CodeMirror log (H-2, H-3) immediately after H-1, and restores Tabulator and SunEditor in the phases that first need them. WebKit bytes stay out of both ELFs; only `pavillion-gui` dynamically needs the system library. W-1 is complete. The Fedora job is green ([run 38961249214](https://github.com/500Foods/Pavillion/actions/runs/38961249214)), a deliberate Unity failure turned it red ([run 38962441480](https://github.com/500Foods/Pavillion/actions/runs/38962441480)), and the revert is green ([run 38962706169](https://github.com/500Foods/Pavillion/actions/runs/38962706169)). F-5 landed 2026-10-16: config parse, preferences, and ensure/prepare sit on `pav_cfg.h`, split into `config.c`, `config_prefs.c`, and `config_fs.c` (1,414 lines together, under the old 1,493). `PAVILLION_API_VERSION` stayed 1 through F-5. F-2 landed 2026-10-16: `preferences.ui` is an opaque blob (`pavillion_ui_get` / `pavillion_ui_set`, 64 KB, no forbidden key). Zoom, nav, splits, icons, kit, and fonts live there. `PavShellPrefs` is the window only, so `PAVILLION_API_VERSION` is 2. An old profile is rewritten once on load and the schema stays 1. The page clamps in `ui/src/prefs.js` and writes at most every 300 ms and on `pagehide`. Fonts persist in a commit that touches only `ui/`. `make test` was 35 tests after F-2. G-1 landed 2026-10-16: OS file calls go through `pav_platform()`. Tests install the fake. Profile writes are atomic (`name.tmp` then rename). `PAVILLION_API_VERSION` stays 2. `make test` is 37 tests. The `macos-core` job is in `.github/workflows/ci.yml` with `continue-on-error` and has not been observed on a runner. G-2 landed 2026-10-16: `pavillion_call` and `pav_on_event` are the JSON command path. The dispatcher serves `system.status`, `prefs.get`, `prefs.set`, `prefs.ui.get`, `prefs.ui.set`, and `log.client`. [docs/API.md](docs/API.md) lists those as real and the seed as planned. `PAVILLION_API_VERSION` stays 2. `make test` is 43 tests. G-3 landed 2026-10-16: the shell has one `core` command over `pavillion_call`, `ui/src/api.js` is `createApi(transport)`, and `make test` runs Vitest (43 Unity tests and 8 Vitest tests). The old C functions stayed in the header until G-8. G-8 landed 2026-10-16: window state, `pav_protocol`, and workdir creation are C. `src-tauri/src/lib.rs` is 199 lines and only forwards. `PavShellPrefs` and `PavillionStatus` are gone from the header, so `PAVILLION_API_VERSION` is 3. `make test` is 48 Unity tests and 8 Vitest tests. H-1 landed 2026-10-16: `pavillion_start` starts the log thread, the ring holds 10,000 lines, `log.tail` reads it, and the log thread emits `log.lines`. `PAVILLION_API_VERSION` stays 3. `make test` is 57 Unity tests and 12 Vitest tests. H-2 landed 2026-10-16: the Activity tab shows the ring in a read-only CodeMirror 6 view. The document is the UTC file line. On screen the stamp is local time, and the level and subsystem are fixed-width columns with two spaces between fields. `preferences.ui.zoom.log` is the log font size, and its slider is on Settings → Zoom. The index `log_level` is applied, and a successful `preferences.ui` write logs `prefs saved` at debug. `PAVILLION_API_VERSION` stays 3. `make test` is 58 Unity tests and 16 Vitest tests. Gzip -9 of `ui/dist` was 167961 bytes after H-2. H-3 landed 2026-10-16: the log view filters by severity and subsystem, hides lines that miss the search, and copies, saves, and prints the visible lines. Save asks the host for a path and the core writes it with `log.export`. `preferences.ui.log` keeps the filter, follow, and wrap. The session log level is `prefs.set {logLevel}` and writes the index. The top bar is Activity and Logs, Severity, Subsystem, search, and a gear. Copy, Save, and Print sit on the bottom bar. Settings calls the shared zoom "Button bars" and the stored key stays `navButtons`. The main tab strip is one of those bars. "Email this log" waits for O-5. `PAVILLION_API_VERSION` stays 3. `src-tauri/src/lib.rs` is still 199 lines; the dialog plugin is chained on the existing builder line. `make test` is 60 Unity tests and 23 Vitest tests. Gzip -9 of `ui/dist` is 171516 bytes. I-1 landed 2026-10-16: the core registry begins, updates, finishes, and cancels activities. Andrew chose SQLite persistence. Finished rows persist in the profile SQLite table `activity` and reload on the next start. Running rows do not. `user_version` stays unset. `activity.list`, `activity.cancel`, `activity.dismiss`, and `activity.changed` are real. `debug.activity_demo` is a worker command and is omitted when `NDEBUG` is set. `PAVILLION_API_VERSION` stays 3. `src-tauri/src/lib.rs` is unchanged. `make test` is 65 Unity tests and 23 Vitest tests. F-4 landed 2026-10-16: outside HTML is a sandboxed srcdoc iframe. `pav-link://<paneId>/<n>` emits `link.clicked` and returns 204. The parent dialog shows the real URL and does not open it. `PAVILLION_API_VERSION` stays 3. `src-tauri/src/lib.rs` is 199 lines. `make test` is 67 Unity tests and 30 Vitest tests. G-4 is complete (2026-10-16, step 34): the UI mounts into an element, the served sheets use `--pav-*` under `.pav-root`, and the harness shows the shell inside a foreign box. Andrew confirmed `make dev` and `make build` look unchanged. After that check, Shell zoom is 50%–200% and the other zoom rows stay 5%–500%. Toolbar follow-ons closed 2026-10-17: a session zoom stack, a shared bar strut, icons on `--pav-bar-zoom`, and toolbar rules held at 1px. `make test` is 67 Unity tests and 34 Vitest tests. `PAVILLION_API_VERSION` stays 3. `src-tauri/src/lib.rs` is 199 lines. D-4 is next, in [docs/D-UI.md](docs/D-UI.md). Do not start it in this sitting. Served sheets are `ui/public/styles`. `ui/styles` is an older unlinked copy. The host page fills `html` with `color-scheme: dark` and `background: #000`. D-4's color audit names `ui/styles`; audit `ui/public/styles`. Leave the bar strut and the 1px toolbar rules in place.
+**Resume:** The hello-world sequence (steps 1–20) is complete, and the shell preview is in the tree. F-1 landed 2026-10-16: `pavillion_api_version()` returns `PAVILLION_API_VERSION` (1), `build.rs` copies that macro into the shell, and a mismatch prints `API version mismatch: core=<n> shell=<m>` to stderr and exits 1 before the window. It does not call `pav_log` and it does not create the working directory. v0.7 puts the CodeMirror log (H-2, H-3) immediately after H-1, and restores Tabulator and SunEditor in the phases that first need them. WebKit bytes stay out of both ELFs; only `pavillion-gui` dynamically needs the system library. W-1 is complete. The Fedora job is green ([run 38961249214](https://github.com/500Foods/Pavillion/actions/runs/38961249214)), a deliberate Unity failure turned it red ([run 38962441480](https://github.com/500Foods/Pavillion/actions/runs/38962441480)), and the revert is green ([run 38962706169](https://github.com/500Foods/Pavillion/actions/runs/38962706169)). F-5 landed 2026-10-16: config parse, preferences, and ensure/prepare sit on `pav_cfg.h`, split into `config.c`, `config_prefs.c`, and `config_fs.c` (1,414 lines together, under the old 1,493). `PAVILLION_API_VERSION` stayed 1 through F-5. F-2 landed 2026-10-16: `preferences.ui` is an opaque blob (`pavillion_ui_get` / `pavillion_ui_set`, 64 KB, no forbidden key). Zoom, nav, splits, icons, kit, and fonts live there. `PavShellPrefs` is the window only, so `PAVILLION_API_VERSION` is 2. An old profile is rewritten once on load and the schema stays 1. The page clamps in `ui/src/prefs.js` and writes at most every 300 ms and on `pagehide`. Fonts persist in a commit that touches only `ui/`. `make test` was 35 tests after F-2. G-1 landed 2026-10-16: OS file calls go through `pav_platform()`. Tests install the fake. Profile writes are atomic (`name.tmp` then rename). `PAVILLION_API_VERSION` stays 2. `make test` is 37 tests. The `macos-core` job is in `.github/workflows/ci.yml` with `continue-on-error` and has not been observed on a runner. G-2 landed 2026-10-16: `pavillion_call` and `pav_on_event` are the JSON command path. The dispatcher serves `system.status`, `prefs.get`, `prefs.set`, `prefs.ui.get`, `prefs.ui.set`, and `log.client`. [docs/API.md](docs/API.md) lists those as real and the seed as planned. `PAVILLION_API_VERSION` stays 2. `make test` is 43 tests. G-3 landed 2026-10-16: the shell has one `core` command over `pavillion_call`, `ui/src/api.js` is `createApi(transport)`, and `make test` runs Vitest (43 Unity tests and 8 Vitest tests). The old C functions stayed in the header until G-8. G-8 landed 2026-10-16: window state, `pav_protocol`, and workdir creation are C. `src-tauri/src/lib.rs` is 199 lines and only forwards. `PavShellPrefs` and `PavillionStatus` are gone from the header, so `PAVILLION_API_VERSION` is 3. `make test` is 48 Unity tests and 8 Vitest tests. H-1 landed 2026-10-16: `pavillion_start` starts the log thread, the ring holds 10,000 lines, `log.tail` reads it, and the log thread emits `log.lines`. `PAVILLION_API_VERSION` stays 3. `make test` is 57 Unity tests and 12 Vitest tests. H-2 landed 2026-10-16: the Activity tab shows the ring in a read-only CodeMirror 6 view. The document is the UTC file line. On screen the stamp is local time, and the level and subsystem are fixed-width columns with two spaces between fields. `preferences.ui.zoom.log` is the log font size, and its slider is on Settings → Zoom. The index `log_level` is applied, and a successful `preferences.ui` write logs `prefs saved` at debug. `PAVILLION_API_VERSION` stays 3. `make test` is 58 Unity tests and 16 Vitest tests. Gzip -9 of `ui/dist` was 167961 bytes after H-2. H-3 landed 2026-10-16: the log view filters by severity and subsystem, hides lines that miss the search, and copies, saves, and prints the visible lines. Save asks the host for a path and the core writes it with `log.export`. `preferences.ui.log` keeps the filter, follow, and wrap. The session log level is `prefs.set {logLevel}` and writes the index. The top bar is Activity and Logs, Severity, Subsystem, search, and a gear. Copy, Save, and Print sit on the bottom bar. Settings calls the shared zoom "Button bars" and the stored key stays `navButtons`. The main tab strip is one of those bars. "Email this log" waits for O-5. `PAVILLION_API_VERSION` stays 3. `src-tauri/src/lib.rs` is still 199 lines; the dialog plugin is chained on the existing builder line. `make test` is 60 Unity tests and 23 Vitest tests. Gzip -9 of `ui/dist` is 171516 bytes. I-1 landed 2026-10-16: the core registry begins, updates, finishes, and cancels activities. Andrew chose SQLite persistence. Finished rows persist in the profile SQLite table `activity` and reload on the next start. Running rows do not. `user_version` stays unset. `activity.list`, `activity.cancel`, `activity.dismiss`, and `activity.changed` are real. `debug.activity_demo` is a worker command and is omitted when `NDEBUG` is set. `PAVILLION_API_VERSION` stays 3. `src-tauri/src/lib.rs` is unchanged. `make test` is 65 Unity tests and 23 Vitest tests. F-4 landed 2026-10-16: outside HTML is a sandboxed srcdoc iframe. `pav-link://<paneId>/<n>` emits `link.clicked` and returns 204. The parent dialog shows the real URL and does not open it. `PAVILLION_API_VERSION` stays 3. `src-tauri/src/lib.rs` is 199 lines. `make test` is 67 Unity tests and 30 Vitest tests. G-4 is complete (2026-10-16, step 34): the UI mounts into an element, the served sheets use `--pav-*` under `.pav-root`, and the harness shows the shell inside a foreign box. Andrew confirmed `make dev` and `make build` look unchanged. After that check, Shell zoom is 50%–200% and the other zoom rows stay 5%–500%. Toolbar follow-ons closed 2026-10-17: a session zoom stack, a shared bar strut, icons on `--pav-bar-zoom`, and toolbar rules held at 1px. `make test` is 67 Unity tests and 34 Vitest tests. `PAVILLION_API_VERSION` stays 3. `src-tauri/src/lib.rs` is 199 lines. D-4 is complete (2026-10-17), in [docs/D-UI.md](docs/D-UI.md). Andrew accepted the look: the themes look right and the switcher is fine. The same day he pulled D-6 (step 41, theme catalog) and D-7 (step 106, theme skin) forward, ahead of J-1. He accepted that window on 2026-10-17, so D-6 and D-7 are complete. J-1 is in progress (2026-10-17), step 36, in [docs/J-TABS.md](docs/J-TABS.md). The menu, tooltip, toast, and dialog are in the tree and used by the Activity menu, the nav tooltips, a failed profile save, and the link confirm. `make test` is 68 Unity tests and 58 Vitest tests. The window check is still open. Do not start I-2. After the profile log attaches, a terminal sees warn and error only. `core ready` stays in `logs/<id>.log` and the Activity log. `PAVILLION_API_VERSION` stays 3. `src-tauri/src/lib.rs` is 199 lines; `pav-theme` is on the existing scheme list. Served sheets are `ui/public/styles`. `ui/styles` was left as the unlinked copy. The host page still starts on `color-scheme: dark` and `background: #000`; `data-pav-theme` follows the resolved theme. Leave the bar strut and the 1px toolbar rules in place.
 
 **Read first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), one page with diagrams of the layers, the threads, and the data flow.
 
@@ -91,93 +91,95 @@ Pavillion is a personal desktop app for mail, contacts, calendars, and files, fo
 | 32 | I-1 | Activity registry in the core, cancel, events | Medium | Done |
 | 33 | F-4 | Message pane isolation, proven in `make build` | Medium | Done |
 | 34 | G-4 | Mountable UI for Lithium, `--pav-*`, harness | Medium | Done |
-| 35 | D-4 | Theme switch: semantic variables, dark, light, follow system | Medium | |
-| 36 | J-1 | Common widgets: menu, tooltip, toast, dialog | Medium | |
+| 35 | D-4 | Theme switch: semantic variables, dark, light, follow system | Medium | Done |
+| 36 | J-1 | Common widgets: menu, tooltip, toast, dialog | Medium | In progress |
 | 37 | I-2 | Activity view and the Update button | Medium | |
 | 38 | J-2 | Tab registry, icons and close, sub-tabs | Medium | |
 | 39 | J-3 | Shortcut registry, tab menu, pinned tabs | Medium | |
 | 40 | J-6 | Session restore | Medium | |
+| 41 | D-6 | Theme catalog: files, the list, and fallback | Medium | Done |
 | | | *Milestone 1: foundation — layers, log, activity, tabs* | | |
-| 41 | L-1 | Migration runner, statement helpers, schema v1 | Medium | |
-| 42 | K-1 | Secrets through the platform (libsecret) | Medium | |
-| 43 | K-2 | Account model and commands, account numbers | Medium | |
-| 44 | W-2 | JMAP fixture server and the Stalwart container | Hard | |
-| 45 | M-1 | Per-server network threads (own curl multi each), caps, retries, redaction | Hard | |
-| 46 | M-2 | JMAP session discovery, `account.test`, remote accounts | Medium | |
-| 47 | K-3 | Settings → Accounts panel | Medium | |
-| 48 | E-1 | Tree tokens, skeleton, row regions | Easy | |
-| 49 | E-2 | Tree model, view state, three collapse behaviors | Medium | |
-| 50 | E-3 | Tree renderer states, badges, hover, menus | Medium | |
-| 51 | E-4 | Tree animation and the height test | Easy | |
-| 52 | M-3 | Sync supervisor, Identity and Mailbox sync, `mailbox.list` | Medium | |
-| 53 | E-7 | Real mailbox tree from `mailbox.list` | Hard | |
+| 42 | L-1 | Migration runner, statement helpers, schema v1 | Medium | |
+| 43 | K-1 | Secrets through the platform (libsecret) | Medium | |
+| 44 | K-2 | Account model and commands, account numbers | Medium | |
+| 45 | W-2 | JMAP fixture server and the Stalwart container | Hard | |
+| 46 | M-1 | Per-server network threads (own curl multi each), caps, retries, redaction | Hard | |
+| 47 | M-2 | JMAP session discovery, `account.test`, remote accounts | Medium | |
+| 48 | K-3 | Settings → Accounts panel | Medium | |
+| 49 | E-1 | Tree tokens, skeleton, row regions | Easy | |
+| 50 | E-2 | Tree model, view state, three collapse behaviors | Medium | |
+| 51 | E-3 | Tree renderer states, badges, hover, menus | Medium | |
+| 52 | E-4 | Tree animation and the height test | Easy | |
+| 53 | M-3 | Sync supervisor, Identity and Mailbox sync, `mailbox.list` | Medium | |
+| 54 | E-7 | Real mailbox tree from `mailbox.list` | Hard | |
 | | | *Milestone 2: real accounts and mailbox trees (old P0)* | | |
-| 54 | L-2 | Mail schema and the blob store | Medium | |
-| 55 | M-4 | Email initial sync | Medium | |
-| 56 | M-5 | Delta sync | Medium | |
-| 57 | N-1 | Body fetch and MIME (GMime) | Medium | |
-| 58 | N-2 | The HTML sanitizer and the hostile corpus | Hard | |
-| 59 | Q-1 | FTS5 indexing and local search | Medium | |
-| 60 | N-3 | Message list (Tabulator) | Medium | |
-| 61 | Q-2 | Search UI and server search | Medium | |
-| 62 | N-4 | Reading pane: sandbox, remote content, `cid:`, links | Medium | |
-| 63 | M-6 | Mutation queue, conflicts, undo | Hard | |
-| 64 | N-5 | Flags, move, delete, archive, mailbox management | Medium | |
-| 65 | N-6 | Threads, unified views, message tabs | Medium | |
-| 66 | N-7 | Attachments | Medium | |
-| 67 | M-7 | Push (EventSource), polling fallback | Medium | |
-| 68 | O-1 | Draft model | Medium | |
-| 69 | O-2 | Composer frame (SunEditor) | Hard | |
-| 70 | O-3 | Identities, reply, forward, autocomplete | Medium | |
-| 71 | O-4 | Attachments, inline images, signatures | Medium | |
-| 72 | O-5 | Outbox and sending | Hard | |
-| 73 | O-6 | `mailto:` and single instance | Medium | |
-| 74 | N-8 | Notifications and mail shortcuts | Medium | |
-| 75 | N-9 | Folder retention | Medium | |
+| 55 | L-2 | Mail schema and the blob store | Medium | |
+| 56 | M-4 | Email initial sync | Medium | |
+| 57 | M-5 | Delta sync | Medium | |
+| 58 | N-1 | Body fetch and MIME (GMime) | Medium | |
+| 59 | N-2 | The HTML sanitizer and the hostile corpus | Hard | |
+| 60 | Q-1 | FTS5 indexing and local search | Medium | |
+| 61 | N-3 | Message list (Tabulator) | Medium | |
+| 62 | Q-2 | Search UI and server search | Medium | |
+| 63 | N-4 | Reading pane: sandbox, remote content, `cid:`, links | Medium | |
+| 64 | M-6 | Mutation queue, conflicts, undo | Hard | |
+| 65 | N-5 | Flags, move, delete, archive, mailbox management | Medium | |
+| 66 | N-6 | Threads, unified views, message tabs | Medium | |
+| 67 | N-7 | Attachments | Medium | |
+| 68 | M-7 | Push (EventSource), polling fallback | Medium | |
+| 69 | O-1 | Draft model | Medium | |
+| 70 | O-2 | Composer frame (SunEditor) | Hard | |
+| 71 | O-3 | Identities, reply, forward, autocomplete | Medium | |
+| 72 | O-4 | Attachments, inline images, signatures | Medium | |
+| 73 | O-5 | Outbox and sending | Hard | |
+| 74 | O-6 | `mailto:` and single instance | Medium | |
+| 75 | N-8 | Notifications and mail shortcuts | Medium | |
+| 76 | N-9 | Folder retention | Medium | |
 | | | *Milestone 3: daily-driver mail (old P1–P3)* | | |
-| 76 | W-3 | rpm, dnf repository, desktop integration | Medium | |
-| 77 | W-4 | Arch `PKGBUILD` | Easy | |
-| 78 | V-1 | CLI socket, dispatch, `status`, `help --json` | Hard | |
-| 79 | V-2 | Bot keys, pause, audit | Medium | |
-| 80 | V-3 | CLI mail commands | Medium | |
-| 81 | M-8 | IMAP/SMTP backend (SASL PLAIN over TLS) | Hard | |
-| 82 | R-1 | Lua 5.5 in the core, sandboxed | Medium | |
-| 83 | R-2 | The `P` API and `docs/LUA_API.md` | Medium | |
-| 84 | R-3 | Mail rules engine | Hard | |
-| 85 | R-4 | Rules editor, dry run, run log | Medium | |
-| 86 | R-5 | Sieve export | Medium | |
-| 87 | L-3 | Contacts, calendars, files, rules, CLI tables | Medium | |
-| 88 | S-1 | Verify JMAP Contacts; sync | Medium | |
-| 89 | S-2 | Contacts screen | Medium | |
-| 90 | S-3 | Contact editor | Medium | |
-| 91 | S-4 | vCard import and export; autocomplete | Medium | |
-| 92 | S-5 | CardDAV adapter and the shared DAV client | Hard | |
-| 93 | T-1 | Verify JMAP Calendars (go/no-go); sync | Medium | |
-| 94 | T-2 | Recurrence and time zones (libical) | Hard | |
-| 95 | T-3 | Calendar views | Medium | |
-| 96 | T-4 | Event editor | Medium | |
-| 97 | T-5 | Reminders and `.ics` | Medium | |
-| 98 | T-7 | CalDAV adapter | Hard | |
-| 99 | U-1 | Files: protocol and browse | Medium | |
-| 100 | U-2 | Files: transfer and manage | Medium | |
+| 77 | W-3 | rpm, dnf repository, desktop integration | Medium | |
+| 78 | W-4 | Arch `PKGBUILD` | Easy | |
+| 79 | V-1 | CLI socket, dispatch, `status`, `help --json` | Hard | |
+| 80 | V-2 | Bot keys, pause, audit | Medium | |
+| 81 | V-3 | CLI mail commands | Medium | |
+| 82 | M-8 | IMAP/SMTP backend (SASL PLAIN over TLS) | Hard | |
+| 83 | R-1 | Lua 5.5 in the core, sandboxed | Medium | |
+| 84 | R-2 | The `P` API and `docs/LUA_API.md` | Medium | |
+| 85 | R-3 | Mail rules engine | Hard | |
+| 86 | R-4 | Rules editor, dry run, run log | Medium | |
+| 87 | R-5 | Sieve export | Medium | |
+| 88 | L-3 | Contacts, calendars, files, rules, CLI tables | Medium | |
+| 89 | S-1 | Verify JMAP Contacts; sync | Medium | |
+| 90 | S-2 | Contacts screen | Medium | |
+| 91 | S-3 | Contact editor | Medium | |
+| 92 | S-4 | vCard import and export; autocomplete | Medium | |
+| 93 | S-5 | CardDAV adapter and the shared DAV client | Hard | |
+| 94 | T-1 | Verify JMAP Calendars (go/no-go); sync | Medium | |
+| 95 | T-2 | Recurrence and time zones (libical) | Hard | |
+| 96 | T-3 | Calendar views | Medium | |
+| 97 | T-4 | Event editor | Medium | |
+| 98 | T-5 | Reminders and `.ics` | Medium | |
+| 99 | T-7 | CalDAV adapter | Hard | |
+| 100 | U-1 | Files: protocol and browse | Medium | |
+| 101 | U-2 | Files: transfer and manage | Medium | |
 | | | *Milestone 4: the initial working copy (old P4–P5 plus rules and files)* | | |
-| 101 | V-4 | `watch`, `config`, contacts and calendar commands | Medium | |
+| 102 | V-4 | `watch`, `config`, contacts and calendar commands | Medium | |
 | | | *Milestone 5: the CLI covers mail, contacts, and calendars* | | |
-| 102 | F-3 | Icon library sources: typed https URLs, allowlist in the CSP, FA and Material presets | Medium | |
-| 103 | F-7 | Shared icon HTML sanitizer, icon registry, overrides in the UI blob | Medium | |
-| 104 | F-8 | Icon settings: icon tree and the three-preview editor | Medium | |
-| 105 | J-4 | Reorder, overflow, widths, file drop | Medium | |
-| 106 | J-5 | Vertical tabs and section colors | Medium | |
-| 107 | E-5 | Tree presets | Medium | |
-| 108 | E-6 | Tree drag and drop | Hard | |
-| 109 | J-7 | The `+` tab: sandboxed browsing | Hard | |
-| 110 | K-4 | OpenID Connect sign-in | Hard | |
-| 111 | T-6 | iTIP invitations | Medium | |
-| 112 | D-5 | Theme extras: density, gradients, contrast audit | Medium | |
-| 113 | G-6 | Second-platform smoke build | Hard | |
+| 103 | F-3 | Icon library sources: typed https URLs, allowlist in the CSP, FA and Material presets | Medium | |
+| 104 | F-7 | Shared icon HTML sanitizer, icon registry, overrides in the UI blob | Medium | |
+| 105 | F-8 | Icon settings: icon tree and the three-preview editor | Medium | |
+| 106 | D-7 | Theme skin: fonts, icons, mark, and HTML in CSS | Medium | Done |
+| 107 | J-4 | Reorder, overflow, widths, file drop | Medium | |
+| 108 | J-5 | Vertical tabs and section colors | Medium | |
+| 109 | E-5 | Tree presets | Medium | |
+| 110 | E-6 | Tree drag and drop | Hard | |
+| 111 | J-7 | The `+` tab: sandboxed browsing | Hard | |
+| 112 | K-4 | OpenID Connect sign-in | Hard | |
+| 113 | T-6 | iTIP invitations | Medium | |
+| 114 | D-5 | Theme extras: density, gradients, contrast audit | Medium | |
+| 115 | G-6 | Second-platform smoke build | Hard | |
 | | | *Milestone 6: polish (old P6); further items are agreed with Andrew at that point* | | |
 
-Why this order: the command ABI (G-2, G-3, G-8) is in place before new commands proliferate. H-1, H-2, and H-3 land before the activity view and before accounts, so later phases can be watched from inside the app. The icon-kit failure was invisible without that view: the only report possible was that no icons were visible. The icon editor and tab polish stay at milestone 6 and are not on the path to mail. Tabs, menus, toasts, and dialogs (through J-3 and J-6) come before accounts because every screen after them uses them. The fixture server comes before the first network phase. Isolation (F-4) and the sanitizer (N-2) come before any real message is shown. Search (Q) comes as soon as bodies exist, before the composer. The rpm and the mail CLI follow milestone 3, so the Betterbird replacement is installable before calendars and files, and neither packaging nor `pavillion status` waits on U. IMAP/SMTP (M-8) follows that shippable mail client. Rules follow IMAP because they hook into a working sync path. CardDAV (S-5) and CalDAV (T-7) follow their JMAP phases. A phase whose entry gate names a phase later in this table is an error in the docs; fix the docs before starting it.
+Why this order: the command ABI (G-2, G-3, G-8) is in place before new commands proliferate. H-1, H-2, and H-3 land before the activity view and before accounts, so later phases can be watched from inside the app. The icon-kit failure was invisible without that view: the only report possible was that no icons were visible. The icon editor and tab polish stay at milestone 6 and are not on the path to mail. Andrew pulled the theme catalog (D-6, step 41) and the theme skin (D-7, step 106) forward on 2026-10-17, before J-1 and before that icon editor. D-7 reads icon HTML from theme variables now. F-8 still replaces the icon editor later, and that rewrite meets these variables. He accepted the D-6 and D-7 window on 2026-10-17. J-1 is in progress; the window check is open. Tabs, menus, toasts, and dialogs (through J-3 and J-6) come before accounts because every screen after them uses them. The fixture server comes before the first network phase. Isolation (F-4) and the sanitizer (N-2) come before any real message is shown. Search (Q) comes as soon as bodies exist, before the composer. The rpm and the mail CLI follow milestone 3, so the Betterbird replacement is installable before calendars and files, and neither packaging nor `pavillion status` waits on U. IMAP/SMTP (M-8) follows that shippable mail client. Rules follow IMAP because they hook into a working sync path. CardDAV (S-5) and CalDAV (T-7) follow their JMAP phases. A phase whose entry gate names a phase later in this table is an error in the docs; fix the docs before starting it.
 
 ## Review notes (2026-10-16, v0.7)
 
@@ -214,11 +216,16 @@ Resolved 2026-10-16 by Andrew (each written into its Lock):
 - W-Q3: Docker, with Stalwart v0.16.26 (checked 2026-10-16).
 - H-Q1: a ring of 10,000 lines, and a profile log over 10 MB renamed to `<id>.log.1` at start (one generation, no rotation while running).
 
+Still open, owned by the named document:
+
+- K-Q4. Before K-1, how Stronghold's snapshot password is supplied. 1Password service accounts (token, cached vault list, cached username and password, one refresh, then the Activity control) are recorded in [docs/K-ACCOUNTS.md](docs/K-ACCOUNTS.md). Not part of J-1.
+
 Each is owned by the document named; the answer is written into that document's Lock.
 
 | Id | Question | Needed before |
 | --- | --- | --- |
 | K-Q1 | Which two or three accounts to add first (two tenants), with their hostnames? | K-3 |
+| K-Q4 | How is the Stronghold snapshot password supplied without a second prompt? | K-1 |
 | H-Q2 | Per-subsystem debug level once sync exists? | M-1 |
 | I-Q1 | The I lock keeps finished activities in memory for the session and treats the log file as the record. Confirm, or ask for a SQLite history, before I-1. | I-1 |
 | J-Q1 | Restore sub-tabs on launch, or only home and pinned tabs? | J-6 |
@@ -263,7 +270,7 @@ The 823-line plan (v0.4, §1–§17) is absorbed. Its text is in git history bef
 | §7 HTML mail safety | F Lock (pane, CSP) and N Lock (sanitizer) |
 | §8 Contacts | S |
 | §9 Calendar | T |
-| §10 UI/UX | J Lock (shell layout), D-4 and D-5 (theme), K Lock (Accounts panel), E, F Lock (icons, kit) |
+| §10 UI/UX | J Lock (shell layout), D-4, D-6, D-7, and D-5 (theme), K Lock (Accounts panel), E, F Lock (icons, kit) |
 | §11 Security | F Lock (CSP, kit, HTML), K Lock (credentials), H Lock (redaction), L Lock (modes, runtime dir), V Lock (bot keys, socket) |
 | §12 Packaging | W Lock |
 | §13 Testing | W Lock and each phase's tests |

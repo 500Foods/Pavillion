@@ -30,7 +30,7 @@ $(LIB): core/CMakeLists.txt core/include/pavillion.h core/include/pav_config.h \
 		core/src/pavillion.c core/src/logring.c core/src/logring.h \
 		core/src/dispatch.c core/src/dispatch.h \
 		core/src/window_state.c core/src/window_state.h \
-		core/src/protocol.c core/src/cli.c \
+		core/src/protocol.c core/src/themes.c core/src/themes.h core/src/cli.c \
 		core/src/cfg.c core/src/config.c core/src/config_prefs.c \
 		core/src/config_fs.c core/src/config_internal.h core/src/store.c \
 		core/src/activity.c core/include/pav_activity.h \

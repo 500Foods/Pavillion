@@ -66,6 +66,10 @@ static int env_is_one(const char *name) {
     return value != NULL && strcmp(value, "1") == 0;
 }
 static char g_core_workdir[4096];
+
+const char *pav_core_workdir(void) {
+    return g_core_workdir;
+}
 static PavConfigLoad *g_load;
 static PavStore *g_store;
 static PavShellPrefs g_prefs_snap;
@@ -1756,6 +1760,8 @@ static void abs_after_ms(struct timespec *ts, int ms) {
     }
 }
 
+/* Once the profile log is open, a terminal sees warn and error only.
+   Info and debug stay in the file and the ring. */
 static int stderr_too_unlocked(int level) {
     if (g_log_dest == LOG_DEST_EXPLICIT) {
         return 0;
@@ -1763,7 +1769,7 @@ static int stderr_too_unlocked(int level) {
     if (g_log_dest == LOG_DEST_NONE || g_log_dest == LOG_DEST_WORKDIR) {
         return 1;
     }
-    return g_log_dest == LOG_DEST_PROFILE && level <= PAV_INFO && isatty(fileno(stderr));
+    return g_log_dest == LOG_DEST_PROFILE && level <= PAV_WARN && isatty(fileno(stderr));
 }
 
 static void emit_line_unlocked(int level, const char *line) {
