@@ -113,7 +113,7 @@ One profile is loaded for the life of the process. Switching is a restart. Schem
 
 Relative paths are under the working directory. A path beginning with `/` is absolute. `storage.engine` defaults to `sqlite`. `storage.connection` is present only for another engine, and it holds no password. Message bodies stay files under `blobs` for every engine.
 
-`preferences.ui.zoom` is an object of panel id to a scale. Schema 1 has `shell`, `navButtons`, `navBody`, `mailList`, and `mailDetail`. `shell` runs from `0.5` to `2` (50%–200%). Every other scale runs from `0.05` to `5` (5%–500%). Every scale steps by `0.05`. `zoom.wheel` is `away` or `toward`, not a scale. `away` means a roll away from you increases the pane under the pointer by one step while Ctrl is held. `toward` reverses that. Any other value is kept as `away`. The wheel never changes `shell`. A missing `wheel` is `away`. `shell` is the master scale on the root font size; each pane scale multiplies on top of it. The settings page keeps a session stack for these keys. Default sets every zoom key back to `1`. Undo and Redo walk that stack. One slider gesture is one step. The stack is not written into the profile. A later panel is another key on the same object. Unknown keys are kept. The page fills a missing key from its defaults and writes them on the next change. The core does not clamp these values and does not invent missing pane keys. An old profile with `preferences.zoom` outside `ui` is rewritten once on load: the object moves under `preferences.ui` and the schema stays 1. `preferences.window` is how the shell opens: maximized or a size, position when the compositor reports one, and `chrome` of `system` or `hidden`. `x` and `y` are null when unknown. The shell writes this object on move, resize, and quit, and applies it on the next launch. `chrome` of `hidden` is stored. Decorations stay the system frame until that setting is turned on. New profiles also include `preferences.ui`:
+`preferences.ui.zoom` is an object of panel id to a scale. Schema 1 has `shell`, `navButtons`, `navBody`, `mailList`, `mailDetail`, `log`, `helpIndex`, and `helpContent`. `shell` runs from `0.5` to `2` (50%–200%). Every other scale runs from `0.05` to `5` (5%–500%). Every scale steps by `0.05`. `zoom.wheel` is `away` or `toward`, not a scale. `away` means a roll away from you increases the pane under the pointer by one step while Ctrl is held. `toward` reverses that. Any other value is kept as `away`. The wheel never changes `shell`. A missing `wheel` is `away`. `shell` is the master scale on the root font size; each pane scale multiplies on top of it. The settings page keeps a session stack for these keys. Default sets every zoom key back to `1`. Undo and Redo walk that stack. One slider gesture is one step. The stack is not written into the profile. A later panel is another key on the same object. Unknown keys are kept. The page fills a missing key from its defaults and writes them on the next change. The core does not clamp these values and does not invent missing pane keys. An old profile with `preferences.zoom` outside `ui` is rewritten once on load: the object moves under `preferences.ui` and the schema stays 1. `preferences.window` is how the shell opens: maximized or a size, position when the compositor reports one, and `chrome` of `system` or `hidden`. `x` and `y` are null when unknown. The shell writes this object on move, resize, and quit, and applies it on the next launch. `chrome` of `hidden` is stored. Decorations stay the system frame until that setting is turned on. New profiles also include `preferences.ui`:
 
 ```json
 "ui": {
@@ -121,12 +121,16 @@ Relative paths are under the working directory. A path beginning with `/` is abs
   "mail": { "split": 0.5, "min": 0.25, "max": 0.75 },
   "contacts": { "split": 0.5, "min": 0.25, "max": 0.75 },
   "files": { "split": 0.5, "min": 0.25, "max": 0.75 },
+  "help": { "split": 0.25, "min": 0.15, "max": 0.6 },
   "zoom": {
     "shell": 1,
     "navButtons": 1,
     "navBody": 1,
     "mailList": 1,
-    "mailDetail": 1
+    "mailDetail": 1,
+    "log": 1,
+    "helpIndex": 1,
+    "helpContent": 1
   }
 }
 ```

@@ -47,4 +47,9 @@ test("theme.css only references variables", () => {
   expect(css).toMatch(/var\(--pav-surface-canvas\)/);
   expect(css).toMatch(/var\(--pav-status-error\)/);
   expect(css).toMatch(/var\(--pav-surface-scrim\)/);
+  expect(css).toMatch(/var\(--pav-help-index-bg\)/);
+  expect(css).toMatch(/var\(--pav-help-index-current\)/);
+  expect(css).toMatch(/var\(--pav-help-content-bg\)/);
+  expect(css).toMatch(/var\(--pav-help-content-heading\)/);
+  expect(css).toMatch(/var\(--pav-help-code-bg\)/);
 });

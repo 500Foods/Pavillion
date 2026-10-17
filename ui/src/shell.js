@@ -40,6 +40,8 @@ const zoomPanes = {
   navBody: ".nav-body",
   mailList: "#panel-mail .pane-list",
   mailDetail: "#panel-mail .pane-detail",
+  helpIndex: "#help-index",
+  helpContent: "#help-article",
 };
 
 function zoomClamp(key, value) {
@@ -182,6 +184,12 @@ function zoomKeyAt(target) {
   }
   if (target.closest("[data-activity-pane='log']")) {
     return "log";
+  }
+  if (target.closest("#help-index")) {
+    return "helpIndex";
+  }
+  if (target.closest("#help-article")) {
+    return "helpContent";
   }
   return "";
 }
@@ -790,6 +798,7 @@ async function loadPrefs() {
   ui.mail = stored.mail;
   ui.contacts = stored.contacts;
   ui.files = stored.files;
+  ui.help = stored.help;
   ui.zoom = stored.zoom;
   ui.activity = stored.activity;
   ui.log = stored.log;
@@ -1848,6 +1857,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
   bindSplit("mail");
   bindSplit("contacts");
   bindSplit("files");
+  bindSplit("help");
   bindSettings();
   bindUpdate();
   bindDemo(result.debug === true);

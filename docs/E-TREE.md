@@ -3,7 +3,7 @@
 **Status:** Design recorded (2026-10-15). In the sequence from 2026-10-16. No phase has started.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
-The one tree engine behind the section navs. Mail's mailbox tree comes first; files, calendars, contacts, and the Settings → Accounts tree reuse the row renderer and the view state. Nothing is built: the mail tree in the shell preview is still four placeholder buttons in `ui/index.html`.
+The one tree engine behind the section navs. Mail's mailbox tree comes first; files, calendars, contacts, and the Settings → Accounts tree reuse the row renderer and the view state. Nothing is built: the mail tree in the shell preview is still four placeholder buttons in `ui/index.html`. The Help index uses this engine once it exists. Until then Help keeps the plain list in `ui/src/help/view.js`. Andrew set that on 2026-10-17. Do not switch Help in J-8, and do not start E from that note.
 
 The tree is a configurable navigation system, not a list widget. It describes what the user sees and how it behaves, and it does not own the underlying mail, contact, or file data. Nodes arrive from `mailbox_list` and the other list commands through `api.js`; the tree renders them.
 
@@ -15,6 +15,7 @@ The tree is a configurable navigation system, not a list widget. It describes wh
 | Files | Folder tree | Nested; empty for an IMAP account (old plan §10) |
 | Calendars | Calendars grouped by account | Flat groups; row renderer only |
 | Contacts | Accounts and recents | Flat lists; row renderer only |
+| Help | Topic index | Pages and sections from `ui/src/help/pages.js`, not a list command. Plain list until this engine exists. |
 
 A flat list is a tree with one level. It uses the same row renderer, view state, and CSS tokens, so density, colors, and icons stay the same across sections.
 
@@ -441,3 +442,4 @@ The Brainstorming section is not binding. A phase that adopts an idea from it sa
 - 2026-10-15 Root visibility filters added: star (favorites only), heart (second favorite set), ghost/hide (infrequent roots). Hidden roots stay in the model; visibility is view state, toggleable from preset toolbar buttons.
 - 2026-10-15 Brainstorming added: per-pane settings (background, zoom, density), always-visible vs hover-visible row regions, preset toolbar buttons, right-click context menus per node type, per-section expectations for mail/calendar/contacts/files, keyboard expectations, and delightful-but-not-required items. None are locked or in a phase.
 - 2026-10-16 Put in the sequence (E-1 to E-4 before mailbox sync, E-7 after M-3, E-5 and E-6 after the initial working copy). Phase sections with entry gates, work items, and exit gates written. Event names follow the G naming. Tokens take the `--pav-` prefix in E-1.
+- 2026-10-17 Andrew: the Help index stays the plain list in `ui/src/help/view.js` until this engine exists, then Help uses it. Nodes come from `ui/src/help/pages.js`. Do not build that switch in J-8. Do not start E from this note.

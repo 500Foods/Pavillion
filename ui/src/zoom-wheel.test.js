@@ -120,6 +120,20 @@ test("ctrl wheel steps the pane under the pointer and the switch flips direction
     wheel(editor, { deltaY: 120 });
     expect(scale("log")).toEqual({ value: "0.05", text: "5%" });
 
+    const helpIndex = document.querySelector("#help-index");
+    const helpArticle = document.querySelector("#help-article");
+    wheel(helpIndex);
+    expect(scale("helpIndex")).toEqual({ value: "1.05", text: "105%" });
+    expect(helpIndex.style.zoom).toBe("1.05");
+    expect(scale("navButtons").value).toBe("1.15");
+    expect(wheel(helpArticle, { deltaY: 3, deltaMode: 1 }).defaultPrevented).toBe(true);
+    expect(scale("helpContent").value).toBe("0.95");
+    expect(helpArticle.style.zoom).toBe("0.95");
+    wheel(document.querySelector(".help-bar"));
+    expect(scale("navButtons").value).toBe("1.2");
+    expect(scale("helpIndex").value).toBe("1.05");
+    expect(scale("helpContent").value).toBe("0.95");
+
     direction.click();
     expect(direction.getAttribute("aria-checked")).toBe("true");
     expect(direction.textContent).toBe("Toward zooms in");
@@ -133,8 +147,10 @@ test("ctrl wheel steps the pane under the pointer and the switch flips direction
     await settle();
     expect(document.querySelector('input[name="pav-theme"]:checked').value).toBe("system");
     expect(scale("mailList").value).toBe("1");
-    expect(scale("navButtons").value).toBe("1.15");
+    expect(scale("navButtons").value).toBe("1.2");
     expect(scale("log").value).toBe("0.05");
+    expect(scale("helpIndex").value).toBe("1.05");
+    expect(scale("helpContent").value).toBe("0.95");
     expect(scales.every((value) => value === 1)).toBe(true);
 
     await new Promise((resolve) => {
@@ -143,11 +159,13 @@ test("ctrl wheel steps the pane under the pointer and the switch flips direction
     const stored = await api.prefs.ui.get();
     expect(stored.zoom.wheel).toBe("toward");
     expect(stored.zoom.shell).toBe(1);
-    expect(stored.zoom.navButtons).toBe(1.15);
+    expect(stored.zoom.navButtons).toBe(1.2);
     expect(stored.zoom.navBody).toBe(1.1);
     expect(stored.zoom.mailList).toBe(1);
     expect(stored.zoom.mailDetail).toBe(0.9);
     expect(stored.zoom.log).toBe(0.05);
+    expect(stored.zoom.helpIndex).toBe(1.05);
+    expect(stored.zoom.helpContent).toBe(0.95);
   } finally {
     unmount();
     el.remove();

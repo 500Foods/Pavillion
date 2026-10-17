@@ -6,7 +6,18 @@ export const DEFAULT_UI = {
   mail: { split: 0.5, min: 0.25, max: 0.75 },
   contacts: { split: 0.5, min: 0.25, max: 0.75 },
   files: { split: 0.5, min: 0.25, max: 0.75 },
-  zoom: { shell: 1, navButtons: 1, navBody: 1, mailList: 1, mailDetail: 1, log: 1, wheel: "away" },
+  help: { split: 0.25, min: 0.15, max: 0.6 },
+  zoom: {
+    shell: 1,
+    navButtons: 1,
+    navBody: 1,
+    mailList: 1,
+    mailDetail: 1,
+    log: 1,
+    helpIndex: 1,
+    helpContent: 1,
+    wheel: "away",
+  },
   activity: { view: "log", history: false },
   log: {
     levels: ["ERROR", "WARN", "INFO", "DEBUG"],
@@ -23,12 +34,22 @@ export const DEFAULT_UI = {
   },
 };
 
-export const ZOOM_KEYS = ["shell", "navButtons", "navBody", "mailList", "mailDetail", "log"];
+export const ZOOM_KEYS = [
+  "shell",
+  "navButtons",
+  "navBody",
+  "mailList",
+  "mailDetail",
+  "log",
+  "helpIndex",
+  "helpContent",
+];
 const KNOWN = new Set([
   "nav",
   "mail",
   "contacts",
   "files",
+  "help",
   "zoom",
   "icons",
   "fontawesome_kit",
@@ -168,6 +189,7 @@ export function clampUi(raw) {
     mail: paneSplit(src.mail, DEFAULT_UI.mail),
     contacts: paneSplit(src.contacts, DEFAULT_UI.contacts),
     files: paneSplit(src.files, DEFAULT_UI.files),
+    help: paneSplit(src.help, DEFAULT_UI.help),
     zoom,
     icons: isObject(src.icons) ? { ...src.icons } : {},
     fontawesome_kit: typeof src.fontawesome_kit === "string" ? src.fontawesome_kit : DEFAULT_UI.fontawesome_kit,

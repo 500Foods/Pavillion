@@ -747,8 +747,13 @@
 }
 
 .pav-root .help-index {
-  flex: 0 0 16rem;
-  border-right: 1px solid var(--pav-border);
+  background: var(--pav-help-index-bg);
+  color: var(--pav-help-index-text);
+}
+
+.pav-root .help-split > .split-resize {
+  border-left-color: var(--pav-help-index-border);
+  border-right-color: var(--pav-help-index-border);
 }
 
 .pav-root .help-index .tree ul {
@@ -757,20 +762,41 @@
   list-style: none;
 }
 
+.pav-root .help-index .tree button {
+  color: var(--pav-help-index-text);
+}
+
+.pav-root .help-index .tree button[aria-current="true"] {
+  background: var(--pav-help-index-current);
+  color: var(--pav-help-index-text);
+}
+
+.pav-root .help-index .empty {
+  color: var(--pav-help-index-muted);
+}
+
 .pav-root .help-article {
   padding: 1rem 1.25rem 2rem;
+  background: var(--pav-help-content-bg);
+  color: var(--pav-help-content-text);
 }
 
 .pav-root .help-article h2 {
   margin: 0 0 0.8rem;
   font-size: 1rem;
   font-weight: 600;
+  color: var(--pav-help-content-heading);
 }
 
 .pav-root .help-article h3 {
   margin: 1.2rem 0 0.4rem;
   font-size: 0.95rem;
   font-weight: 600;
+  color: var(--pav-help-content-heading);
+}
+
+.pav-root .help-article .empty {
+  color: var(--pav-help-content-muted);
 }
 
 .pav-root .help-article p {
@@ -783,8 +809,9 @@
   padding: 0.7rem 0.8rem;
   max-width: 40rem;
   overflow: auto;
-  border: 1px solid var(--pav-border);
-  background: var(--pav-surface-list);
+  border: 1px solid var(--pav-help-code-border);
+  background: var(--pav-help-code-bg);
+  color: var(--pav-help-code-text);
   font-family: var(--pav-font-mono);
   font-size: 0.85rem;
   white-space: pre;

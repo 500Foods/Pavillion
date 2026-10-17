@@ -4,6 +4,10 @@ import { clampUi } from "./prefs.js";
 test("log zoom snaps and the activity view defaults to log", () => {
   const blank = clampUi({});
   expect(blank.zoom.log).toBe(1);
+  expect(blank.zoom.helpIndex).toBe(1);
+  expect(blank.zoom.helpContent).toBe(1);
+  expect(blank.help).toEqual({ split: 0.25, min: 0.15, max: 0.6 });
+  expect(clampUi({ help: { split: 0.9, min: 0.15, max: 0.6 } }).help.split).toBe(0.6);
   expect(blank.zoom.wheel).toBe("away");
   expect(blank.activity.view).toBe("log");
   expect(blank.activity.history).toBe(false);

@@ -18,7 +18,8 @@ export const helpPages = [
         id: "reader",
         title: "How to use Help",
         paragraphs: [
-          "The list on the left is the index. The page on the right is the topic. Search in the bar matches a title or the words on a page, and Enter opens the first hit.",
+          "The list on the left is the index. The page on the right is the topic. Drag the bar between them to change the width. The width is saved. Search in the bar matches a title or the words on a page, and Enter opens the first hit.",
+          "Escape clears the search and leaves the page you were reading. A match on a page title keeps every section of that page in the index. A match in the text keeps only those sections in the index, and the page still shows the whole topic.",
           "Pages are added as features land. A short page means that part of the app is not built yet. A help icon beside a control, when one exists, will open one section of a page and link back here.",
         ],
       },
@@ -86,9 +87,9 @@ export const helpPages = [
         id: "zoom",
         title: "Zoom",
         paragraphs: [
-          "Shell is the master scale, from 50% to 200% in steps of 5%. It multiplies every other row. Those rows run from 5% to 500% in the same steps. Button bars are the nav, the tabs, the log bars, and the bars on settings pages.",
-          "Hold Ctrl and roll the wheel over a button bar, the nav, the calendar, a mail pane, or the log text. One notch changes that row by 5%. The wheel does not change Shell. A plain wheel still scrolls.",
-          "Away zooms in unless the switch on this page says toward. The switch is for a touchpad whose roll feels backwards. The choice is saved with the other zoom settings.",
+          "Shell is the master scale, from 50% to 200% in steps of 5%. It multiplies every other row. Those rows run from 5% to 500% in the same steps. Button bars are the nav, the tabs, the log bars, the Help search bar, and the bars on settings pages. Help index and Help content are their own rows.",
+          "Hold Ctrl and roll the wheel over a button bar, the nav, the calendar, a mail pane, the log text, the Help index, or the Help page. One notch changes that row by 5%. The wheel does not change Shell. A plain wheel still scrolls.",
+          "Away zooms in unless the switch on this page says toward. The switch is for a touchpad whose roll feels backwards. The choice is saved with the other zoom settings. The Help index and the Help page take their colors from the theme.",
         ],
       },
       {
@@ -204,6 +205,22 @@ export const helpPages = [
     "density": "comfortable"
   }
 }`,
+      },
+      {
+        id: "corpus",
+        title: "Where Help lives",
+        paragraphs: [
+          "The pages are in the UI bundle, in ui/src/help/pages.js. Nothing is read from the working directory, and there is no separate help file beside Pavillion.json. The index is a plain list. When the shared tree engine exists, that list is replaced by the engine. The pages stay in this file. A section id is the hook a later help icon will open.",
+        ],
+      },
+      {
+        id: "help-theme",
+        title: "Help colors",
+        paragraphs: [
+          "Help index is the zoom key helpIndex. Help content is helpContent. Both live on preferences.ui.zoom with the other pane scales. Shell multiplies them. A missing key is filled at 100% the next time the page saves. The Help search bar stays on the Button bars key.",
+          "The bar between the index and the page is preferences.ui.help. split starts at 0.25 of the row. The drag stays between 0.15 and 0.6. A missing object is filled from those defaults the next time the page saves. The bar uses --pav-help-index-border.",
+          "A theme file can restyle Help without touching the mail panes. The names are --pav-help-index-bg, --pav-help-index-text, --pav-help-index-muted, --pav-help-index-current, --pav-help-index-border, --pav-help-content-bg, --pav-help-content-text, --pav-help-content-heading, --pav-help-content-muted, --pav-help-code-bg, --pav-help-code-text, and --pav-help-code-border. Light, Dark, and both starter themes define each one. Code samples still use the theme monospace font.",
+        ],
       },
       {
         id: "api",

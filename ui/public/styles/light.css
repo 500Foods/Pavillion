@@ -56,6 +56,18 @@
   --pav-dialog-shadow: 0 0.75rem 1.6rem rgb(28 18 18 / 35%);
   --pav-dialog-control: #342424;
   --pav-dialog-scheme: dark;
+  --pav-help-index-bg: linear-gradient(160deg, #f4e8e8 0%, #f7f4f2 64%);
+  --pav-help-index-text: #1c1212;
+  --pav-help-index-muted: #6b5e5e;
+  --pav-help-index-current: linear-gradient(160deg, #e8d0d0 0%, #f4eeec 100%);
+  --pav-help-index-border: #d9cfcf;
+  --pav-help-content-bg: linear-gradient(160deg, #f8f1f1 0%, #fbf9f8 80%);
+  --pav-help-content-text: #1c1212;
+  --pav-help-content-heading: #1c1212;
+  --pav-help-content-muted: #6b5e5e;
+  --pav-help-code-bg: linear-gradient(160deg, #f4e8e8 0%, #f7f4f2 64%);
+  --pav-help-code-text: #1c1212;
+  --pav-help-code-border: #d9cfcf;
 }
 
 html[data-pav-theme="light"] {

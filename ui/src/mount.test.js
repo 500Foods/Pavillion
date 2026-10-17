@@ -119,7 +119,7 @@ test("mount renders inside the element and unmount leaves the page", async () =>
     expect(shellZoom.min).toBe("0.5");
     expect(shellZoom.max).toBe("2");
     expect(shellZoom.step).toBe("0.05");
-    for (const key of ["navButtons", "navBody", "mailList", "mailDetail", "log"]) {
+    for (const key of ["navButtons", "navBody", "mailList", "mailDetail", "log", "helpIndex", "helpContent"]) {
       const input = root.querySelector(`[data-zoom="${key}"] input`);
       expect(input.min).toBe("0.05");
       expect(input.max).toBe("5");

@@ -56,4 +56,16 @@
   --pav-dialog-shadow: 0 0.45rem 0.9rem rgb(64 12 12 / 50%);
   --pav-dialog-control: #e9d9d6;
   --pav-dialog-scheme: light;
+  --pav-help-index-bg: linear-gradient(160deg, #140707 0%, #000 74%);
+  --pav-help-index-text: #e8e8e8;
+  --pav-help-index-muted: #9a9a9a;
+  --pav-help-index-current: linear-gradient(160deg, #2a1010 0%, #0a0a0a 100%);
+  --pav-help-index-border: #333;
+  --pav-help-content-bg: linear-gradient(160deg, #0e0505 0%, #000 82%);
+  --pav-help-content-text: #e8e8e8;
+  --pav-help-content-heading: #e8e8e8;
+  --pav-help-content-muted: #9a9a9a;
+  --pav-help-code-bg: linear-gradient(160deg, #140707 0%, #000 74%);
+  --pav-help-code-text: #e8e8e8;
+  --pav-help-code-border: #333;
 }

@@ -58,3 +58,61 @@ test("the help button opens the index and search opens a page", async () => {
     el.remove();
   }
 });
+
+test("dragging the help bar resizes the index and saves the ratio", async () => {
+  const el = document.createElement("div");
+  document.body.append(el);
+  const api = createApi(mockTransport());
+  try {
+    await mount(el, api);
+    const handle = document.querySelector('[data-split="help"]');
+    const index = document.querySelector("#help-index");
+    const article = document.querySelector("#help-article");
+    expect(handle.getAttribute("aria-label")).toBe("Resize help panes");
+    expect(handle.previousElementSibling).toBe(index);
+    expect(handle.nextElementSibling).toBe(article);
+    expect(parseFloat(index.style.flexBasis)).toBeCloseTo(25);
+
+    const parent = handle.parentElement;
+    parent.getBoundingClientRect = () => ({
+      left: 0,
+      width: 1000,
+      top: 0,
+      height: 400,
+      right: 1000,
+      bottom: 400,
+      x: 0,
+      y: 0,
+      toJSON() {
+        return {};
+      },
+    });
+    handle.setPointerCapture = () => {};
+    const pointer = (type, clientX) => new PointerEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      clientX,
+      button: 0,
+      pointerId: 1,
+    });
+    handle.dispatchEvent(pointer("pointerdown", 400));
+    handle.dispatchEvent(pointer("pointermove", 400));
+    expect(parseFloat(index.style.flexBasis)).toBeCloseTo(40);
+    handle.dispatchEvent(pointer("pointerup", 40));
+    expect(parseFloat(index.style.flexBasis)).toBeCloseTo(15);
+    handle.dispatchEvent(pointer("pointerdown", 900));
+    handle.dispatchEvent(pointer("pointerup", 900));
+    expect(parseFloat(index.style.flexBasis)).toBeCloseTo(60);
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 400);
+    });
+    const stored = await api.prefs.ui.get();
+    expect(stored.help.split).toBeCloseTo(0.6);
+    expect(stored.help.min).toBe(0.15);
+    expect(stored.help.max).toBe(0.6);
+  } finally {
+    unmount();
+    el.remove();
+  }
+});

@@ -191,6 +191,42 @@
 
   /* light or dark. Form controls inside the dialog follow this, not the window. */
   --pav-dialog-scheme: light;
+
+  /* Help index fill. Independent of the mail list. */
+  --pav-help-index-bg: linear-gradient(160deg, #140707 0%, #000 74%);
+
+  /* Help index text. */
+  --pav-help-index-text: #e8e8e8;
+
+  /* Help index empty state. */
+  --pav-help-index-muted: #9a9a9a;
+
+  /* Help index row that is open. */
+  --pav-help-index-current: linear-gradient(160deg, #2a1010 0%, #0a0a0a 100%);
+
+  /* Rule between the Help index and the page. */
+  --pav-help-index-border: #333;
+
+  /* Help page fill. Independent of the mail detail pane. */
+  --pav-help-content-bg: linear-gradient(160deg, #0e0505 0%, #000 82%);
+
+  /* Help page text. */
+  --pav-help-content-text: #e8e8e8;
+
+  /* Help page titles. */
+  --pav-help-content-heading: #e8e8e8;
+
+  /* Help page empty state. */
+  --pav-help-content-muted: #9a9a9a;
+
+  /* Help code sample fill. */
+  --pav-help-code-bg: linear-gradient(160deg, #140707 0%, #000 74%);
+
+  /* Help code sample text. */
+  --pav-help-code-text: #e8e8e8;
+
+  /* Help code sample outline. */
+  --pav-help-code-border: #333;
 }
 
 /*
