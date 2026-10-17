@@ -21,13 +21,13 @@ While this project is currently under active development, feel free to give it a
 [![Count Lines of Code](https://github.com/500Foods/Pavillion/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/main.yml)
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-17 01:32:01 UTC
+Last updated at 2026-10-17 01:34:17 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
 C                               17           1120            222           9954
 Markdown                        27           2014              2           4073
-JSON                             5              0              0           2092
+JSON                             5              0              0           1889
 C/C++ Header                    12            326            378           1791
 JavaScript                      17            130             22           1644
 CSS                              4            158              0            878
@@ -39,7 +39,7 @@ make                             1             11              3             50
 CMake                            1              3              1             28
 TOML                             1              4              0             20
 -------------------------------------------------------------------------------
-SUM:                            94           3812            649          21294
+SUM:                            94           3812            649          21091
 -------------------------------------------------------------------------------
 23 Files were skipped (duplicate, binary, or without source code):
   png: 17
