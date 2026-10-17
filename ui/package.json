@@ -13,7 +13,7 @@
     "@tauri-apps/cli": "^2",
     "jsdom": "^29.1.1",
     "vite": "^7",
-    "vitest": "^3"
+    "vitest": "^5"
   },
   "dependencies": {
     "@codemirror/search": "^6.7.2",
