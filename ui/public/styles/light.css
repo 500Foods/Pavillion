@@ -20,6 +20,10 @@
   --pav-status-error: #9b2c2c;
   --pav-status-warn: #8a5a12;
   --pav-status-ok: #1f7a4d;
+  --pav-status-running: #1a5f99;
+  --pav-status-done: #1f7a4d;
+  --pav-status-failed: #9b2c2c;
+  --pav-status-cancelled: #5c5856;
   --pav-log-error: #9b2c2c;
   --pav-log-print: #1a1a1a;
   --pav-log-print-paper: #ffffff;

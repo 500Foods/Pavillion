@@ -5,6 +5,7 @@ test("log zoom snaps and the activity view defaults to log", () => {
   const blank = clampUi({});
   expect(blank.zoom.log).toBe(1);
   expect(blank.activity.view).toBe("log");
+  expect(blank.activity.history).toBe(false);
 
   const stored = clampUi({
     zoom: { log: 1.53, extra: 2 },
@@ -27,6 +28,8 @@ test("log zoom snaps and the activity view defaults to log", () => {
   expect(clampUi({ fontSource: "override", iconSource: "theme" }).fontSource).toBe("override");
   expect(clampUi({}).fontSource).toBeUndefined();
   expect(clampUi({ activity: { view: "nope" } }).activity.view).toBe("log");
+  expect(clampUi({ activity: { history: true } }).activity.history).toBe(true);
+  expect(clampUi({ activity: { history: "yes" } }).activity.history).toBe(false);
   expect(blank.log).toEqual({
     levels: ["ERROR", "WARN", "INFO", "DEBUG"],
     subsystems: null,

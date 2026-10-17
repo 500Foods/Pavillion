@@ -7,7 +7,7 @@ export const DEFAULT_UI = {
   contacts: { split: 0.5, min: 0.25, max: 0.75 },
   files: { split: 0.5, min: 0.25, max: 0.75 },
   zoom: { shell: 1, navButtons: 1, navBody: 1, mailList: 1, mailDetail: 1, log: 1 },
-  activity: { view: "log" },
+  activity: { view: "log", history: false },
   log: {
     levels: ["ERROR", "WARN", "INFO", "DEBUG"],
     subsystems: null,
@@ -129,8 +129,11 @@ function fontsOf(src) {
 
 function activityOf(src) {
   const raw = isObject(src) ? src : {};
-  const out = { view: raw.view === "activity" ? "activity" : "log" };
-  copyUnknown(out, raw, ["view"]);
+  const out = {
+    view: raw.view === "activity" ? "activity" : "log",
+    history: raw.history === true,
+  };
+  copyUnknown(out, raw, ["view", "history"]);
   return out;
 }
 

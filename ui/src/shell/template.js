@@ -60,6 +60,7 @@ export const shellMarkup = `<div class="shell">
           </button>
           <button type="button" id="update" aria-label="Update">
             <i class="icon fa-sharp-duotone fa-solid fa-arrows-rotate" data-icon-definition="fa-sharp-duotone fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+            <span class="update-badge" hidden></span>
           </button>
           <button type="button" data-section="help" aria-pressed="false" aria-label="Help">
             <i class="icon fa-sharp-duotone fa-solid fa-circle-question" data-icon-definition="fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
@@ -255,6 +256,7 @@ export const shellMarkup = `<div class="shell">
         <div class="panel settings" id="panel-help" role="tabpanel" hidden>
           <p class="empty">Help is not written yet.</p>
           <button type="button" id="isolation-test" hidden>Show isolation test</button>
+          <button type="button" id="demo-activity" hidden>Run demo activity</button>
         </div>
       </div>
     </div>`;

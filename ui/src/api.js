@@ -49,6 +49,27 @@ export function createApi(transport) {
         },
       },
     },
+    activity: {
+      list(query) {
+        return call("activity.list", query ?? {});
+      },
+      cancel(id) {
+        return call("activity.cancel", { id });
+      },
+      dismiss(id) {
+        return call("activity.dismiss", { id });
+      },
+    },
+    sync: {
+      now(body) {
+        return call("sync.now", body ?? {});
+      },
+    },
+    debug: {
+      activityDemo(body) {
+        return call("debug.activity_demo", body ?? {});
+      },
+    },
     log: {
       client({ subsystem, level, message }) {
         return call("log.client", { subsystem, level: levelName(level), message });

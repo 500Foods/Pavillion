@@ -137,6 +137,30 @@ export function mockTransport() {
       themeFolder = input.folder;
       return { folder: input.folder };
     }
+    if (cmd === "activity.list") {
+      if (input.includeHistory !== undefined && typeof input.includeHistory !== "boolean") {
+        throw fail("bad_args", "includeHistory must be a boolean");
+      }
+      return { activities: [] };
+    }
+    if (cmd === "activity.cancel" || cmd === "activity.dismiss") {
+      if (typeof input.id !== "string" || input.id === "") {
+        throw fail("bad_args", "id is required");
+      }
+      throw fail("not_found", "unknown activity");
+    }
+    if (cmd === "sync.now") {
+      if (input.accountId !== undefined && (typeof input.accountId !== "string" || input.accountId === "")) {
+        throw fail("bad_args", "accountId must be a non-empty string");
+      }
+      return {};
+    }
+    if (cmd === "debug.activity_demo") {
+      if (!Number.isInteger(input.steps) || !Number.isInteger(input.ms)) {
+        throw fail("bad_args", "steps and ms are required");
+      }
+      return { id: "act-1" };
+    }
     if (cmd === "log.client") {
       if (typeof input.subsystem !== "string" || typeof input.level !== "string" || typeof input.message !== "string") {
         throw fail("bad_args", "log.client requires subsystem, level, and message");

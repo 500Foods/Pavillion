@@ -40,6 +40,7 @@ static int cmd_prefs_set(json_t *args, json_t **data, PavError *err);
 static int cmd_prefs_ui_get(json_t *args, json_t **data, PavError *err);
 static int cmd_prefs_ui_set(json_t *args, json_t **data, PavError *err);
 static int cmd_status(json_t *args, json_t **data, PavError *err);
+static int cmd_sync_now(json_t *args, json_t **data, PavError *err);
 
 /* strcmp order. bsearch requires it. */
 static const PavCommand k_commands[] = {
@@ -56,6 +57,7 @@ static const PavCommand k_commands[] = {
     {"prefs.set", cmd_prefs_set, 0},
     {"prefs.ui.get", cmd_prefs_ui_get, 0},
     {"prefs.ui.set", cmd_prefs_ui_set, 0},
+    {"sync.now", cmd_sync_now, 0},
     {"system.status", cmd_status, 0},
     {"themes.ensure", pav_themes_ensure, 0},
     {"themes.folder.set", pav_themes_folder_set, 0},
@@ -188,6 +190,32 @@ static int reject_unknown_args(json_t *args, PavError *err) {
         (void)value;
         snprintf(buf, sizeof(buf), "unknown argument %s", key);
         pav_error_set(err, "bad_args", buf, 0);
+        return -1;
+    }
+    return 0;
+}
+
+static int cmd_sync_now(json_t *args, json_t **data, PavError *err) {
+    const char *key;
+    json_t *value;
+
+    json_object_foreach(args, key, value) {
+        if (strcmp(key, "accountId") == 0) {
+            if (!json_is_string(value) || json_string_value(value)[0] == '\0') {
+                pav_error_set(err, "bad_args", "accountId must be a non-empty string", 0);
+                return -1;
+            }
+        } else {
+            char buf[128];
+
+            snprintf(buf, sizeof(buf), "unknown argument %s", key);
+            pav_error_set(err, "bad_args", buf, 0);
+            return -1;
+        }
+    }
+    *data = json_object();
+    if (*data == NULL) {
+        pav_error_set(err, "internal", "out of memory", 0);
         return -1;
     }
     return 0;

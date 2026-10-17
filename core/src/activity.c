@@ -450,6 +450,10 @@ static json_t *activity_json(const Act *a) {
         json_decref(obj);
         return NULL;
     }
+    if (json_object_set_new(obj, "dismissed", a->dismissed ? json_true() : json_false()) != 0) {
+        json_decref(obj);
+        return NULL;
+    }
     return obj;
 }
 

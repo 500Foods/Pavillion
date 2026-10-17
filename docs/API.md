@@ -112,10 +112,11 @@ Result: `{activities:[activity]}`. Each activity is:
   "title": "Sync andrew@500foods.com", "detail": "Inbox: headers 300 of 1,200",
   "state": "running", "startedMs": 1760630581452, "endedMs": null,
   "progress": { "done": 300, "total": 1200, "unit": "messages" },
-  "etaMs": 4200, "cancellable": true, "error": null, "parentId": null }
+  "etaMs": 4200, "cancellable": true, "error": null, "parentId": null,
+  "dismissed": false }
 ```
 
-`state` is `queued`, `running`, `done`, `failed`, or `cancelled`. `kind` is `sync.mail`, `sync.contacts`, `sync.calendar`, `sync.files`, `body.fetch`, `attachment.download`, `files.upload`, `files.download`, `send`, `index.rebuild`, `rules.run`, `import`, `export`, or `retention`. A later phase adds a kind here in the same sitting that first uses it. `progress` is null until the first progress report. `progress.total` and `etaMs` are null when the total is unknown. `etaMs` stays null until two progress samples exist. `parentId` is `act-<n>` or null. `endedMs` and `error` are null while the activity is unfinished. Finished rows are reloaded from SQLite on the next start. Running rows are not.
+`state` is `queued`, `running`, `done`, `failed`, or `cancelled`. `dismissed` is true only after `activity.dismiss`. `kind` is `sync.mail`, `sync.contacts`, `sync.calendar`, `sync.files`, `body.fetch`, `attachment.download`, `files.upload`, `files.download`, `send`, `index.rebuild`, `rules.run`, `import`, `export`, or `retention`. A later phase adds a kind here in the same sitting that first uses it. `progress` is null until the first progress report. `progress.total` and `etaMs` are null when the total is unknown. `etaMs` stays null until two progress samples exist. `parentId` is `act-<n>` or null. `endedMs` and `error` are null while the activity is unfinished. Finished rows are reloaded from SQLite on the next start. Running rows are not.
 
 Errors: `bad_args`.
 
@@ -620,9 +621,13 @@ Stores one identity's signature.
 
 ### sync.now
 
-State: planned (I-2)
+State: real (I-2)
 
-`{accountId?}`. I-2 returns success and does nothing. M-3 runs the sync.
+`{accountId?}`. `accountId`, when present, is a non-empty string. I-2 accepts it and does nothing. M-3 runs the sync.
+
+Result: `{}`.
+
+Errors: `bad_args`, `internal`.
 
 ### system.status
 

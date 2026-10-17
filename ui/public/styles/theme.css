@@ -664,6 +664,21 @@
   background: var(--pav-border);
 }
 
+.pav-root .log-menu-action {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--pav-text);
+  text-align: left;
+  padding: 0.28rem 0.75rem;
+  white-space: nowrap;
+}
+
+.pav-root .log-menu-action:disabled {
+  color: var(--pav-text-muted);
+}
+
 .pav-root .log-field {
   display: flex;
   flex-direction: column;
@@ -834,6 +849,136 @@
     animation: none;
     filter: drop-shadow(0 0 0.2rem var(--pav-icon-glow));
   }
+}
+
+.pav-root #update {
+  position: relative;
+}
+
+.pav-root .update-badge {
+  position: absolute;
+  top: 0.1rem;
+  right: 0.1rem;
+  min-width: 1rem;
+  padding: 0 0.2rem;
+  border-radius: var(--pav-dialog-button-radius);
+  background: var(--pav-status-running);
+  color: var(--pav-surface-canvas);
+  font-size: 0.7rem;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.pav-root .activity-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pav-root .activity-bar {
+  justify-content: flex-start;
+  gap: 0.75rem;
+  padding: 0 0.75rem;
+  border-bottom: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
+}
+
+.pav-root .activity-history {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.pav-root .activity-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.pav-root .activity-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.pav-root .activity-table th,
+.pav-root .activity-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--pav-border);
+}
+
+.pav-root .activity-kind,
+.pav-root .activity-account,
+.pav-root .activity-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.pav-root .activity-kind .icon,
+.pav-root .activity-account .icon,
+.pav-root .activity-kind svg,
+.pav-root .activity-account svg {
+  width: 1.15em;
+  height: 1.15em;
+  flex: none;
+}
+
+.pav-root .activity-account-num {
+  min-width: 2.2rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pav-root .activity-account-name {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pav-root .activity-title {
+  padding-left: calc(var(--activity-depth, 0) * 1.1rem);
+}
+
+.pav-root .activity-detail,
+.pav-root .activity-error {
+  color: var(--pav-text-muted);
+}
+
+.pav-root .activity-state-running { color: var(--pav-status-running); }
+.pav-root .activity-state-done { color: var(--pav-status-done); }
+.pav-root .activity-state-failed { color: var(--pav-status-failed); }
+.pav-root .activity-state-cancelled { color: var(--pav-status-cancelled); }
+.pav-root .activity-state-queued { color: var(--pav-text-muted); }
+
+.pav-root .activity-table progress {
+  width: 6rem;
+  vertical-align: middle;
+  accent-color: var(--pav-status-running);
+}
+
+.pav-root .activity-progress-text {
+  margin-left: 0.4rem;
+}
+
+.pav-root .activity-action,
+.pav-root .activity-fold {
+  border: 1px solid var(--pav-border);
+  background: var(--pav-surface-button);
+  border-radius: var(--pav-dialog-button-radius);
+  padding: 0.1rem 0.45rem;
+}
+
+.pav-root .activity-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 @media print {

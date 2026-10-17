@@ -287,6 +287,17 @@ export function createLogView(parent, api, options = {}) {
   editorHost.className = "log-editor pav-log";
   const sheet = document.createElement("pre");
   sheet.className = "log-print";
+  const logChrome = [severity.root, subsystem.root, topSpacer, search, gear.root];
+
+  function setChrome(shown) {
+    for (const el of logChrome) {
+      el.hidden = shown !== true;
+    }
+    if (shown !== true) {
+      closeMenus();
+    }
+  }
+
   if (topbar && bottombar) {
     topbar.append(severity.root, subsystem.root, topSpacer, search, gear.root);
     bottombar.append(refresh, status, bottomSpacer, copy, save, print);
@@ -674,6 +685,7 @@ export function createLogView(parent, api, options = {}) {
       view.dispatch({ effects: zoneEffect.of(null) });
       paintChrome(visibleLines());
     },
+    setChrome,
     destroy() {
       close();
       keyTarget.removeEventListener("keydown", onFind);

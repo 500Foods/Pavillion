@@ -3,6 +3,7 @@ import { installIsolationTest } from "./common/isolation.js";
 import { createMenu } from "./common/menu.js";
 import { createToaster } from "./common/toast.js";
 import { createTooltip } from "./common/tooltip.js";
+import { createActivityView } from "./activity/view.js";
 import { createLogView } from "./log/view.js";
 import { DEFAULT_UI, clampUi, snapZoom } from "./prefs.js";
 import {
@@ -745,6 +746,10 @@ const sections = {
 const tabs = new Map();
 let navSection = "mail";
 let logView = null;
+let activityView = null;
+let syncing = 0;
+let motionQuery = null;
+let onMotion = null;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -872,6 +877,16 @@ function paintActivity() {
   const bottom = mountRoot.querySelector(".log-bottombar");
   if (bottom) {
     bottom.hidden = name !== "log";
+  }
+  const top = mountRoot.querySelector(".log-topbar");
+  if (top) {
+    top.setAttribute("aria-label", name === "activity" ? "Activity tools" : "Log tools");
+  }
+  if (logView) {
+    logView.setChrome(name === "log");
+  }
+  if (activityView) {
+    activityView.setShown(name === "activity");
   }
 }
 
@@ -1334,21 +1349,62 @@ function bindSettings() {
   }
 }
 
+function reducedMotion() {
+  return Boolean(motionQuery && motionQuery.matches);
+}
+
+function paintUpdate() {
+  if (!mountRoot) {
+    return;
+  }
+  const button = mountRoot.querySelector("#update");
+  if (!button) {
+    return;
+  }
+  const n = syncing > 0 ? syncing : 0;
+  const label = n === 0 ? "Update" : `${n} syncing`;
+  button.setAttribute("aria-label", label);
+  if (widgets) {
+    widgets.tooltips.bind(button, label);
+  }
+  const badge = button.querySelector(".update-badge");
+  if (n > 0) {
+    button.classList.add("is-busy");
+    button.setAttribute("aria-busy", "true");
+  } else {
+    button.classList.remove("is-busy");
+    button.removeAttribute("aria-busy");
+  }
+  if (badge) {
+    badge.textContent = n > 0 ? String(n) : "";
+    badge.hidden = !(reducedMotion() && n > 0);
+  }
+}
+
 function bindUpdate() {
   const button = mountRoot.querySelector("#update");
   button.addEventListener("click", () => {
-    button.classList.add("is-busy");
-    button.setAttribute("aria-busy", "true");
-    const timer = window.setTimeout(() => {
-      if (session) {
-        session.updateTimer = 0;
-      }
-      button.classList.remove("is-busy");
-      button.removeAttribute("aria-busy");
-    }, 1600);
-    if (session) {
-      session.updateTimer = timer;
+    api.sync.now({}).catch((err) => showBanner(messageOf(err)));
+  });
+  const view = mountRoot.ownerDocument.defaultView;
+  if (view && typeof view.matchMedia === "function") {
+    motionQuery = view.matchMedia("(prefers-reduced-motion: reduce)");
+    if (motionQuery && typeof motionQuery.addEventListener === "function") {
+      onMotion = () => paintUpdate();
+      motionQuery.addEventListener("change", onMotion);
     }
+  }
+  paintUpdate();
+}
+
+function bindDemo(enabled) {
+  const button = mountRoot.querySelector("#demo-activity");
+  if (!button) {
+    return;
+  }
+  button.hidden = enabled !== true;
+  button.addEventListener("click", () => {
+    api.debug.activityDemo({ steps: 8, ms: 400 }).catch((err) => showBanner(messageOf(err)));
   });
 }
 
@@ -1374,9 +1430,6 @@ export function stopShell() {
   }
   if (current) {
     window.removeEventListener("pagehide", onPageHide);
-    if (current.updateTimer) {
-      window.clearTimeout(current.updateTimer);
-    }
     if (current.isolationStop) {
       current.isolationStop();
     }
@@ -1389,6 +1442,16 @@ export function stopShell() {
     logView.destroy();
     logView = null;
   }
+  if (activityView) {
+    activityView.destroy();
+    activityView = null;
+  }
+  if (motionQuery && onMotion && typeof motionQuery.removeEventListener === "function") {
+    motionQuery.removeEventListener("change", onMotion);
+  }
+  motionQuery = null;
+  onMotion = null;
+  syncing = 0;
   tabs.clear();
   navSection = "mail";
   canSave = false;
@@ -1402,7 +1465,7 @@ export function stopShell() {
 
 export async function startShell(surface, nextApi, nextHost, result) {
   stopShell();
-  const mine = { updateTimer: 0, isolationStop: null };
+  const mine = { isolationStop: null };
   session = mine;
   mountRoot = surface;
   api = nextApi;
@@ -1460,6 +1523,27 @@ export async function startShell(surface, nextApi, nextHost, result) {
   if (!alive(mine)) {
     return;
   }
+  activityView = createActivityView(mountRoot.querySelector("[data-activity-pane='activity']"), api, {
+    timeZone,
+    history: ui.activity.history === true,
+    onHistory(value) {
+      ui.activity.history = value === true;
+      persistLayout();
+    },
+    onSync(count) {
+      syncing = count;
+      paintUpdate();
+    },
+    onError(text) {
+      const banner = mountRoot.querySelector("#banner");
+      if (banner && !banner.hidden) {
+        return;
+      }
+      showBanner(text);
+    },
+    topbar: mountRoot.querySelector(".log-topbar"),
+    root: mountRoot,
+  });
   logView = createLogView(mountRoot.querySelector("[data-activity-pane='log']"), api, {
     timeZone,
     zoom: ui.zoom.log,
@@ -1498,6 +1582,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
   bindSplit("files");
   bindSettings();
   bindUpdate();
+  bindDemo(result.debug === true);
   mine.isolationStop = installIsolationTest({
     api,
     root: mountRoot,
@@ -1521,4 +1606,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
     });
   }
   openSection("mail");
+  if (activityView) {
+    await activityView.ready();
+  }
 }

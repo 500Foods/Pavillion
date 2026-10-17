@@ -1,6 +1,6 @@
 # J — TABS
 
-**Status:** J-1 complete (2026-10-17). Andrew accepted the window. J-2 is not started. The next phase is I-2.
+**Status:** J-1 complete (2026-10-17). Andrew accepted that window. I-2 is complete (2026-10-17) and Andrew accepted that window. J-2 is next and is not started.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The tabbed workspace and the shared widgets every later screen uses: context menu, tooltip, toast with undo, and dialog. Andrew confirmed the feature set for the first round on 2026-10-16: pinned tabs, keyboard shortcuts, files dropped on the strip, a right-click menu (pin, duplicate, mute, close variants), muting, session restore, vertical tabs, floating tooltips, tab widths, and sandboxed browsing from a `+` tab.
@@ -246,3 +246,4 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - 2026-10-17 Tooltip and dialog chrome, still inside J-1. Tooltips stay in `tooltip.js`. No Floating UI library. The bubble is rounded, the arrow sits on the anchor, the border color is separate from the fill, and the shadow is a `drop-shadow` so it follows the arrow. Dialogs use the same kind of sheet on `--pav-dialog-*`, separate from `--pav-tooltip-*`. Dark defaults are a light bubble and dialog. Light defaults are dark. `widgets.css` only references variables. `make test` is 68 Unity tests and 59 Vitest tests. The window check should look at the bubble and the link dialog. A Pavillion Dark.theme or Light.theme already saved lists as Custom until it is deleted, because the starters gained these variables. J-1 stays in progress. Do not start J-2.
 - 2026-10-17 Dialog sheet radius stays `--pav-dialog-radius` (0.75rem). Buttons and the text field use `--pav-dialog-button-radius` (0.2rem), separate from the sheet. Same value in dark, light, and both starters.
 - 2026-10-17 J-1 complete. Andrew accepted the window. `make test` is 68 Unity tests and 59 Vitest tests. The next phase is I-2. Do not start it in this sitting. J-2 stays not started.
+- 2026-10-17 I-2 is complete and Andrew accepted that window. J-2's entry gate is met. J-2 has not started. Ask before editing: Done means closes a sub-tab with middle-click, and J-3's work items also own that gesture. J-Q2 waits until a message can open.

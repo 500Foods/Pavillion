@@ -84,6 +84,18 @@
   /* Success text. */
   --pav-status-ok: #7dcea0;
 
+  /* Activity row, state running. */
+  --pav-status-running: #6cb6ff;
+
+  /* Activity row, state done. */
+  --pav-status-done: #7dcea0;
+
+  /* Activity row, state failed. */
+  --pav-status-failed: #e07070;
+
+  /* Activity row, state cancelled. */
+  --pav-status-cancelled: #8a8a8a;
+
   /* Log row, severity ERROR. */
   --pav-log-error: #e07070;
 

@@ -3376,6 +3376,7 @@ void test_activity_begin_progress_end(void) {
     TEST_ASSERT_TRUE(json_is_null(json_object_get(item, "progress")));
     TEST_ASSERT_TRUE(json_is_null(json_object_get(item, "parentId")));
     TEST_ASSERT_TRUE(json_is_true(json_object_get(item, "cancellable")));
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(item, "dismissed")));
     item = find_act(rows, child_id);
     TEST_ASSERT_NOT_NULL(item);
     TEST_ASSERT_EQUAL_STRING(parent_id, json_string_value(json_object_get(item, "parentId")));
@@ -3686,6 +3687,7 @@ void test_activity_history_capped(void) {
     snprintf(args, sizeof(args), "{\"id\":\"%s\"}", failed_text);
     root = call_reply("activity.dismiss", args);
     TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(json_object_get(root, "data"), "dismissed")));
     json_decref(root);
     rows = activity_rows(0);
     failed_seen = find_act(rows, failed_text) != NULL;
@@ -3694,6 +3696,30 @@ void test_activity_history_capped(void) {
     rows = activity_rows(1);
     TEST_ASSERT_NULL(find_act(rows, failed_text));
     TEST_ASSERT_EQUAL_INT(500, (int)json_array_size(rows));
+    json_decref(rows);
+}
+
+void test_sync_now_does_nothing(void) {
+    json_t *root;
+    json_t *data;
+    json_t *rows;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    root = call_reply("sync.now", "{}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    data = json_object_get(root, "data");
+    TEST_ASSERT_TRUE(json_is_object(data));
+    TEST_ASSERT_EQUAL_INT(0, (int)json_object_size(data));
+    json_decref(root);
+    root = call_reply("sync.now", "{\"accountId\":\"a-1\"}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    json_decref(root);
+    root = call_reply("sync.now", "{\"accountId\":1}");
+    assert_call_error(root, "bad_args", "accountId");
+    json_decref(root);
+    rows = activity_rows(1);
+    TEST_ASSERT_EQUAL_INT(0, (int)json_array_size(rows));
     json_decref(rows);
 }
 
@@ -3768,5 +3794,6 @@ int main(void) {
     RUN_TEST(test_activity_eta_after_two_samples);
     RUN_TEST(test_activity_events_throttled);
     RUN_TEST(test_activity_history_capped);
+    RUN_TEST(test_sync_now_does_nothing);
     return UNITY_END();
 }
