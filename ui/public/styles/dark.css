@@ -1,21 +1,21 @@
-:root {
+.pav-root {
   color-scheme: dark;
-  --bg: #000;
-  --fg: #e8e8e8;
-  --muted: #9a9a9a;
-  --accent: #2a7;
-  --border: #333;
-  --font: "Vanadium Sans", system-ui, sans-serif;
-  --font-mono: ui-monospace, monospace;
-  --icon-glow: #cc9999;
-  --surface-nav: linear-gradient(160deg, #160808 0%, #000 70%);
-  --surface-workspace: linear-gradient(160deg, #100606 0%, #000 78%);
-  --surface-list: linear-gradient(160deg, #140707 0%, #000 74%);
-  --surface-detail: linear-gradient(160deg, #0e0505 0%, #000 82%);
-  --surface-button: linear-gradient(160deg, #1c0a0a 0%, #050505 100%);
-  --surface-button-active: linear-gradient(160deg, #2a1010 0%, #0a0a0a 100%);
-  --swatch-1: #800000;
-  --swatch-2: #cc9999;
+  --pav-bg: #000;
+  --pav-fg: #e8e8e8;
+  --pav-muted: #9a9a9a;
+  --pav-accent: #2a7;
+  --pav-border: #333;
+  --pav-font: "Vanadium Sans", system-ui, sans-serif;
+  --pav-font-mono: ui-monospace, monospace;
+  --pav-icon-glow: #cc9999;
+  --pav-surface-nav: linear-gradient(160deg, #160808 0%, #000 70%);
+  --pav-surface-workspace: linear-gradient(160deg, #100606 0%, #000 78%);
+  --pav-surface-list: linear-gradient(160deg, #140707 0%, #000 74%);
+  --pav-surface-detail: linear-gradient(160deg, #0e0505 0%, #000 82%);
+  --pav-surface-button: linear-gradient(160deg, #1c0a0a 0%, #050505 100%);
+  --pav-surface-button-active: linear-gradient(160deg, #2a1010 0%, #0a0a0a 100%);
+  --pav-swatch-1: #800000;
+  --pav-swatch-2: #cc9999;
   --pav-log-error: #e07070;
   --pav-log-print: #1a1a1a;
   --pav-log-print-paper: #ffffff;

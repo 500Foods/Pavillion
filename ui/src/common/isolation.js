@@ -13,8 +13,8 @@ export function isolationLinkUrl(paneId, n) {
   return ISOLATION_LINKS[n];
 }
 
-function linkDialog() {
-  let dialog = document.querySelector("#link-confirm");
+function linkDialog(root) {
+  let dialog = root.querySelector("#link-confirm");
   if (dialog) {
     return dialog;
   }
@@ -34,31 +34,31 @@ function linkDialog() {
   form.append(close);
   dialog.append(label, url, form);
   dialog.setAttribute("aria-labelledby", "link-confirm-label");
-  document.body.append(dialog);
+  root.append(dialog);
   return dialog;
 }
 
-function showLinkDialog(text) {
-  const dialog = linkDialog();
+function showLinkDialog(root, text) {
+  const dialog = linkDialog(root);
   dialog.querySelector("#link-confirm-url").textContent = text;
   if (typeof dialog.showModal === "function" && !dialog.open) {
     dialog.showModal();
   }
 }
 
-export function installIsolationTest({ api, enabled, openMail }) {
-  if (!enabled) {
-    return;
+export function installIsolationTest({ api, enabled, openMail, root }) {
+  if (!enabled || !root) {
+    return () => {};
   }
-  const button = document.querySelector("#isolation-test");
+  const button = root.querySelector("#isolation-test");
   if (!button) {
-    return;
+    return () => {};
   }
   button.hidden = false;
   let shown = false;
   button.addEventListener("click", () => {
     openMail();
-    const detail = document.querySelector("#panel-mail .pane-detail");
+    const detail = root.querySelector("#panel-mail .pane-detail");
     if (!detail || shown) {
       return;
     }
@@ -74,8 +74,8 @@ export function installIsolationTest({ api, enabled, openMail }) {
     detail.replaceChildren(host);
     createHtmlPane(frameHost).show(hostileHtml, { allowRemote: false });
   });
-  api.on("link.clicked", (payload) => {
+  return api.on("link.clicked", (payload) => {
     const url = isolationLinkUrl(payload && payload.paneId, payload && payload.n);
-    showLinkDialog(url == null ? MISSING : url);
+    showLinkDialog(root, url == null ? MISSING : url);
   });
 }

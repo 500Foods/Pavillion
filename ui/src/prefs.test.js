@@ -13,6 +13,12 @@ test("log zoom snaps and the activity view defaults to log", () => {
   });
   expect(stored.zoom.log).toBe(1.55);
   expect(stored.zoom.extra).toBe(2);
+  expect(clampUi({ zoom: { shell: 0.2, log: 0.2 } }).zoom.shell).toBe(0.5);
+  expect(clampUi({ zoom: { shell: 0.2, log: 0.2 } }).zoom.log).toBe(0.2);
+  expect(clampUi({ zoom: { shell: 3, log: 3 } }).zoom.shell).toBe(2);
+  expect(clampUi({ zoom: { shell: 3, log: 3 } }).zoom.log).toBe(3);
+  expect(clampUi({ zoom: { shell: 1.53 } }).zoom.shell).toBe(1.55);
+  expect(clampUi({ zoom: { shell: "nope" } }).zoom.shell).toBe(1);
   expect(stored.activity.view).toBe("activity");
   expect(stored.activity.note).toBe("kept");
   expect(stored.later).toBe(true);

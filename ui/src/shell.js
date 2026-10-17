@@ -1,44 +1,107 @@
 import { installIsolationTest } from "./common/isolation.js";
 import { createLogView } from "./log/view.js";
-import { reloadIcons } from "./main.js";
-import { clampUi, snapZoom } from "./prefs.js";
+import { DEFAULT_UI, ZOOM_KEYS, clampUi, snapZoom } from "./prefs.js";
+import { createZoomHistory } from "./zoom-history.js";
 
 let api = null;
 let host = null;
+let mountRoot = null;
+let session = null;
 
 function log(subsystem, level, message) {
   return api.log.client({ subsystem, level, message });
 }
 
-export function useApi(next) {
-  api = next;
-}
+let ui = clampUi({});
+let zoomHistory = createZoomHistory(ZOOM_KEYS);
+let zoomBefore = null;
 
-export function useHost(next) {
-  host = next;
-}
-
-const ui = clampUi({});
-
-/* shell is the master scale on the root; each pane multiplies on top of it. */
+/* shell is the master scale on the root; each pane multiplies on top of it.
+   The zoom action bar is excluded so a large Button bars value cannot push it off. */
 const zoomPanes = {
-  navButtons: ".button-bar",
+  navButtons: ".button-bar:not(.zoom-actions)",
   navBody: ".nav-body",
   mailList: "#panel-mail .pane-list",
   mailDetail: "#panel-mail .pane-detail",
 };
 
-function zoomClamp(value) {
-  return snapZoom(value);
+function zoomClamp(key, value) {
+  return snapZoom(value, key);
 }
 
 function zoomLabel(scale) {
   return `${Math.round(scale * 100)}%`;
 }
 
+function paintZoomSliders() {
+  for (const label of mountRoot.querySelectorAll("[data-zoom]")) {
+    const key = label.dataset.zoom;
+    if (!(key in ui.zoom)) {
+      continue;
+    }
+    const input = label.querySelector("input");
+    const reading = label.querySelector(".zoom-value");
+    if (input) {
+      input.value = String(ui.zoom[key]);
+    }
+    if (reading) {
+      reading.textContent = zoomLabel(ui.zoom[key]);
+    }
+  }
+}
+
+function zoomAtDefault() {
+  return ZOOM_KEYS.every((key) => ui.zoom[key] === DEFAULT_UI.zoom[key]);
+}
+
+function paintZoomActions() {
+  const undo = mountRoot.querySelector("#zoom-undo");
+  const redo = mountRoot.querySelector("#zoom-redo");
+  const defaults = mountRoot.querySelector("#zoom-default");
+  if (undo) {
+    undo.disabled = !zoomHistory.canUndo;
+  }
+  if (redo) {
+    redo.disabled = !zoomHistory.canRedo;
+  }
+  if (defaults) {
+    defaults.disabled = zoomAtDefault();
+  }
+}
+
+function rememberZoom() {
+  if (zoomBefore) {
+    return;
+  }
+  zoomBefore = {};
+  for (const key of ZOOM_KEYS) {
+    zoomBefore[key] = ui.zoom[key];
+  }
+}
+
+function commitZoom() {
+  if (!zoomBefore) {
+    return;
+  }
+  const before = zoomBefore;
+  zoomBefore = null;
+  zoomHistory.push(before, ui.zoom);
+  paintZoomActions();
+}
+
+function applyZoomState(next) {
+  for (const key of ZOOM_KEYS) {
+    ui.zoom[key] = next[key];
+  }
+  paintZoomSliders();
+  applyZoom();
+  paintZoomActions();
+  persistLayout();
+}
+
 function applyFonts() {
-  document.documentElement.style.setProperty("--font", ui.fonts.body);
-  document.documentElement.style.setProperty("--font-mono", ui.fonts.mono);
+  mountRoot.style.setProperty("--pav-font", ui.fonts.body);
+  mountRoot.style.setProperty("--pav-font-mono", ui.fonts.mono);
 }
 
 function showFont(select, value) {
@@ -55,9 +118,11 @@ function showFont(select, value) {
 }
 
 function applyZoom() {
-  document.documentElement.style.fontSize = `${ui.zoom.shell * 100}%`;
+  if (host && typeof host.setRootFontSize === "function") {
+    host.setRootFontSize(ui.zoom.shell);
+  }
   for (const [key, selector] of Object.entries(zoomPanes)) {
-    for (const element of document.querySelectorAll(selector)) {
+    for (const element of mountRoot.querySelectorAll(selector)) {
       const scale = ui.zoom.shell * ui.zoom[key];
       element.style.zoom = String(scale);
       for (const svg of element.querySelectorAll("svg")) {
@@ -72,7 +137,7 @@ function applyZoom() {
 }
 
 function applyIconOverride(key) {
-  const navIcon = document.querySelector(`.nav [data-section="${key}"] .icon`);
+  const navIcon = mountRoot.querySelector(`.nav [data-section="${key}"] .icon`);
   if (!navIcon) {
     return;
   }
@@ -89,9 +154,9 @@ function applyIconOverride(key) {
 }
 
 function refreshIconPreviews() {
-  for (const input of document.querySelectorAll("#icon-list .icon-input")) {
+  for (const input of mountRoot.querySelectorAll("#icon-list .icon-input")) {
     const key = input.dataset.iconKey;
-    const preview = document.querySelector(`#icon-list .icon[data-icon-key="${key}"]`);
+    const preview = mountRoot.querySelector(`#icon-list .icon[data-icon-key="${key}"]`);
     if (preview) {
       preview.innerHTML = "";
       const value = input.value || input.defaultValue;
@@ -114,7 +179,7 @@ function messageOf(err) {
 }
 
 function showBanner(text) {
-  const banner = document.querySelector("#banner");
+  const banner = mountRoot.querySelector("#banner");
   banner.hidden = false;
   banner.textContent = text;
 }
@@ -147,13 +212,13 @@ function flushUiSave() {
   });
 }
 
-window.addEventListener("pagehide", () => {
+function onPageHide() {
   if (saveTimer) {
     window.clearTimeout(saveTimer);
     saveTimer = 0;
   }
   flushUiSave();
-});
+}
 
 function persistLayout() {
   scheduleUiSave();
@@ -171,26 +236,20 @@ async function loadPrefs() {
   ui.icons = stored.icons;
   ui.fontawesome_kit = stored.fontawesome_kit;
   ui.fonts = stored.fonts;
-  const kitInput = document.querySelector("#fa-kit-html");
+  const kitInput = mountRoot.querySelector("#fa-kit-html");
   if (kitInput) {
     kitInput.value = ui.fontawesome_kit;
   }
-  for (const label of document.querySelectorAll("[data-zoom]")) {
-    const key = label.dataset.zoom;
-    if (!(key in ui.zoom)) {
-      continue;
-    }
-    label.querySelector("input").value = String(ui.zoom[key]);
-    label.querySelector(".zoom-value").textContent = zoomLabel(ui.zoom[key]);
-  }
+  paintZoomSliders();
   applyZoom();
+  paintZoomActions();
   applyFonts();
-  showFont(document.querySelector("#body-font"), ui.fonts.body);
-  showFont(document.querySelector("#mono-font"), ui.fonts.mono);
+  showFont(mountRoot.querySelector("#body-font"), ui.fonts.body);
+  showFont(mountRoot.querySelector("#mono-font"), ui.fonts.mono);
   for (const key of Object.keys(ui.icons)) {
     applyIconOverride(key);
   }
-  for (const input of document.querySelectorAll("#icon-list .icon-input")) {
+  for (const input of mountRoot.querySelectorAll("#icon-list .icon-input")) {
     const key = input.dataset.iconKey;
     if (ui.icons[key]) {
       input.value = ui.icons[key];
@@ -245,8 +304,8 @@ function addDays(date, count) {
 }
 
 function fillCalendar(today) {
-  const mini = document.querySelector("#mini-cal");
-  const month = document.querySelector("#month");
+  const mini = mountRoot.querySelector("#mini-cal");
+  const month = mountRoot.querySelector("#month");
   const names = document.createElement("div");
   names.className = "week week-names";
   for (const name of ["M", "T", "W", "T", "F", "S", "S"]) {
@@ -296,13 +355,13 @@ function fillCalendar(today) {
 
 function paintActivity() {
   const name = ui.activity.view === "activity" ? "activity" : "log";
-  for (const button of document.querySelectorAll("[data-activity-view]")) {
+  for (const button of mountRoot.querySelectorAll("[data-activity-view]")) {
     button.setAttribute("aria-selected", button.dataset.activityView === name ? "true" : "false");
   }
-  for (const pane of document.querySelectorAll("[data-activity-pane]")) {
+  for (const pane of mountRoot.querySelectorAll("[data-activity-pane]")) {
     pane.hidden = pane.dataset.activityPane !== name;
   }
-  const bottom = document.querySelector(".log-bottombar");
+  const bottom = mountRoot.querySelector(".log-bottombar");
   if (bottom) {
     bottom.hidden = name !== "log";
   }
@@ -312,7 +371,7 @@ function syncLog() {
   if (!logView) {
     return;
   }
-  const panel = document.querySelector("#panel-activity");
+  const panel = mountRoot.querySelector("#panel-activity");
   const show = panel && !panel.hidden && ui.activity.view !== "activity";
   if (show) {
     logView.setZoom(ui.zoom.log);
@@ -334,10 +393,10 @@ function openSection(id) {
   if (section.nav) {
     navSection = id;
   }
-  for (const button of document.querySelectorAll("[data-section]")) {
+  for (const button of mountRoot.querySelectorAll("[data-section]")) {
     button.setAttribute("aria-pressed", button.dataset.section === id ? "true" : "false");
   }
-  for (const body of document.querySelectorAll("[data-nav]")) {
+  for (const body of mountRoot.querySelectorAll("[data-nav]")) {
     body.hidden = body.dataset.nav !== navSection;
   }
   if (!tabs.has(id)) {
@@ -347,20 +406,20 @@ function openSection(id) {
     tab.textContent = section.title;
     tab.addEventListener("click", () => openSection(id));
     tabs.set(id, tab);
-    document.querySelector("#tablist").append(tab);
+    mountRoot.querySelector("#tablist").append(tab);
   }
   for (const [key, tab] of tabs) {
     tab.setAttribute("aria-selected", key === id ? "true" : "false");
   }
-  for (const panel of document.querySelectorAll(".panel")) {
+  for (const panel of mountRoot.querySelectorAll(".panel")) {
     panel.hidden = panel.id !== `panel-${id}`;
   }
   syncLog();
 }
 
 function bindNavResize() {
-  const nav = document.querySelector("#nav");
-  const handle = document.querySelector("#nav-resize");
+  const nav = mountRoot.querySelector("#nav");
+  const handle = mountRoot.querySelector("#nav-resize");
   nav.style.width = `${ui.nav.width}px`;
   handle.addEventListener("pointerdown", (event) => {
     handle.setPointerCapture(event.pointerId);
@@ -381,7 +440,7 @@ function bindNavResize() {
 }
 
 function bindSplit(name) {
-  const handle = document.querySelector(`[data-split="${name}"]`);
+  const handle = mountRoot.querySelector(`[data-split="${name}"]`);
   const pane = handle.previousElementSibling;
   const bounds = ui[name];
   pane.style.flexBasis = `${bounds.split * 100}%`;
@@ -408,7 +467,7 @@ function bindSplit(name) {
 }
 
 function bindSettings() {
-  for (const label of document.querySelectorAll("[data-zoom]")) {
+  for (const label of mountRoot.querySelectorAll("[data-zoom]")) {
     const key = label.dataset.zoom;
     if (!(key in ui.zoom)) {
       continue;
@@ -416,8 +475,8 @@ function bindSettings() {
     const input = label.querySelector("input");
     const value = label.querySelector(".zoom-value");
     const show = () => {
-      ui.zoom[key] = zoomClamp(input.value);
-      for (const other of document.querySelectorAll(`[data-zoom="${key}"]`)) {
+      ui.zoom[key] = zoomClamp(key, input.value);
+      for (const other of mountRoot.querySelectorAll(`[data-zoom="${key}"]`)) {
         const field = other.querySelector("input");
         const reading = other.querySelector(".zoom-value");
         if (field && field !== input) {
@@ -430,14 +489,56 @@ function bindSettings() {
       value.textContent = zoomLabel(ui.zoom[key]);
       applyZoom();
     };
-    input.addEventListener("input", show);
-    input.addEventListener("change", () => {
+    input.addEventListener("input", () => {
+      rememberZoom();
       show();
+    });
+    input.addEventListener("change", () => {
+      rememberZoom();
+      show();
+      commitZoom();
       persistLayout();
     });
   }
+  const defaults = mountRoot.querySelector("#zoom-default");
+  const undo = mountRoot.querySelector("#zoom-undo");
+  const redo = mountRoot.querySelector("#zoom-redo");
+  if (defaults) {
+    defaults.addEventListener("click", () => {
+      zoomBefore = null;
+      const before = {};
+      const next = {};
+      for (const key of ZOOM_KEYS) {
+        before[key] = ui.zoom[key];
+        next[key] = DEFAULT_UI.zoom[key];
+      }
+      if (!zoomHistory.push(before, next)) {
+        return;
+      }
+      applyZoomState(next);
+    });
+  }
+  if (undo) {
+    undo.addEventListener("click", () => {
+      zoomBefore = null;
+      const next = zoomHistory.undo(ui.zoom);
+      if (next) {
+        applyZoomState(next);
+      }
+    });
+  }
+  if (redo) {
+    redo.addEventListener("click", () => {
+      zoomBefore = null;
+      const next = zoomHistory.redo(ui.zoom);
+      if (next) {
+        applyZoomState(next);
+      }
+    });
+  }
+  paintZoomActions();
   for (const [id, key] of [["#body-font", "body"], ["#mono-font", "mono"]]) {
-    const select = document.querySelector(id);
+    const select = mountRoot.querySelector(id);
     if (!select) {
       continue;
     }
@@ -448,18 +549,18 @@ function bindSettings() {
       persistLayout();
     });
   }
-  for (const button of document.querySelectorAll("[data-heading]")) {
+  for (const button of mountRoot.querySelectorAll("[data-heading]")) {
     button.addEventListener("click", () => {
-      for (const other of document.querySelectorAll("[data-heading]")) {
+      for (const other of mountRoot.querySelectorAll("[data-heading]")) {
         other.removeAttribute("aria-current");
       }
       button.setAttribute("aria-current", "true");
-      for (const pane of document.querySelectorAll("[data-settings]")) {
+      for (const pane of mountRoot.querySelectorAll("[data-settings]")) {
         pane.hidden = pane.dataset.settings !== button.dataset.heading;
       }
     });
   }
-  const iconForm = document.querySelector("#icon-form");
+  const iconForm = mountRoot.querySelector("#icon-form");
   if (iconForm) {
     const previewBtn = iconForm.querySelector("#icon-preview");
     const reloadBtn = iconForm.querySelector("#icon-reload");
@@ -476,7 +577,7 @@ function bindSettings() {
     function updatePreviews() {
       for (const input of iconForm.querySelectorAll(".icon-input")) {
         const key = input.dataset.iconKey;
-        const preview = document.querySelector(`#icon-list .icon[data-icon-key="${key}"]`);
+        const preview = mountRoot.querySelector(`#icon-list .icon[data-icon-key="${key}"]`);
         if (preview) {
           preview.innerHTML = "";
           const value = input.value || input.defaultValue;
@@ -493,7 +594,7 @@ function bindSettings() {
       input.addEventListener("input", () => {
         const key = input.dataset.iconKey;
         ui.icons[key] = input.value;
-        const preview = document.querySelector(`#icon-list .icon[data-icon-key="${key}"]`);
+        const preview = mountRoot.querySelector(`#icon-list .icon[data-icon-key="${key}"]`);
         if (preview) {
           preview.innerHTML = "";
           const value = input.value || input.defaultValue;
@@ -566,7 +667,9 @@ function bindSettings() {
       }
       dirty = true;
       flushUiSave().then(() => {
-        reloadIcons();
+        if (host && typeof host.reload === "function") {
+          host.reload();
+        }
       });
     });
 
@@ -575,36 +678,94 @@ function bindSettings() {
 }
 
 function bindUpdate() {
-  const button = document.querySelector("#update");
+  const button = mountRoot.querySelector("#update");
   button.addEventListener("click", () => {
     button.classList.add("is-busy");
     button.setAttribute("aria-busy", "true");
-    window.setTimeout(() => {
+    const timer = window.setTimeout(() => {
+      if (session) {
+        session.updateTimer = 0;
+      }
       button.classList.remove("is-busy");
       button.removeAttribute("aria-busy");
     }, 1600);
+    if (session) {
+      session.updateTimer = timer;
+    }
   });
 }
 
-export async function startShell(result) {
-  const banner = document.querySelector("#banner");
+function alive(mine) {
+  return session === mine;
+}
+
+export function stopShell() {
+  const current = session;
+  session = null;
+  if (current) {
+    window.removeEventListener("pagehide", onPageHide);
+    if (current.updateTimer) {
+      window.clearTimeout(current.updateTimer);
+    }
+    if (current.isolationStop) {
+      current.isolationStop();
+    }
+  }
+  if (saveTimer) {
+    window.clearTimeout(saveTimer);
+    saveTimer = 0;
+  }
+  if (logView) {
+    logView.destroy();
+    logView = null;
+  }
+  tabs.clear();
+  navSection = "mail";
+  canSave = false;
+  dirty = false;
+  zoomHistory = createZoomHistory(ZOOM_KEYS);
+  zoomBefore = null;
+  mountRoot = null;
+  api = null;
+  host = null;
+  ui = clampUi({});
+}
+
+export async function startShell(surface, nextApi, nextHost, result) {
+  stopShell();
+  const mine = { updateTimer: 0, isolationStop: null };
+  session = mine;
+  mountRoot = surface;
+  api = nextApi;
+  host = nextHost || {};
+  window.addEventListener("pagehide", onPageHide);
+  const banner = mountRoot.querySelector("#banner");
   if (result.state === "error") {
     banner.hidden = false;
     banner.textContent = result.error || result.state;
   } else {
-    document.querySelector("#profile-name").textContent = result.profileName || "";
+    mountRoot.querySelector("#profile-name").textContent = result.profileName || "";
     try {
       await loadPrefs();
     } catch (err) {
+      if (!alive(mine)) {
+        return;
+      }
       canSave = false;
       showBanner(messageOf(err));
     }
+  }
+  if (!alive(mine)) {
+    return;
   }
   let timeZone = "America/Vancouver";
   let logLevel = "info";
   if (banner.hidden) {
     try {
       const prefs = await api.prefs.get();
+      if (!alive(mine)) {
+        return;
+      }
       if (typeof prefs.timezone === "string" && prefs.timezone !== "") {
         timeZone = prefs.timezone;
       }
@@ -612,16 +773,23 @@ export async function startShell(result) {
         logLevel = prefs.logLevel;
       }
     } catch (err) {
+      if (!alive(mine)) {
+        return;
+      }
       showBanner(messageOf(err));
     }
   }
-  logView = createLogView(document.querySelector("[data-activity-pane='log']"), api, {
+  if (!alive(mine)) {
+    return;
+  }
+  logView = createLogView(mountRoot.querySelector("[data-activity-pane='log']"), api, {
     timeZone,
     zoom: ui.zoom.log,
     filter: ui.log,
     logLevel,
-    topbar: document.querySelector(".log-topbar"),
-    bottombar: document.querySelector(".log-bottombar"),
+    root: mountRoot,
+    topbar: mountRoot.querySelector(".log-topbar"),
+    bottombar: mountRoot.querySelector(".log-bottombar"),
     host,
     onFilter(next) {
       ui.log = next;
@@ -635,7 +803,7 @@ export async function startShell(result) {
     },
   });
   paintActivity();
-  for (const button of document.querySelectorAll("[data-activity-view]")) {
+  for (const button of mountRoot.querySelectorAll("[data-activity-view]")) {
     button.addEventListener("click", () => {
       ui.activity.view = button.dataset.activityView === "activity" ? "activity" : "log";
       paintActivity();
@@ -643,10 +811,10 @@ export async function startShell(result) {
       syncLog();
     });
   }
-  letters(document.querySelector("#letters-nav"), true);
-  letters(document.querySelector("#letters-main"), true);
+  letters(mountRoot.querySelector("#letters-nav"), true);
+  letters(mountRoot.querySelector("#letters-main"), true);
   fillCalendar(new Date());
-  for (const button of document.querySelectorAll("[data-section]")) {
+  for (const button of mountRoot.querySelectorAll("[data-section]")) {
     button.addEventListener("click", () => openSection(button.dataset.section));
   }
   bindNavResize();
@@ -655,16 +823,17 @@ export async function startShell(result) {
   bindSplit("files");
   bindSettings();
   bindUpdate();
-  installIsolationTest({
+  mine.isolationStop = installIsolationTest({
     api,
+    root: mountRoot,
     enabled: result.debug === true || result.selftest === true,
     openMail() {
       openSection("mail");
     },
   });
-  for (const button of document.querySelectorAll(".tree button")) {
+  for (const button of mountRoot.querySelectorAll(".tree button")) {
     button.addEventListener("click", () => {
-      for (const other of document.querySelectorAll(".tree button")) {
+      for (const other of mountRoot.querySelectorAll(".tree button")) {
         other.removeAttribute("aria-current");
       }
       button.setAttribute("aria-current", "true");

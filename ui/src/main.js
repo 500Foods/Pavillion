@@ -1,12 +1,11 @@
 import { createApi } from "./api.js";
+import { mount } from "./index.js";
 import { tauriHost, tauriTransport } from "./transport/tauri.js";
 import { clampUi } from "./prefs.js";
 import { installLogHooks } from "./log.js";
-import { startShell, useApi, useHost } from "./shell.js";
 
 const api = createApi(tauriTransport());
-useApi(api);
-useHost(tauriHost());
+const hostServices = tauriHost();
 installLogHooks(api);
 if (import.meta.env.DEV) {
   window.pav = api;
@@ -91,13 +90,7 @@ async function initIcons() {
   }
 }
 
-try {
-  await initIcons();
-  await startShell(await api.system.status());
-} catch (err) {
-  await startShell({
-    state: "error",
-    error: err instanceof Error ? err.message : String(err),
-    profileName: "",
-  });
-}
+hostServices.reload = () => reloadIcons();
+
+await initIcons();
+await mount(document.querySelector("#app"), api, { hostServices });

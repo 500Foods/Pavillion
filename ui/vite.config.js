@@ -9,6 +9,11 @@ const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig(() => ({
   clearScreen: false,
+  build: {
+    rollupOptions: {
+      input: resolve(root, "index.html"),
+    },
+  },
   server: {
     fs: {
       allow: [resolve(root, "..")],

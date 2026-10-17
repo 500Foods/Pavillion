@@ -29,6 +29,13 @@ function asError(err) {
 
 export function tauriHost() {
   return {
+    setRootFontSize(scale) {
+      const value = Number(scale);
+      if (!Number.isFinite(value)) {
+        return;
+      }
+      document.documentElement.style.fontSize = `${value * 100}%`;
+    },
     dialog: {
       save(options) {
         const opts = options && typeof options === "object" ? options : {};

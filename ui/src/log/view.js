@@ -320,8 +320,11 @@ export function createLogView(parent, api, options = {}) {
     }
   }
 
-  document.addEventListener("pointerdown", onPointerDown);
-  window.addEventListener("keydown", onEscape);
+  const listenRoot = options.root instanceof EventTarget ? options.root : null;
+  const pointerTarget = listenRoot || document;
+  const keyTarget = listenRoot || window;
+  pointerTarget.addEventListener("pointerdown", onPointerDown);
+  keyTarget.addEventListener("keydown", onEscape);
   paintSeverity();
   paintSubsystems();
 
@@ -551,7 +554,7 @@ export function createLogView(parent, api, options = {}) {
     }
   }
 
-  window.addEventListener("keydown", onFind);
+  keyTarget.addEventListener("keydown", onFind);
 
   async function copyVisible() {
     const visible = visibleLines();
@@ -566,7 +569,8 @@ export function createLogView(parent, api, options = {}) {
     }
     const area = document.createElement("textarea");
     area.value = text;
-    document.body.append(area);
+    const sink = options.root instanceof Element ? options.root : document.body;
+    sink.append(area);
     area.select();
     document.execCommand("copy");
     area.remove();
@@ -672,9 +676,9 @@ export function createLogView(parent, api, options = {}) {
     },
     destroy() {
       close();
-      window.removeEventListener("keydown", onFind);
-      window.removeEventListener("keydown", onEscape);
-      document.removeEventListener("pointerdown", onPointerDown);
+      keyTarget.removeEventListener("keydown", onFind);
+      keyTarget.removeEventListener("keydown", onEscape);
+      pointerTarget.removeEventListener("pointerdown", onPointerDown);
       if (pinTimer) {
         window.clearTimeout(pinTimer);
       }

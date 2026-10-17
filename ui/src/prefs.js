@@ -22,7 +22,7 @@ export const DEFAULT_UI = {
   },
 };
 
-const ZOOM_KEYS = ["shell", "navButtons", "navBody", "mailList", "mailDetail", "log"];
+export const ZOOM_KEYS = ["shell", "navButtons", "navBody", "mailList", "mailDetail", "log"];
 const KNOWN = new Set(["nav", "mail", "contacts", "files", "zoom", "icons", "fontawesome_kit", "fonts", "activity", "log"]);
 
 function isObject(value) {
@@ -34,13 +34,16 @@ function finite(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-/* 5% through 500%, in steps of 5%. A missing or non-numeric value is 100%. */
-export function snapZoom(value) {
+/* Pane zoom is 5% through 500%. Shell, the master scale, is 50% through 200%.
+   Steps of 5% on the same grid. A missing or non-numeric value is 100%. */
+export function snapZoom(value, key) {
   const n = finite(value);
   if (n === null) {
     return 1;
   }
-  const clamped = Math.min(5, Math.max(0.05, n));
+  const min = key === "shell" ? 0.5 : 0.05;
+  const max = key === "shell" ? 2 : 5;
+  const clamped = Math.min(max, Math.max(min, n));
   const steps = Math.round((clamped - 0.05) / 0.05);
   return Math.round((0.05 + steps * 0.05) * 1000) / 1000;
 }
@@ -122,7 +125,7 @@ export function clampUi(raw) {
   const zoomSrc = isObject(src.zoom) ? src.zoom : {};
   const zoom = {};
   for (const key of ZOOM_KEYS) {
-    zoom[key] = snapZoom(zoomSrc[key] === undefined ? DEFAULT_UI.zoom[key] : zoomSrc[key]);
+    zoom[key] = snapZoom(zoomSrc[key] === undefined ? DEFAULT_UI.zoom[key] : zoomSrc[key], key);
   }
   copyUnknown(zoom, zoomSrc, ZOOM_KEYS);
   const out = {

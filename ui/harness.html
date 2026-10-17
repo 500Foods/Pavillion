@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pavillion harness</title>
+    <link rel="stylesheet" href="/styles/dark.css" />
+    <link rel="stylesheet" href="/styles/theme.css" />
+    <style>
+      :root {
+        --bg: lime;
+        --pav-bg: lime;
+      }
+
+      body {
+        margin: 2rem;
+        background: lime;
+        color: purple;
+        font-family: serif;
+      }
+
+      button {
+        background: lime;
+        color: purple;
+        border: 4px solid purple;
+      }
+
+      #box {
+        height: 640px;
+        width: 960px;
+        border: 4px solid rebeccapurple;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <p>Foreign page</p>
+    <button type="button" id="foreign">Foreign button</button>
+    <div id="box"></div>
+    <script type="module" src="/src/harness.js"></script>
+  </body>
+</html>

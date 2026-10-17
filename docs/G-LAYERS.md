@@ -1,6 +1,6 @@
 # G — LAYERS
 
-**Status:** G-8 complete (2026-10-16). The index names the next phase. Lua and mail rules moved to [R-RULES.md](R-RULES.md) (old G-5 is R-1, old G-7 is R-3).
+**Status:** G-4 complete (2026-10-16). The index names the phase. Lua and mail rules moved to [R-RULES.md](R-RULES.md) (old G-5 is R-1, old G-7 is R-3).
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Pavillion runs on Fedora Linux first, then macOS and Windows, maybe iPad one day. Its UI can be lifted into Lithium. Both come down to clear layers with one written contract between each pair. This document owns the layers, the platform table, the command ABI, the host adapter, the mountable UI, and the multiplatform strategy.
@@ -15,7 +15,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | G-2 | JSON command dispatcher, `pav_on_event`, and `docs/API.md` | Medium | Complete |
 | G-3 | Generic Tauri `core` command; `api.js` takes a transport | Medium | Complete |
 | G-8 | Move the remaining `lib.rs` logic (662 lines) into C behind the dispatcher | Medium | Complete |
-| G-4 | Mountable UI: `mount(el, api)`, `--pav-*` variables, scoped styles, bare harness | Medium | Not started |
+| G-4 | Mountable UI: `mount(el, api)`, `--pav-*` variables, scoped styles, bare harness | Medium | Complete |
 | G-6 | Second-platform smoke build of the core and `make test` | Hard | Not started |
 
 G-5 and G-7 are now R-1 and R-3. The ids are not reused, so the `lib.rs` migration is G-8 and runs right after G-3.
@@ -315,7 +315,7 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 ## G-4: Mountable UI for Lithium
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Complete (2026-10-16). Variance: after the window check, Shell zoom is 50%–200%. The other zoom rows stay 5%–500%. Not pushed.
 
 **Goal:** The UI mounts into any element with any transport. A bare HTML page mounts it with the mock transport and no Tauri.
 
@@ -323,16 +323,22 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 
 **Work items:**
 
-- [ ] `ui/src/index.js` exports `mount(el, api, opts)` and `unmount()`. `main.js` is the Tauri host page: it loads the kit, builds the API, and calls `mount(document.querySelector("#app"), api, { hostServices })`.
-- [ ] Move the static shell markup from `ui/index.html` into `ui/src/shell/template.js` built with DOM calls (no `innerHTML` of outside data; static markup may use a `// html-ok` template).
-- [ ] Rename every custom property to `--pav-*` and scope every rule under `.pav-root`. `dark.css` assigns only `--pav-*`. Keep the `--pav-log-*` properties H-2 added. The rename covers the older names. It does not drop the log colors.
-- [ ] Global listeners (`keydown`, `resize`, `pointerup`) attach to the mount root or are removed on `unmount`.
-- [ ] `ui/harness.html` (not in the release bundle): mounts with the mock transport into a `div` inside a page that has its own conflicting `--bg` and `button` styles.
-- [ ] Vitest with jsdom: `mount.test.js` mounts, unmounts, and asserts no listeners or nodes remain outside `el`.
+- [x] `ui/src/index.js` exports `mount(el, api, opts)` and `unmount()`. `main.js` is the Tauri host page: it loads the kit, builds the API, and calls `mount(document.querySelector("#app"), api, { hostServices })`.
+- [x] Move the static shell markup from `ui/index.html` into `ui/src/shell/template.js` built with DOM calls (no `innerHTML` of outside data; static markup may use a `// html-ok` template).
+- [x] Rename every custom property to `--pav-*` and scope every rule under `.pav-root`. `dark.css` assigns only `--pav-*`. Keep the `--pav-log-*` properties H-2 added. The rename covers the older names. It does not drop the log colors.
+- [x] Global listeners (`keydown`, `resize`, `pointerup`) attach to the mount root or are removed on `unmount`.
+- [x] `ui/harness.html` (not in the release bundle): mounts with the mock transport into a `div` inside a page that has its own conflicting `--bg` and `button` styles.
+- [x] Vitest with jsdom: `mount.test.js` mounts, unmounts, and asserts no listeners or nodes remain outside `el`.
 
 **Done means:** The harness renders the shell next to foreign CSS with no bleed in either direction.
 
 **Exit gate:** `make test` exits 0. `npx vite` serving `harness.html` shows the shell inside the box. `make dev` and `make build` look unchanged.
+
+**Accomplished:** `ui/src/index.js` exports `mount(el, api, opts)` and `unmount()`. `main.js` stays the Tauri host: it loads the kit, builds the API, and calls `mount(document.querySelector("#app"), api, { hostServices })`. The static shell markup is `ui/src/shell/template.js` (`// html-ok`). Served sheets are `ui/public/styles`. Custom properties are `--pav-*`, including the existing `--pav-log-*`. `--fa-*` stay. Every rule is under `.pav-root`, and `dark.css` assigns its variables there. `ui/index.html` is the host page. It paints `html` with `color-scheme: dark` and `background: #000`. The UI sets `--pav-font` and `--pav-font-mono` on `.pav-root`. The Tauri host sets the document font size through `hostServices.setRootFontSize`, so `rem` still scales in the window. The harness does not pass that service. The log key and pointer listeners, the link dialog, the copy textarea, and the prefs `pagehide` flush belong to the mount, and `unmount` removes them. `ui/harness.html` is not a Rollup input, so it is not in `ui/dist`. `mount.test.js` is the jsdom test. `make test` is 67 Unity tests and 31 Vitest tests, 0 failures. Chrome showed the harness page lime, the foreign button lime with a purple border, and the shell dark inside the box. Andrew confirmed `make dev` and `make build` look unchanged. After that check, the Shell slider is `0.5`–`2` in steps of `0.05`. `snapZoom` clamps `shell` to that range and the other keys to `0.05`–`5`. The core still does not clamp `preferences.ui`. `PAVILLION_API_VERSION` stays 3. `src-tauri/src/lib.rs` was not touched.
+
+**Lessons learned:** `rem` follows the `html` element, so shell zoom stays on `documentElement` in the Tauri host. The UI only sets font custom properties on `.pav-root`. WebKit lets an author `display` rule override `[hidden]`, so `.pav-root [hidden] { display: none !important }` stays. CodeMirror's `StyleModule.mount` injects one shared style into `document.head`, and `EditorView.destroy()` does not remove it. `unmount` leaves that tag. The mount test records listeners on `window`, `document`, `documentElement`, and `body` only, because controls add listeners before they are appended. jsdom's `NodeList` does not compare with `toEqual`. Vite's production input is `index.html` only. `npm --prefix ui exec -- vite` and a bare `npx vite` do not use `ui/` as the root. Served CSS is `ui/public/styles`. `ui/styles` is an older unlinked copy and was left alone. The host page's black fill is not a theme variable. A stored shell zoom outside 50%–200% snaps when the page loads and is written on the next layout change. G-Q1 and G-Q4 stayed open. The kit-load race from G-3 can still log.
+
+**Handoff:** D-4 is next, in [D-UI.md](D-UI.md). Do not start it in this sitting. Semantic names (`--pav-text-*`, `--pav-status-*`) and the light theme belong to D-4. Served sheets are `ui/public/styles`. `ui/styles` still has the old unprefixed names and is not linked. The host page fills `html` with `color-scheme: dark` and `background: #000`. Shell zoom is `0.5`–`2` in steps of `0.05` and goes through `tauriHost.setRootFontSize`. The other zoom keys stay `0.05`–`5`. The core does not clamp them. CodeMirror's document stylesheet stays for the page lifetime. `PAVILLION_API_VERSION` stays 3. `src-tauri/src/lib.rs` stays a 199-line forwarder. Do not add `navigate-to` or `https:` to the main `img-src` or `frame-src`. Secrets stay `-1` until K-1. `macos-core` stays `continue-on-error` until G-6. G-Q1 and G-Q4 stay open.
 
 ## G-6: Second-platform smoke build
 
@@ -368,3 +374,4 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 - 2026-10-16 G-2: `pavillion_call`, `pav_on_event`, and `docs/API.md`. Six real commands. Queue cap 256. `make test` is 43 tests. API version stays 2. Not pushed.
 - 2026-10-16 G-3: one Tauri `core` command, `createApi(transport)`, and Vitest on `make test`. `make test` is 43 Unity tests and 8 Vitest tests. API version stays 2. Not pushed.
 - 2026-10-16 G-8: window state, `pav_protocol`, and workdir creation moved into C. `lib.rs` is 199 lines. API version is 3. `make test` is 48 Unity tests and 8 Vitest tests. Not pushed.
+- 2026-10-16 G-4. `mount` / `unmount`, `--pav-*` on the served sheets, harness. Andrew confirmed `make dev` and `make build` look unchanged. After that check, Shell zoom is 50%–200% and the other rows stay 5%–500%. `make test` is 67 Unity tests and 31 Vitest tests. Not pushed.

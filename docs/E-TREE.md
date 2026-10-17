@@ -161,7 +161,7 @@ The affordances: a dedicated drag handle, so clicking a row still selects it; an
 
 The renderer is ordinary HTML with CSS Grid or Flexbox. No component framework, and no CSS library, per the lock in [D-UI.md](D-UI.md).
 
-Layout tokens. They are `rem`, so the shell zoom (5–500%, old plan §10) scales rows with everything else; at 100% they hold the pixel values below.
+Layout tokens. They are `rem`, so the shell zoom (50–200%, the master scale in the B Lock) scales rows with everything else; at 100% they hold the pixel values below.
 
 ```css
 :root {
