@@ -125,6 +125,13 @@ function applyZoom() {
     for (const element of mountRoot.querySelectorAll(selector)) {
       const scale = ui.zoom.shell * ui.zoom[key];
       element.style.zoom = String(scale);
+      /* WebKit zoom scales the label and a px border, and it leaves a
+         rem-sized svg at its unzoomed size. The variable grows the icon
+         with the label, and divides the bar rules back to 1px. */
+      if (key === "navButtons") {
+        element.style.setProperty("--pav-bar-zoom", String(scale));
+        continue;
+      }
       for (const svg of element.querySelectorAll("svg")) {
         svg.style.width = `${1.15 * scale}em`;
         svg.style.height = `${1.15 * scale}em`;

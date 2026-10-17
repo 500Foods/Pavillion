@@ -5,7 +5,6 @@
   color: var(--pav-fg);
   font-family: var(--pav-font);
   font-size: 1rem;
-  --pav-bar-size: 2.5rem;
 }
 
 .pav-root button,
@@ -60,11 +59,11 @@
 }
 
 .pav-root .nav > .nav-buttons:first-of-type {
-  border-bottom: 1px solid var(--pav-border);
+  border-bottom: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
 }
 
 .pav-root .nav > .nav-buttons:last-of-type {
-  border-top: 1px solid var(--pav-border);
+  border-top: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
 }
 
 .pav-root .nav-buttons button {
@@ -82,9 +81,9 @@
 
 .pav-root .nav-buttons .icon,
 .pav-root .nav-buttons svg {
-  width: 1.15rem;
-  height: 1.15rem;
-  font-size: 1.15rem;
+  width: calc(1.15rem * var(--pav-bar-zoom));
+  height: calc(1.15rem * var(--pav-bar-zoom));
+  font-size: calc(1.15rem * var(--pav-bar-zoom));
   line-height: 1;
   object-fit: contain;
 }
@@ -117,12 +116,12 @@
   flex-wrap: nowrap;
   align-items: stretch;
   background: var(--pav-surface-nav);
-  border-bottom: 1px solid var(--pav-border);
+  border-bottom: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
 }
 
 .pav-root .tabs [role="tab"] {
   border: 0;
-  border-right: 1px solid var(--pav-border);
+  border-right: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
   background: transparent;
   padding: 0.55rem 0.9rem;
   white-space: nowrap;
@@ -416,34 +415,32 @@
 }
 
 .pav-root .button-bar {
+  --pav-bar-zoom: 1;
   display: flex;
   flex: none;
   align-items: stretch;
-  min-height: var(--pav-bar-size);
-  max-height: var(--pav-bar-size);
   background: var(--pav-surface-nav);
 }
 
-.pav-root .button-bar button,
-.pav-root .tabs [role="tab"],
-.pav-root .log-switch,
-.pav-root .log-menu,
-.pav-root .log-gear,
-.pav-root .log-status,
-.pav-root .log-bar-spacer,
-.pav-root .log-topbar input[type="search"] {
-  box-sizing: border-box;
-  min-height: var(--pav-bar-size);
-  max-height: var(--pav-bar-size);
-  line-height: 1.2;
+/* Same text strut on every bar. Zoom scales it with the labels, so an icon
+   bar stays as tall as a text bar without a fixed height. */
+.pav-root .button-bar::before {
+  content: "Mg";
+  flex: none;
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+  padding: 0.55rem 0;
 }
 
 .pav-root .log-topbar {
-  border-bottom: 1px solid var(--pav-border);
+  border-bottom: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
 }
 
 .pav-root .log-bottombar {
-  border-top: 1px solid var(--pav-border);
+  border-top: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
 }
 
 .pav-root .log-bar-spacer {
@@ -473,14 +470,15 @@
 .pav-root .log-gear {
   display: grid;
   place-items: center;
-  width: 2.5rem;
+  width: calc(2.5rem * var(--pav-bar-zoom));
   padding: 0.55rem 0;
 }
 
 .pav-root .log-gear .icon,
 .pav-root .log-gear svg {
-  width: 1.15rem;
-  height: 1.15rem;
+  width: calc(1.15rem * var(--pav-bar-zoom));
+  height: calc(1.15rem * var(--pav-bar-zoom));
+  font-size: calc(1.15rem * var(--pav-bar-zoom));
   color: var(--pav-fg);
 }
 
@@ -490,8 +488,8 @@
   flex: 0 1 14rem;
   margin: 0;
   border: 0;
-  border-left: 1px solid var(--pav-border);
-  border-right: 1px solid var(--pav-border);
+  border-left: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
+  border-right: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
   background: var(--pav-surface-button);
   color: var(--pav-fg);
   padding: 0 0.65rem;

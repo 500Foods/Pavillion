@@ -44,11 +44,14 @@ test("Default, Undo, and Redo walk the zoom sliders one gesture at a time", asyn
     expect(undo.disabled).toBe(true);
     expect(redo.disabled).toBe(true);
     expect(document.querySelector(".nav-buttons").style.zoom).toBe("1");
+    expect(document.querySelector(".nav-buttons").style.getPropertyValue("--pav-bar-zoom")).toBe("1");
     expect(bar.style.zoom).toBe("");
 
     release(buttons, "2");
     expect(document.querySelector(".nav-buttons").style.zoom).toBe("2");
+    expect(document.querySelector(".nav-buttons").style.getPropertyValue("--pav-bar-zoom")).toBe("2");
     expect(document.querySelector(".tabs").style.zoom).toBe("2");
+    expect(document.querySelector(".log-topbar").style.getPropertyValue("--pav-bar-zoom")).toBe("2");
     expect(bar.style.zoom).toBe("");
     expect(undo.disabled).toBe(false);
     undo.click();

@@ -129,7 +129,13 @@ test("mount renders inside the element and unmount leaves the page", async () =>
     const logBorder = declared.get(".pav-root .log-bottombar").getPropertyValue("border-top");
     expect(declared.get(".pav-root .nav > .nav-buttons:first-of-type").getPropertyValue("border-bottom")).toBe(tabBorder);
     expect(declared.get(".pav-root .nav > .nav-buttons:last-of-type").getPropertyValue("border-top")).toBe(logBorder);
-    expect(tabBorder).toBe("1px solid var(--pav-border)");
+    expect(tabBorder).toBe("calc(1px / var(--pav-bar-zoom)) solid var(--pav-border)");
+    const strut = declared.get(".pav-root .button-bar::before");
+    expect(strut.getPropertyValue("content")).toBe('"Mg"');
+    expect(strut.getPropertyValue("padding-top")).toBe("0.55rem");
+    expect(strut.getPropertyValue("padding-bottom")).toBe("0.55rem");
+    expect(declared.get(".pav-root .button-bar").getPropertyValue("max-height")).toBe("");
+    expect(declared.get(".pav-root .button-bar").getPropertyValue("min-height")).toBe("");
     const shellButton = root.querySelector(".nav-buttons button");
     expect(getComputedStyle(shellButton).borderTopWidth).toBe("0px");
     expect(getComputedStyle(shellButton).color).not.toMatch(/purple|rgb\(128,\s*0,\s*128\)/);
