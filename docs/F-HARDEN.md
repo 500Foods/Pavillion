@@ -30,7 +30,7 @@ Kind: **Easy** is one module and a test, or a static page. **Medium** crosses on
 2. Re-read only this phase: Goal, Entry gate, Work items, Done means, Exit gate. Open the lock section this phase cites.
 3. Ask the qualifying questions. Wait for approval before editing source.
 4. Do this phase only. Check a work item `[x]` only after its check has passed. Defer with `[~]`, one line, and the phase it moves to.
-5. Before marking complete, write Status, Accomplished, Lessons learned, and Handoff, update the Status column here and in the index, and append the Working log. Then stop.
+5. Before marking complete, write Status, Accomplished, Lessons learned, and Handoff, update the Status column here and in the index, and append the Working log. Before that, update `ui/src/help/pages.js` for what this phase changed: augment, replace, fix, or extend the user page, or add a Developer section when the user page has nothing new. Then stop.
 6. A sitting that ends early sets Status to **in progress**, names the last finished work item, and leaves the rest unchecked.
 
 Leave Accomplished, Lessons learned, and Handoff off a phase that has not started. `make test` passes at the end of every phase. A UI exit gate is the window, and for anything touching the CSP it is the `make build` window, not `make dev`.

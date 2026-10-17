@@ -27,7 +27,7 @@ Kind: **Easy** is the static frame or one function in `api.js`. **Medium** cross
 2. Re-read only this phase: Goal, Work items, Done means, Exit gate. Open the lock below when the phase cites it.
 3. Ask the qualifying questions. Wait for approval before editing source.
 4. Do this phase only. Check a work item `[x]` only after its check has passed. Defer with `[~]`, one line, and the phase it moves to.
-5. Before marking complete, write Status, Accomplished, Lessons learned, and Handoff, and append the Working log. Then stop.
+5. Before marking complete, write Status, Accomplished, Lessons learned, and Handoff, and append the Working log. Before that, update `ui/src/help/pages.js` for what this phase changed: augment, replace, fix, or extend the user page, or add a Developer section when the user page has nothing new. Then stop.
 6. A sitting that ends early sets Status to **in progress**, names the last finished work item, and leaves the rest unchecked.
 
 Leave Accomplished, Lessons learned, and Handoff off a phase that has not started.

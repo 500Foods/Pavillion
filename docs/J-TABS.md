@@ -1,6 +1,6 @@
 # J — TABS
 
-**Status:** J-3 complete (2026-10-17). J-6 is next, step 40. Do not start it in this sitting. J-2, J-1, and I-2 are complete.
+**Status:** J-8 in progress (2026-10-17). The window check is open. Do not start J-6. J-3, J-2, J-1, and I-2 are complete.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The tabbed workspace and the shared widgets every later screen uses: context menu, tooltip, toast with undo, and dialog. Andrew confirmed the feature set for the first round on 2026-10-16: pinned tabs, keyboard shortcuts, files dropped on the strip, a right-click menu (pin, duplicate, mute, close variants), muting, session restore, vertical tabs, floating tooltips, tab widths, and sandboxed browsing from a `+` tab.
@@ -18,8 +18,9 @@ One phase is one session. Do not start the next one in the same conversation.
 | J-5 | Vertical tabs and section colors | Medium | Not started |
 | J-6 | Session restore | Medium | Not started |
 | J-7 | The `+` tab: sandboxed browsing in a separate webview, Browser settings, mute | Hard | Not started |
+| J-8 | Help index, search, and topic pages | Medium | In progress |
 
-J-1 to J-6 come before accounts. J-7 comes after the initial working copy.
+J-8 runs before J-6. J-1 to J-6 and J-8 come before accounts. J-7 comes after the initial working copy.
 
 Kind: **Easy** is one module and a test. **Medium** crosses one boundary. **Hard** adds a second webview to the process.
 
@@ -29,7 +30,7 @@ Kind: **Easy** is one module and a test. **Medium** crosses one boundary. **Hard
 2. Re-read only this phase: Goal, Entry gate, Work items, Done means, Exit gate. Open the lock section this phase cites.
 3. Ask the qualifying questions. Wait for approval before editing source.
 4. Do this phase only. Check a work item `[x]` only after its check has passed. Defer with `[~]`, one line, and the phase it moves to.
-5. Before marking complete, write Status, Accomplished, Lessons learned, and Handoff, update the Status column here and in the index, and append the Working log. Then stop.
+5. Before marking complete, write Status, Accomplished, Lessons learned, and Handoff, update the Status column here and in the index, and append the Working log. Before that, update `ui/src/help/pages.js` for what this phase changed: augment, replace, fix, or extend the user page, or add a Developer section when the user page has nothing new. Then stop.
 6. A sitting that ends early sets Status to **in progress**, names the last finished work item, and leaves the rest unchecked.
 
 Leave Accomplished, Lessons learned, and Handoff off a phase that has not started. A UI exit gate is the window. Vitest covers modules that do not need a window.
@@ -49,7 +50,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - Top: Mail (roof mark), Contacts `fa-sharp fa-thin fa-address-book`, Calendars `fa-sharp fa-thin fa-calendar-days`, Files `fa-sharp fa-thin fa-folder`. Bottom: Activity `fa-sharp fa-thin fa-list-timeline`, Settings `fa-sharp fa-thin fa-gear`, Update `fa-sharp fa-thin fa-arrows-rotate`, Help `fa-sharp fa-thin fa-circle-question`.
 - A top button opens that section's home tab, or brings it forward when it is already open, and swaps the nav body. Settings does the same with the settings headings in the nav. Activity and Help open their home tabs and leave the nav body alone. Update runs a sync and spins ([I-ACTIVITY.md](I-ACTIVITY.md)); it is not a tab. A single click on an open tab does not swap the nav.
 - Navs: Mail is the mailbox tree, Files the folder tree ([E-TREE.md](E-TREE.md)); Contacts is a letter rolodex, a search field, then accounts and recents; Calendars is a continuous mini-calendar (from the week before the current month to the week after) and calendars grouped by account with a swatch. An IMAP account still shows Files, with an empty tree.
-- Home tabs: Mail is the message list beside the open message (split 0.5, 0.25–0.75); Contacts the rolodex list beside the open contact; Calendars the week view (default); Files the folder contents beside a preview; Settings the chosen heading; Activity the feed or log; Help the help page.
+- Home tabs: Mail is the message list beside the open message (split 0.5, 0.25–0.75); Contacts the rolodex list beside the open contact; Calendars the week view (default); Files the folder contents beside a preview; Settings the chosen heading; Activity the feed or log; Help is the J-8 reader (index, search, and pages). A help icon that opens one section in a popup is a later phase. Section ids in `ui/src/help/pages.js` are that hook. Every phase close reads that file and updates the page for what changed. If the user page has nothing new, a Developer section is added or extended.
 - Window: placement and maximized state restored on launch (`preferences.window`). `chrome` is `system` or `hidden`; hidden uses the empty part of the tab strip as the drag region with the buttons still clickable. Per-account status dots in the nav wait.
 
 ### Tabs
@@ -70,7 +71,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - Vertical tabs: `ui.tabs.orientation` `horizontal` (default) or `vertical`; vertical puts the strip as a column between the nav and the workspace, icon + label, full title in the tooltip, pinned icon-only, scrolls vertically. Toggled from the strip's context menu (right-click on empty strip) and from Settings → Tabs.
 - Section colors: `ui.colors.{mail,contacts,calendars,files}` as `#rrggbb`, exposed as `--pav-section-<id>`. The active tab gets a `color-mix(in srgb, var(--pav-section-mail) 18%, transparent)` underlay over the surface gradient, and the tab icon takes the color. Account colors (the account `color` field) are separate and paint the message-list color bar, the tree swatch, and account rows.
 - Tooltips: one floating tooltip module, anchored to the element (not following the cursor), shown after 500 ms hover or on keyboard focus, flipped to stay in the viewport, `role="tooltip"` with `aria-describedby`. Text only.
-- Session restore: on quit and every 30 s, the open tab list (id, section, kind, title, context, pinned, muted, order, active) is saved to `ui.session.tabs`. On launch the active tab loads first and others load when first shown. A tab whose context no longer resolves (a deleted message) is dropped with a toast. `ui.session.restore` (default true) turns it off.
+- Session restore: on quit and every 30 s, the open tab list (id, section, kind, title, context, pinned, muted, order, active) is saved to `ui.session.tabs`. On launch the active tab loads first and others load when first shown. Andrew resolved J-Q1 on 2026-10-17: a restart brings back every open tab that can still be rebuilt, including home tabs and every sub-tab, with pin, mute, order, and which tab is active. A tab whose context no longer resolves (a deleted message) is the one that is dropped, with a toast. An empty workspace comes back empty. A first launch, with nothing saved, still opens Mail. `ui.session.restore` (default true) turns restore off, and that launch shows home tabs only.
 - Dropping files on the strip opens one tab per file through the section that claims the type: `.eml` opens a message tab, `.ics` an event import, `.vcf` a contact import, anything else a file preview tab (U). Until a section exists, the drop shows a toast naming the file and the section that will handle it.
 
 ### Common widgets
@@ -160,7 +161,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Lessons learned:** A key listener on `.pav-root` never sees a key whose target is `document.body`. Calendar dates are non-focusable, so a click there drops focus to the page and the chord dies. The listener belongs on the document. `applies()` still refuses a control outside the shell. It stays in the bubble phase so a menu on the root can `preventDefault` (Shift+F10) first. Every `createKeys` in a test must be `destroy`ed, because the listener is on the document and survives `replaceChildren`. A batch close that uses `closeTab` without `{stay:true}` selects a new active tab for every background close. `closeSome` passes `stay` unless that id is the active one. A single close keeps the left-neighbor rule. The pinned close control cannot be `inset: 0` on a 2.25rem tab. A centered 1rem control, with `pointer-events: none` until hover or focus-within, leaves the tab clickable. `zoom.wheel` is a string. It must not be added to `ZOOM_KEYS`, or `snapZoom` turns it into `1`. Positive `deltaY` rolls toward the user. The default multiplies that sign by -1. Pixel deltas add until about 100px. A line or a page event is one step from its sign. Ctrl+wheel calls `preventDefault` anywhere in the shell, including where no pane changes, so the WebView does not zoom. The listener is capture and `{passive:false}`, and `stopShell` removes it before `mountRoot` is cleared. `startShell` calls `stopShell` first, so a leftover listener would stack. Theme undo still does not touch zoom. The settings zoom stack described in `docs/B-CONFIG.md` is not the live page. Do not revive it.
 
-**Handoff:** J-6 is next, step 40, in this file. Do not start it in this sitting. Its entry gate is met. J-4 (step 107) and J-5 (step 108) stay at milestone 6. Do not start them. Ask J-Q1 before editing: the Lock restores sub-tabs as well as home tabs, and the question is whether restore should keep only home tabs and pinned tabs. The Lock names `ui.session.tabs` and `ui.session.restore`. The work item names `preferences.ui.session`. Ask which key before writing it. Do not rebuild the registry, the shortcut registry, the tab menu, close, middle-click, pointer drag, or the nav split. Middle-click is settled. Pins last the run until this phase saves them. A saved pin comes back pinned, in the pinned group. `closeSome` keeps `{stay:true}` for a background tab. The shortcut listener stays on the document. Ctrl+wheel and `preferences.ui.zoom.wheel` stay. Do not put `wheel` in `ZOOM_KEYS`. Do not move Shell with the wheel. `Ctrl+T` stays a no-op until J-7. J-Q2 waits until a message can open. J-Q3 and J-Q4 stay open and do not block J-6. `PAVILLION_API_VERSION` stays 3. No new core command. `lib.rs` stays a forwarder. Only `ui/src/transport/tauri.js` may import `@tauri-apps`. Served sheets are `ui/public/styles`. New listeners on the mount root come off in `stopShell`. Text is `textContent`. Do not drive the window.
+**Handoff:** J-6 is next, step 40, in this file. Do not start it in this sitting. Its entry gate is met. J-4 (step 107) and J-5 (step 108) stay at milestone 6. Do not start them. J-Q1 is resolved: restore every open tab that can still be rebuilt, including sub-tabs. Drop only a tab whose context is gone. The Lock names `ui.session.tabs` and `ui.session.restore`. The work item names `preferences.ui.session`. Ask which key before writing it. Do not rebuild the registry, the shortcut registry, the tab menu, close, middle-click, pointer drag, or the nav split. Middle-click is settled. Pins last the run until this phase saves them. A saved pin comes back pinned, in the pinned group. `closeSome` keeps `{stay:true}` for a background tab. The shortcut listener stays on the document. Ctrl+wheel and `preferences.ui.zoom.wheel` stay. Do not put `wheel` in `ZOOM_KEYS`. Do not move Shell with the wheel. `Ctrl+T` stays a no-op until J-7. J-Q2 waits until a message can open. J-Q3 and J-Q4 stay open and do not block J-6. `PAVILLION_API_VERSION` stays 3. No new core command. `lib.rs` stays a forwarder. Only `ui/src/transport/tauri.js` may import `@tauri-apps`. Served sheets are `ui/public/styles`. New listeners on the mount root come off in `stopShell`. Text is `textContent`. Do not drive the window.
 
 ## J-4: Reorder, overflow, widths, file drop
 
@@ -202,14 +203,36 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Exit gate:** `make test` exits 0. In `make dev`: toggle orientation with pinned and normal tabs open, change the Mail color, restart, both persist.
 
+## J-8: Help index
+
+**Kind:** Medium
+**Status:** In progress (2026-10-17). `make test` is 69 Unity tests and 97 Vitest tests. The window check is open. Do not start J-6.
+
+**Goal:** Help opens a reader. Topics are data, added as features land.
+
+**Entry gate:** J-3 complete.
+
+**Work items:**
+
+- [x] The corpus is `ui/src/help/pages.js`, embedded with the UI. No workdir file. No Brotli. A page is an index row. A section is one block on that page.
+- [x] The Help home tab has a button bar with search, the index tree on the left, and the page on the right. Enter opens the first hit. Escape clears the search.
+- [x] Pages for Introduction, Mail, Contacts, Calendars, Files, Settings, Tabs, Activity, and Developer. A short page says the feature is not built. Settings and Tabs describe zoom, the wheel, shortcuts, and pins. Developer describes the index, the profile, `preferences.ui`, and the Grok Bot contract as a contract. The bots are not running.
+- [x] Vitest: `ui/src/help/view.test.js` (search, and opening a page from the Help button).
+
+**Done means:** Help shows the index and a page, and search finds a topic.
+
+**Exit gate:** `make test` exits 0. In `make dev`: click Help, read Introduction, search for the wheel, open Developer.
+
+V-7 adds the paste-ready Grok Bots note as a page in this corpus. It does not build a second reader. A later phase adds help icons. Each icon opens one section in a popup and links to the page. This phase does not add the icons. From 2026-10-17, every phase close includes a pass over this corpus: augment, replace, fix, or extend the user page for what changed, or add a Developer section when the user page has nothing new.
+
 ## J-6: Session restore
 
 **Kind:** Medium
 **Status:** Not started.
 
-**Goal:** Tabs come back after a restart.
+**Goal:** Tabs come back after a restart. J-Q1 is resolved: restore every open tab that can still be rebuilt, including sub-tabs.
 
-**Entry gate:** J-3 complete. Restore does not need reorder or vertical tabs. Pins from J-3 are part of the saved set. J-4 and J-5 are milestone 6.
+**Entry gate:** J-8 complete. The help reader lands first. Restore does not need reorder or vertical tabs. Pins from J-3 are part of the saved set. J-4 and J-5 are milestone 6.
 
 **Work items:**
 
@@ -246,7 +269,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 ## Open questions for Andrew
 
-- J-Q1. Sub-tab persistence: the Lock restores sub-tabs (messages, contacts, browse) as well as home tabs. Restore only home tabs and pinned tabs instead?
+- J-Q1. Resolved 2026-10-17. A restart brings back every open tab that can still be rebuilt, including sub-tabs. A tab whose context is gone is dropped.
 - J-Q2. Opening a message: does a plain click show it in the home tab's reading pane and only double-click or Enter-with-Ctrl open a sub-tab? (Assumed yes.)
 - J-Q3. A cap on open tabs (the Lock has none; lazy load keeps cost low)?
 - J-Q4. Should section colors also tint the nav button, or only the tab?
@@ -267,3 +290,6 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - 2026-10-17 J-3 still in progress. A click on a calendar date left focus on the page, and the shortcut listener was on the shell, so the key never arrived. The listener is now on the document. A text field, a dialog, and a menu still block shortcuts. The window check is open. Do not start J-4.
 - 2026-10-17 J-3 still in progress. Ctrl and the wheel step the pane under the pointer by 5%. Shell does not move. The Zoom page switch stores `preferences.ui.zoom.wheel` as `away` (roll away zooms in) or `toward`. `make test` is 69 Unity tests and 95 Vitest tests. The window check is open. Do not start J-4.
 - 2026-10-17 J-3 complete. Andrew accepted the window, including shortcuts after a calendar click and Ctrl+wheel pane zoom. `make test` is 69 Unity tests and 95 Vitest tests. J-6 is next, step 40. Do not start it in this sitting. J-4 stays step 107.
+- 2026-10-17 J-Q1 resolved. A restart restores every open tab that can still be rebuilt, including sub-tabs. A missing context is dropped. J-6 has not started.
+- 2026-10-17 J-8 in progress, step 123, before J-6. Help is a reader: search in the bar, index on the left, page on the right. Topics live in `ui/src/help/pages.js`. `make test` is 69 Unity tests and 97 Vitest tests. The window check is open. Do not start J-6. Help icons are a later phase.
+- 2026-10-17 Andrew: every phase close updates Help before the phase is marked complete. Augment, replace, fix, or extend the user page. If the user page has nothing new, add or extend a Developer section. Recorded in the plan close-out and in How a session works.

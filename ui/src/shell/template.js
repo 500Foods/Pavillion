@@ -258,11 +258,18 @@ export const shellMarkup = `<div class="shell">
           <div class="log-pane" data-activity-pane="log"></div>
           <div class="button-bar log-bottombar" role="toolbar" aria-label="Log actions"></div>
         </div>
-        <div class="panel settings" id="panel-help" role="tabpanel" hidden>
-          <p class="empty">Help is not written yet.</p>
-          <button type="button" id="isolation-test" hidden>Show isolation test</button>
-          <button type="button" id="demo-activity" hidden>Run demo activity</button>
-          <button type="button" id="open-test-tab" hidden>Open test tab</button>
+        <div class="panel help-panel" id="panel-help" role="tabpanel" hidden>
+          <div class="button-bar help-bar" role="toolbar" aria-label="Help">
+            <input id="help-search" class="search" type="search" aria-label="Search help" placeholder="Search help" />
+            <span class="log-bar-spacer"></span>
+            <button type="button" id="isolation-test" hidden>Show isolation test</button>
+            <button type="button" id="demo-activity" hidden>Run demo activity</button>
+            <button type="button" id="open-test-tab" hidden>Open test tab</button>
+          </div>
+          <div class="split help-split">
+            <div class="pane pane-list help-index" id="help-index"></div>
+            <div class="pane pane-detail help-article" id="help-article" tabindex="-1"></div>
+          </div>
         </div>
       </div>
     </div>`;

@@ -741,6 +741,71 @@
   color: var(--pav-text);
 }
 
+.pav-root .help-split {
+  flex: 1;
+  min-height: 0;
+}
+
+.pav-root .help-index {
+  flex: 0 0 16rem;
+  border-right: 1px solid var(--pav-border);
+}
+
+.pav-root .help-index .tree ul {
+  margin: 0;
+  padding: 0 0 0 0.75rem;
+  list-style: none;
+}
+
+.pav-root .help-article {
+  padding: 1rem 1.25rem 2rem;
+}
+
+.pav-root .help-article h2 {
+  margin: 0 0 0.8rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.pav-root .help-article h3 {
+  margin: 1.2rem 0 0.4rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.pav-root .help-article p {
+  margin: 0.4rem 0;
+  max-width: 40rem;
+}
+
+.pav-root .help-code {
+  margin: 0.6rem 0 0;
+  padding: 0.7rem 0.8rem;
+  max-width: 40rem;
+  overflow: auto;
+  border: 1px solid var(--pav-border);
+  background: var(--pav-surface-list);
+  font-family: var(--pav-font-mono);
+  font-size: 0.85rem;
+  white-space: pre;
+}
+
+.pav-root .help-bar .search {
+  width: 16rem;
+  flex: 0 1 16rem;
+  margin: 0;
+  border: 0;
+  border-right: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
+  background: transparent;
+  padding: 0 0.7rem;
+}
+
+.pav-root .help-bar > button {
+  border: 0;
+  background: transparent;
+  padding: 0.55rem 0.75rem;
+}
+
 .pav-root .log-topbar input[type="search"] {
   width: 14rem;
   min-width: 8rem;

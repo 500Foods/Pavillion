@@ -6,6 +6,7 @@ import { createToaster } from "./common/toast.js";
 import { createTooltip } from "./common/tooltip.js";
 import { createTabs, KIND_ICONS } from "./shell/tabs.js";
 import { createActivityView } from "./activity/view.js";
+import { createHelpView } from "./help/view.js";
 import { createLogView } from "./log/view.js";
 import { DEFAULT_UI, clampUi, snapZoom } from "./prefs.js";
 import {
@@ -848,6 +849,7 @@ let testSerial = 0;
 let navSection = "mail";
 let logView = null;
 let activityView = null;
+let helpView = null;
 let syncing = 0;
 let motionQuery = null;
 let onMotion = null;
@@ -1647,6 +1649,10 @@ export function stopShell() {
     logView.destroy();
     logView = null;
   }
+  if (helpView) {
+    helpView.destroy();
+    helpView = null;
+  }
   if (activityView) {
     activityView.destroy();
     activityView = null;
@@ -1860,9 +1866,9 @@ export async function startShell(surface, nextApi, nextHost, result) {
       return widgets.dialogs.confirm(spec);
     },
   });
-  for (const button of mountRoot.querySelectorAll(".tree button")) {
+  for (const button of mountRoot.querySelectorAll(".nav-body .tree button")) {
     button.addEventListener("click", () => {
-      for (const other of mountRoot.querySelectorAll(".tree button")) {
+      for (const other of mountRoot.querySelectorAll(".nav-body .tree button")) {
         other.removeAttribute("aria-current");
       }
       button.setAttribute("aria-current", "true");
@@ -1872,6 +1878,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
       }
     });
   }
+  helpView = createHelpView(mountRoot);
   showNav("mail");
   openHome("mail");
   if (activityView) {
