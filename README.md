@@ -63,13 +63,13 @@ dnf install $(grep -vE '^[[:space:]]*(#|$)' scripts/fedora-deps.txt)
 [![Count Lines of Code](https://github.com/500Foods/Pavillion/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/main.yml)
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-17 21:39:12 UTC
+Last updated at 2026-10-17 21:44:08 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
 C                               19           1425            235          13270
 JavaScript                      52            559            100           8281
-Markdown                        27           2183              2           4408
+Markdown                        27           2189              2           4413
 JSON                             7              0              0           2648
 C/C++ Header                    14            345            406           1826
 CSS                              6            292              2           1796
@@ -81,7 +81,7 @@ make                             1             11              3             51
 CMake                            1              3              1             30
 TOML                             1              4              0             21
 -------------------------------------------------------------------------------
-SUM:                           139           4873            773          32958
+SUM:                           139           4879            773          32963
 -------------------------------------------------------------------------------
 25 Files were skipped (duplicate, binary, or without source code):
   png: 17
