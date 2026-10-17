@@ -30,6 +30,12 @@ export function createTabs(tablist, options = {}) {
   indicator.className = "tab-drop";
   indicator.hidden = true;
   tablist.append(indicator);
+  const closedStack = [];
+  const menuUnbind = new Map();
+  let stripUnbind = () => {};
+  if (options.menu && typeof options.menu.bind === "function" && options.strip instanceof Element) {
+    stripUnbind = options.menu.bind(options.strip, () => stripItems());
+  }
 
   function list() {
     return [...entries.values()]
@@ -221,7 +227,7 @@ export function createTabs(tablist, options = {}) {
           }
           moving = true;
           tab.classList.add("is-dragging");
-          placeIndicator(indexAt(pointer.clientX));
+          placeIndicator(groupIndex(entry.id, indexAt(pointer.clientX)));
         };
         const stop = (pointer) => {
           tab.removeEventListener("pointermove", move);
@@ -233,7 +239,7 @@ export function createTabs(tablist, options = {}) {
             return;
           }
           suppressClick = true;
-          reorder(entry.id, indexAt(pointer.clientX));
+          reorder(entry.id, groupIndex(entry.id, indexAt(pointer.clientX)));
           setTimeout(() => {
             suppressClick = false;
           }, 0);
@@ -251,7 +257,10 @@ export function createTabs(tablist, options = {}) {
       tablist.append(tab);
     }
     tab.querySelector(".tab-title").textContent = entry.title;
+    tab.classList.toggle("is-pinned", entry.pinned === true);
+    tab.classList.toggle("is-muted", entry.muted === true);
     paintIcon(tab.querySelector(".tab-icon"), entry);
+    bindTabMenu(entry, tab);
     const panel = ensurePanel(entry);
     if (panel) {
       tab.setAttribute("aria-controls", panel.id);
@@ -402,11 +411,12 @@ export function createTabs(tablist, options = {}) {
     return snapshot(entry);
   }
 
-  async function closeTab(id) {
+  async function closeTab(id, opts) {
     const entry = entries.get(id);
     if (!entry || !entry.closable || closing) {
       return false;
     }
+    const stay = opts && opts.stay === true;
     const view = views.get(entry.kind);
     const ctx = viewCtx(entry);
     if (view && typeof view.unsaved === "function" && view.unsaved(ctx) === true) {
@@ -417,7 +427,7 @@ export function createTabs(tablist, options = {}) {
     }
     closing = true;
     try {
-      /* The tab on the left becomes active. The leftmost close selects the next tab. The last close leaves the workspace empty. */
+      /* The closed tab's left neighbor becomes active. A batch close passes stay so a background tab does not steal the active one. The last close leaves the workspace empty. */
       const ordered = [...entries.values()].sort((a, b) => a.order - b.order);
       const index = ordered.findIndex((item) => item.id === id);
       let nextId = null;
@@ -440,18 +450,24 @@ export function createTabs(tablist, options = {}) {
       }
       nodes.delete(id);
       entries.delete(id);
-      if (activeId === id) {
+      unbindMenu(id);
+      rememberClosed(entry);
+      const wasActive = activeId === id;
+      if (wasActive) {
         activeId = null;
       }
       emit("close", entry);
-      if (!nextId) {
-        hidePanels();
-      } else if (activeId !== nextId) {
-        activate(nextId);
-      }
-      const next = nodes.get(nextId);
-      if (next) {
-        next.focus();
+      /* A background close still selects the left tab, unless this close is one of a batch that must stay put. */
+      if (wasActive || !stay) {
+        if (!nextId) {
+          hidePanels();
+        } else if (activeId !== nextId) {
+          activate(nextId);
+        }
+        const next = nodes.get(nextId);
+        if (next) {
+          next.focus();
+        }
       }
       return true;
     } finally {
@@ -461,6 +477,317 @@ export function createTabs(tablist, options = {}) {
 
   function sortedEntries() {
     return [...entries.values()].sort((a, b) => a.order - b.order);
+  }
+
+  function rememberClosed(entry) {
+    closedStack.push({
+      id: entry.id,
+      section: entry.section,
+      kind: entry.kind,
+      key: entry.key,
+      title: entry.title,
+      icon: entry.icon,
+      pinned: entry.pinned === true,
+      muted: entry.muted === true,
+      context: isPlain(entry.context) ? { ...entry.context } : entry.context,
+    });
+    if (closedStack.length > 20) {
+      closedStack.shift();
+    }
+  }
+
+  function applyOrder(ordered) {
+    ordered.forEach((entry, index) => {
+      entry.order = index + 1;
+    });
+    orderClock = ordered.length;
+    for (const entry of ordered) {
+      const node = nodes.get(entry.id);
+      if (node) {
+        tablist.append(node);
+      }
+    }
+    tablist.append(indicator);
+  }
+
+  function focusTab(id) {
+    const node = nodes.get(id);
+    if (node) {
+      node.focus();
+    }
+  }
+
+  function bindTabMenu(entry, tab) {
+    if (!options.menu || typeof options.menu.bind !== "function" || menuUnbind.has(entry.id)) {
+      return;
+    }
+    menuUnbind.set(entry.id, options.menu.bind(tab, () => itemsForTab(entry.id)));
+  }
+
+  function unbindMenu(id) {
+    const stop = menuUnbind.get(id);
+    if (stop) {
+      stop();
+    }
+    menuUnbind.delete(id);
+  }
+
+  function itemsForTab(id) {
+    const entry = entries.get(id);
+    if (!entry) {
+      return [];
+    }
+    const others = sortedEntries().filter((item) => item.id !== id && !item.pinned);
+    const right = sortedEntries().filter((item) => item.order > entry.order && !item.pinned);
+    return [
+      {
+        label: entry.pinned ? "Unpin" : "Pin",
+        disabled: entry.kind === "home",
+        onSelect() {
+          setPinned(id, !entry.pinned);
+        },
+      },
+      {
+        label: "Duplicate",
+        disabled: entry.kind === "home",
+        onSelect() {
+          duplicate(id);
+        },
+      },
+      {
+        label: entry.muted ? "Unmute" : "Mute",
+        disabled: entry.kind !== "browse",
+        onSelect() {
+          setMuted(id, !entry.muted);
+        },
+      },
+      {
+        label: "Close",
+        onSelect() {
+          void closeTab(id);
+        },
+      },
+      {
+        label: "Close others",
+        disabled: others.length === 0,
+        onSelect() {
+          void closeOthers(id);
+        },
+      },
+      {
+        label: "Close to the right",
+        disabled: right.length === 0,
+        onSelect() {
+          void closeToTheRight(id);
+        },
+      },
+      {
+        label: "Reopen closed tab",
+        disabled: closedStack.length === 0,
+        onSelect() {
+          reopenClosed();
+        },
+      },
+    ];
+  }
+
+  function stripItems() {
+    const sub = sortedEntries().filter((item) => item.kind !== "home" && !item.pinned);
+    return [
+      { label: "Vertical tabs", disabled: true },
+      {
+        label: "Close all sub-tabs",
+        disabled: sub.length === 0,
+        onSelect() {
+          void closeAllSubTabs();
+        },
+      },
+    ];
+  }
+
+  function setPinned(id, pinned) {
+    const entry = entries.get(id);
+    if (!entry || entry.kind === "home") {
+      return false;
+    }
+    const next = pinned === true;
+    if (entry.pinned === next) {
+      return true;
+    }
+    entry.pinned = next;
+    const ordered = sortedEntries().filter((item) => item.id !== id);
+    const pinCount = ordered.filter((item) => item.pinned).length;
+    ordered.splice(pinCount, 0, entry);
+    applyOrder(ordered);
+    renderTab(entry);
+    emit(next ? "pin" : "unpin", entry);
+    return true;
+  }
+
+  function duplicate(id) {
+    const entry = entries.get(id);
+    if (!entry || entry.kind === "home") {
+      return null;
+    }
+    const base = entry.key.replace(/#\d+$/, "");
+    let n = 2;
+    let key = `${base}#${n}`;
+    while (entries.has(`${entry.section}:${entry.kind}:${key}`)) {
+      n += 1;
+      key = `${base}#${n}`;
+    }
+    return openTab({
+      section: entry.section,
+      kind: entry.kind,
+      key,
+      title: entry.title,
+      icon: entry.icon,
+      context: isPlain(entry.context) ? { ...entry.context } : entry.context,
+    });
+  }
+
+  function setMuted(id, muted) {
+    const entry = entries.get(id);
+    if (!entry || entry.kind !== "browse") {
+      return false;
+    }
+    entry.muted = muted === true;
+    renderTab(entry);
+    emit("mute", entry);
+    return true;
+  }
+
+  async function closeSome(ids) {
+    for (const id of ids) {
+      if (!entries.has(id)) {
+        continue;
+      }
+      const ok = await closeTab(id, { stay: activeId !== id });
+      if (!ok && entries.has(id)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function closeOthers(id) {
+    const ids = sortedEntries().filter((item) => item.id !== id && !item.pinned).map((item) => item.id);
+    return closeSome(ids);
+  }
+
+  function closeToTheRight(id) {
+    const entry = entries.get(id);
+    if (!entry) {
+      return Promise.resolve(false);
+    }
+    const ids = sortedEntries().filter((item) => item.order > entry.order && !item.pinned).map((item) => item.id);
+    return closeSome(ids);
+  }
+
+  function closeAllSubTabs() {
+    const ids = sortedEntries().filter((item) => item.kind !== "home" && !item.pinned).map((item) => item.id);
+    return closeSome(ids);
+  }
+
+  function reopenClosed() {
+    const snap = closedStack.pop();
+    if (!snap) {
+      return null;
+    }
+    if (entries.has(snap.id)) {
+      activate(snap.id);
+      focusTab(snap.id);
+      return snapshot(entries.get(snap.id));
+    }
+    if (snap.kind === "home") {
+      const opened = openHome(snap.section, snap.context == null ? undefined : snap.context);
+      if (opened) {
+        focusTab(opened.id);
+      } else {
+        closedStack.push(snap);
+      }
+      return opened;
+    }
+    const opened = openTab({
+      section: snap.section,
+      kind: snap.kind,
+      key: snap.key,
+      title: snap.title,
+      icon: snap.icon,
+      context: snap.context,
+    });
+    if (!opened) {
+      closedStack.push(snap);
+      return null;
+    }
+    if (snap.pinned) {
+      setPinned(opened.id, true);
+    }
+    if (snap.muted) {
+      setMuted(opened.id, true);
+    }
+    focusTab(opened.id);
+    return snapshot(entries.get(opened.id));
+  }
+
+  function reloadActive() {
+    if (!activeId) {
+      return false;
+    }
+    const entry = entries.get(activeId);
+    const view = views.get(entry.kind);
+    if (!view || typeof view.onOpen !== "function") {
+      return false;
+    }
+    view.onOpen(viewCtx(entry));
+    return true;
+  }
+
+  function cycle(delta) {
+    const ordered = sortedEntries();
+    if (ordered.length === 0) {
+      return false;
+    }
+    let index = ordered.findIndex((item) => item.id === activeId);
+    if (index < 0) {
+      index = delta < 0 ? ordered.length - 1 : 0;
+    } else {
+      index = (index + delta + ordered.length) % ordered.length;
+    }
+    const id = ordered[index].id;
+    activate(id);
+    focusTab(id);
+    return true;
+  }
+
+  function activateAt(index) {
+    const ordered = sortedEntries();
+    const entry = ordered[index];
+    if (!entry) {
+      return false;
+    }
+    activate(entry.id);
+    focusTab(entry.id);
+    return true;
+  }
+
+  function focusActive() {
+    if (activeId) {
+      focusTab(activeId);
+    }
+  }
+
+  function groupIndex(id, raw) {
+    const ordered = sortedEntries();
+    const item = entries.get(id);
+    if (!item) {
+      return raw;
+    }
+    const pinCount = ordered.filter((entry) => entry.pinned).length;
+    if (item.pinned) {
+      return Math.max(0, Math.min(raw, pinCount));
+    }
+    return Math.max(pinCount, Math.min(raw, ordered.length));
   }
 
   function indexAt(clientX) {
@@ -500,24 +827,20 @@ export function createTabs(tablist, options = {}) {
     if (target > from) {
       target -= 1;
     }
-    if (target < 0 || target === from || target >= ordered.length) {
+    const item = ordered[from];
+    const pinCount = ordered.filter((entry) => entry.pinned).length;
+    /* A pinned tab stays in the pinned group. An unpinned tab stays to the right of it. */
+    if (item.pinned) {
+      target = Math.max(0, Math.min(target, pinCount - 1));
+    } else {
+      target = Math.max(pinCount, Math.min(target, ordered.length - 1));
+    }
+    if (target === from) {
       return;
     }
-    const [item] = ordered.splice(from, 1);
+    ordered.splice(from, 1);
     ordered.splice(target, 0, item);
-    ordered.forEach((entry, i) => {
-      entry.order = i + 1;
-    });
-    orderClock = ordered.length;
-    const node = nodes.get(id);
-    const after = ordered[target + 1];
-    const afterNode = after ? nodes.get(after.id) : null;
-    if (node && afterNode) {
-      tablist.insertBefore(node, afterNode);
-    } else if (node) {
-      tablist.append(node);
-    }
-    tablist.append(indicator);
+    applyOrder(ordered);
     indicator.hidden = true;
     emit("reorder", item);
   }
@@ -551,6 +874,11 @@ export function createTabs(tablist, options = {}) {
       node.remove();
     }
     indicator.remove();
+    stripUnbind();
+    for (const id of menuUnbind.keys()) {
+      unbindMenu(id);
+    }
+    closedStack.splice(0, closedStack.length);
     panels.clear();
     nodes.clear();
     entries.clear();
@@ -569,6 +897,20 @@ export function createTabs(tablist, options = {}) {
     subscribe,
     register,
     refreshIcons,
+    setPinned,
+    duplicate,
+    setMuted,
+    closeOthers,
+    closeToTheRight,
+    closeAllSubTabs,
+    reopenClosed,
+    reloadActive,
+    cycle,
+    activateAt,
+    focusActive,
+    closeActive() {
+      return activeId ? closeTab(activeId) : Promise.resolve(false);
+    },
     destroy,
   };
 }

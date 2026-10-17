@@ -4,6 +4,7 @@ import { clampUi } from "./prefs.js";
 test("log zoom snaps and the activity view defaults to log", () => {
   const blank = clampUi({});
   expect(blank.zoom.log).toBe(1);
+  expect(blank.zoom.wheel).toBe("away");
   expect(blank.activity.view).toBe("log");
   expect(blank.activity.history).toBe(false);
 
@@ -20,6 +21,10 @@ test("log zoom snaps and the activity view defaults to log", () => {
   expect(clampUi({ zoom: { shell: 3, log: 3 } }).zoom.log).toBe(3);
   expect(clampUi({ zoom: { shell: 1.53 } }).zoom.shell).toBe(1.55);
   expect(clampUi({ zoom: { shell: "nope" } }).zoom.shell).toBe(1);
+  expect(clampUi({ zoom: { wheel: "toward", extra: 3 } }).zoom.wheel).toBe("toward");
+  expect(clampUi({ zoom: { wheel: "toward", extra: 3 } }).zoom.extra).toBe(3);
+  expect(clampUi({ zoom: { wheel: "natural" } }).zoom.wheel).toBe("away");
+  expect(clampUi({ zoom: { wheel: 1 } }).zoom.wheel).toBe("away");
   expect(stored.activity.view).toBe("activity");
   expect(stored.activity.note).toBe("kept");
   expect(stored.later).toBe(true);

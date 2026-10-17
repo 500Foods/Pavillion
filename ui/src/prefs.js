@@ -6,7 +6,7 @@ export const DEFAULT_UI = {
   mail: { split: 0.5, min: 0.25, max: 0.75 },
   contacts: { split: 0.5, min: 0.25, max: 0.75 },
   files: { split: 0.5, min: 0.25, max: 0.75 },
-  zoom: { shell: 1, navButtons: 1, navBody: 1, mailList: 1, mailDetail: 1, log: 1 },
+  zoom: { shell: 1, navButtons: 1, navBody: 1, mailList: 1, mailDetail: 1, log: 1, wheel: "away" },
   activity: { view: "log", history: false },
   log: {
     levels: ["ERROR", "WARN", "INFO", "DEBUG"],
@@ -160,7 +160,9 @@ export function clampUi(raw) {
   for (const key of ZOOM_KEYS) {
     zoom[key] = snapZoom(zoomSrc[key] === undefined ? DEFAULT_UI.zoom[key] : zoomSrc[key], key);
   }
-  copyUnknown(zoom, zoomSrc, ZOOM_KEYS);
+  /* Which roll increases a pane. Not a scale, so it stays out of ZOOM_KEYS. */
+  zoom.wheel = zoomSrc.wheel === "toward" ? "toward" : "away";
+  copyUnknown(zoom, zoomSrc, [...ZOOM_KEYS, "wheel"]);
   const out = {
     nav: panePx(src.nav, DEFAULT_UI.nav),
     mail: paneSplit(src.mail, DEFAULT_UI.mail),

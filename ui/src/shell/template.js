@@ -122,8 +122,13 @@ export const shellMarkup = `<div class="shell">
                 <input type="range" min="0.05" max="5" step="0.05" value="1" />
                 <span class="zoom-value">100%</span>
               </label>
+              <div class="zoom zoom-wheel">
+                <span class="zoom-label">Wheel</span>
+                <button type="button" class="zoom-wheel-switch" id="zoom-wheel" role="switch" aria-checked="false">Away zooms in</button>
+                <span class="zoom-value" aria-hidden="true"></span>
+              </div>
             </div>
-            <p class="muted">Shell multiplies every row below. Button bars covers the navigation, the main tabs, the log bars, and the bars on other settings pages. Each row is its own key on the profile.</p>
+            <p class="muted">Shell multiplies every row below. Button bars covers the navigation, the main tabs, the log bars, and the bars on other settings pages. Each row is its own key on the profile. Hold Ctrl and roll the wheel over a button bar, the nav, the calendar, a mail pane, or the log to change that row by 5%. The wheel leaves Shell alone. Away zooms in unless the switch says toward.</p>
             <p class="muted" id="profile-name"></p>
           </div>
           <div data-settings="theme" hidden>

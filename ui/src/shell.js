@@ -1,5 +1,6 @@
 import { createDialogs } from "./common/dialog.js";
 import { installIsolationTest } from "./common/isolation.js";
+import { createKeys } from "./common/keys.js";
 import { createMenu } from "./common/menu.js";
 import { createToaster } from "./common/toast.js";
 import { createTooltip } from "./common/tooltip.js";
@@ -63,6 +64,7 @@ function paintZoomSliders() {
       reading.textContent = zoomLabel(ui.zoom[key]);
     }
   }
+  paintWheelSwitch();
 }
 
 function applyFonts() {
@@ -140,6 +142,96 @@ function applyZoom() {
   if (logView) {
     logView.setZoom(ui.zoom.log);
   }
+}
+
+/* A mouse notch is about 100px. Smaller pixel deltas add up until then, so a trackpad flick is not one step per event.
+   A line or a page is one step from its sign. deltaY > 0 rolls toward you. "away" increases zoom when deltaY is negative. */
+const WHEEL_NOTCH_PX = 100;
+let wheelRemainder = 0;
+let onZoomWheel = null;
+
+function paintWheelSwitch() {
+  if (!mountRoot) {
+    return;
+  }
+  const button = mountRoot.querySelector("#zoom-wheel");
+  if (!button) {
+    return;
+  }
+  const toward = ui.zoom.wheel === "toward";
+  button.setAttribute("aria-checked", toward ? "true" : "false");
+  button.textContent = toward ? "Toward zooms in" : "Away zooms in";
+}
+
+function zoomKeyAt(target) {
+  if (!(target instanceof Element)) {
+    return "";
+  }
+  if (target.closest(".button-bar")) {
+    return "navButtons";
+  }
+  if (target.closest(".nav-body") || target.closest("#month")) {
+    return "navBody";
+  }
+  if (target.closest("#panel-mail .pane-list")) {
+    return "mailList";
+  }
+  if (target.closest("#panel-mail .pane-detail")) {
+    return "mailDetail";
+  }
+  if (target.closest("[data-activity-pane='log']")) {
+    return "log";
+  }
+  return "";
+}
+
+function wheelSteps(event) {
+  const delta = event.deltaY;
+  if (!Number.isFinite(delta) || delta === 0) {
+    return 0;
+  }
+  if (event.deltaMode !== 0) {
+    wheelRemainder = 0;
+    return delta > 0 ? 1 : -1;
+  }
+  if (Math.abs(delta) >= WHEEL_NOTCH_PX) {
+    wheelRemainder = 0;
+    return delta > 0 ? 1 : -1;
+  }
+  wheelRemainder += delta;
+  if (Math.abs(wheelRemainder) < WHEEL_NOTCH_PX) {
+    return 0;
+  }
+  const steps = wheelRemainder > 0 ? 1 : -1;
+  wheelRemainder -= steps * WHEEL_NOTCH_PX;
+  return steps;
+}
+
+function stepZoom(key, steps) {
+  if (!steps || key === "shell" || !(key in ui.zoom)) {
+    return;
+  }
+  const direction = ui.zoom.wheel === "toward" ? 1 : -1;
+  const next = zoomClamp(key, ui.zoom[key] + direction * steps * 0.05);
+  if (next === ui.zoom[key]) {
+    return;
+  }
+  ui.zoom[key] = next;
+  paintZoomSliders();
+  applyZoom();
+  persistLayout();
+}
+
+function onWheelZoom(event) {
+  if (!event.ctrlKey || !mountRoot) {
+    return;
+  }
+  event.preventDefault();
+  const key = zoomKeyAt(event.target);
+  if (!key) {
+    return;
+  }
+  stepZoom(key, wheelSteps(event));
 }
 
 const ICON_KEYS = ["mail", "contacts", "calendars", "files", "activity", "settings", "update", "help"];
@@ -751,6 +843,7 @@ const sections = {
 };
 
 let tabCtl = null;
+let keys = null;
 let testSerial = 0;
 let navSection = "mail";
 let logView = null;
@@ -973,6 +1066,55 @@ function openHome(section, context) {
   return tabCtl.openHome(section, context);
 }
 
+function bindTabKeys() {
+  if (!keys || !tabCtl) {
+    return;
+  }
+  const tab = (id, chords, run) => {
+    keys.register({ id, scope: "workspace", chords, run });
+  };
+  tab("tab.next", [["Ctrl+Tab"]], () => {
+    tabCtl.cycle(1);
+  });
+  tab("tab.previous", [["Ctrl+Shift+Tab"]], () => {
+    tabCtl.cycle(-1);
+  });
+  tab("tab.close", [["Ctrl+W"], ["Ctrl+F4"]], () => {
+    void tabCtl.closeActive();
+  });
+  tab("tab.new", [["Ctrl+T"]], () => {});
+  tab("tab.reopen", [["Ctrl+Shift+T"]], () => {
+    tabCtl.reopenClosed();
+  });
+  tab("tab.reload", [["Ctrl+R"]], () => {
+    tabCtl.reloadActive();
+  });
+  for (let n = 1; n <= 9; n += 1) {
+    const index = n - 1;
+    tab(`tab.goto.${n}`, [[`Alt+${n}`]], () => {
+      tabCtl.activateAt(index);
+    });
+  }
+  const switches = [
+    ["1", "mail"],
+    ["2", "contacts"],
+    ["3", "calendars"],
+    ["4", "files"],
+  ];
+  for (const [digit, section] of switches) {
+    keys.register({
+      id: `section.${section}`,
+      scope: "global",
+      chords: [[`Ctrl+${digit}`]],
+      run() {
+        showNav(section);
+        openHome(section);
+        tabCtl.focusActive();
+      },
+    });
+  }
+}
+
 function bindNavResize() {
   const nav = mountRoot.querySelector("#nav");
   const handle = mountRoot.querySelector("#nav-resize");
@@ -1096,6 +1238,14 @@ function bindSettings() {
     input.addEventListener("input", show);
     input.addEventListener("change", () => {
       show();
+      persistLayout();
+    });
+  }
+  const wheelSwitch = mountRoot.querySelector("#zoom-wheel");
+  if (wheelSwitch) {
+    wheelSwitch.addEventListener("click", () => {
+      ui.zoom.wheel = ui.zoom.wheel === "toward" ? "away" : "toward";
+      paintWheelSwitch();
       persistLayout();
     });
   }
@@ -1507,6 +1657,15 @@ export function stopShell() {
   motionQuery = null;
   onMotion = null;
   syncing = 0;
+  if (mountRoot && onZoomWheel) {
+    mountRoot.removeEventListener("wheel", onZoomWheel, true);
+  }
+  onZoomWheel = null;
+  wheelRemainder = 0;
+  if (keys) {
+    keys.destroy();
+    keys = null;
+  }
   if (tabCtl) {
     tabCtl.destroy();
     tabCtl = null;
@@ -1527,6 +1686,8 @@ export async function startShell(surface, nextApi, nextHost, result) {
   const mine = { isolationStop: null };
   session = mine;
   mountRoot = surface;
+  onZoomWheel = onWheelZoom;
+  mountRoot.addEventListener("wheel", onZoomWheel, { capture: true, passive: false });
   api = nextApi;
   host = nextHost || {};
   widgets = {
@@ -1544,6 +1705,8 @@ export async function startShell(surface, nextApi, nextHost, result) {
       showNav(section);
       openHome(section);
     },
+    menu: widgets.menus,
+    strip: mountRoot.querySelector(".tabs"),
     confirm(entry) {
       if (!widgets) {
         return Promise.resolve(false);
@@ -1556,6 +1719,8 @@ export async function startShell(surface, nextApi, nextHost, result) {
       });
     },
   });
+  keys = createKeys(mountRoot);
+  bindTabKeys();
   tabCtl.register("test", {
     create(el, ctx) {
       const note = document.createElement("p");
