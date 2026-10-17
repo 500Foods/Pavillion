@@ -630,7 +630,7 @@ State: real (G-2)
 
 Args: `{}`.
 
-Result: `{profileName, profileId, state, error}`. `state` is `ready` or `error`. `error` is empty when the profile loaded. A profile that failed to load is still `ok: true`; `state` carries the failure. `not_ready` means the core thread is not running.
+Result: `{profileName, profileId, state, error, debug, selftest}`. `state` is `ready` or `error`. `error` is empty when the profile loaded. A profile that failed to load is still `ok: true`; `state` carries the failure. `not_ready` means the core thread is not running. `debug` and `selftest` are booleans. The shell sets `PAVILLION_DEBUG=1` for a debug build and `PAVILLION_SELFTEST=1` when `--selftest` is passed. `pavillion_start` reads each variable once. The value is true only when the variable is `1`.
 
 Errors: `bad_args`, `not_ready`, `internal`.
 
@@ -728,9 +728,9 @@ A file listing changed.
 ### link.clicked
 
 Kind: event
-State: planned (F-4)
+State: real (F-4)
 
-`{paneId, n}`. Emitted by `pav-link`. The scheme reply is 204.
+`{paneId, n}`. Emitted by `pav-link://<paneId>/<n>`. `paneId` is 1 to 64 characters from `A-Za-z0-9_-`. `n` is an integer from 0 through 2^53−1. The scheme reply is 204 with an empty body. Any other URL is 404 and emits nothing.
 
 ### log.lines
 

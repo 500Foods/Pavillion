@@ -69,6 +69,8 @@ export function mockTransport() {
         profileId: "default",
         state: "ready",
         error: "",
+        debug: false,
+        selftest: false,
       };
     }
     if (cmd === "prefs.get") {

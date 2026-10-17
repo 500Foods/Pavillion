@@ -179,6 +179,7 @@ input:focus-visible {
 }
 
 .pane-detail {
+  position: relative;
   flex: 1;
   background: var(--surface-detail);
 }
@@ -692,4 +693,55 @@ input:focus-visible {
     font-family: "Vanadium Mono", ui-monospace, monospace;
     white-space: pre-wrap;
   }
+}
+
+.isolation-host {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.isolation-note {
+  flex: none;
+  margin: 0.75rem 1rem 0.5rem;
+}
+
+.isolation-frame {
+  flex: 1;
+  min-height: 0;
+}
+
+.html-pane {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+}
+
+#isolation-test {
+  margin: 0 1rem 1rem;
+}
+
+#link-confirm {
+  max-width: 36rem;
+  padding: 1rem 1.25rem;
+  color: var(--fg);
+  background: var(--surface-button);
+  border: 1px solid var(--border);
+}
+
+#link-confirm::backdrop {
+  background: rgb(0 0 0 / 40%);
+}
+
+#link-confirm p {
+  margin: 0 0 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+#link-confirm form {
+  margin: 0;
 }

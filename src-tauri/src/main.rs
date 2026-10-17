@@ -18,7 +18,7 @@ fn help_text() -> String {
             text.push('\n');
         }
     }
-    text.push_str("\nUsage: pavillion [WORKDIR]\n");
+    text.push_str("\nUsage: pavillion [--selftest] [WORKDIR]\n");
     text
 }
 
@@ -41,8 +41,30 @@ fn cli_exit_code() -> Option<i32> {
         println!("{}", version_line());
         return Some(0);
     }
+    let selftest = flags.iter().filter(|flag| **flag == "--selftest").count();
+    if selftest == 1 && selftest == flags.len() && args.len() - selftest <= 1 {
+        return None;
+    }
     eprint!("{}", help_text());
     Some(1)
+}
+
+/// The core reads these once in pavillion_start. A release build clears a
+/// debug value inherited from the environment. main is the only thread here,
+/// which is why the edition-2024 set_var calls are safe.
+fn publish_host_flags(selftest: bool) {
+    unsafe {
+        if cfg!(debug_assertions) {
+            std::env::set_var("PAVILLION_DEBUG", "1");
+        } else {
+            std::env::remove_var("PAVILLION_DEBUG");
+        }
+        if selftest {
+            std::env::set_var("PAVILLION_SELFTEST", "1");
+        } else {
+            std::env::remove_var("PAVILLION_SELFTEST");
+        }
+    }
 }
 
 fn default_workdir() -> String {
@@ -60,11 +82,14 @@ fn main() {
         std::process::exit(code);
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.len() > 1 {
+    let selftest = args.iter().any(|arg| arg == "--selftest");
+    let positionals: Vec<String> = args.into_iter().filter(|arg| arg != "--selftest").collect();
+    if positionals.len() > 1 {
         std::process::exit(pavillion_lib::unknown_subcommand());
     }
-    let workdir = if args.len() == 1 {
-        args[0].clone()
+    publish_host_flags(selftest);
+    let workdir = if positionals.len() == 1 {
+        positionals[0].clone()
     } else {
         default_workdir()
     };

@@ -1,6 +1,6 @@
 # F — HARDEN
 
-**Status:** F-1 and F-5 complete (2026-10-16). F-6 is superseded. The index names the next phase.
+**Status:** F-1, F-2, F-4, and F-5 complete (2026-10-16). F-6 is superseded. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Structural fixes found after D-3. They go in before mail is real, because each gets more expensive once JMAP, accounts, and credentials sit on top of it. This document owns the main-window security rules: the CSP, the Font Awesome kit, and the rule that outside HTML never enters the main DOM.
@@ -14,7 +14,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | F-1 | API version check (`pavillion_api_version`) | Medium | Complete |
 | F-5 | Trim `config.c` with a helper layer | Medium | Complete |
 | F-2 | UI preferences as an opaque JSON blob | Medium | Complete |
-| F-4 | Message pane isolation, proven before mail | Medium | Not started |
+| F-4 | Message pane isolation, proven before mail | Medium | Complete |
 | F-3 | Icon library sources: typed https URLs on an allowlist, presets | Medium | Not started |
 | F-7 | Shared icon HTML sanitizer, the icon registry, overrides in the UI blob | Medium | Not started |
 | F-8 | Icon settings: the icon tree and the three-preview editor | Medium | Not started |
@@ -58,7 +58,7 @@ script-src 'self' 'unsafe-inline' https://kit.fontawesome.com https://ka-p.fonta
 font-src 'self' data: https://ka-p.fontawesome.com https://fonts.gstatic.com;
 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
 img-src 'self' pav-cid: data:;
-frame-src 'self';
+frame-src 'self' pav-link:;
 connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhost:1420
 ```
 
@@ -100,8 +100,9 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 
 ### Message pane
 
-- All outside HTML renders in `<iframe sandbox srcdoc=…>` with no `allow-scripts`, no `allow-same-origin`, no `allow-forms`, no `allow-popups`, and no `allow-top-navigation`. The srcdoc carries its own CSP meta: `default-src 'none'; img-src pav-cid: data:` plus `https:` only when remote content is allowed for that message; `style-src 'unsafe-inline'; font-src data:`. It never gains the Font Awesome hosts or any script source.
+- All outside HTML renders in `<iframe sandbox srcdoc=…>` with no `allow-scripts`, no `allow-same-origin`, no `allow-forms`, no `allow-popups`, and no `allow-top-navigation`. The srcdoc carries its own CSP meta: `default-src 'none'; img-src pav-cid: data:` plus `https:` only when remote content is allowed for that message; `style-src 'unsafe-inline'; font-src data:; frame-src pav-link:`. It never gains the Font Awesome hosts or any script source. WebKit on Fedora ignores `navigate-to` and reports it as an unrecognized directive, so the pane does not send that directive. The sandbox itself blocks a meta refresh. `frame-src pav-link:` is how a link click reaches `pav_protocol`. The main-window `frame-src` includes `pav-link:` for the same reason, because a srcdoc inherits that policy. It does not include `https:`. `allowRemote` adds `https:` to `img-src` only. The inherited parent `img-src` does not include `https:`, so a remote image stays blocked until that lock changes.
 - A srcdoc document inherits the embedder's CSP as well as its own. The sandbox without `allow-scripts` is what stops script; the inner CSP is what stops network loads. Both are required.
+- A click navigates that frame to `pav-link`. The handler returns 204 with an empty body. WebKit on Fedora still replaces the srcdoc, and that document has no URL to reload. `createHtmlPane` keeps the last HTML and writes the same srcdoc back when the frame loads a navigation the pane did not just write.
 - The frame has no Tauri IPC. Capabilities grant IPC to the main window only (`"windows": ["main"]`, no `remote` URLs).
 - Icons and controls for a message (remote-content banner, link confirm) are drawn by the parent around the frame, never inside it.
 - The same pane component (`ui/src/common/htmlpane.js`) is used for mail, calendar descriptions, contact notes with HTML, and file previews of HTML.
@@ -252,7 +253,7 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 ## F-4: Message pane isolation, proven before mail
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Complete (2026-10-16). Variance: `--selftest` may be followed by one workdir. This WebKit ignores `navigate-to`, so the pane does not send it. A 204 still replaces the srcdoc, and the pane writes that document back. The dialog does not open the URL.
 
 **Goal:** The sandboxed pane exists and is tested with hostile HTML in the release build before any real message is shown.
 
@@ -260,16 +261,22 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 
 **Work items:**
 
-- [ ] `ui/src/common/htmlpane.js`: `createHtmlPane(el)` returns `{ show(html, { allowRemote }), clear() }`. It builds the iframe with the Lock's attributes, wraps the body with the inner CSP meta and a base stylesheet (`color-scheme`, font, `max-width:100%` on images).
-- [ ] Put one pane in the Mail detail placeholder, fed by a fixture behind a Help-menu item `Show isolation test` (debug builds and `--selftest` only).
-- [ ] Fixture `tests/corpus/hostile.html`: `<script>`, `onerror`, `javascript:` link, `<meta http-equiv=refresh>`, `<base href>`, remote `img` and CSS `url()`, `<form>`, SVG with script, `<iframe>`, `<object>`.
-- [ ] In the release build, from the frame: `window.__TAURI__`, `window.__TAURI_INTERNALS__`, and `parent.__TAURI__` are unreachable (no script runs, so the test is that nothing in the fixture changes the page title the parent watches, and that devtools' network panel shows zero requests). Record the steps in Accomplished.
-- [ ] `src-tauri/capabilities/default.json` keeps `"windows": ["main"]` and gains no `remote` entry. Add a Vitest test (`capabilities.test.js`) that parses the file and asserts that. This is not a Rust test, per the G L3 Lock.
-- [ ] Link clicks: the parent cannot see clicks in a script-free sandbox. N-2's core sanitizer will rewrite every `href` to `pav-link://<id>/<n>`. That URL shape is fixed here, and N-2 depends on it. This phase uses a hand-written fixture page that already carries such links; this phase adds `pav-link` to the C `pav_protocol` table under the scheme contract in the [G-LAYERS.md](G-LAYERS.md) L2 Lock. C emits `link.clicked` with the index and returns 204, and Rust only forwards, and the parent shows a plain `<dialog>`. J-1 replaces that dialog with the shared one. Prove it with a fixture link here.
+- [x] `ui/src/common/htmlpane.js`: `createHtmlPane(el)` returns `{ show(html, { allowRemote }), clear() }`. It builds the iframe with the Lock's attributes, wraps the body with the inner CSP meta and a base stylesheet (`color-scheme`, font, `max-width:100%` on images).
+- [x] Put one pane in the Mail detail placeholder, fed by a fixture behind a Help-menu item `Show isolation test` (debug builds and `--selftest` only). Andrew confirmed the button is hidden without the flag and that the fixture loads with it.
+- [x] Fixture `tests/corpus/hostile.html`: `<script>`, `onerror`, `javascript:` link, `<meta http-equiv=refresh>`, `<base href>`, remote `img` and CSS `url()`, `<form>`, SVG with script, `<iframe>`, `<object>`.
+- [x] In the release build, from the frame: `window.__TAURI__`, `window.__TAURI_INTERNALS__`, and `parent.__TAURI__` are unreachable (no script runs, so the test is that nothing in the fixture changes the page title the parent watches, and that devtools' network panel shows zero requests). Record the steps in Accomplished.
+- [x] `src-tauri/capabilities/default.json` keeps `"windows": ["main"]` and gains no `remote` entry. Add a Vitest test (`capabilities.test.js`) that parses the file and asserts that. This is not a Rust test, per the G L3 Lock.
+- [x] Link clicks: the parent cannot see clicks in a script-free sandbox. N-2's core sanitizer will rewrite every `href` to `pav-link://<id>/<n>`. That URL shape is fixed here, and N-2 depends on it. This phase uses a hand-written fixture page that already carries such links; this phase adds `pav-link` to the C `pav_protocol` table under the scheme contract in the [G-LAYERS.md](G-LAYERS.md) L2 Lock. C emits `link.clicked` with the index and returns 204, and Rust only forwards, and the parent shows a plain `<dialog>`. J-1 replaces that dialog with the shared one. Prove it with a fixture link here.
 
 **Done means:** The fixture renders as inert text and layout in `make build`, makes no network request, and a link click raises the parent's confirm with the real URL.
 
 **Exit gate:** `make build` and run `dist/pavillion`: the isolation test shows the fixture, the dialog appears on link click, the network panel is empty, and `make test` exits 0.
+
+**Accomplished:** `createHtmlPane` builds an `<iframe sandbox="" referrerpolicy="no-referrer" title="Message">` and sets `srcdoc`. The inner CSP is `default-src 'none'; img-src pav-cid: data:; style-src 'unsafe-inline'; font-src data:; frame-src pav-link:`. `allowRemote` adds `https:` to that `img-src` only. The base style sets `color-scheme: dark`, a 16px system font, and `max-width: 100%` on images. The fixture is `tests/corpus/hostile.html`. The Help panel button Show isolation test is shown when `system.status` reports `debug` or `selftest`. A debug build sets `PAVILLION_DEBUG=1` from Rust `debug_assertions`. `--selftest` sets `PAVILLION_SELFTEST=1` and may be followed by one workdir. A release build clears an inherited debug value. Both are read once in `pavillion_start`. Any other flag still prints help on stderr and exits 1. `--help` and `--version` still exit before the core. `pav-link://<paneId>/<n>` is parsed in `protocol.c`. `paneId` is 1 to 64 characters from `A-Za-z0-9_-`. `n` is a decimal integer from 0 through 2^53−1. The handler emits `link.clicked` as `{"paneId","n"}` and returns 204 with an empty body. Any other URL is 404 and emits nothing. `src-tauri/src/lib.rs` is 199 lines and only forwards. The parent list for pane `isolation` has one URL, `https://example.com/pavillion-isolation-test`. The dialog says "This link wants to open:" and that URL. Close dismisses it. `link.open` is not called. Capabilities stay `"windows": ["main"]` with no `remote` entry. The main `frame-src` is `'self' pav-link:`. `PAVILLION_API_VERSION` stays 3. `make test` is 67 Unity tests and 30 Vitest tests. `make build` produced `dist/pavillion`. Andrew ran that binary with `--selftest`. The button was hidden without the flag. The fixture showed. Example link raised the dialog with the example.com URL. The network panel was empty. No page loaded. The console showed the fixture script blocked, the `example.invalid` image, frame, object, and CSS loads refused, and the meta refresh blocked by the sandbox. That block printed again when the pane wrote the srcdoc back. The script that would have changed the title is the one the console blocked.
+
+**Lessons learned:** This WebKit ignores `navigate-to` and logs it as unrecognized, so the pane does not send it. The sandbox already blocks a meta refresh. A srcdoc inherits the parent CSP, so `frame-src 'self'` refused `pav-link://isolation/0` until the main policy listed `pav-link:`. A 204 with an empty body still replaces the srcdoc, and that document has no URL to reload. `createHtmlPane` writes the same HTML back when the frame loads a navigation the pane did not just write. The attribute does not navigate when the new text equals the old text, so each write adds a comment. The same console block can print a second time. That is the restore. The parent `img-src` is still `'self' pav-cid: data:`, so `allowRemote` cannot load an https image until that lock changes. cmake does not define `NDEBUG`, so the debug signal is the shell's `debug_assertions`. Edition 2024 makes `std::env::set_var` unsafe, and `main` is the only thread there. A-6 said a flag mixed with any other argument is unknown. `--selftest` plus one workdir is the exception, so a release check can leave the live profile untouched. The dialog does not open the URL.
+
+**Handoff:** G-4 is next, in [G-LAYERS.md](G-LAYERS.md). Do not bump `PAVILLION_API_VERSION`. `lib.rs` stays a forwarder at 199 lines. Do not add `navigate-to`. Do not add `https:` to the main `img-src` or `frame-src`. N-4 owns remote images and `link.open`. J-1 replaces the plain `#link-confirm` dialog. N-2 rewrites real mail hrefs to this `pav-link` shape. The Help button stays behind `debug` or `selftest`. Secrets stay `-1` until K-1. `macos-core` stays `continue-on-error` until G-6. G-4's entry gate is G-8, which is already met.
 
 ## F-8: Icon settings: tree and editor
 
@@ -309,3 +316,8 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 - 2026-10-16 F-1: `build.rs` reads the macro. A mismatch prints `API version mismatch: core=<n> shell=<m>` and exits 1. No `pav_log`, no working directory. Scratch `return 2` proved it. `make test` is 28 tests. The release window still showed the rail icons.
 - 2026-10-16 F-5: helpers in `pav_cfg.h` and `cfg.c`. `config.c` split into `config.c` (485), `config_prefs.c` (584), and `config_fs.c` (345), 1,414 lines together. `make test` is 34 tests. `make dev` restored `1900x1309+797+496` and the saved zoom labels. API version stays 1.
 - 2026-10-16 F-2: `preferences.ui` is an opaque blob. `PavShellPrefs` is the window only, so `PAVILLION_API_VERSION` is 2. An old profile migrates once, schema stays 1. `make test` is 35 tests. Fonts persist in `9be9a8b`, which touches only `ui/`. The window restored System UI, nav 400, and mail list 160% after quit. The real profile was then restored.
+- 2026-10-16 F-4 in progress. `htmlpane`, `tests/corpus/hostile.html`, `pav-link` (204 and `link.clicked`), and the capabilities Vitest are in. The inner CSP gained `navigate-to pav-link:`. `PAVILLION_API_VERSION` stays 3. `make test` is 67 Unity tests and 28 Vitest tests. `make build` produced `dist/pavillion`. The release window check is still open.
+- 2026-10-16 F-4 window check: WebKit ignores `navigate-to` and the sandbox blocks meta refresh. The click was refused because inherited `frame-src 'self'` does not include `pav-link:`. The main CSP and the pane CSP now use `frame-src` for that scheme. `navigate-to` is gone. The dialog is still unconfirmed.
+- 2026-10-16 F-4 rebuild: `make test` is 67 Unity tests and 29 Vitest tests. `make build` produced `dist/pavillion` with `frame-src 'self' pav-link:` and no `navigate-to`. The dialog is still unconfirmed. Do not start G-4.
+- 2026-10-16 F-4 window check: the dialog showed `https://example.com/pavillion-isolation-test`. The frame then stayed empty. WebKit replaces the srcdoc on the 204, and that document has no URL to reload. `createHtmlPane` writes the same HTML back on that load. `make test` is 67 Unity tests and 30 Vitest tests. `make build` produced `dist/pavillion` with that restore. The restored frame is still unconfirmed.
+- 2026-10-16 F-4 complete. Andrew confirmed the dialog, an empty network panel, and no page load. The console block is the sandbox and the CSP, and it printed again when the srcdoc was written back. `make test` is 67 Unity tests and 30 Vitest tests. `PAVILLION_API_VERSION` stays 3. `lib.rs` is 199 lines. G-4 is next.

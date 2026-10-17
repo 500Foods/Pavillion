@@ -1,0 +1,13 @@
+<h1>Isolation fixture</h1>
+<p>Visible text. The block below is hostile HTML. Script, remote images, and navigation stay inside this frame.</p>
+<p><a href="pav-link://isolation/0">Example link</a></p>
+<script>document.title="pwned-by-fixture";try{parent.document.title="pwned-by-fixture"}catch(e){}</script>
+<img src="https://example.invalid/track.png" alt="remote image" onerror="parent.document.title='pwned-by-fixture'">
+<a href="javascript:parent.document.title='pwned-by-fixture'">javascript link</a>
+<meta http-equiv="refresh" content="0;url=https://example.invalid/refresh">
+<base href="https://example.invalid/base/">
+<style>body { background-image: url("https://example.invalid/bg.png"); }</style>
+<form action="https://example.invalid/post" method="post"><button type="submit">submit form</button></form>
+<svg xmlns="http://www.w3.org/2000/svg"><script>parent.document.title="pwned-by-fixture"</script></svg>
+<iframe src="https://example.invalid/frame"></iframe>
+<object data="https://example.invalid/object"></object>

@@ -14,6 +14,8 @@ describe("createApi over the mock transport", () => {
     expect(status.profileId).toBe("default");
     expect(status.state).toBe("ready");
     expect(status.error).toBe("");
+    expect(status.debug).toBe(false);
+    expect(status.selftest).toBe(false);
   });
 
   test("prefs.set keeps keys it does not send", async () => {

@@ -125,7 +125,7 @@ int pav_protocol(const char *req_json, PavBytes *out);
 - Scheme-handler contract. Rust only forwards the request and copies the status, headers, and body into the Tauri response, so it never parses the URL. Ownership checks, MIME type, `Range`, and `Cache-Control: no-store` are all decided in C, and an unknown scheme or URL returns 404.
   - `pav-cid://<emailRowid>/<cid>`: the inline part, only if that cid belongs to that email (N-4).
   - `pav-blob://<raId>/<blobId>`: a stored blob, such as a contact photo or an attachment preview (N-7, S-2).
-  - `pav-link://<paneId>/<n>`: emits `link.clicked {paneId, n}` and returns 204 (F-4).
+  - `pav-link://<paneId>/<n>`: paneId is 1 to 64 characters from `A-Za-z0-9_-`, and n is a decimal integer from 0 through 2^53−1. The handler emits `link.clicked` as `{"paneId","n"}` and returns 204 with an empty body. Any other URL is 404 and emits nothing (F-4).
 
 - Command names are `noun.verb` in lowercase dots (`mailbox.list`, `message.get`). Event names are `noun.change` (`mail.messages_changed`). Wire field names are camelCase. C structs stay snake_case. The §2.3 names in the old plan map one to one: `mailbox_list` becomes `mailbox.list`, `mail://messages-changed` becomes `mail.messages_changed`.
 - `ApiError` codes are a closed list in `docs/API.md`: `bad_args`, `not_found`, `not_ready`, `auth`, `network`, `server`, `conflict`, `forbidden`, `too_large`, `cancelled`, `internal`. `retryable` is true only for `network` and some `server`.

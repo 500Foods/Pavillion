@@ -213,6 +213,8 @@ static void remove_cfg_dir(void) {
 }
 
 void tearDown(void) {
+    unsetenv("PAVILLION_DEBUG");
+    unsetenv("PAVILLION_SELFTEST");
     pav_platform_fake_reset();
     pavillion_stop();
     pav_log_thread_shutdown();
@@ -2018,6 +2020,8 @@ void test_call_status_roundtrip(void) {
     TEST_ASSERT_EQUAL_STRING("default", json_string_value(json_object_get(data, "profileId")));
     TEST_ASSERT_EQUAL_STRING("ready", json_string_value(json_object_get(data, "state")));
     TEST_ASSERT_EQUAL_STRING("", json_string_value(json_object_get(data, "error")));
+    TEST_ASSERT_TRUE(json_is_boolean(json_object_get(data, "debug")));
+    TEST_ASSERT_TRUE(json_is_boolean(json_object_get(data, "selftest")));
     json_decref(root);
 
     root = call_reply("prefs.get", "{}");
@@ -2411,6 +2415,162 @@ void test_window_clamped_to_monitor(void) {
     TEST_ASSERT_EQUAL_INT(10, (int)json_integer_value(json_object_get(window, "y")));
     TEST_ASSERT_TRUE(json_is_false(json_object_get(window, "maximized")));
     json_decref(window);
+}
+
+void test_status_reports_host_flags(void) {
+    json_t *root;
+    json_t *data;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    setenv("PAVILLION_DEBUG", "1", 1);
+    setenv("PAVILLION_SELFTEST", "1", 1);
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    root = call_reply("system.status", "{}");
+    data = json_object_get(root, "data");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(data, "debug")));
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(data, "selftest")));
+    json_decref(root);
+    pavillion_stop();
+
+    setenv("PAVILLION_DEBUG", "0", 1);
+    unsetenv("PAVILLION_SELFTEST");
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    root = call_reply("system.status", "{}");
+    data = json_object_get(root, "data");
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(data, "debug")));
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(data, "selftest")));
+    json_decref(root);
+}
+
+static struct EvGot g_link_got;
+
+static void link_test_cb(const char *name, const char *json, void *user) {
+    struct EvGot *got = user;
+
+    if (name == NULL || strcmp(name, "link.clicked") != 0) {
+        return;
+    }
+    pthread_mutex_lock(&g_ev_test_mu);
+    got->hit = 1;
+    snprintf(got->name, sizeof(got->name), "%s", name);
+    snprintf(got->json, sizeof(got->json), "%s", json != NULL ? json : "");
+    pthread_cond_signal(&g_ev_test_cv);
+    pthread_mutex_unlock(&g_ev_test_mu);
+}
+
+static void assert_link_404(const char *req) {
+    PavBytes out;
+
+    memset(&g_link_got, 0, sizeof(g_link_got));
+    memset(&out, 0, sizeof(out));
+    TEST_ASSERT_EQUAL_INT(0, pav_protocol(req, &out));
+    TEST_ASSERT_EQUAL_INT(404, out.status);
+    pavillion_free(out.headers_json);
+    pavillion_free(out.body);
+    usleep(50000);
+    TEST_ASSERT_EQUAL_INT(0, g_link_got.hit);
+}
+
+void test_protocol_pav_link_emits_and_204(void) {
+    PavBytes out;
+    struct timespec ts;
+    char pane[65];
+    char url[160];
+    char req[256];
+    int rc;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    memset(&g_link_got, 0, sizeof(g_link_got));
+    pav_on_event(link_test_cb, &g_link_got);
+
+    memset(&out, 0, sizeof(out));
+    TEST_ASSERT_EQUAL_INT(0, pav_protocol("{\"scheme\":\"pav-link\",\"url\":\"pav-link://isolation/0\","
+                                          "\"method\":\"GET\",\"range\":\"\"}",
+                                          &out));
+    TEST_ASSERT_EQUAL_INT(204, out.status);
+    TEST_ASSERT_EQUAL_UINT(0, (unsigned)out.body_len);
+    TEST_ASSERT_NULL(out.body);
+    TEST_ASSERT_NOT_NULL(strstr(out.headers_json, "no-store"));
+    pavillion_free(out.headers_json);
+    pavillion_free(out.body);
+
+    pthread_mutex_lock(&g_ev_test_mu);
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 2;
+    while (!g_link_got.hit) {
+        rc = pthread_cond_timedwait(&g_ev_test_cv, &g_ev_test_mu, &ts);
+        if (rc != 0) {
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_ev_test_mu);
+    TEST_ASSERT_EQUAL_INT(1, g_link_got.hit);
+    TEST_ASSERT_EQUAL_STRING("link.clicked", g_link_got.name);
+    TEST_ASSERT_EQUAL_STRING("{\"paneId\":\"isolation\",\"n\":0}", g_link_got.json);
+
+    memset(&g_link_got, 0, sizeof(g_link_got));
+    memset(&out, 0, sizeof(out));
+    TEST_ASSERT_EQUAL_INT(0, pav_protocol("{\"scheme\":\"pav-link\",\"url\":\"pav-link://isolation/00\","
+                                          "\"method\":\"GET\",\"range\":\"\"}",
+                                          &out));
+    TEST_ASSERT_EQUAL_INT(204, out.status);
+    pavillion_free(out.headers_json);
+    pavillion_free(out.body);
+    pthread_mutex_lock(&g_ev_test_mu);
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 2;
+    while (!g_link_got.hit) {
+        rc = pthread_cond_timedwait(&g_ev_test_cv, &g_ev_test_mu, &ts);
+        if (rc != 0) {
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_ev_test_mu);
+    TEST_ASSERT_EQUAL_STRING("{\"paneId\":\"isolation\",\"n\":0}", g_link_got.json);
+
+    memset(pane, 'a', 64);
+    pane[64] = '\0';
+    snprintf(url, sizeof(url), "pav-link://%s/9007199254740991", pane);
+    snprintf(req, sizeof(req), "{\"scheme\":\"pav-link\",\"url\":\"%s\",\"method\":\"GET\",\"range\":\"\"}", url);
+    memset(&g_link_got, 0, sizeof(g_link_got));
+    memset(&out, 0, sizeof(out));
+    TEST_ASSERT_EQUAL_INT(0, pav_protocol(req, &out));
+    TEST_ASSERT_EQUAL_INT(204, out.status);
+    pavillion_free(out.headers_json);
+    pavillion_free(out.body);
+    pthread_mutex_lock(&g_ev_test_mu);
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 2;
+    while (!g_link_got.hit) {
+        rc = pthread_cond_timedwait(&g_ev_test_cv, &g_ev_test_mu, &ts);
+        if (rc != 0) {
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_ev_test_mu);
+    TEST_ASSERT_EQUAL_INT(1, g_link_got.hit);
+    TEST_ASSERT_NOT_NULL(strstr(g_link_got.json, "\"n\":9007199254740991"));
+
+    assert_link_404("{\"scheme\":\"pav-link\",\"url\":\"pav-link://isolation\",\"method\":\"GET\"}");
+    assert_link_404("{\"scheme\":\"pav-link\",\"url\":\"pav-link:///0\",\"method\":\"GET\"}");
+    assert_link_404("{\"scheme\":\"pav-link\",\"url\":\"pav-link://bad pane/0\",\"method\":\"GET\"}");
+    assert_link_404("{\"scheme\":\"pav-link\",\"url\":\"pav-link://isolation/0/extra\",\"method\":\"GET\"}");
+    assert_link_404("{\"scheme\":\"pav-link\",\"url\":\"pav-link://isolation/-1\",\"method\":\"GET\"}");
+    assert_link_404("{\"scheme\":\"pav-link\",\"url\":\"pav-link://isolation/0?x=1\",\"method\":\"GET\"}");
+    assert_link_404("{\"scheme\":\"pav-link\",\"url\":\"pav-blob://isolation/0\",\"method\":\"GET\"}");
+    assert_link_404("{\"scheme\":\"pav-link\",\"url\":\"pav-link://isolation/9007199254740992\",\"method\":\"GET\"}");
+    {
+        char long_pane[80];
+
+        memset(long_pane, 'b', 65);
+        long_pane[65] = '\0';
+        snprintf(url, sizeof(url), "pav-link://%s/1", long_pane);
+        snprintf(req, sizeof(req), "{\"scheme\":\"pav-link\",\"url\":\"%s\",\"method\":\"GET\"}", url);
+        assert_link_404(req);
+    }
+
+    pav_on_event(NULL, NULL);
 }
 
 void test_protocol_unknown_scheme_404(void) {
@@ -3434,6 +3594,8 @@ int main(void) {
     RUN_TEST(test_window_initial_default_1200x800);
     RUN_TEST(test_window_report_debounced_write);
     RUN_TEST(test_window_clamped_to_monitor);
+    RUN_TEST(test_status_reports_host_flags);
+    RUN_TEST(test_protocol_pav_link_emits_and_204);
     RUN_TEST(test_protocol_unknown_scheme_404);
     RUN_TEST(test_start_creates_workdir_0700);
     RUN_TEST(test_logring_wraps_at_capacity);

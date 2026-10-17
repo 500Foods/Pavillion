@@ -1,3 +1,4 @@
+import { installIsolationTest } from "./common/isolation.js";
 import { createLogView } from "./log/view.js";
 import { reloadIcons } from "./main.js";
 import { clampUi, snapZoom } from "./prefs.js";
@@ -654,6 +655,13 @@ export async function startShell(result) {
   bindSplit("files");
   bindSettings();
   bindUpdate();
+  installIsolationTest({
+    api,
+    enabled: result.debug === true || result.selftest === true,
+    openMail() {
+      openSection("mail");
+    },
+  });
   for (const button of document.querySelectorAll(".tree button")) {
     button.addEventListener("click", () => {
       for (const other of document.querySelectorAll(".tree button")) {

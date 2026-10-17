@@ -55,6 +55,16 @@ static int g_core_q_tail;
 static int g_core_q_count;
 /* Before the first start, status matches the old stub so the shell can read it. */
 static PavillionStatus g_status = { .state = "ready" };
+
+/* Captured at start from the environment the shell sets. "1" is true. */
+static int g_host_debug;
+static int g_host_selftest;
+
+static int env_is_one(const char *name) {
+    const char *value = getenv(name);
+
+    return value != NULL && strcmp(value, "1") == 0;
+}
 static char g_core_workdir[4096];
 static PavConfigLoad *g_load;
 static PavStore *g_store;
@@ -630,6 +640,8 @@ int pavillion_start(const char *workdir, char *err, size_t err_len) {
     if (g_core_workdir[0] != '\0') {
         (void)pav_log_set_workdir(g_core_workdir);
     }
+    g_host_debug = env_is_one("PAVILLION_DEBUG");
+    g_host_selftest = env_is_one("PAVILLION_SELFTEST");
     g_core_stop = 0;
     g_core_published = 0;
     g_prefs_ready = 0;
@@ -1129,6 +1141,8 @@ static int json_set_or_oom(json_t *obj, const char *key, json_t *value, PavError
 int pav_core_status_data(json_t **data, PavError *err) {
     PavillionStatus status;
     json_t *obj;
+    int host_debug;
+    int host_selftest;
 
     if (data == NULL) {
         pav_error_set(err, "internal", "missing data", 0);
@@ -1137,12 +1151,16 @@ int pav_core_status_data(json_t **data, PavError *err) {
     *data = NULL;
     pthread_mutex_lock(&g_core_mu);
     status = g_status;
+    host_debug = g_host_debug;
+    host_selftest = g_host_selftest;
     pthread_mutex_unlock(&g_core_mu);
     obj = json_object();
     if (json_set_or_oom(obj, "profileName", json_string(status.profile_name), err) != 0 ||
         json_set_or_oom(obj, "profileId", json_string(status.profile_id), err) != 0 ||
         json_set_or_oom(obj, "state", json_string(status.state), err) != 0 ||
-        json_set_or_oom(obj, "error", json_string(status.error), err) != 0) {
+        json_set_or_oom(obj, "error", json_string(status.error), err) != 0 ||
+        json_set_or_oom(obj, "debug", host_debug ? json_true() : json_false(), err) != 0 ||
+        json_set_or_oom(obj, "selftest", host_selftest ? json_true() : json_false(), err) != 0) {
         return -1;
     }
     *data = obj;
