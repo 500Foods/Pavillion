@@ -353,9 +353,16 @@ export function createTabs(tablist, options = {}) {
     return true;
   }
 
+  function offered(section) {
+    if (typeof options.offer !== "function") {
+      return true;
+    }
+    return options.offer(section) !== false;
+  }
+
   function openHome(section, context) {
     const meta = sections[section];
-    if (!meta) {
+    if (!meta || !offered(section)) {
       return null;
     }
     const id = `${section}:home`;

@@ -35,6 +35,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - WebDAV here shares `dav.c` with CardDAV (S-5) and CalDAV (T-7).
 - `file_node` (L-3) caches the tree: names, sizes, types, modified time, etag. Contents are fetched on demand into blobs and evicted by the L cache policy.
 - Screen (old plan §10): the nav is the folder tree; the home tab is the folder contents (the shared Tabulator from N-3: name, size, modified in 24 h, type) beside a large preview. An IMAP account shows Files with an empty tree. Cells stay text.
+- **`.pavillion` is hidden.** The top-level `.pavillion` folder is not a row in the Files tree. Notes ([Y-NOTES.md](Y-NOTES.md)) is the screen for `.pavillion/notes`. U-1 and U-2 still sync that tree for the notes account. They do not draw it here.
 - Preview: images through `pav-blob`; PDF and other types open with the system viewer (copied to the runtime open dir); text files up to 1 MB as text; HTML only in the F-4 pane. Never execute anything.
 - Uploads and downloads are activities with progress and cancel ([I-ACTIVITY.md](I-ACTIVITY.md)). They stream to and from disk under the M Lock's streaming rule (curl callbacks, nothing over 1 MB in memory), so a multi-gigabyte file costs no more memory than a small one. Files dropped on the Files tab or the tab strip upload to the current folder.
 - Conflicts: an upload over a changed etag asks keep both (rename with ` (1)`), replace, or skip.
@@ -90,3 +91,4 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - 2026-10-16 U-1's entry gate is now T-7, after the CalDAV adapter was added.
 - 2026-10-16 Review: the FileNode-or-WebDAV decision rule is now an explicit Lock line, and WebDAV reuses `dav.c`.
 - 2026-10-16 Files transfers stream under the M Lock. Removed a stale line that kept CalDAV and CardDAV out of the plan.
+- 2026-10-18 The Files tree hides top-level `.pavillion`. Notes (Y) reads `.pavillion/notes` through this sync. U-Q1 is still the protocol question and is not re-asked by Y.

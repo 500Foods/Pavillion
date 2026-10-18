@@ -2141,8 +2141,9 @@ dependencies = [
 
 [[package]]
 name = "pavillion"
-version = "0.1.0"
+version = "0.44.0"
 dependencies = [
+ "libc",
  "serde",
  "serde_json",
  "tauri",

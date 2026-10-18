@@ -36,7 +36,8 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 ## Lock
 
-- Requires `urn:ietf:params:jmap:calendars` (an IETF draft). T-1 verifies Stalwart's support and the draft revision; property names may differ between revisions, so all mapping is isolated in `core/src/jscal_map.c`. If unsupported, calendars are local-only and the go/no-go decision (CalDAV earlier, or wait) goes to Andrew.
+- Requires `urn:ietf:params:jmap:calendars` (an IETF draft). T-1 verifies Stalwart's support and the draft revision; property names may differ between revisions, so all mapping is isolated in `core/src/jscal_map.c`. If unsupported, calendars are local-only and the go/no-go decision (CalDAV earlier, or wait) goes to Andrew. Tasks do not wait on that capability. Tasks are CalDAV VTODO in [X-TASKS.md](X-TASKS.md), after T-7.
+- **Component set.** A collection that allows only VEVENT is shown in Calendars and hidden from Tasks. A collection that allows only VTODO is a task group (X) and is hidden from Calendars. A collection that allows both is listed in both. Creating a calendar sets VEVENT only when the protocol allows it (T-7). Creating a task group sets VTODO only (X). JMAP Calendars may not be able to name components. When it cannot, that calendar stays in Calendars and also appears in Tasks if it accepts VTODO. Due tasks are not drawn on the calendar in v1.
 - Calendars: list, color, visibility toggle, default calendar; shared calendars from other accounts (work@, home@) appear when exposed as separate JMAP accounts or shared calendars.
 - Views: week (the Calendars home tab and default), day, month, agenda (next 30 days). Week starts Monday (`preferences.week_start`). 24 h clock. Default time zone `America/Vancouver` (`preferences.timezone`); an event's own zone is shown when it differs. (Plan §10 said the home tab is the month and §9 said week is the default view; week wins and month is one click.)
 - Nav (old plan §10): a continuous mini-calendar scroller opening on the week before the current month through the week after, then calendars grouped by account with a color swatch and a visibility toggle.
@@ -199,3 +200,4 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 - 2026-10-16 Opened from old plan §9, §10, §13. Decisions: mapping isolated in `jscal_map.c`, week as the home tab, DST gap and overlap rules, daily window maintenance, 15-minute snap, missed reminders shown once, iTIP after the initial copy.
 - 2026-10-16 Added T-7, a CalDAV adapter on S-5's DAV client, after the JMAP calendar phases. T-1's entry gate is now S-5.
+- 2026-10-18 Component sets split Calendars from Tasks. VEVENT-only stays here. VTODO-only is X. Both are listed in both. T-Q1 still gates JMAP calendars and does not gate X.

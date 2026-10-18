@@ -6,13 +6,18 @@ If you keep a lot of addresses, you already know the pile: one program for mail,
 
 The desk it is built for holds about twenty identities. A unified inbox when you want one list. The address a message was sent to, when you reply. Fast switching between accounts. One person, one process, one active profile. A local SQLite store, so search and reading keep working when the server is quiet.
 
-## Four sections, one store
+## The rail
 
-Mail, Contacts, Calendars, and Files sit on the same rail and the same accounts.
+Mail, Contacts, Calendars, Tasks, Files, Notes, and Argent sit on the top of the same rail. Tasks, Notes, and Argent stay hidden until Settings → Features turns them on. The screens behind those three are not built yet. Turning one on today opens a short note that it is not available yet.
+
+Grok Bots is the first button on the bottom rail. GitHub is the one beside it. Both stay hidden until that same Features page turns them on. GitHub today only says it is not available yet. Later it can pull events from GitHub and tie them to projects in the task lists, and those to contacts.
 
 - **Mail** is the rich path on JMAP, including Sieve on Stalwart. IMAP and SMTP cover mailboxes that live on some other server, and those accounts are mail only.
 - **Contacts and calendars** share that local store. CardDAV and CalDAV come later, and they write the same tables.
+- **Tasks** will be CalDAV to-dos, after calendars. A task group is its own list.
 - **Files** is the Stalwart file surface, next to the message you were just reading. An IMAP-only account shows an empty tree there.
+- **Notes** will live in a `.pavillion` folder on that file store, with search on this machine, after files.
+- **Argent** is the books. The icon is in. The ledger waits.
 
 HTML mail is drawn in a sandbox. Scripts stay off. Remote images stay off until you allow them for that message. Passwords stay in the system keyring.
 
@@ -30,7 +35,7 @@ A 1Password service-account token sits beside a typed URL, username, and passwor
 
 ### Grok Bots
 
-An optional fifth section, hidden until Settings turns it on. Save a webhook URL and a key for a Grok bot you already use, then hand it a short job against whatever you have open:
+An optional button, the first one on the bottom rail, hidden until Settings turns it on. Save a webhook URL and a key for a Grok bot you already use, then hand it a short job against whatever you have open:
 
 - "File this over there."
 - "Add the third timeslot for this event to my work calendar and tell Fred about it."
@@ -40,7 +45,7 @@ Pavillion posts the request. The bot does the work through Pavillion's own comma
 
 ## Where the work stands
 
-Early, and the window is already a program you can open. The rail, the tabs, themes, the activity list, and the log viewer are in the tree. Accounts, sync, and the working screens for mail, contacts, calendars, and files are the stretch in front of us.
+Early, and the window is already a program you can open. The rail, the tabs, themes, the activity list, and the log viewer are in the tree. Tasks, Notes, and Argent are icons on the top of that rail. GitHub is an icon on the bottom, next to Grok Bots, and that screen is not built. Accounts, sync, and the working screens are the stretch in front of us.
 
 The order of that work is [PAVILLION_PLAN.md](PAVILLION_PLAN.md). The map of the program, with the layer and thread diagrams, is [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

@@ -35,7 +35,12 @@
   --pav-icon-mail: "<i class='fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270'></i>";
   --pav-icon-contacts: "<i class='fa-sharp-duotone fa-solid fa-address-book'></i>";
   --pav-icon-calendars: "<i class='fa-sharp-duotone fa-solid fa-calendar-days'></i>";
+  --pav-icon-tasks: "<i class='fa-sharp-duotone fa-solid fa-list-check'></i>";
   --pav-icon-files: "<i class='fa-sharp-duotone fa-solid fa-folder'></i>";
+  --pav-icon-notes: "<i class='fa-sharp-duotone fa-solid fa-notebook'></i>";
+  --pav-icon-argent: "<i class='fa-sharp-duotone fa-solid fa-coins'></i>";
+  --pav-icon-bots: "<i class='fa-sharp fa-thin fa-ghost'></i>";
+  --pav-icon-github: "<i class='fa-brands fa-github'></i>";
   --pav-icon-activity: "<i class='fa-sharp-duotone fa-solid fa-list-timeline'></i>";
   --pav-icon-settings: "<i class='fa-sharp-duotone fa-solid fa-gear'></i>";
   --pav-icon-update: "<i class='fa-sharp-duotone fa-solid fa-arrows-rotate'></i>";

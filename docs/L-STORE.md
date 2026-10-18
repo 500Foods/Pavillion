@@ -13,7 +13,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | --- | --- | --- | --- |
 | L-1 | Migration runner, statement helpers, schema v1 (accounts, mailboxes, identities, sync state) | Medium | Not started |
 | L-2 | Schema v2: mail (email, threads, bodies, attachments, FTS, queue, outbox, drafts) and the blob store | Medium | Not started |
-| L-3 | PIM migration: contacts, calendars, files, rules and script runs (CLI tables are V-2) | Medium | Not started |
+| L-3 | PIM migration: contacts, calendars, files, tasks, notes, rules and script runs (CLI tables are V-2) | Medium | Not started |
 
 Kind: **Easy** is one module and a test. **Medium** is the database driver or the filesystem.
 
@@ -128,6 +128,20 @@ CREATE TABLE reminder (event_rowid INT REFERENCES event ON DELETE CASCADE, fire_
   snoozed_until INT, fired INT DEFAULT 0, PRIMARY KEY (event_rowid, occurrence_start, fire_at));
 CREATE TABLE file_node (rowid INTEGER PRIMARY KEY, ra_id TEXT, id TEXT, parent_id TEXT, name TEXT,
   is_dir INT, size INT, mime TEXT, blob_id TEXT, etag TEXT, modified INT, UNIQUE (ra_id, id));
+-- A CalDAV collection that allows VEVENT is a calendar row. One that allows VTODO is a task_list row.
+-- One that allows both is both rows, the same (ra_id, id). components is VEVENT, VTODO, or both.
+CREATE TABLE task_list (ra_id TEXT, id TEXT, name TEXT, color TEXT, is_visible INT, components TEXT,
+  my_rights TEXT, PRIMARY KEY (ra_id, id));
+CREATE TABLE task (rowid INTEGER PRIMARY KEY, ra_id TEXT, id TEXT, list_id TEXT, uid TEXT,
+  title TEXT, description TEXT, status TEXT, priority INT, due_utc INT, due_date TEXT,
+  raw_ics TEXT, updated INT, UNIQUE (ra_id, id));
+CREATE VIRTUAL TABLE task_fts USING fts5(title, description, content='');
+CREATE TABLE note (rowid INTEGER PRIMARY KEY, ra_id TEXT, id TEXT, notebook TEXT, title TEXT,
+  tags_json TEXT, path TEXT, etag TEXT, updated INT, UNIQUE (ra_id, id));
+CREATE TABLE note_file (note_rowid INT NOT NULL REFERENCES note ON DELETE CASCADE, name TEXT,
+  mime TEXT, size INT, etag TEXT, PRIMARY KEY (note_rowid, name));
+CREATE VIRTUAL TABLE note_fts USING fts5(title, body, tags, content='');
+-- note_fts body tokens come from the cached file. note has no body column. Argent has no tables. GitHub has no tables.
 CREATE TABLE rule_run (id INTEGER PRIMARY KEY, rule_id TEXT, ra_id TEXT, email_id TEXT, started INT,
   dry_run INT, intents_json TEXT, op_ids TEXT, error TEXT);
 -- bot_key and cli_audit are V-2's migration 003_cli.sql, which runs before this one. Do not create them here.
@@ -140,15 +154,16 @@ CREATE TABLE rule_run (id INTEGER PRIMARY KEY, rule_id TEXT, ra_id TEXT, email_i
 
 **Goal:** The store migrates itself on open and offers safe statement helpers.
 
-**Entry gate:** J-6 complete.
+**Entry gate:** J-9 accepted. J-9 is the previous phase in the sequence. Read its Handoff after Andrew accepts the window. This phase does not touch the shell quit path, and it does not start while J-9 is still in progress.
 
 **Work items:**
 
-- [ ] `core/src/db.c`, `core/include/pav_db.h`: PRAGMAs, the statement cache, bind and step helpers, transactions.
+- [ ] `core/src/db.c`, `core/include/pav_db.h`: PRAGMAs, the statement cache, bind and step helpers, transactions. `pav_store_open` sets no PRAGMAs today (`SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE` only). Apply the Lock's list on the writer before migrate. Add every new `.c` file to `core/CMakeLists.txt` and to the `$(LIB)` prerequisite list in the Makefile, or `make test` will not rebuild the archive. The Unity binary links `-lsqlite3` from the Makefile. The CMake target links `pthread` only. `src-tauri/build.rs` links `sqlite3` for the shell.
 - [ ] `core/src/migrate.c`: embedded migrations, `user_version` check, newer-than-binary error. CMake step embeds `core/src/migrations/*.sql`.
-- [ ] `001_accounts.sql` with schema v1.
-- [ ] `PavStoreVtable` gains `migrate`; C-6 calls it after open; failure is state `error`.
+- [ ] `001_accounts.sql` with schema v1. Repeat the I Lock's `CREATE TABLE IF NOT EXISTS activity` in that migration and keep the rows. Copy that statement. Do not treat `user_version` 0 as an empty database when `activity` is already present. The `DELETE` of `queued` and `running` rows is every open, in `pav_activity_attach`, and does not belong in this file.
+- [ ] `PavStoreVtable` gains `migrate`; C-6 calls it after open and before `pav_activity_attach`; failure is state `error` and does not attach. Today `pavillion.c` attaches immediately after `pav_store_open`, and that attach creates the table.
 - [ ] `core/src/db_writer.c`: the store writer thread, the serial write queue, `pav_db_write`, batching (50 jobs or 20 ms), and a failing batch retried one job at a time. `core/src/db_readpool.c`: two read-only connections, with `pav_db_read_begin` and `pav_db_read_end`. Read connections refuse non-`SELECT` statements. Migrations run on the writer before the pool opens.
+- [ ] Activity writes leave the direct connection. `pav_activity_*` persists through `pav_db_write`. I-1's `sqlite3_exec` on the open handle stops. The I Lock's statement is unchanged. `pav_activity_end` and `end_still_running` call `persist_finished` while `g_mu` is held. Both run on the core thread (`pav_activity_end`, and `core_release_profile` during stop). The demo thread also calls `pav_activity_end`. `on_done` posts to the core queue, so waiting for that callback on the core thread, or while `g_mu` is held, deadlocks. Do not keep `g_insert` and `g_dismiss` on the write connection and step them from those callers. The live profile `~/.local/share/pavillion/default.sqlite` was read on 2026-10-18: `user_version` 0, journal mode `delete`, one table `activity`, 4 rows. Tests use a temp directory. Do not open that file for write. The next real launch after this phase sets WAL and `user_version` 1 and must keep those rows.
 - [ ] Unity: `test_writes_are_serial_fifo`, `test_write_batch_one_transaction`, `test_failed_job_rolls_back_alone`, `test_read_conn_refuses_insert`, `test_concurrent_reads_during_write_no_busy` (4 reader threads plus a writer, 10,000 writes, zero `SQLITE_BUSY`), `test_writer_busy_retries_once`, `test_store_writer_stack_is_512kb`.
 - [ ] Unity: `test_migrate_fresh_to_v1`, `test_migrate_is_idempotent`, `test_newer_db_is_error`, `test_db_bind_never_concatenates` (helper refuses a `%` format with args), `test_foreign_keys_on`.
 
@@ -203,3 +218,7 @@ CREATE TABLE rule_run (id INTEGER PRIMARY KEY, rule_id TEXT, ra_id TEXT, email_i
 
 - 2026-10-16 Opened from plan §4. Decisions: profile is the source of account configuration and `account_state` replaces the `account` table; unix ms everywhere; embedded migrations; blobs sharded by blobId; cache limits and eviction; forwarded and junk columns; `local_marks` for bot markers; `rule_run`, `bot_key`, `cli_audit`, `reminder`, and `file_node` tables added.
 - 2026-10-16 One store writer thread with a serial, batched write queue, plus a read pool of 2. A write path never sees `SQLITE_BUSY`. Added to L-1 with five tests.
+- 2026-10-18 Prep only. L-1 stays not started. The entry gate now names V-5's Handoff and keeps this phase off the shell quit path. `001_accounts.sql` must repeat the I Lock's `activity` table, because a profile that already ran I-1 has that table at `user_version` 0. Activity persistence moves onto `pav_db_write` in the same phase. No source was edited for L-1.
+- 2026-10-18 L-1's entry gate is J-9 accepted. Schema v3 sketches `task_list`, `task`, `task_fts`, `note`, `note_file`, and `note_fts`. Argent has no tables. L-1 was not started.
+- 2026-10-18 GitHub has no tables. The sketch above was not extended. L-1 was not started.
+- 2026-10-18 Prep only. L-1 stays not started. The work items now name the build list, the attach order, and the activity deadlock. `pav_store_open` sets no PRAGMAs. New sources have to be listed in `core/CMakeLists.txt` and in the Makefile `$(LIB)` prerequisites. Migrate runs after open and before `pav_activity_attach`, and a failure does not attach. The queued-row `DELETE` stays an every-open write, not a line in `001_accounts.sql`. `persist_finished` runs while `g_mu` is held, from the core thread and from the demo thread, so a wait on the core queue for `on_done` deadlocks. The live profile was read again: `user_version` 0, journal mode `delete`, table `activity`, 4 rows. Tests must not write that file. The next real launch after L-1 sets WAL and `user_version` 1 and must keep the rows. No source was edited for L-1. J-9's window is still open.

@@ -98,7 +98,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 | `/` | search | `g i` / `g s` / `g d` | go inbox / sent / drafts |
 | `g c` / `g a` | go calendar / contacts | `Ctrl+Enter` | send (composer) |
 | `Ctrl+S` | save draft (composer) | `?` | shortcut help |
-| `Ctrl+1/2/3/4` | mail / contacts / calendar / files | `F5` | sync now |
+| `Ctrl+1` through `Ctrl+9` | section chords, set in Features (defaults mail through argent on 1–7) | `F5` | sync now |
 
 ### Retention (was plan §6.10)
 
@@ -306,3 +306,6 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - 2026-10-16 Opened from plan §6, §7, §10, §13. Decisions: a real HTML5 parser (lexbor) for the sanitizer, locked 2026-10-16 with reasons in the Lock, the element, attribute, URL, and CSS allowlists written down, `pav-link` rewriting, `sanitizer_version`, `pav-blob` for image previews, a Tabulator theme on `--pav-*`, `Ctrl+4` for Files, retention action column, notification grouping in the host.
 - 2026-10-16 N-7 extracts attachments with GMime streams from disk to disk, with a flat-memory test. Only capped render bodies are held in memory.
 - 2026-10-16 Andrew restored Tabulator for the message list, and for the contacts and files lists that share it. Virtual row render stays, so 100k messages do not become 100k DOM nodes.
+- 2026-10-18 Section chords are Ctrl+1 through Ctrl+7: mail, contacts, calendars, tasks, files, notes, argent. Grok has no number. The old Ctrl+4-is-files line in the 2026-10-16 log stays as history.
+- 2026-10-18 Those digits are the defaults. Settings → Features assigns Ctrl+1 through Ctrl+9, or none, per button. The earlier log line stays as the default that shipped that morning.
+- 2026-10-18 GitHub has no number. The chord row above is unchanged.

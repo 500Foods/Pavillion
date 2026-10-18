@@ -1,8 +1,8 @@
 use std::ffi::{CStr, CString, c_char, c_void};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use std::sync::Mutex;
 use serde_json::{json, Value};
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Listener, Manager};
 struct EventNote { name: String, json: String }
 #[repr(C)]
 struct SchemeOut { status: i32, headers_json: *mut c_char, body: *mut c_void, body_len: usize }
@@ -111,9 +111,48 @@ fn apply_initial(window: &tauri::WebviewWindow) {
     WINDOW_READY.store(true, Ordering::SeqCst);
 }
 
+fn writes_clean_session(cmd: &str, args: &Value) -> bool {
+    cmd == "prefs.ui.set"
+        && args.get("session").and_then(|item| item.get("shutdown")).and_then(Value::as_str) == Some("clean")
+}
+
+/* The prefs.ui.set that stores shutdown clean sends true from the call that
+   did the fsync. A page event sends the same answer when that command never
+   ran, or false when the page could not quit. */
+static QUIT_ACK: Mutex<Option<std::sync::mpsc::Sender<bool>>> = Mutex::new(None);
+static QUIT_PAGE: AtomicU8 = AtomicU8::new(0);
+/* The scavenger thread takes SIGINT with the default action, which kills the
+   process. The handler only counts. sigwait still collects a signal that every
+   thread has blocked. HANDLED is how many counts the watcher has accepted. */
+static QUIT_HITS: AtomicU32 = AtomicU32::new(0);
+static QUIT_HANDLED: AtomicU32 = AtomicU32::new(0);
+const PAGE_BEGAN: u8 = 1;
+const PAGE_STUCK: u8 = 2;
+const PAGE_FAILED: u8 = 3;
+
+fn note_quit_result(saved: bool) {
+    if let Some(tx) = QUIT_ACK.lock().unwrap_or_else(|err| err.into_inner()).take() {
+        let _ = tx.send(saved);
+    }
+}
+
+fn note_page(stage: u8) {
+    QUIT_PAGE.store(stage, Ordering::SeqCst);
+}
+
 #[tauri::command]
 async fn core(cmd: String, args: Value) -> Result<Value, Value> {
-    tauri::async_runtime::spawn_blocking(move || core_data(&cmd, &args)).await.unwrap_or_else(|_| Err(fail("internal", "command task failed")))
+    let clean = writes_clean_session(&cmd, &args);
+    let result = tauri::async_runtime::spawn_blocking(move || core_data(&cmd, &args))
+        .await
+        .unwrap_or_else(|_| Err(fail("internal", "command task failed")));
+    if clean {
+        if result.is_err() {
+            note_page(PAGE_FAILED);
+        }
+        note_quit_result(result.is_ok());
+    }
+    result
 }
 fn require_api_version() {
     let core_version = unsafe { pavillion_api_version() };
@@ -135,6 +174,126 @@ fn start_core(workdir: &str) {
 fn stop_events() {
     unsafe { pav_on_event(None, std::ptr::null_mut()) };
     EVENT_TX.lock().unwrap_or_else(|err| err.into_inner()).take();
+}
+
+fn quit_signals() -> libc::sigset_t {
+    let mut set: libc::sigset_t = unsafe { std::mem::zeroed() };
+    unsafe {
+        libc::sigemptyset(&mut set);
+        libc::sigaddset(&mut set, libc::SIGINT);
+        libc::sigaddset(&mut set, libc::SIGTERM);
+    }
+    set
+}
+
+/* GLib starts WebKit's page process with SIGINT reset to terminate, and it
+   does not clear a mask this process has blocked. Block both signals on this
+   thread before any child exists so the page inherits the block and stays up
+   to run the save. bmalloc's scavenger, inside this process, waits with the
+   mask cleared. A default SIGINT there kills the app before sigwait runs. */
+pub fn block_quit_signals() {
+    let set = quit_signals();
+    if unsafe { libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut()) } != 0 {
+        eprintln!("cannot block SIGINT");
+        std::process::exit(1);
+    }
+}
+
+unsafe extern "C" fn on_quit_signal(_sig: i32) {
+    QUIT_HITS.fetch_add(1, Ordering::SeqCst);
+}
+
+fn install_quit_handler() {
+    unsafe {
+        let mut action: libc::sigaction = std::mem::zeroed();
+        action.sa_sigaction = on_quit_signal as *const () as libc::sighandler_t;
+        action.sa_flags = libc::SA_RESTART;
+        libc::sigemptyset(&mut action.sa_mask);
+        if libc::sigaction(libc::SIGINT, &action, std::ptr::null_mut()) != 0
+            || libc::sigaction(libc::SIGTERM, &action, std::ptr::null_mut()) != 0
+        {
+            eprintln!("cannot catch SIGINT");
+            std::process::exit(1);
+        }
+    }
+}
+
+/* WebKitGTK 2.52 aborts its web process during EGL teardown after a normal
+   quit, which prints `free(): corrupted unsorted chunks` on this terminal.
+   The profile write has already finished. No accelerated compositing means
+   no GL context racing Mesa's atexit handler. A value already in the
+   environment is left alone. */
+fn quiet_webkit_exit() {
+    if std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_some() {
+        return;
+    }
+    unsafe {
+        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    }
+}
+
+fn quit_timeout_message() -> &'static str {
+    match QUIT_PAGE.load(Ordering::SeqCst) {
+        PAGE_STUCK => "session save had no quit handler",
+        PAGE_FAILED => "session save failed",
+        PAGE_BEGAN => "session save did not finish",
+        _ => "session save did not run",
+    }
+}
+
+fn wait_quit_signal() -> bool {
+    let set = quit_signals();
+    loop {
+        let hits = QUIT_HITS.load(Ordering::SeqCst);
+        if hits != QUIT_HANDLED.load(Ordering::SeqCst) {
+            QUIT_HANDLED.store(hits, Ordering::SeqCst);
+            return true;
+        }
+        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+        let timeout = libc::timespec { tv_sec: 0, tv_nsec: 50_000_000 };
+        let rc = unsafe { libc::sigtimedwait(&set, &mut info, &timeout) };
+        if rc > 0 {
+            return true;
+        }
+        let err = std::io::Error::last_os_error().raw_os_error();
+        if err != Some(libc::EAGAIN) && err != Some(libc::EINTR) {
+            return false;
+        }
+    }
+}
+
+/* Ctrl+C is not a window close. Ask the page for the same quit the title bar
+   uses. The wait ends when that prefs.ui.set returns, not when the window
+   disappears. Another signal during the wait does not cut the write off. */
+fn watch_sigint(app: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        if !wait_quit_signal() {
+            eprintln!("cannot catch SIGINT");
+            return;
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        QUIT_PAGE.store(0, Ordering::SeqCst);
+        *QUIT_ACK.lock().unwrap_or_else(|err| err.into_inner()) = Some(tx);
+        let started = app.get_webview_window("main").and_then(|window| {
+            window.eval("window.__pavQuit&&window.__pavQuit()").ok()
+        }).is_some();
+        if !started {
+            eprintln!("session save did not start");
+            let _ = app.exit(130);
+            return;
+        }
+        let saved = match rx.recv_timeout(std::time::Duration::from_secs(2)) {
+            Ok(saved) => saved,
+            Err(_) => false,
+        };
+        if !saved {
+            eprintln!("{}", quit_timeout_message());
+        }
+        let _ = app.exit(if saved { 0 } else { 130 });
+        if wait_quit_signal() {
+            std::process::exit(if saved { 0 } else { 130 });
+        }
+    });
 }
 
 fn start_events(app: &tauri::AppHandle) {
@@ -171,13 +330,16 @@ fn scheme_reply(scheme: &str, request: &tauri::http::Request<Vec<u8>>) -> tauri:
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run(workdir: &str) {
+    block_quit_signals();
+    install_quit_handler();
+    quiet_webkit_exit();
     start_core(workdir);
     let mut builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init()).invoke_handler(tauri::generate_handler![core]);
     for scheme in ["pav-blob", "pav-cid", "pav-link", "pav-theme"] {
         let name = scheme.to_string();
         builder = builder.register_uri_scheme_protocol(scheme, move |_ctx, request| scheme_reply(&name, &request));
     }
-    builder.setup(|app| {
+    let app = builder.setup(|app| {
         start_events(app.handle());
         let Some(window) = app.get_webview_window("main") else { eprintln!("main window is missing"); return Ok(()) };
         let watch = window.clone();
@@ -187,8 +349,20 @@ pub fn run(workdir: &str) {
             }
         });
         apply_initial(&window);
+        app.listen("pav-quit-began", |_| note_page(PAGE_BEGAN));
+        app.listen("pav-quit-stuck", |_| {
+            note_page(PAGE_STUCK);
+            note_quit_result(false);
+        });
+        app.listen("pav-quit-failed", |_| {
+            note_page(PAGE_FAILED);
+            note_quit_result(false);
+        });
+        app.listen("pav-quit-done", |_| note_quit_result(true));
         Ok(())
-    }).build(tauri::generate_context!()).expect("error while building pavillion").run(|app, event| match event {
+    }).build(tauri::generate_context!()).expect("error while building pavillion");
+    watch_sigint(app.handle().clone());
+    app.run(|app, event| match event {
         tauri::RunEvent::ExitRequested { .. } => {
             WINDOW_READY.store(false, Ordering::SeqCst);
             if let Some(window) = app.get_webview_window("main") { report_window(&window); }

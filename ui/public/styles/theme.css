@@ -56,6 +56,7 @@
 .pav-root .nav-buttons {
   display: flex;
   flex: none;
+  flex-wrap: nowrap;
 }
 
 .pav-root .nav > .nav-buttons:first-of-type {
@@ -397,6 +398,62 @@
   background: var(--pav-swatch-2);
 }
 
+.pav-root .feature-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.6rem;
+}
+
+.pav-root .feature-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.2rem 0.15rem;
+}
+
+.pav-root .feature-row.is-dragging {
+  background: var(--pav-surface-button);
+}
+
+.pav-root .feature-grip,
+.pav-root .feature-label {
+  cursor: grab;
+  user-select: none;
+}
+
+.pav-root .feature-grip {
+  width: 1.1rem;
+  flex: none;
+  color: var(--pav-text-muted);
+  text-align: center;
+}
+
+.pav-root .feature-row > input[type="checkbox"],
+.pav-root .feature-gap {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+
+.pav-root .feature-label {
+  flex: 1;
+}
+
+.pav-root .feature-chord select {
+  color: var(--pav-text);
+  background: var(--pav-surface-button);
+  border: 1px solid var(--pav-border);
+}
+
+.pav-root .feature-divider {
+  margin: 0.45rem 0;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--pav-border);
+  color: var(--pav-text-muted);
+  font-size: 0.8rem;
+}
+
 .pav-root .weeks {
   display: grid;
   gap: 0.15rem;
@@ -683,6 +740,33 @@
   flex: none;
   align-items: stretch;
   background: var(--pav-surface-nav);
+}
+
+.pav-root .bots-bar button {
+  border: 0;
+  border-right: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
+  background: transparent;
+  color: inherit;
+  padding: 0.55rem 0.9rem;
+}
+
+.pav-root .bots-add-host {
+  display: inline-flex;
+}
+
+.pav-root .bots-add-host button {
+  pointer-events: none;
+}
+
+.pav-root #bots-add:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.pav-root #bots-transcript {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 /* Same text strut on every bar. Zoom scales it with the labels, so an icon

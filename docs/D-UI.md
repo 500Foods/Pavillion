@@ -3,7 +3,7 @@
 **Status:** D-3 complete (2026-10-14). D-4, D-6, and D-7 complete (2026-10-17). D-5 is not started. The shell preview below is not a phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
-The first frame, the shell preview, and the theme layer. The shell layout (nav, buttons, home tabs, window) is the [J-TABS.md](J-TABS.md) Lock. Security rules for the main window are the [F-HARDEN.md](F-HARDEN.md) Lock. The tree behind the mail and files navs is [E-TREE.md](E-TREE.md). Mail, contacts, calendars, and files have their own letters (N, O, S, T, U).
+The first frame, the shell preview, and the theme layer. The shell layout (nav, buttons, home tabs, window) is the [J-TABS.md](J-TABS.md) Lock. Security rules for the main window are the [F-HARDEN.md](F-HARDEN.md) Lock. The tree behind the mail and files navs is [E-TREE.md](E-TREE.md). Mail, contacts, calendars, tasks, files, and notes have their own letters (N, O, S, T, X, U, Y). Argent is Z and is an icon only.
 
 ## Phases
 
@@ -80,7 +80,7 @@ Dark only, until a preferences screen exists. The OS window title is `Pavillion`
 
 Hello world exports `status()`, invoking the Tauri command `status` and returning `{ profileName, profileId, state, error }`. Wire names are camelCase. The C struct stays snake_case. Later functions are added to this module one at a time. A screen does not register its own Tauri listener. Event names already listed in the plan stay the names, and none are emitted in this document.
 
-The shell layout is in the [J-TABS.md](J-TABS.md) Lock. Changing the active profile is a restart, as [B-CONFIG.md](B-CONFIG.md) says.
+The shell layout is in the [J-TABS.md](J-TABS.md) Lock. Changing the active profile is a restart, as [B-CONFIG.md](B-CONFIG.md) says. J-9 adds `--pav-icon-tasks`, `--pav-icon-notes`, `--pav-icon-argent`, and `--pav-icon-github` beside the keys D-7 shipped. D-7's accomplished list of eight keys is the set that phase shipped. The living set is the J Lock.
 
 ### Theme files
 

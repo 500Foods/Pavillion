@@ -1,7 +1,7 @@
 [package]
 name = "pavillion"
-# Phase stamp. The last component stays 0. PAVILLION_BUILD is the build count.
-version = "0.2.0"
+# Phase stamp 0.<completed plan steps>.0. The last component stays 0. PAVILLION_BUILD is the build count.
+version = "0.44.0"
 description = "Pavillion"
 edition = "2024"
 
@@ -29,6 +29,7 @@ tauri = { version = "2", default-features = false, features = [
     "devtools",
 ] }
 tauri-plugin-dialog = "2"
+libc = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

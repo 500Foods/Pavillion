@@ -2,18 +2,27 @@
 export const shellMarkup = `<div class="shell">
       <nav class="nav" id="nav" aria-label="Sections">
         <div class="nav-buttons button-bar" role="toolbar" aria-label="Sections">
-          <button type="button" data-section="mail" aria-pressed="true" aria-label="Mail">
+          <button type="button" data-section="mail" data-rail="mail" aria-pressed="true" aria-label="Mail">
             <img class="nav-mark" alt="">
             <i class="icon fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270" data-icon-definition="fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270" aria-hidden="true"></i>
           </button>
-          <button type="button" data-section="contacts" aria-pressed="false" aria-label="Contacts">
+          <button type="button" data-section="contacts" data-rail="contacts" aria-pressed="false" aria-label="Contacts">
             <i class="icon fa-sharp-duotone fa-solid fa-address-book" data-icon-definition="fa-sharp-duotone fa-solid fa-address-book" aria-hidden="true"></i>
           </button>
-          <button type="button" data-section="calendars" aria-pressed="false" aria-label="Calendars">
+          <button type="button" data-section="calendars" data-rail="calendars" aria-pressed="false" aria-label="Calendars">
             <i class="icon fa-sharp-duotone fa-solid fa-calendar-days" data-icon-definition="fa-sharp-duotone fa-solid fa-calendar-days" aria-hidden="true"></i>
           </button>
-          <button type="button" data-section="files" aria-pressed="false" aria-label="Files">
+          <button type="button" data-section="tasks" data-rail="tasks" aria-pressed="false" aria-label="Tasks" hidden>
+            <i class="icon fa-sharp-duotone fa-solid fa-list-check" data-icon-definition="fa-sharp-duotone fa-solid fa-list-check" aria-hidden="true"></i>
+          </button>
+          <button type="button" data-section="files" data-rail="files" aria-pressed="false" aria-label="Files">
             <i class="icon fa-sharp-duotone fa-solid fa-folder" data-icon-definition="fa-sharp-duotone fa-solid fa-folder" aria-hidden="true"></i>
+          </button>
+          <button type="button" data-section="notes" data-rail="notes" aria-pressed="false" aria-label="Notes" hidden>
+            <i class="icon fa-sharp-duotone fa-solid fa-notebook" data-icon-definition="fa-sharp-duotone fa-solid fa-notebook" aria-hidden="true"></i>
+          </button>
+          <button type="button" data-section="argent" data-rail="argent" aria-pressed="false" aria-label="Argent" hidden>
+            <i class="icon fa-sharp-duotone fa-solid fa-coins" data-icon-definition="fa-sharp-duotone fa-solid fa-coins" aria-hidden="true"></i>
           </button>
         </div>
         <div class="nav-body">
@@ -39,31 +48,47 @@ export const shellMarkup = `<div class="shell">
             <label class="swatch-row"><input type="checkbox" checked /> <span class="swatch swatch-1"></span> Personal</label>
             <label class="swatch-row"><input type="checkbox" checked /> <span class="swatch swatch-2"></span> Shared</label>
           </div>
+          <div data-nav="tasks" hidden>
+            <p class="empty">Tasks are not available yet.</p>
+          </div>
           <div data-nav="files" hidden>
             <p class="empty">No folders.</p>
           </div>
+          <div data-nav="notes" hidden>
+            <p class="empty">Notes are not available yet.</p>
+          </div>
+          <div data-nav="argent" hidden>
+            <p class="empty">Argent is not available yet.</p>
+          </div>
           <div data-nav="settings" hidden>
             <div class="heading-list" role="list">
-              <button type="button" data-heading="zoom" aria-current="true">Zoom</button>
-              <button type="button" data-heading="theme">Theme</button>
-              <button type="button" data-heading="fonts">Fonts</button>
+              <button type="button" data-heading="features" aria-current="true">Features</button>
+              <button type="button" data-heading="theme">Themes</button>
               <button type="button" data-heading="icons">Icons</button>
+              <button type="button" data-heading="fonts">Fonts</button>
               <button type="button" data-heading="tabs">Tabs</button>
+              <button type="button" data-heading="zoom">Zooms</button>
             </div>
           </div>
         </div>
         <div class="nav-buttons button-bar" role="toolbar" aria-label="Tools">
-          <button type="button" data-section="activity" aria-pressed="false" aria-label="Activity">
+          <button type="button" data-section="bots" data-rail="bots" aria-pressed="false" aria-label="Grok Bots" hidden>
+            <i class="icon fa-sharp fa-thin fa-ghost" data-icon-definition="fa-sharp fa-thin fa-ghost" aria-hidden="true"></i>
+          </button>
+          <button type="button" data-section="github" data-rail="github" aria-pressed="false" aria-label="GitHub" hidden>
+            <i class="icon fa-brands fa-github" data-icon-definition="fa-brands fa-github" aria-hidden="true"></i>
+          </button>
+          <button type="button" data-section="activity" data-rail="activity" aria-pressed="false" aria-label="Activity">
             <i class="icon fa-sharp-duotone fa-solid fa-list-timeline" data-icon-definition="fa-sharp-duotone fa-solid fa-list-timeline" aria-hidden="true"></i>
           </button>
-          <button type="button" data-section="settings" aria-pressed="false" aria-label="Settings">
+          <button type="button" data-section="settings" data-rail="settings" aria-pressed="false" aria-label="Settings">
             <i class="icon fa-sharp-duotone fa-solid fa-gear" data-icon-definition="fa-sharp-duotone fa-solid fa-gear" aria-hidden="true"></i>
           </button>
-          <button type="button" id="update" aria-label="Update">
+          <button type="button" id="update" data-rail="update" aria-label="Update">
             <i class="icon fa-sharp-duotone fa-solid fa-arrows-rotate" data-icon-definition="fa-sharp-duotone fa-solid fa-arrows-rotate" aria-hidden="true"></i>
             <span class="update-badge" hidden></span>
           </button>
-          <button type="button" data-section="help" aria-pressed="false" aria-label="Help">
+          <button type="button" data-section="help" data-rail="help" aria-pressed="false" aria-label="Help">
             <i class="icon fa-sharp-duotone fa-solid fa-circle-question" data-icon-definition="fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
           </button>
         </div>
@@ -90,14 +115,41 @@ export const shellMarkup = `<div class="shell">
         <div class="panel" id="panel-calendars" role="tabpanel" hidden>
           <div class="month" id="month"></div>
         </div>
+        <div class="panel" id="panel-tasks" role="tabpanel" hidden>
+          <p class="empty">Tasks are not available yet.</p>
+        </div>
         <div class="panel split" id="panel-files" role="tabpanel" hidden>
           <div class="pane pane-list"></div>
           <button type="button" class="split-resize" data-split="files" aria-label="Resize file panes"></button>
           <div class="pane pane-detail"></div>
         </div>
+        <div class="panel" id="panel-notes" role="tabpanel" hidden>
+          <p class="empty">Notes are not available yet.</p>
+        </div>
+        <div class="panel" id="panel-argent" role="tabpanel" hidden>
+          <p class="empty">Argent is not available yet.</p>
+        </div>
+        <div class="panel" id="panel-bots" role="tabpanel" hidden>
+          <div class="button-bar bots-bar" role="toolbar" aria-label="Grok Bots">
+            <span id="bots-add-host" class="bots-add-host">
+              <button type="button" id="bots-add" disabled>Add</button>
+            </span>
+          </div>
+          <div id="bots-transcript">
+            <p class="empty">No bots yet.</p>
+          </div>
+        </div>
+        <div class="panel" id="panel-github" role="tabpanel" hidden>
+          <p class="empty">GitHub is not available yet.</p>
+        </div>
         <div class="panel settings" id="panel-settings" role="tabpanel" hidden>
-          <div data-settings="zoom">
-            <h2>Zoom</h2>
+          <div data-settings="features">
+            <h2>Features</h2>
+            <p class="muted">Drag a row to move it. Rows above the line are the top of the rail. Rows below it are the bottom. A shortcut is Ctrl and a number, and each number is used once. Settings stays available.</p>
+            <div id="feature-list" class="feature-list"></div>
+          </div>
+          <div data-settings="zoom" hidden>
+            <h2>Zooms</h2>
             <div class="zoom-list">
               <label class="zoom" data-zoom="shell"><span class="zoom-label">Shell</span>
                 <input id="zoom" type="range" min="0.5" max="2" step="0.05" value="1" />
@@ -142,7 +194,7 @@ export const shellMarkup = `<div class="shell">
           </div>
           <div data-settings="theme" hidden>
             <div class="theme-head">
-              <h2>Theme</h2>
+              <h2>Themes</h2>
               <p class="muted">Light, Dark, and System are built in. System follows the desktop, and Dark is used when that scheme cannot be read. A theme file is plain CSS. The row name is the Title inside the file. The same Title twice shows the filename in brackets. A selected theme file sets the rail icons. Settings → Icons Override puts this profile's icons back on Light, Dark, and System.</p>
             </div>
             <div class="button-bar theme-actions" role="toolbar" aria-label="Theme">
@@ -223,10 +275,35 @@ export const shellMarkup = `<div class="shell">
                      <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-calendar-days" data-icon-key="calendars"></i></td>
                      <td><textarea type="text" data-icon-key="calendars" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-calendar-days</textarea></td>
                    </tr>
+                   <tr data-icon-key="tasks">
+                     <td>Tasks</td>
+                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-list-check" data-icon-key="tasks"></i></td>
+                     <td><textarea type="text" data-icon-key="tasks" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-list-check</textarea></td>
+                   </tr>
                    <tr data-icon-key="files">
                      <td>Files</td>
                      <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-folder" data-icon-key="files"></i></td>
                      <td><textarea type="text" data-icon-key="files" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-folder</textarea></td>
+                   </tr>
+                   <tr data-icon-key="notes">
+                     <td>Notes</td>
+                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-notebook" data-icon-key="notes"></i></td>
+                     <td><textarea type="text" data-icon-key="notes" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-notebook</textarea></td>
+                   </tr>
+                   <tr data-icon-key="argent">
+                     <td>Argent</td>
+                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-coins" data-icon-key="argent"></i></td>
+                     <td><textarea type="text" data-icon-key="argent" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-coins</textarea></td>
+                   </tr>
+                   <tr data-icon-key="bots">
+                     <td>Grok Bots</td>
+                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp fa-thin fa-ghost" data-icon-key="bots"></i></td>
+                     <td><textarea type="text" data-icon-key="bots" class="icon-input" rows="3" spellcheck="false">fa-sharp fa-thin fa-ghost</textarea></td>
+                   </tr>
+                   <tr data-icon-key="github">
+                     <td>GitHub</td>
+                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-brands fa-github" data-icon-key="github"></i></td>
+                     <td><textarea type="text" data-icon-key="github" class="icon-input" rows="3" spellcheck="false">fa-brands fa-github</textarea></td>
                    </tr>
                    <tr data-icon-key="activity">
                      <td>Activity</td>
@@ -261,7 +338,7 @@ export const shellMarkup = `<div class="shell">
               <input id="session-restore" type="checkbox" checked />
               Restore tabs on launch
             </label>
-            <p class="muted">On brings back the open tabs, including pins and the active tab. Off opens nothing, so the first nav button you click opens that section. The first launch opens Mail. A clean quit with no tabs open stays empty. An unexpected shutdown opens nothing and says so.</p>
+            <p class="muted">On brings back the open tabs, including pins and the active tab. Off opens nothing, so the first nav button you click opens that section. The first launch opens Mail, unless Mail is hidden in Features. A clean quit with no tabs open stays empty. Closing the window and Ctrl+C both save the tabs. An unexpected shutdown opens nothing and says so.</p>
             <label class="swatch-row">
               Max tabs
               <input id="session-max" type="number" min="1" max="200" step="1" value="50" />

@@ -129,8 +129,23 @@
   /* Calendars nav icon. Same three forms as Mail. */
   --pav-icon-calendars: "<i class='fa-sharp-duotone fa-solid fa-calendar-days'></i>";
 
+  /* Tasks nav icon. Hidden until Settings → Features turns the section on. Same three forms as Mail. */
+  --pav-icon-tasks: "<i class='fa-sharp-duotone fa-solid fa-list-check'></i>";
+
   /* Files nav icon. Same three forms as Mail. */
   --pav-icon-files: "<i class='fa-sharp-duotone fa-solid fa-folder'></i>";
+
+  /* Notes nav icon. Hidden until Settings → Features turns the section on. Same three forms as Mail. */
+  --pav-icon-notes: "<i class='fa-sharp-duotone fa-solid fa-notebook'></i>";
+
+  /* Argent nav icon. A stack of coins. Hidden until Settings → Features turns the section on. Same three forms as Mail. */
+  --pav-icon-argent: "<i class='fa-sharp-duotone fa-solid fa-coins'></i>";
+
+  /* Grok Bots nav icon. First footer cell. Sharp Thin ghost. Hidden until Settings → Features turns the section on. Same three forms as Mail. */
+  --pav-icon-bots: "<i class='fa-sharp fa-thin fa-ghost'></i>";
+
+  /* GitHub nav icon. Second footer cell, after Grok Bots. The GitHub mark. Hidden until Settings → Features turns the section on. Same three forms as Mail. */
+  --pav-icon-github: "<i class='fa-brands fa-github'></i>";
 
   /* Activity nav icon. Same three forms as Mail. */
   --pav-icon-activity: "<i class='fa-sharp-duotone fa-solid fa-list-timeline'></i>";

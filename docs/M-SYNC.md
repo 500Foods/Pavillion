@@ -3,7 +3,7 @@
 **Status:** Not started (scoped 2026-10-16 from plan §2.1, §2.4, §3, §5; closes F-6).
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
-The network and the sync engine: HTTP through libcurl, JMAP session discovery, initial and delta sync, the mutation queue, and push. Mail first; contacts, calendars, and files reuse the same engine with their own types ([S-CONTACTS.md](S-CONTACTS.md), [T-CALENDAR.md](T-CALENDAR.md), [U-FILES.md](U-FILES.md)). Sending is [O-COMPOSE.md](O-COMPOSE.md).
+The network and the sync engine: HTTP through libcurl, JMAP session discovery, initial and delta sync, the mutation queue, and push. Mail first; contacts, calendars, and files reuse the same engine with their own types ([S-CONTACTS.md](S-CONTACTS.md), [T-CALENDAR.md](T-CALENDAR.md), [U-FILES.md](U-FILES.md)). Tasks ([X-TASKS.md](X-TASKS.md)) sync over CalDAV after T-7, on that DAV client, not as a JMAP tasks capability. Notes ([Y-NOTES.md](Y-NOTES.md)) reuse the files sync of one account. Sending is [O-COMPOSE.md](O-COMPOSE.md).
 
 ## Phases
 
@@ -145,7 +145,7 @@ typedef struct PavBackend {
 **Work items:**
 
 - [ ] `core/src/jmap.c`: request builder (`using`, `methodCalls` with call ids, back-references), response parser with per-method errors, the Session parser.
-- [ ] `account.test` (runs as activity kind `account.test`, so add the kind per the I Lock; no write; a domain alone tries `https://<domain>/.well-known/jmap`), returning capability names mapped to `mail`, `submission`, `contacts`, `calendars`, `sieve`, `files`, `websocket`, plus the server's limits.
+- [ ] `account.test` (runs as activity kind `account.test`, so add the kind per the I Lock; no write; a domain alone tries `https://<domain>/.well-known/jmap`), returning capability names mapped to `mail`, `submission`, `contacts`, `calendars`, `sieve`, `files`, `websocket`, plus the server's limits. Do not add a tasks name. Do not add a github name. VTODO is CalDAV and is checked in X-1. GitHub events are not this phase.
 - [ ] On account add and at supervisor start: store the Session, create or update `remote_account` rows, handle Session `state` change.
 - [ ] Unity on fixtures: `test_session_parse_stalwart`, `test_session_redirect_wellknown`, `test_account_test_reports_caps`, `test_account_test_bad_password`, `test_remote_accounts_from_session`.
 
@@ -289,3 +289,4 @@ typedef struct PavBackend {
 - 2026-10-16 Opened from plan §2.1, §2.4, §3, §5 and F-6. Decisions: C core owns JMAP; one net thread with one multi handle and per-account supervisors (replaces one thread per login); per-account in-flight cap of 2 within the global 6; explicit retry, timeout, and redaction rules; held ops for undo; account states; push retry while polling; IMAP after the initial working copy.
 - 2026-10-16 Andrew: servers must be independent. One net thread and multi handle per server endpoint, accounts multiplexed on it, a per-server cap of 6, per-account 2, an optional overall cap. M-Q1 and M-Q2 resolved, and M-8 moved to right after milestone 3 with SASL PLAIN over TLS.
 - 2026-10-16 Added the store writer to the thread table, and sync and op-queue writes are now `pav_db_write` jobs. Streaming I/O added to the HTTP rules: curl read and write callbacks, with no blob over 1 MB held in memory, plus a 100 MB flat-memory download test.
+- 2026-10-18 Tasks sync on the CalDAV client after T-7. Notes reuse one account's files sync. `account.test` does not grow a tasks capability.

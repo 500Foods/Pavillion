@@ -6,10 +6,11 @@ import { createToaster } from "./common/toast.js";
 import { createTooltip } from "./common/tooltip.js";
 import { clampMaxTabs, planRestore, serializeTabs, SESSION_MS } from "./shell/session.js";
 import { createTabs, KIND_ICONS } from "./shell/tabs.js";
+import { createFeatureEditor } from "./shell/features.js";
 import { createActivityView } from "./activity/view.js";
 import { createHelpView } from "./help/view.js";
 import { createLogView } from "./log/view.js";
-import { DEFAULT_UI, clampUi, snapZoom } from "./prefs.js";
+import { DEFAULT_UI, FEATURE_KEYS, RAIL_KEYS, chordsOf, clampUi, railOf, snapZoom } from "./prefs.js";
 import {
   THEME_TEMPLATES,
   buildCatalog,
@@ -244,13 +245,10 @@ function onWheelZoom(event) {
   stepZoom(key, wheelSteps(event));
 }
 
-const ICON_KEYS = ["mail", "contacts", "calendars", "files", "activity", "settings", "update", "help"];
+const ICON_KEYS = ["mail", "contacts", "calendars", "tasks", "files", "notes", "argent", "bots", "github", "activity", "settings", "update", "help"];
 
 function iconElement(key) {
-  if (key === "update") {
-    return mountRoot.querySelector("#update .icon");
-  }
-  return mountRoot.querySelector(`.nav [data-section="${key}"] .icon`);
+  return mountRoot.querySelector(`.nav [data-rail="${key}"] .icon`);
 }
 
 /* WebKit's SVG className is read-only. Font Awesome swaps <i> for <svg>, so always replace the node. */
@@ -897,6 +895,10 @@ async function loadPrefs() {
     ui.themeChoice = stored.themeChoice;
     themeChoice = stored.themeChoice;
   }
+  ui.features = stored.features;
+  ui.rail = stored.rail;
+  ui.chords = stored.chords;
+  paintFeatures();
   ui.session = stored.session;
   sessionSnapshot = JSON.stringify(ui.session);
   sessionDirty = false;
@@ -927,14 +929,217 @@ const sections = {
   mail: { title: "Mail", nav: true },
   contacts: { title: "Contacts", nav: true },
   calendars: { title: "Calendars", nav: true },
+  tasks: { title: "Tasks", nav: true },
   files: { title: "Files", nav: true },
+  notes: { title: "Notes", nav: true },
+  argent: { title: "Argent", nav: true },
+  bots: { title: "Grok Bots", nav: false },
+  github: { title: "GitHub", nav: false },
   settings: { title: "Settings", nav: true },
   activity: { title: "Activity", nav: false },
   help: { title: "Help", nav: false },
 };
 
+function featureVisible(section) {
+  if (!FEATURE_KEYS.includes(section)) {
+    return true;
+  }
+  return Boolean(ui.features && ui.features[section] === true);
+}
+
+function placeRailButtons() {
+  if (!mountRoot || !ui.rail) {
+    return;
+  }
+  const bars = mountRoot.querySelectorAll(".nav > .nav-buttons");
+  const topBar = bars[0];
+  const bottomBar = bars[1];
+  if (!topBar || !bottomBar) {
+    return;
+  }
+  for (const key of ui.rail.top) {
+    const button = mountRoot.querySelector(`.nav [data-rail="${key}"]`);
+    if (button) {
+      topBar.append(button);
+    }
+  }
+  for (const key of ui.rail.bottom) {
+    const button = mountRoot.querySelector(`.nav [data-rail="${key}"]`);
+    if (button) {
+      bottomBar.append(button);
+    }
+  }
+  for (const key of RAIL_KEYS) {
+    const button = mountRoot.querySelector(`.nav [data-rail="${key}"]`);
+    if (!button) {
+      continue;
+    }
+    button.hidden = key === "settings" ? false : !featureVisible(key);
+  }
+}
+
+/* The current section is hidden. The first visible section in the top group that owns
+   a nav takes over. Grok, GitHub, Activity, and Update do not. Settings always can. */
+function fallThroughNav() {
+  if (!mountRoot || featureVisible(navSection)) {
+    return;
+  }
+  const top = ui.rail && Array.isArray(ui.rail.top) ? ui.rail.top : [];
+  const next = top.find((key) => featureVisible(key) && sections[key] && sections[key].nav) || "settings";
+  showNav(next);
+}
+
+function clearChords() {
+  for (const stop of chordStops.values()) {
+    stop();
+  }
+  chordStops = new Map();
+}
+
+function applyChords() {
+  if (!keys) {
+    return;
+  }
+  for (const key of RAIL_KEYS) {
+    const prev = chordStops.get(key);
+    if (prev) {
+      prev();
+      chordStops.delete(key);
+    }
+    const digit = ui.chords && ui.chords[key];
+    if (typeof digit !== "string" || !/^[1-9]$/.test(digit)) {
+      continue;
+    }
+    const stop = keys.register({
+      id: `section.${key}`,
+      scope: "global",
+      chords: [[`Ctrl+${digit}`]],
+      run() {
+        if (!featureVisible(key)) {
+          return;
+        }
+        if (key === "update") {
+          if (api) {
+            api.sync.now({}).catch((err) => showBanner(messageOf(err)));
+          }
+          return;
+        }
+        showNav(key);
+        openHome(key);
+        if (tabCtl) {
+          tabCtl.focusActive();
+        }
+      },
+    });
+    chordStops.set(key, stop);
+  }
+}
+
+function onFeatureToggle(key, on) {
+  if (!FEATURE_KEYS.includes(key)) {
+    return;
+  }
+  ui.features[key] = on === true;
+  placeRailButtons();
+  fallThroughNav();
+  if (!on && sections[key]) {
+    hideFeatureHome(key);
+  }
+  persistLayout();
+}
+
+function onFeatureChord(key, digit) {
+  if (!RAIL_KEYS.includes(key) || !ui.chords) {
+    return;
+  }
+  const next = typeof digit === "string" && /^[1-9]$/.test(digit) ? digit : "";
+  if (next !== "") {
+    for (const other of RAIL_KEYS) {
+      if (other !== key && ui.chords[other] === next) {
+        ui.chords[other] = "";
+      }
+    }
+  }
+  ui.chords[key] = next;
+  if (featureEditor) {
+    featureEditor.paint(ui.features, ui.chords);
+  }
+  applyChords();
+  persistLayout();
+}
+
+function onFeatureArrange(next) {
+  ui.rail = railOf({ ...ui.rail, top: next.top, bottom: next.bottom });
+  ui.chords = chordsOf(ui.chords, ui.rail);
+  placeRailButtons();
+  if (featureEditor) {
+    featureEditor.paint(ui.features, ui.chords);
+  }
+  applyChords();
+  persistLayout();
+}
+
+function ensureFeatureEditor() {
+  if (featureEditor || !mountRoot) {
+    return;
+  }
+  const list = mountRoot.querySelector("#feature-list");
+  if (!list) {
+    return;
+  }
+  featureEditor = createFeatureEditor(list, {
+    onToggle: onFeatureToggle,
+    onChord: onFeatureChord,
+    onArrange: onFeatureArrange,
+  });
+}
+
+function paintFeatures() {
+  if (!mountRoot) {
+    return;
+  }
+  ensureFeatureEditor();
+  placeRailButtons();
+  if (featureEditor && !featureEditor.dragging()) {
+    featureEditor.arrange(ui.rail);
+    featureEditor.paint(ui.features, ui.chords);
+  }
+  applyChords();
+  fallThroughNav();
+}
+
+function hideFeatureHome(section) {
+  if (!tabCtl) {
+    return;
+  }
+  const id = `${section}:home`;
+  const active = tabCtl.list().find((item) => item.active);
+  const stay = !active || active.id !== id;
+  void tabCtl.closeTab(id, { stay });
+}
+
+/* A hidden top section's home is not offered again. Leave it out before planning
+   so the restore notice is reserved for a tab whose item is actually gone. */
+function sessionForLaunch(saved) {
+  if (!saved || !Array.isArray(saved.tabs)) {
+    return saved;
+  }
+  const tabs = saved.tabs.filter((item) => {
+    if (!item || item.kind !== "home") {
+      return true;
+    }
+    return featureVisible(item.section);
+  });
+  if (tabs.length === saved.tabs.length) {
+    return saved;
+  }
+  return { ...saved, tabs };
+}
+
 let tabCtl = null;
 let keys = null;
+let featureEditor = null;
+let chordStops = new Map();
 let testSerial = 0;
 let navSection = "mail";
 let logView = null;
@@ -1039,6 +1244,10 @@ function bindNavAffordances() {
   for (const button of mountRoot.querySelectorAll(".nav-buttons button")) {
     widgets.tooltips.bind(button, button.getAttribute("aria-label") || "");
   }
+  const addHost = mountRoot.querySelector("#bots-add-host");
+  if (addHost) {
+    widgets.tooltips.bind(addHost, "A bot cannot be connected yet.");
+  }
   const activity = mountRoot.querySelector('.nav-buttons [data-section="activity"]');
   widgets.menus.bind(activity, () => {
     const view = ui.activity.view === "activity" ? "activity" : "log";
@@ -1137,7 +1346,7 @@ function showNav(section) {
     return;
   }
   const meta = sections[section];
-  if (!meta) {
+  if (!meta || !featureVisible(section)) {
     return;
   }
   if (meta.nav) {
@@ -1203,7 +1412,7 @@ async function openInitialTabs() {
   if (!tabCtl) {
     return;
   }
-  const saved = ui.session;
+  const saved = sessionForLaunch(ui.session);
   launching = true;
   restoring = true;
   tabCtl.restore([]);
@@ -1227,20 +1436,27 @@ async function openInitialTabs() {
     let dropped = [];
     try {
       if (use.mode === "first") {
-        showNav("mail");
-        openHome("mail");
+        if (featureVisible("mail")) {
+          showNav("mail");
+          openHome("mail");
+        }
       } else if (use.mode === "quick") {
         dropped = tabCtl.restore([]);
       } else if (use.mode === "empty") {
-        showNav("mail");
+        if (featureVisible("mail")) {
+          showNav("mail");
+        }
         dropped = tabCtl.restore([]);
       } else {
         dropped = tabCtl.restore(use.tabs);
         const active = tabCtl.list().find((item) => item.active);
-        if (active && active.kind === "home") {
+        if (active && active.kind === "home" && featureVisible(active.section)) {
           showNav(active.section);
-        } else {
+        } else if (featureVisible("mail")) {
           showNav("mail");
+        } else {
+          navSection = "mail";
+          fallThroughNav();
         }
         applyHomeContext(active);
       }
@@ -1302,24 +1518,6 @@ function bindTabKeys() {
     const index = n - 1;
     tab(`tab.goto.${n}`, [[`Alt+${n}`]], () => {
       tabCtl.activateAt(index);
-    });
-  }
-  const switches = [
-    ["1", "mail"],
-    ["2", "contacts"],
-    ["3", "calendars"],
-    ["4", "files"],
-  ];
-  for (const [digit, section] of switches) {
-    keys.register({
-      id: `section.${section}`,
-      scope: "global",
-      chords: [[`Ctrl+${digit}`]],
-      run() {
-        showNav(section);
-        openHome(section);
-        tabCtl.focusActive();
-      },
     });
   }
 }
@@ -1906,6 +2104,11 @@ export function stopShell() {
   }
   onZoomWheel = null;
   wheelRemainder = 0;
+  if (featureEditor) {
+    featureEditor.destroy();
+    featureEditor = null;
+  }
+  clearChords();
   if (keys) {
     keys.destroy();
     keys = null;
@@ -1949,7 +2152,13 @@ export async function startShell(surface, nextApi, nextHost, result) {
     sections,
     homeIcon: homeIconNode,
     iconLabel: homeIconLabel,
+    offer(section) {
+      return featureVisible(section);
+    },
     onReveal(section) {
+      if (!featureVisible(section)) {
+        return;
+      }
       showNav(section);
       openHome(section);
     },
@@ -2096,9 +2305,15 @@ export async function startShell(surface, nextApi, nextHost, result) {
   fillCalendar(new Date());
   for (const button of mountRoot.querySelectorAll(".nav-buttons [data-section]")) {
     button.addEventListener("click", () => {
+      if (!featureVisible(button.dataset.section)) {
+        return;
+      }
       showNav(button.dataset.section);
       openHome(button.dataset.section);
     });
+  }
+  if (!featureEditor) {
+    paintFeatures();
   }
   bindNavResize();
   bindSplit("mail");

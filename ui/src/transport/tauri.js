@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { APP_VERSION } from "../version.js";
@@ -62,16 +62,39 @@ export function tauriHost() {
   if (typeof window !== "undefined" && window.__TAURI_INTERNALS__) {
     const current = getCurrentWindow();
     current.setTitle(`Pavillion ${APP_VERSION}`).catch(() => {});
-    let closing = false;
-    current.onCloseRequested(async () => {
-      if (closing) {
+    let quitting = null;
+    const beginQuit = () => {
+      if (quitting) {
+        return quitting;
+      }
+      if (typeof host.onQuit !== "function") {
+        return null;
+      }
+      quitting = Promise.resolve(host.onQuit());
+      return quitting;
+    };
+    /* Ctrl+C calls this. The shell treats prefs.ui.set of shutdown clean as
+       the save finishing. These events only name a step that did not. */
+    window.__pavQuit = () => {
+      const pending = beginQuit();
+      if (!pending) {
+        emit("pav-quit-stuck").catch(() => {});
         return;
       }
-      closing = true;
+      emit("pav-quit-began").catch(() => {});
+      pending.then((ok) => {
+        emit(ok === false ? "pav-quit-failed" : "pav-quit-done").catch(() => {});
+      }).catch(() => {
+        emit("pav-quit-failed").catch(() => {});
+      });
+    };
+    current.onCloseRequested(async () => {
+      const pending = beginQuit();
+      if (!pending) {
+        return;
+      }
       try {
-        if (typeof host.onQuit === "function") {
-          await host.onQuit();
-        }
+        await pending;
       } catch {
         /* The window still closes. A failed write leaves shutdown open. */
       }

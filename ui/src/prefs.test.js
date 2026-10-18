@@ -1,6 +1,93 @@
 import { expect, test } from "vitest";
 import { clampUi } from "./prefs.js";
 
+test("features default to mail, contacts, calendars, and files on", () => {
+  expect(clampUi({}).features).toEqual({
+    mail: true,
+    contacts: true,
+    calendars: true,
+    tasks: false,
+    files: true,
+    notes: false,
+    argent: false,
+    bots: false,
+    github: false,
+    activity: true,
+    update: true,
+    help: true,
+  });
+  expect(clampUi({
+    features: { mail: false, bots: true, files: "yes", extra: 1, settings: false },
+  }).features).toEqual({
+    mail: false,
+    contacts: true,
+    calendars: true,
+    tasks: false,
+    files: true,
+    notes: false,
+    argent: false,
+    bots: true,
+    github: false,
+    activity: true,
+    update: true,
+    help: true,
+    extra: 1,
+    settings: false,
+  });
+});
+
+test("the rail order and the chords clamp", () => {
+  expect(clampUi({}).rail).toEqual({
+    top: ["mail", "contacts", "calendars", "tasks", "files", "notes", "argent"],
+    bottom: ["bots", "github", "activity", "settings", "update", "help"],
+  });
+  expect(clampUi({}).chords).toEqual({
+    mail: "1",
+    contacts: "2",
+    calendars: "3",
+    tasks: "4",
+    files: "5",
+    notes: "6",
+    argent: "7",
+    bots: "",
+    github: "",
+    activity: "",
+    settings: "",
+    update: "",
+    help: "",
+  });
+  const moved = clampUi({
+    rail: { top: ["files", "mail"], bottom: ["help"], note: 1 },
+  }).rail;
+  expect(moved.top).toEqual(["files", "mail", "contacts", "calendars", "tasks", "notes", "argent"]);
+  expect(moved.bottom).toEqual(["help", "bots", "github", "activity", "settings", "update"]);
+  expect(moved.note).toBe(1);
+  const parked = clampUi({
+    rail: { top: ["settings", "mail"], bottom: ["mail", "calendars"] },
+  }).rail;
+  expect(parked.top.slice(0, 2)).toEqual(["settings", "mail"]);
+  expect(parked.bottom.includes("mail")).toBe(false);
+  expect(parked.bottom.includes("settings")).toBe(false);
+  expect(clampUi({ chords: {} }).chords.mail).toBe("");
+  expect(clampUi({ chords: {} }).chords.argent).toBe("");
+  const stolen = clampUi({
+    chords: { mail: "1", contacts: "1", files: "5", calendars: "8", tasks: "0", notes: 6, extra: "z" },
+  }).chords;
+  expect(stolen.mail).toBe("1");
+  expect(stolen.contacts).toBe("");
+  expect(stolen.files).toBe("5");
+  expect(stolen.calendars).toBe("8");
+  expect(stolen.tasks).toBe("");
+  expect(stolen.notes).toBe("");
+  expect(stolen.extra).toBe("z");
+  const earlier = clampUi({
+    rail: { top: ["contacts", "mail"], bottom: [] },
+    chords: { contacts: "1", mail: "1" },
+  }).chords;
+  expect(earlier.contacts).toBe("1");
+  expect(earlier.mail).toBe("");
+});
+
 test("a missing session restores, and an empty tab list stays empty", () => {
   expect(clampUi({}).session).toEqual({ tabs: null, restore: true, shutdown: "open", maxTabs: 50 });
   expect(clampUi({ session: { restore: false, tabs: [] } }).session).toEqual({
