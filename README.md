@@ -68,26 +68,26 @@ dnf install $(grep -vE '^[[:space:]]*(#|$)' scripts/fedora-deps.txt)
 [![Count Lines of Code](https://github.com/500Foods/Pavillion/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/main.yml)
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-18 01:48:31 UTC
+Last updated at 2026-10-18 17:23:43 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
 C                               19           1425            235          13270
-JavaScript                      62            740            149          11559
-Markdown                        28           2227              2           4494
+JavaScript                      64            807            171          12750
+Markdown                        32           2346              2           4774
 JSON                             8              0              0           2653
-CSS                              6            316              3           1959
+CSS                              6            330              3           2039
 C/C++ Header                    14            345            406           1826
-Rust                             3             22             11            464
+Rust                             3             34             30            608
 YAML                             3             21             17             92
 Bourne Shell                     2             13              9             85
 HTML                             3              4              0             82
 make                             1             12              9             81
 Text                             2              7              0             51
-TOML                             1              6              5             39
+TOML                             1              6              5             40
 CMake                            1              3              1             30
 -------------------------------------------------------------------------------
-SUM:                           153           5141            847          36685
+SUM:                           159           5353            888          38381
 -------------------------------------------------------------------------------
 26 Files were skipped (duplicate, binary, or without source code):
   png: 17
