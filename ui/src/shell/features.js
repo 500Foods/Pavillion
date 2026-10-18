@@ -17,6 +17,10 @@ export function createFeatureEditor(listEl, handlers) {
     grip.setAttribute("aria-hidden", "true");
     grip.textContent = "⋮⋮";
 
+    const icon = doc.createElement("span");
+    icon.className = "feature-icon";
+    icon.setAttribute("aria-hidden", "true");
+
     const name = doc.createElement("span");
     name.className = "feature-label";
     name.textContent = item.label;
@@ -37,7 +41,7 @@ export function createFeatureEditor(listEl, handlers) {
       select.append(option);
     }
     chordLabel.append(select);
-    row.append(grip);
+    row.append(grip, icon);
     if (item.toggle) {
       const box = doc.createElement("input");
       box.type = "checkbox";
@@ -53,6 +57,11 @@ export function createFeatureEditor(listEl, handlers) {
     row.append(name, chordLabel);
     rows.set(item.key, row);
   }
+
+  const topLabel = doc.createElement("div");
+  topLabel.className = "feature-side";
+  topLabel.dataset.railFixed = "true";
+  topLabel.textContent = "Top";
 
   const divider = doc.createElement("div");
   divider.className = "feature-divider";
@@ -70,7 +79,7 @@ export function createFeatureEditor(listEl, handlers) {
     }
     const top = Array.isArray(rail.top) ? rail.top : [];
     const bottom = Array.isArray(rail.bottom) ? rail.bottom : [];
-    const nodes = [];
+    const nodes = [topLabel];
     for (const key of top) {
       const row = rows.get(key);
       if (row) {
@@ -85,6 +94,22 @@ export function createFeatureEditor(listEl, handlers) {
       }
     }
     listEl.replaceChildren(...nodes);
+    refreshIcons();
+  }
+
+  function refreshIcons() {
+    for (const item of RAIL_ITEMS) {
+      const row = rows.get(item.key);
+      const slot = row && row.querySelector(".feature-icon");
+      if (!slot) {
+        continue;
+      }
+      const source = doc.querySelector(`.nav [data-rail="${item.key}"] .icon`);
+      slot.replaceChildren();
+      if (source) {
+        slot.append(source.cloneNode(true));
+      }
+    }
   }
 
   function paint(features, chords) {
@@ -104,6 +129,7 @@ export function createFeatureEditor(listEl, handlers) {
         const digit = typeof digits[item.key] === "string" ? digits[item.key] : "";
         select.value = CHORD_DIGITS.includes(digit) ? digit : "";
       }
+      row.classList.toggle("is-off", item.toggle && flags[item.key] !== true);
     }
   }
 
@@ -123,7 +149,7 @@ export function createFeatureEditor(listEl, handlers) {
 
   function dropBefore(clientY, moving) {
     for (const child of listEl.children) {
-      if (child === moving) {
+      if (child === moving || child.dataset.railFixed === "true") {
         continue;
       }
       const rect = child.getBoundingClientRect();
@@ -227,6 +253,7 @@ export function createFeatureEditor(listEl, handlers) {
   return {
     arrange,
     paint,
+    refreshIcons,
     dragging() {
       return dragging;
     },

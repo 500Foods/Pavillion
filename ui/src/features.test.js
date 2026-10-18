@@ -233,6 +233,10 @@ test("Settings has no checkbox, and Activity, Update, and Help start on", async 
   expect(settings.querySelector("[data-feature]")).toBeNull();
   expect(settings.querySelector(".feature-label").textContent).toBe("Settings");
   expect(root.querySelector(".feature-divider").textContent).toBe("Bottom");
+  expect(root.querySelector(".feature-side").textContent).toBe("Top");
+  expect(root.querySelector('[data-rail-key="mail"] .feature-icon .icon').className).toContain("fa-paper-plane-top");
+  expect(root.querySelector('[data-rail-key="tasks"]').classList.contains("is-off")).toBe(true);
+  expect(root.querySelector('[data-rail-key="mail"]').classList.contains("is-off")).toBe(false);
   for (const name of ["activity", "update", "help"]) {
     expect(root.querySelector(`[data-feature="${name}"]`).checked).toBe(true);
     expect(root.querySelector(`[data-chord="${name}"]`).value).toBe("");
@@ -333,6 +337,94 @@ test("dragging Calendars below the divider moves that button to the bottom rail"
   expect(order.indexOf("calendars")).toBeGreaterThan(order.indexOf("divider"));
 });
 
+function box(node, x, y, w, h) {
+  node.getBoundingClientRect = () => ({
+    x,
+    y,
+    left: x,
+    top: y,
+    right: x + w,
+    bottom: y + h,
+    width: w,
+    height: h,
+    toJSON() {
+      return {};
+    },
+  });
+}
+
+function pointerAt(type, clientX, clientY) {
+  return new PointerEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    clientX,
+    clientY,
+    button: 0,
+    pointerId: 1,
+  });
+}
+
+test("dragging a rail icon left reorders that bar and does not open it", async () => {
+  const root = await boot();
+  const bars = root.querySelectorAll(".nav > .nav-buttons");
+  box(bars[0], 0, 0, 200, 40);
+  box(bars[1], 0, 400, 200, 40);
+  const visible = [...bars[0].querySelectorAll("button")].filter((node) => !node.hidden);
+  visible.forEach((node, i) => box(node, i * 40, 0, 40, 40));
+  const files = root.querySelector('[data-rail="files"]');
+  files.dispatchEvent(pointerAt("pointerdown", 130, 20));
+  files.dispatchEvent(pointerAt("pointermove", 10, 20));
+  files.dispatchEvent(pointerAt("pointerup", 10, 20));
+  files.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  const top = [...bars[0].querySelectorAll("button")].map((node) => node.dataset.rail);
+  expect(top[0]).toBe("files");
+  expect(top.indexOf("tasks")).toBeGreaterThan(top.indexOf("calendars"));
+  expect(root.querySelector('[data-section="mail"]').getAttribute("aria-pressed")).toBe("true");
+  expect(root.querySelector('[data-section="files"]').getAttribute("aria-pressed")).toBe("false");
+  expect(root.querySelector(".rail-drop")).toBeNull();
+  const order = [...root.querySelector("#feature-list").children].map((node) => node.dataset.railKey || node.textContent);
+  expect(order[0]).toBe("Top");
+  expect(order.indexOf("files")).toBeLessThan(order.indexOf("mail"));
+  expect(root.querySelector('[data-chord="files"]').value).toBe("5");
+});
+
+test("dragging a rail icon onto the other bar keeps hidden buttons in place", async () => {
+  const root = await boot();
+  const bars = root.querySelectorAll(".nav > .nav-buttons");
+  box(bars[0], 0, 0, 200, 40);
+  box(bars[1], 0, 400, 200, 40);
+  const topVisible = [...bars[0].querySelectorAll("button")].filter((node) => !node.hidden);
+  const bottomVisible = [...bars[1].querySelectorAll("button")].filter((node) => !node.hidden);
+  topVisible.forEach((node, i) => box(node, i * 40, 0, 40, 40));
+  bottomVisible.forEach((node, i) => box(node, i * 40, 400, 40, 40));
+  const calendars = root.querySelector('[data-rail="calendars"]');
+  calendars.dispatchEvent(pointerAt("pointerdown", 90, 20));
+  calendars.dispatchEvent(pointerAt("pointermove", 10, 420));
+  calendars.dispatchEvent(pointerAt("pointerup", 10, 420));
+  const bottom = [...bars[1].querySelectorAll("button")].map((node) => node.dataset.rail);
+  expect(bottom.slice(0, 3)).toEqual(["bots", "github", "calendars"]);
+  expect(root.querySelector('[data-rail="calendars"]').parentElement).toBe(bars[1]);
+  expect([...bars[0].querySelectorAll("button")].some((node) => node.dataset.rail === "calendars")).toBe(false);
+  const order = [...root.querySelector("#feature-list").children].map((node) => node.dataset.railKey || "divider");
+  expect(order.indexOf("calendars")).toBeGreaterThan(order.indexOf("divider"));
+  expect(order.indexOf("github")).toBeLessThan(order.indexOf("calendars"));
+});
+
+test("a rail press under 4 px does not reorder", async () => {
+  const root = await boot();
+  const bars = root.querySelectorAll(".nav > .nav-buttons");
+  box(bars[0], 0, 0, 200, 40);
+  box(bars[1], 0, 400, 200, 40);
+  const files = root.querySelector('[data-rail="files"]');
+  const before = [...bars[0].querySelectorAll("button")].map((node) => node.dataset.rail);
+  files.dispatchEvent(pointerAt("pointerdown", 130, 20));
+  files.dispatchEvent(pointerAt("pointermove", 132, 21));
+  files.dispatchEvent(pointerAt("pointerup", 132, 21));
+  expect([...bars[0].querySelectorAll("button")].map((node) => node.dataset.rail)).toEqual(before);
+  files.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  expect(root.querySelector('[data-section="files"]').getAttribute("aria-pressed")).toBe("true");
+});
+
 test("a shortcut can move to another feature, and a hidden one does nothing", async () => {
   const root = await boot();
   const contacts = root.querySelector('[data-chord="contacts"]');
@@ -348,7 +440,8 @@ test("a shortcut can move to another feature, and a hidden one does nothing", as
   const mail = root.querySelector('[data-chord="mail"]');
   mail.value = "2";
   mail.dispatchEvent(new Event("change", { bubbles: true }));
-  expect(contacts.value).toBe("");
+  expect(contacts.value).toBe("1");
+  expect(mail.value).toBe("2");
   root.querySelector('[data-feature="mail"]').click();
   root.querySelector('[data-tab-id="contacts:home"]').focus();
   key(root, "2", { ctrlKey: true });

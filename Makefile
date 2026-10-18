@@ -14,6 +14,9 @@ MINI_DIST := $(DIST_DIR)/pavillion-mini
 # Override with `make mini UPX_FLAGS='--ultra-brute'` if you want UPX to search longer.
 UPX_FLAGS ?= --best --lzma
 MINI_RUSTFLAGS := $(strip $(RUSTFLAGS) -C force-unwind-tables=no -C link-arg=-Wl,--gc-sections -C link-arg=-Wl,--as-needed -C link-arg=-Wl,-O1)
+# Wall clock from when make read this file, so lib and the rest of the target count.
+BUILD_START := $(shell date +%s)
+PRINT_ELAPSED = elapsed=$$(( $$(date +%s) - $(BUILD_START) )); printf 'build time    %dh%dm%ds\n' $$((elapsed / 3600)) $$(((elapsed % 3600) / 60)) $$((elapsed % 60))
 
 UNITY_DIR := tests/unity/framework/src
 TEST_SRC := tests/unity/src/core_test.c
@@ -66,6 +69,7 @@ build: lib
 	npm --prefix ui exec -- tauri build
 	mkdir -p $(DIST_DIR)
 	cp -f $(RELEASE_BIN) $(DIST_DIR)/pavillion
+	@$(PRINT_ELAPSED)
 
 # Same program as make build, aimed at the smallest file. Uses build-mini/ and
 # target/mini/ so it does not rewrite build/ or dist/pavillion.
@@ -92,6 +96,7 @@ mini:
 	@echo "mini unpacked $$(stat -c%s $(MINI_BIN)) bytes"
 	@echo "mini packed   $$(stat -c%s $(MINI_DIST)) bytes"
 	@if [ -f $(DIST_DIR)/pavillion ]; then echo "make build    $$(stat -c%s $(DIST_DIR)/pavillion) bytes"; fi
+	@$(PRINT_ELAPSED)
 
 test: $(TEST_BIN)
 	$(TEST_BIN)

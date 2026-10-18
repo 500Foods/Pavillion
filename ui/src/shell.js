@@ -7,6 +7,7 @@ import { createTooltip } from "./common/tooltip.js";
 import { clampMaxTabs, planRestore, serializeTabs, SESSION_MS } from "./shell/session.js";
 import { createTabs, KIND_ICONS } from "./shell/tabs.js";
 import { createFeatureEditor } from "./shell/features.js";
+import { createRailDrag } from "./shell/rail-drag.js";
 import { createActivityView } from "./activity/view.js";
 import { createHelpView } from "./help/view.js";
 import { createLogView } from "./log/view.js";
@@ -309,6 +310,9 @@ function applyIconOverride(key) {
   if (tabCtl) {
     tabCtl.refreshIcons();
   }
+  if (featureEditor) {
+    featureEditor.refreshIcons();
+  }
 }
 
 function activeFile() {
@@ -353,6 +357,9 @@ function applyIcons() {
   applyThemeKit();
   if (tabCtl) {
     tabCtl.refreshIcons();
+  }
+  if (featureEditor) {
+    featureEditor.refreshIcons();
   }
 }
 
@@ -1072,11 +1079,24 @@ function onFeatureArrange(next) {
   ui.rail = railOf({ ...ui.rail, top: next.top, bottom: next.bottom });
   ui.chords = chordsOf(ui.chords, ui.rail);
   placeRailButtons();
-  if (featureEditor) {
+  if (featureEditor && !featureEditor.dragging()) {
+    featureEditor.arrange(ui.rail);
     featureEditor.paint(ui.features, ui.chords);
   }
   applyChords();
   persistLayout();
+}
+
+function ensureRailDrag() {
+  if (railDrag || !mountRoot) {
+    return;
+  }
+  railDrag = createRailDrag(mountRoot, {
+    rail() {
+      return ui.rail;
+    },
+    onArrange: onFeatureArrange,
+  });
 }
 
 function ensureFeatureEditor() {
@@ -1099,6 +1119,7 @@ function paintFeatures() {
     return;
   }
   ensureFeatureEditor();
+  ensureRailDrag();
   placeRailButtons();
   if (featureEditor && !featureEditor.dragging()) {
     featureEditor.arrange(ui.rail);
@@ -1139,6 +1160,7 @@ function sessionForLaunch(saved) {
 let tabCtl = null;
 let keys = null;
 let featureEditor = null;
+let railDrag = null;
 let chordStops = new Map();
 let testSerial = 0;
 let navSection = "mail";
@@ -2107,6 +2129,10 @@ export function stopShell() {
   if (featureEditor) {
     featureEditor.destroy();
     featureEditor = null;
+  }
+  if (railDrag) {
+    railDrag.destroy();
+    railDrag = null;
   }
   clearChords();
   if (keys) {

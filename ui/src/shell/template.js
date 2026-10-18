@@ -145,7 +145,7 @@ export const shellMarkup = `<div class="shell">
         <div class="panel settings" id="panel-settings" role="tabpanel" hidden>
           <div data-settings="features">
             <h2>Features</h2>
-            <p class="muted">Drag a row to move it. Rows above the line are the top of the rail. Rows below it are the bottom. A shortcut is Ctrl and a number, and each number is used once. Settings stays available.</p>
+            <p class="muted">Drag a row, or drag an icon on the rail. Left and right stay in that bar. Crossing to the other bar moves it. A short press still opens the section. Rows above the line are the top of the rail. Rows below it are the bottom. A shortcut is Ctrl and a number, and each number is used once. Settings stays available.</p>
             <div id="feature-list" class="feature-list"></div>
           </div>
           <div data-settings="zoom" hidden>
