@@ -1,5 +1,8 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include "pav_store.h"
 
+#include "pav_db.h"
 #include "pav_platform.h"
 
 #include <sqlite3.h>
@@ -50,15 +53,38 @@ static int sqlite_open(PavStore *store, const char *path, char *err, size_t err_
         }
         return -1;
     }
+    store->path = strdup(path);
+    if (store->path == NULL) {
+        set_err(err, err_len, "out of memory");
+        sqlite3_close(db);
+        if (!existed) {
+            remove(path);
+        }
+        return -1;
+    }
     store->handle = db;
     return 0;
 }
 
 static void sqlite_close(PavStore *store) {
+    if (pav_db_writer_shutdown(store->handle)) {
+        pav_db_readpool_close();
+    }
     if (store->handle != NULL) {
+        pav_db_cache_clear(store->handle);
         sqlite3_close(store->handle);
         store->handle = NULL;
     }
+    free(store->path);
+    store->path = NULL;
+}
+
+static int sqlite_migrate(PavStore *store, char *err, size_t err_len) {
+    if (store->handle == NULL || store->path == NULL) {
+        set_err(err, err_len, "store is closed");
+        return -1;
+    }
+    return pav_db_migrate(store->handle, store->path, err, err_len);
 }
 
 static int sqlite_exec(PavStore *store, const char *sql, char *err, size_t err_len) {
@@ -87,6 +113,7 @@ static const PavStoreVtable g_sqlite_vtable = {
     sqlite_open,
     sqlite_close,
     sqlite_exec,
+    sqlite_migrate,
 };
 
 int pav_store_open(PavStore **out, const char *engine, const char *path, char *err, size_t err_len) {
@@ -138,4 +165,12 @@ void *pav_store_handle(const PavStore *store) {
         return NULL;
     }
     return store->handle;
+}
+
+int pav_store_migrate(PavStore *store, char *err, size_t err_len) {
+    if (store == NULL || store->vt == NULL || store->vt->migrate == NULL) {
+        set_err(err, err_len, "missing store");
+        return -1;
+    }
+    return store->vt->migrate(store, err, err_len);
 }

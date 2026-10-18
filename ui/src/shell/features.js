@@ -15,7 +15,10 @@ export function createFeatureEditor(listEl, handlers) {
     const grip = doc.createElement("span");
     grip.className = "feature-grip";
     grip.setAttribute("aria-hidden", "true");
-    grip.textContent = "⋮⋮";
+    const gripIcon = doc.createElement("i");
+    gripIcon.className = "icon fa-sharp-duotone fa-solid fa-bars";
+    gripIcon.draggable = false;
+    grip.append(gripIcon);
 
     const icon = doc.createElement("span");
     icon.className = "feature-icon";
@@ -43,11 +46,20 @@ export function createFeatureEditor(listEl, handlers) {
     chordLabel.append(select);
     row.append(grip, icon);
     if (item.toggle) {
+      const check = doc.createElement("label");
+      check.className = "feature-check";
       const box = doc.createElement("input");
       box.type = "checkbox";
       box.dataset.feature = item.key;
       box.setAttribute("aria-label", `Show ${item.label}`);
-      row.append(box);
+      const off = doc.createElement("i");
+      off.className = "icon feature-check-off fa-sharp-duotone fa-solid fa-square";
+      off.setAttribute("aria-hidden", "true");
+      const on = doc.createElement("i");
+      on.className = "icon feature-check-on fa-sharp-duotone fa-solid fa-square-check";
+      on.setAttribute("aria-hidden", "true");
+      check.append(box, off, on);
+      row.append(check);
     } else {
       const gap = doc.createElement("span");
       gap.className = "feature-gap";
@@ -63,15 +75,20 @@ export function createFeatureEditor(listEl, handlers) {
   topLabel.dataset.railFixed = "true";
   topLabel.textContent = "Top";
 
+  const bottomLabel = doc.createElement("div");
+  bottomLabel.className = "feature-side";
+  bottomLabel.dataset.railFixed = "true";
+  bottomLabel.textContent = "Bottom";
+
   const divider = doc.createElement("div");
   divider.className = "feature-divider";
   divider.dataset.railDivider = "true";
   divider.setAttribute("role", "separator");
   divider.setAttribute("aria-label", "Divider between the top rail and the bottom rail");
-  divider.textContent = "Bottom";
 
   let dragging = false;
   let suppressClick = false;
+  let releaseDrag = null;
 
   function arrange(rail) {
     if (dragging || !rail) {
@@ -86,7 +103,7 @@ export function createFeatureEditor(listEl, handlers) {
         nodes.push(row);
       }
     }
-    nodes.push(divider);
+    nodes.push(divider, bottomLabel);
     for (const key of bottom) {
       const row = rows.get(key);
       if (row) {
@@ -192,22 +209,29 @@ export function createFeatureEditor(listEl, handlers) {
     if (!row || !listEl.contains(row)) {
       return;
     }
+    event.preventDefault();
+    const pointerId = event.pointerId;
     const startY = event.clientY;
     let moving = false;
-    if (typeof row.setPointerCapture === "function") {
+    const capture = typeof target.setPointerCapture === "function" ? target : row;
+    if (typeof capture.setPointerCapture === "function") {
       try {
-        row.setPointerCapture(event.pointerId);
+        capture.setPointerCapture(pointerId);
       } catch {
         /* jsdom has no pointer capture. */
       }
     }
     const move = (pointer) => {
+      if (pointer.pointerId !== pointerId) {
+        return;
+      }
       if (!moving && Math.abs(pointer.clientY - startY) < DRAG_PX) {
         return;
       }
       moving = true;
       dragging = true;
       row.classList.add("is-dragging");
+      pointer.preventDefault();
       const before = dropBefore(pointer.clientY, row);
       if (before) {
         listEl.insertBefore(row, before);
@@ -216,9 +240,13 @@ export function createFeatureEditor(listEl, handlers) {
       }
     };
     const stop = (pointer) => {
-      row.removeEventListener("pointermove", move);
-      row.removeEventListener("pointerup", stop);
-      row.removeEventListener("pointercancel", stop);
+      if (pointer.pointerId !== pointerId) {
+        return;
+      }
+      releaseDrag = null;
+      doc.removeEventListener("pointermove", move);
+      doc.removeEventListener("pointerup", stop);
+      doc.removeEventListener("pointercancel", stop);
       row.classList.remove("is-dragging");
       const didMove = moving;
       if (!didMove) {
@@ -233,9 +261,14 @@ export function createFeatureEditor(listEl, handlers) {
       }, 0);
       handlers.onArrange(splitAtDivider());
     };
-    row.addEventListener("pointermove", move);
-    row.addEventListener("pointerup", stop);
-    row.addEventListener("pointercancel", stop);
+    releaseDrag = () => {
+      doc.removeEventListener("pointermove", move);
+      doc.removeEventListener("pointerup", stop);
+      doc.removeEventListener("pointercancel", stop);
+    };
+    doc.addEventListener("pointermove", move);
+    doc.addEventListener("pointerup", stop);
+    doc.addEventListener("pointercancel", stop);
   }
 
   function onClick(event) {
@@ -258,6 +291,10 @@ export function createFeatureEditor(listEl, handlers) {
       return dragging;
     },
     destroy() {
+      if (releaseDrag) {
+        releaseDrag();
+        releaseDrag = null;
+      }
       listEl.removeEventListener("change", onChange);
       listEl.removeEventListener("pointerdown", onPointerDown);
       listEl.removeEventListener("click", onClick, true);

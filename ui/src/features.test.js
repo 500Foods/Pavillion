@@ -232,8 +232,12 @@ test("Settings has no checkbox, and Activity, Update, and Help start on", async 
   const settings = root.querySelector('[data-rail-key="settings"]');
   expect(settings.querySelector("[data-feature]")).toBeNull();
   expect(settings.querySelector(".feature-label").textContent).toBe("Settings");
-  expect(root.querySelector(".feature-divider").textContent).toBe("Bottom");
-  expect(root.querySelector(".feature-side").textContent).toBe("Top");
+  expect([...root.querySelectorAll(".feature-side")].map((node) => node.textContent)).toEqual(["Top", "Bottom"]);
+  expect(root.querySelector(".feature-divider").textContent).toBe("");
+  expect(root.querySelector(".feature-grip .icon").className).toContain("fa-bars");
+  expect(root.querySelectorAll(".feature-grip")).toHaveLength(13);
+  expect(root.querySelector('[data-rail-key="mail"] .feature-check-on').className).toContain("fa-square-check");
+  expect(root.querySelector('[data-help-section="features"]').getAttribute("aria-label")).toBe("Help for Features");
   expect(root.querySelector('[data-rail-key="mail"] .feature-icon .icon').className).toContain("fa-paper-plane-top");
   expect(root.querySelector('[data-rail-key="tasks"]').classList.contains("is-off")).toBe(true);
   expect(root.querySelector('[data-rail-key="mail"]').classList.contains("is-off")).toBe(false);
@@ -327,8 +331,8 @@ test("dragging Calendars below the divider moves that button to the bottom rail"
   });
   const grip = row.querySelector(".feature-grip");
   grip.dispatchEvent(pointer("pointerdown", 90));
-  grip.dispatchEvent(pointer("pointermove", 1000));
-  grip.dispatchEvent(pointer("pointerup", 1000));
+  document.dispatchEvent(pointer("pointermove", 1000));
+  document.dispatchEvent(pointer("pointerup", 1000));
   const bottom = root.querySelectorAll(".nav > .nav-buttons")[1];
   const labels = [...bottom.querySelectorAll("button")].map((node) => node.dataset.rail);
   expect(labels[labels.length - 1]).toBe("calendars");
@@ -408,6 +412,15 @@ test("dragging a rail icon onto the other bar keeps hidden buttons in place", as
   const order = [...root.querySelector("#feature-list").children].map((node) => node.dataset.railKey || "divider");
   expect(order.indexOf("calendars")).toBeGreaterThan(order.indexOf("divider"));
   expect(order.indexOf("github")).toBeLessThan(order.indexOf("calendars"));
+});
+
+test("the Features help icon opens that topic", async () => {
+  const root = await boot();
+  root.querySelector('[data-help-section="features"]').click();
+  expect(root.querySelector("#panel-help").hidden).toBe(false);
+  expect(root.querySelector("#help-article h2").textContent).toBe("Settings");
+  expect(root.querySelector("#help-sec-settings-features").textContent).toContain("Dragging an icon");
+  expect(root.querySelector('#help-index button[data-help-section="features"]').getAttribute("aria-current")).toBe("true");
 });
 
 test("a rail press under 4 px does not reorder", async () => {

@@ -37,7 +37,7 @@ export const helpPages = [
         paragraphs: [
           "The list on the left is the index. The page on the right is the topic. Drag the bar between them to change the width. The width is saved. Search in the bar matches a title or the words on a page, and Enter opens the first hit.",
           "Escape clears the search and leaves the page you were reading. A match on a page title keeps every section of that page in the index. A match in the text keeps only those sections in the index, and the page still shows the whole topic.",
-          "Pages are added as features land. A short page means that part of the app is not built yet. A help icon beside a control, when one exists, will open one section of a page and link back here.",
+          "Pages are added as features land. A short page means that part of the app is not built yet. A help icon on the right of a page's top bar opens that topic here.",
         ],
       },
     ],
@@ -145,8 +145,8 @@ export const helpPages = [
         id: "features",
         title: "Features",
         paragraphs: [
-          "Features is the first Settings page. The others are Themes, Icons, Fonts, Tabs, and Zooms.",
-          "The page lists every rail button: Mail, Contacts, Calendars, Tasks, Files, Notes, Argent, Grok Bots, GitHub, Activity, Settings, Update, and Help. Each row shows that button's icon. Drag a row to change its place, or drag the icon on the rail. Left and right stay in that bar. Crossing to the other bar moves it. A short press on the rail still opens the section. Rows above the line sit on the top of the rail. Rows below the line sit on the bottom. A checkbox hides that button and closes its home tab. A hidden button stays in the list and keeps its place, and it does not take a cell on the rail. Settings has no checkbox, so it stays available. Update has no home tab. Mail, Contacts, Calendars, and Files start on. Activity, Update, and Help start on and can be turned off. Tasks, Notes, Argent, Grok Bots, and GitHub start off. The choice is saved and comes back after a restart.",
+          "Features is the first Settings page. The others are Themes, Icons, Fonts, Tabs, and Zooms. Each of those pages has a help icon on the right of its top bar. The icon opens that topic here.",
+          "The page lists every rail button: Mail, Contacts, Calendars, Tasks, Files, Notes, Argent, Grok Bots, GitHub, Activity, Settings, Update, and Help. Each row shows that button's icon. Drag a row by the bars on its left to change its place. Dragging an icon on the top or bottom bar does the same move: left or right stays in that bar, and crossing to the other bar moves it. A short press on the bar still opens the section. Rows under Top sit on the top bar. Rows under Bottom sit on the bottom bar. A check shows that button. Turning one off hides it and closes its home tab. A hidden button stays in the list and keeps its place, and it does not take a cell on the rail. Settings has no check, so it stays available. Update has no home tab. Mail, Contacts, Calendars, and Files start on. Activity, Update, and Help start on and can be turned off. Tasks, Notes, Argent, Grok Bots, and GitHub start off. The choice is saved and comes back after a restart.",
           "Each row has a shortcut, Ctrl and a number from 1 to 9, or None. A number belongs to one row. Giving it to another row clears it from the first. Mail starts at Ctrl+1, Contacts at Ctrl+2, Calendars at Ctrl+3, Tasks at Ctrl+4, Files at Ctrl+5, Notes at Ctrl+6, and Argent at Ctrl+7. The other rows start with no shortcut. A hidden button's shortcut does nothing. Moving a button does not move its shortcut. A shortcut on Update runs a sync.",
           "If the section in the nav is hidden when the app opens, the nav opens on the first section above the line that is on and has its own nav. If none of those are on, it opens on Settings. Grok Bots, GitHub, Activity, and Update do not take that place. Settings can sit above the line and take it.",
         ],
@@ -323,6 +323,13 @@ export const helpPages = [
 }`,
       },
       {
+        id: "rail-drag",
+        title: "Dragging the rail",
+        paragraphs: [
+          "A Features row drag listens for pointermove on the document. Pointer capture on the row is dropped as soon as the pointer leaves it, so a listener on the row never sees the move. The Font Awesome kit replaces the grip icon with an svg. The grip wraps that icon, and the row calls preventDefault on pointerdown, or the svg starts a native image drag. Drag surfaces set user-select to none.",
+        ],
+      },
+      {
         id: "corpus",
         title: "Where Help lives",
         paragraphs: [
@@ -336,6 +343,14 @@ export const helpPages = [
           "Help index is the zoom key helpIndex. Help content is helpContent. Both live on preferences.ui.zoom with the other pane scales. Shell multiplies them. A missing key is filled at 100% the next time the page saves. The Help search bar stays on the Button bars key.",
           "The bar between the index and the page is preferences.ui.help. split starts at 0.25 of the row. The drag stays between 0.15 and 0.6. A missing object is filled from those defaults the next time the page saves. The bar uses --pav-help-index-border.",
           "A theme file can restyle Help without touching the mail panes. The names are --pav-help-index-bg, --pav-help-index-text, --pav-help-index-muted, --pav-help-index-current, --pav-help-index-border, --pav-help-content-bg, --pav-help-content-text, --pav-help-content-heading, --pav-help-content-muted, --pav-help-code-bg, --pav-help-code-text, and --pav-help-code-border. Light, Dark, and both starter themes define each one. Code samples still use the theme monospace font.",
+        ],
+      },
+      {
+        id: "store",
+        title: "The store",
+        paragraphs: [
+          "Opening a profile migrates the database before the activity list is loaded. A fresh file is user_version 1. The tables are activity, account_state, remote_account, identity, mailbox, sync_state, and kv. An activity table already in the file is kept. A database newer than this binary does not open.",
+          "One writer thread owns the only write connection. Reads use two read-only connections. Finished activities are queued on that writer and are not written on the core thread. The page does not talk to the database.",
         ],
       },
       {

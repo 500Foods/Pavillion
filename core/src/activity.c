@@ -3,6 +3,7 @@
 #include "pav_activity.h"
 
 #include "dispatch.h"
+#include "pav_db.h"
 #include "pav_platform.h"
 #include "pavillion.h"
 
@@ -46,26 +47,6 @@ static const char *const k_kinds[] = {
     "sync.files",
     "sync.mail",
 };
-
-static const char k_create_sql[] =
-    "CREATE TABLE IF NOT EXISTS activity ("
-    "  id INTEGER PRIMARY KEY,"
-    "  kind TEXT NOT NULL,"
-    "  account_id TEXT,"
-    "  title TEXT NOT NULL,"
-    "  detail TEXT,"
-    "  state TEXT NOT NULL,"
-    "  started_ms INTEGER NOT NULL,"
-    "  ended_ms INTEGER,"
-    "  prog_done INTEGER,"
-    "  prog_total INTEGER,"
-    "  prog_unit TEXT,"
-    "  eta_ms INTEGER,"
-    "  cancellable INTEGER NOT NULL,"
-    "  error TEXT,"
-    "  parent_id INTEGER,"
-    "  dismissed INTEGER NOT NULL DEFAULT 0"
-    ")";
 
 /* Drops finished rows past the cap. Undismissed failures stay. */
 static const char k_trim_sql[] =
@@ -119,9 +100,7 @@ static Act *g_items;
 static size_t g_n;
 static size_t g_cap;
 static int64_t g_next_id = 1;
-static sqlite3 *g_db;
-static sqlite3_stmt *g_insert;
-static sqlite3_stmt *g_dismiss;
+static int g_attached;
 static void *g_demo_threads[DEMO_MAX];
 static int g_demo_n;
 
@@ -285,18 +264,6 @@ static void trim_history(void) {
     }
 }
 
-static int sql_exec(const char *sql) {
-    char *msg = NULL;
-    int rc;
-
-    if (g_db == NULL) {
-        return -1;
-    }
-    rc = sqlite3_exec(g_db, sql, NULL, NULL, &msg);
-    sqlite3_free(msg);
-    return rc == SQLITE_OK ? 0 : -1;
-}
-
 static int bind_opt_text(sqlite3_stmt *stmt, int index, const char *text, int present) {
     if (!present || text == NULL || text[0] == '\0') {
         return sqlite3_bind_null(stmt, index);
@@ -304,73 +271,156 @@ static int bind_opt_text(sqlite3_stmt *stmt, int index, const char *text, int pr
     return sqlite3_bind_text(stmt, index, text, -1, SQLITE_TRANSIENT);
 }
 
-static int persist_finished(const Act *a) {
-    const char *state;
+typedef struct ActRow {
+    int64_t id;
+    char kind[KIND_MAX];
+    char account_id[ACCOUNT_MAX];
+    int has_account;
+    char title[TITLE_MAX];
+    char detail[DETAIL_MAX];
+    int has_detail;
+    char state[16];
+    int64_t started_ms;
+    int64_t ended_ms;
+    int has_progress;
+    int64_t prog_done;
+    int64_t prog_total;
+    char unit[UNIT_MAX];
+    int has_unit;
+    int64_t eta_ms;
+    int cancellable;
+    char error[ERROR_MAX];
+    int has_error;
+    int64_t parent_id;
+    int dismissed;
+} ActRow;
+
+static void log_store_fail(int64_t id);
+
+static void row_done(void *ctx, int rc) {
+    ActRow *row = ctx;
+
+    if (rc != 0 && row != NULL) {
+        log_store_fail(row->id);
+    }
+    free(row);
+}
+
+static int insert_job(void *ctx, sqlite3 *db) {
+    ActRow *row = ctx;
+    sqlite3_stmt *stmt = NULL;
     int rc;
 
-    if (g_db == NULL || g_insert == NULL) {
+    if (pav_db_prepare(db, k_insert_sql, k_insert_sql, &stmt) != 0) {
+        return -1;
+    }
+    if (pav_db_bind_int64(stmt, 1, row->id) != 0 || pav_db_bind_text(stmt, 2, row->kind) != 0 ||
+        bind_opt_text(stmt, 3, row->account_id, row->has_account) != SQLITE_OK ||
+        pav_db_bind_text(stmt, 4, row->title) != 0 ||
+        bind_opt_text(stmt, 5, row->detail, row->has_detail) != SQLITE_OK ||
+        pav_db_bind_text(stmt, 6, row->state) != 0 || pav_db_bind_int64(stmt, 7, row->started_ms) != 0 ||
+        pav_db_bind_int64(stmt, 8, row->ended_ms) != 0 ||
+        (row->has_progress ? pav_db_bind_int64(stmt, 9, row->prog_done) : pav_db_bind_null(stmt, 9)) != 0 ||
+        (row->has_progress && row->prog_total >= 0 ? pav_db_bind_int64(stmt, 10, row->prog_total)
+                                                   : pav_db_bind_null(stmt, 10)) != 0 ||
+        bind_opt_text(stmt, 11, row->unit, row->has_unit) != SQLITE_OK ||
+        (row->eta_ms >= 0 ? pav_db_bind_int64(stmt, 12, row->eta_ms) : pav_db_bind_null(stmt, 12)) != 0 ||
+        pav_db_bind_int(stmt, 13, row->cancellable ? 1 : 0) != 0 ||
+        bind_opt_text(stmt, 14, row->error, row->has_error) != SQLITE_OK ||
+        (row->parent_id > 0 ? pav_db_bind_int64(stmt, 15, row->parent_id) : pav_db_bind_null(stmt, 15)) != 0 ||
+        pav_db_bind_int(stmt, 16, row->dismissed ? 1 : 0) != 0) {
+        return -1;
+    }
+    rc = pav_db_step(stmt);
+    if (rc != SQLITE_DONE) {
+        return rc == SQLITE_BUSY ? SQLITE_BUSY : -1;
+    }
+    return sqlite3_exec(db, k_trim_sql, NULL, NULL, NULL) == SQLITE_OK ? 0 : -1;
+}
+
+static int persist_finished(const Act *a) {
+    ActRow *row;
+    const char *state;
+
+    if (!g_attached) {
         return 0;
     }
     state = state_name(a->state);
     if (state == NULL) {
         return -1;
     }
-    if (sql_exec("BEGIN IMMEDIATE") != 0) {
+    row = calloc(1, sizeof(*row));
+    if (row == NULL) {
         return -1;
     }
-    sqlite3_reset(g_insert);
-    sqlite3_clear_bindings(g_insert);
-    if (sqlite3_bind_int64(g_insert, 1, a->id) != SQLITE_OK ||
-        sqlite3_bind_text(g_insert, 2, a->kind, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
-        bind_opt_text(g_insert, 3, a->account_id, a->has_account) != SQLITE_OK ||
-        sqlite3_bind_text(g_insert, 4, a->title, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
-        bind_opt_text(g_insert, 5, a->detail, a->has_detail) != SQLITE_OK ||
-        sqlite3_bind_text(g_insert, 6, state, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
-        sqlite3_bind_int64(g_insert, 7, a->started_ms) != SQLITE_OK ||
-        sqlite3_bind_int64(g_insert, 8, a->ended_ms) != SQLITE_OK ||
-        (a->has_progress ? sqlite3_bind_int64(g_insert, 9, a->prog_done)
-                         : sqlite3_bind_null(g_insert, 9)) != SQLITE_OK ||
-        (a->has_progress && a->prog_total >= 0 ? sqlite3_bind_int64(g_insert, 10, a->prog_total)
-                                               : sqlite3_bind_null(g_insert, 10)) != SQLITE_OK ||
-        bind_opt_text(g_insert, 11, a->unit, a->has_unit) != SQLITE_OK ||
-        (a->eta_ms >= 0 ? sqlite3_bind_int64(g_insert, 12, a->eta_ms) : sqlite3_bind_null(g_insert, 12)) !=
-            SQLITE_OK ||
-        sqlite3_bind_int(g_insert, 13, a->cancellable ? 1 : 0) != SQLITE_OK ||
-        bind_opt_text(g_insert, 14, a->error, a->has_error) != SQLITE_OK ||
-        (a->parent_id > 0 ? sqlite3_bind_int64(g_insert, 15, a->parent_id) : sqlite3_bind_null(g_insert, 15)) !=
-            SQLITE_OK ||
-        sqlite3_bind_int(g_insert, 16, a->dismissed ? 1 : 0) != SQLITE_OK) {
-        sql_exec("ROLLBACK");
-        return -1;
-    }
-    rc = sqlite3_step(g_insert);
-    sqlite3_reset(g_insert);
-    if (rc != SQLITE_DONE || sql_exec(k_trim_sql) != 0 || sql_exec("COMMIT") != 0) {
-        sql_exec("ROLLBACK");
+    row->id = a->id;
+    copy_trunc(row->kind, sizeof(row->kind), a->kind);
+    copy_trunc(row->account_id, sizeof(row->account_id), a->account_id);
+    row->has_account = a->has_account;
+    copy_trunc(row->title, sizeof(row->title), a->title);
+    copy_trunc(row->detail, sizeof(row->detail), a->detail);
+    row->has_detail = a->has_detail;
+    copy_trunc(row->state, sizeof(row->state), state);
+    row->started_ms = a->started_ms;
+    row->ended_ms = a->ended_ms;
+    row->has_progress = a->has_progress;
+    row->prog_done = a->prog_done;
+    row->prog_total = a->prog_total;
+    copy_trunc(row->unit, sizeof(row->unit), a->unit);
+    row->has_unit = a->has_unit;
+    row->eta_ms = a->eta_ms;
+    row->cancellable = a->cancellable;
+    copy_trunc(row->error, sizeof(row->error), a->error);
+    row->has_error = a->has_error;
+    row->parent_id = a->parent_id;
+    row->dismissed = a->dismissed;
+    if (pav_db_write(insert_job, row, row_done, row) != 0) {
+        free(row);
         return -1;
     }
     return 0;
 }
 
-static int persist_dismiss(int64_t id) {
+static void dismiss_done(void *ctx, int rc) {
+    int64_t *id = ctx;
+
+    if (rc != 0 && id != NULL) {
+        log_store_fail(*id);
+    }
+    free(id);
+}
+
+static int dismiss_job(void *ctx, sqlite3 *db) {
+    int64_t *id = ctx;
+    sqlite3_stmt *stmt = NULL;
     int rc;
 
-    if (g_db == NULL || g_dismiss == NULL) {
+    if (pav_db_prepare(db, "activity.dismiss", "UPDATE activity SET dismissed = 1 WHERE id = ?", &stmt) != 0) {
+        return -1;
+    }
+    if (pav_db_bind_int64(stmt, 1, *id) != 0) {
+        return -1;
+    }
+    rc = pav_db_step(stmt);
+    if (rc != SQLITE_DONE) {
+        return rc == SQLITE_BUSY ? SQLITE_BUSY : -1;
+    }
+    return sqlite3_exec(db, k_trim_sql, NULL, NULL, NULL) == SQLITE_OK ? 0 : -1;
+}
+
+static int persist_dismiss(int64_t id) {
+    int64_t *copy;
+
+    if (!g_attached) {
         return 0;
     }
-    if (sql_exec("BEGIN IMMEDIATE") != 0) {
+    copy = malloc(sizeof(*copy));
+    if (copy == NULL) {
         return -1;
     }
-    sqlite3_reset(g_dismiss);
-    sqlite3_clear_bindings(g_dismiss);
-    if (sqlite3_bind_int64(g_dismiss, 1, id) != SQLITE_OK) {
-        sql_exec("ROLLBACK");
-        return -1;
-    }
-    rc = sqlite3_step(g_dismiss);
-    sqlite3_reset(g_dismiss);
-    if (rc != SQLITE_DONE || sql_exec(k_trim_sql) != 0 || sql_exec("COMMIT") != 0) {
-        sql_exec("ROLLBACK");
+    *copy = id;
+    if (pav_db_write(dismiss_job, copy, dismiss_done, copy) != 0) {
+        free(copy);
         return -1;
     }
     return 0;
@@ -1124,29 +1174,21 @@ static void clear_items(void) {
     g_cap = 0;
 }
 
-static void finalize_sql(void) {
-    sqlite3_finalize(g_insert);
-    sqlite3_finalize(g_dismiss);
-    g_insert = NULL;
-    g_dismiss = NULL;
-    g_db = NULL;
-}
-
-static int prepare_sql(void) {
-    if (sqlite3_prepare_v2(g_db, k_insert_sql, -1, &g_insert, NULL) != SQLITE_OK ||
-        sqlite3_prepare_v2(g_db, "UPDATE activity SET dismissed = 1 WHERE id = ?", -1, &g_dismiss, NULL) !=
-            SQLITE_OK) {
+static int clear_running_job(void *ctx, sqlite3 *db) {
+    (void)ctx;
+    if (sqlite3_exec(db, "DELETE FROM activity WHERE state = 'queued' OR state = 'running'", NULL, NULL, NULL) !=
+        SQLITE_OK) {
         return -1;
     }
-    return 0;
+    return sqlite3_exec(db, k_trim_sql, NULL, NULL, NULL) == SQLITE_OK ? 0 : -1;
 }
 
-static int load_rows(void) {
+static int load_rows(sqlite3 *db) {
     sqlite3_stmt *stmt = NULL;
     int rc;
 
     rc = sqlite3_prepare_v2(
-        g_db,
+        db,
         "SELECT id, kind, account_id, title, detail, state, started_ms, ended_ms, "
         "prog_done, prog_total, prog_unit, eta_ms, cancellable, error, parent_id, dismissed "
         "FROM activity ORDER BY id",
@@ -1221,11 +1263,11 @@ static int load_rows(void) {
     return rc == SQLITE_DONE ? 0 : -1;
 }
 
-static int read_next_id(void) {
+static int read_next_id(sqlite3 *db) {
     sqlite3_stmt *stmt = NULL;
     int64_t max_id = 0;
 
-    if (sqlite3_prepare_v2(g_db, "SELECT COALESCE(MAX(id), 0) FROM activity", -1, &stmt, NULL) != SQLITE_OK) {
+    if (sqlite3_prepare_v2(db, "SELECT COALESCE(MAX(id), 0) FROM activity", -1, &stmt, NULL) != SQLITE_OK) {
         return -1;
     }
     if (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -1238,26 +1280,36 @@ static int read_next_id(void) {
     return 0;
 }
 
-int pav_activity_attach(void *db) {
+int pav_activity_attach(void) {
+    PavDbRead *read = NULL;
+    sqlite3 *db;
+    int rc;
+
+    if (!pav_db_writer_running() || pav_db_call(clear_running_job, NULL) != 0) {
+        return -1;
+    }
+    if (pav_db_read_begin(&read) != 0) {
+        return -1;
+    }
+    db = pav_db_read_handle(read);
     pthread_mutex_lock(&g_mu);
-    finalize_sql();
     clear_items();
     g_next_id = 1;
-    if (db == NULL) {
-        pthread_mutex_unlock(&g_mu);
-        return -1;
+    g_attached = 0;
+    rc = read_next_id(db);
+    if (rc == 0) {
+        rc = load_rows(db);
     }
-    g_db = db;
-    if (sql_exec(k_create_sql) != 0 || sql_exec("DELETE FROM activity WHERE state = 'queued' OR state = 'running'") != 0 ||
-        sql_exec(k_trim_sql) != 0 || prepare_sql() != 0 || read_next_id() != 0 || load_rows() != 0) {
-        finalize_sql();
+    if (rc == 0) {
+        g_attached = 1;
+        trim_history();
+    } else {
         clear_items();
-        pthread_mutex_unlock(&g_mu);
-        return -1;
+        g_next_id = 1;
     }
-    trim_history();
     pthread_mutex_unlock(&g_mu);
-    return 0;
+    pav_db_read_end(read);
+    return rc;
 }
 
 static void join_demos(void) {
@@ -1305,7 +1357,7 @@ void pav_activity_shutdown(void) {
     join_demos();
     end_still_running();
     pthread_mutex_lock(&g_mu);
-    finalize_sql();
+    g_attached = 0;
     clear_items();
     g_next_id = 1;
     pthread_mutex_unlock(&g_mu);

@@ -16,11 +16,11 @@ Portable C11 core, a thin Tauri 2 shell, vanilla JS. The core will later link in
 
 One phase per session. Do not open the next phase. Do not work two phases at once. Ask the qualifying questions and wait before editing source. A Lock change is asked first, written first, then the code. Check a work item `[x]` only after its check passed. Defer with `[~]`, one line, and the phase it moves to. A sitting that ends early marks the phase **in progress** and names the last finished work item.
 
-Close-out, in the owning document, before stopping: Status, Accomplished, Lessons learned, Handoff, that document's phase row, a Working log line, and the Status column and Resume in the index. Before that writing, update `ui/src/help/pages.js` for what changed. If the user page has nothing new, add or extend a Developer section. A phase is not complete with that pass skipped. A UI exit gate is the window, not a screenshot in the repo.
+Close-out, in the owning document, before stopping: Status, Accomplished, Lessons learned, Handoff, that document's phase row, a Working log line, and the Status column and Resume in the index. Before that writing, update `ui/src/help/pages.js` for what changed. If the user page has nothing new, add or extend a Developer section. A phase is not complete with that pass skipped. A UI exit gate is the window, not a screenshot in the repo. Asking whether the phase is wrapped up, or whether lessons and the next phase are written, is not acceptance. Acceptance is Andrew saying the window is accepted. Until then leave Status in progress, do not write Accomplished, Lessons learned, or Handoff, and do not prep the next phase.
 
 ## Where the work stands
 
-J-9 (step 124) is in progress. The rail is in the tree. Do not mark it complete until Andrew accepts the window. Do not start L-1. The phase stamp stays `0.44`. `PAVILLION_API_VERSION` stays 3. No new core command for J-9.
+L-1 (step 42) is complete. The store migrates on open. The next session reads K-1 in `docs/K-ACCOUNTS.md` and asks before editing. Do not start K-1 in that sitting. The phase stamp is `0.46`. `PAVILLION_BUILD` is dirty at 169 from `make dev`; do not commit that bump. `PAVILLION_API_VERSION` stays 3. No new core command for L-1.
 
 Tasks, Notes, and Argent are icons and empty homes. GitHub is an icon. Do not build those screens, tables, event pulls, or a ledger. Do not add a Projects field or a contact link for GitHub. CalDAV and CardDAV are later and write the same tables JMAP will write. They are not a second PIM.
 
@@ -62,13 +62,15 @@ The page does not read `Pavillion.json`. Layout the user can change lives in the
 
 Served sheets are `ui/public/styles`. `ui/styles` stays unlinked. A new theme variable ships in `dark.css`, `light.css`, and both starter `*.theme` files in the same change.
 
+The Font Awesome kit replaces `<i class="fa-...">` with `<svg>`. A grip or other drag handle must wrap that icon. Set `draggable="false"`, `pointer-events: none`, and `-webkit-user-drag: none` on the icon, and call `preventDefault` on the row `pointerdown`, or the browser starts an image drag. Drag surfaces set `user-select: none` and `-webkit-user-select: none`: feature rows, nav buttons, tabs, and resize handles. A settings help icon (`[data-help-page]`, optional `[data-help-section]`) opens that Help topic through `helpView.open`. It does not open a popup. Hide it when Help is off.
+
 ## Build and test
 
 `make` is the entry point. Fedora packages are the names in `scripts/fedora-deps.txt`. Do not pin versions there.
 
 | Command | What |
 | --- | --- |
-| `make test` | Unity (`build/core_test`), then Vitest (`npm --prefix ui test`). Does not bump the build count. |
+| `make test` | Unity (`build/core_test`), then Vitest (`npm --prefix ui test`). Does not bump the build count. A file-scoped `npm --prefix ui test -- <file>` is a check while editing. It is not this gate. The count in a phase Status is the last full `make test`. |
 | `make dev` | Library, bump, Vite, window. Optional working directory: `make dev DEV_DIR=...` |
 | `make build` | Release binary at `dist/pavillion`. Also the CSP check. |
 | `make mini` | Size build at `dist/pavillion-mini`. Needs `upx`, `strip`, and ImageMagick. Not the rpm. |
@@ -78,7 +80,7 @@ No argument uses `~/.local/share/pavillion`. One argument is the working directo
 
 Version is `0.phase.build`. The phase stamp is `0.phase.0` in `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`. The count is the `PAVILLION_BUILD` file. `make dev`, `make build`, and `make mini` add one before they compile and dirty that file. Do not commit that bump unless the sitting means to. Accepting a phase moves the middle number and the release date in `src-tauri/build.rs`, and leaves the count. `PAVILLION_API_VERSION` bumps only for an incompatible C surface or command-contract change. Adding a command or an optional field does not bump it.
 
-`make build` does not produce an AppImage, deb, or rpm (`bundle.active` is false). WebKit bytes stay out of both ELFs. Dynamic link only for curl, SQLite, Jansson, and the other system libraries. Do not static-link them. Lua 5.5 and lexbor are the later vendored exceptions. Do not UPX `dist/pavillion`. CI is `.github/workflows/ci.yml`: Fedora runs `make test` and `make build`.
+`make build` does not produce an AppImage, deb, or rpm (`bundle.active` is false). WebKit bytes stay out of the ELF. The one binary dynamically needs system WebKit. Dynamic link only for curl, SQLite, Jansson, and the other system libraries. Do not static-link them. Lua 5.5 and lexbor are the later vendored exceptions. Do not UPX `dist/pavillion`. CI is `.github/workflows/ci.yml`: Fedora runs `make test` and `make build`.
 
 ## Do not build
 

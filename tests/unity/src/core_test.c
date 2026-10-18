@@ -3,6 +3,7 @@
 #include "pav_activity.h"
 #include "pav_config.h"
 #include "pav_cfg.h"
+#include "pav_db.h"
 #include "pav_platform.h"
 #include "pav_store.h"
 #include "pavillion.h"
@@ -173,6 +174,7 @@ void setUp(void) {
 
 static char g_cfg_dir[80];
 static char g_extra_dir[80];
+static PavStore *g_test_store;
 
 static void rm_tree(const char *path) {
     DIR *dir;
@@ -216,6 +218,10 @@ void tearDown(void) {
     unsetenv("PAVILLION_DEBUG");
     unsetenv("PAVILLION_SELFTEST");
     pav_platform_fake_reset();
+    if (g_test_store != NULL) {
+        pav_store_close(g_test_store);
+        g_test_store = NULL;
+    }
     pavillion_stop();
     pav_log_thread_shutdown();
     pav_log_set_output(NULL);
@@ -3633,8 +3639,8 @@ void test_activity_history_capped(void) {
     make_slot(g_cfg_dir, sizeof(g_cfg_dir));
     TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
     snprintf(path, sizeof(path), "%s/default.sqlite", g_cfg_dir);
-    TEST_ASSERT_EQUAL_INT(0, user_version(path));
-    TEST_ASSERT_EQUAL_INT(1, user_table_count(path));
+    TEST_ASSERT_EQUAL_INT(1, user_version(path));
+    TEST_ASSERT_EQUAL_INT(7, user_table_count(path));
 
     for (i = 0; i < 501; i++) {
         id = pav_activity_begin("export", NULL, "cap", 0, 0);
@@ -3676,7 +3682,7 @@ void test_activity_history_capped(void) {
 
     pavillion_stop();
     TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
-    TEST_ASSERT_EQUAL_INT(0, user_version(path));
+    TEST_ASSERT_EQUAL_INT(1, user_version(path));
     rows = activity_rows(1);
     TEST_ASSERT_EQUAL_INT(501, (int)json_array_size(rows));
     TEST_ASSERT_NOT_NULL(find_act(rows, failed_text));
@@ -3721,6 +3727,473 @@ void test_sync_now_does_nothing(void) {
     rows = activity_rows(1);
     TEST_ASSERT_EQUAL_INT(0, (int)json_array_size(rows));
     json_decref(rows);
+}
+
+static int g_seq[8];
+static int g_seq_n;
+static int g_batch_ids[8];
+static int g_batch_n;
+static int g_busy_calls;
+static int g_write_fail;
+static int g_read_fail;
+static int g_busy_hits;
+
+static void close_test_store(void) {
+    if (g_test_store != NULL) {
+        pav_store_close(g_test_store);
+        g_test_store = NULL;
+    }
+}
+
+static PavStore *open_v1(const char *path) {
+    char err[256];
+    PavStore *store = NULL;
+
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pav_store_open(&store, "sqlite", path, err, sizeof(err)));
+    g_test_store = store;
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pav_store_migrate(store, err, sizeof(err)));
+    return store;
+}
+
+static int table_exists(const char *path, const char *name) {
+    sqlite3 *db = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int found = 0;
+
+    if (sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, NULL) != SQLITE_OK) {
+        if (db != NULL) {
+            sqlite3_close(db);
+        }
+        return 0;
+    }
+    if (sqlite3_prepare_v2(db, "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", -1, &stmt, NULL) ==
+            SQLITE_OK &&
+        sqlite3_bind_text(stmt, 1, name, -1, SQLITE_TRANSIENT) == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW) {
+        found = 1;
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+    return found;
+}
+
+static int scalar_int(const char *path, const char *sql) {
+    sqlite3 *db = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int value = -1;
+
+    if (sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, NULL) != SQLITE_OK) {
+        if (db != NULL) {
+            sqlite3_close(db);
+        }
+        return -1;
+    }
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW) {
+        value = sqlite3_column_int(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+    return value;
+}
+
+static int journal_is_wal(const char *path) {
+    sqlite3 *db = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int wal = 0;
+
+    if (sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, NULL) != SQLITE_OK) {
+        if (db != NULL) {
+            sqlite3_close(db);
+        }
+        return 0;
+    }
+    if (sqlite3_prepare_v2(db, "PRAGMA journal_mode", -1, &stmt, NULL) == SQLITE_OK &&
+        sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *mode = (const char *)sqlite3_column_text(stmt, 0);
+        wal = mode != NULL && strcmp(mode, "wal") == 0;
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+    return wal;
+}
+
+static int seq_job(void *ctx, sqlite3 *db) {
+    (void)db;
+    g_seq[g_seq_n++] = *(int *)ctx;
+    return 0;
+}
+
+static int note_batch_job(void *ctx, sqlite3 *db) {
+    int fail = ctx != NULL && *(int *)ctx;
+
+    (void)db;
+    if (g_batch_n < (int)(sizeof(g_batch_ids) / sizeof(g_batch_ids[0]))) {
+        g_batch_ids[g_batch_n++] = pav_db_writer_batch();
+    }
+    return fail ? 1 : 0;
+}
+
+static int insert_key_job(void *ctx, sqlite3 *db) {
+    const char *key = ctx;
+    sqlite3_stmt *stmt = NULL;
+    int rc;
+
+    if (g_batch_n < (int)(sizeof(g_batch_ids) / sizeof(g_batch_ids[0]))) {
+        g_batch_ids[g_batch_n++] = pav_db_writer_batch();
+    }
+    if (pav_db_prepare(db, "kvins", "INSERT INTO kv(key,value) VALUES(?, '1')", &stmt) != 0) {
+        return -1;
+    }
+    if (pav_db_bind_text(stmt, 1, key) != 0) {
+        return -1;
+    }
+    rc = pav_db_step(stmt);
+    return rc == SQLITE_DONE ? 0 : (rc == SQLITE_BUSY ? SQLITE_BUSY : -1);
+}
+
+static int fail_key_job(void *ctx, sqlite3 *db) {
+    (void)ctx;
+    (void)db;
+    if (g_batch_n < (int)(sizeof(g_batch_ids) / sizeof(g_batch_ids[0]))) {
+        g_batch_ids[g_batch_n++] = pav_db_writer_batch();
+    }
+    return 1;
+}
+
+void test_writes_are_serial_fifo(void) {
+    char path[160];
+    static int ids[4] = {0, 1, 2, 3};
+    int i;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/mail.sqlite", g_cfg_dir);
+    open_v1(path);
+    g_seq_n = 0;
+    pav_db_writer_hold(1);
+    for (i = 0; i < 4; i++) {
+        TEST_ASSERT_EQUAL_INT(0, pav_db_write(seq_job, &ids[i], NULL, NULL));
+    }
+    pav_db_writer_hold(0);
+    TEST_ASSERT_EQUAL_INT(0, pav_db_drain());
+    TEST_ASSERT_EQUAL_INT(4, g_seq_n);
+    for (i = 0; i < 4; i++) {
+        TEST_ASSERT_EQUAL_INT(i, g_seq[i]);
+    }
+    close_test_store();
+}
+
+void test_write_batch_one_transaction(void) {
+    char path[160];
+    int i;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/mail.sqlite", g_cfg_dir);
+    open_v1(path);
+    g_batch_n = 0;
+    pav_db_writer_hold(1);
+    for (i = 0; i < 3; i++) {
+        TEST_ASSERT_EQUAL_INT(0, pav_db_write(note_batch_job, NULL, NULL, NULL));
+    }
+    pav_db_writer_hold(0);
+    TEST_ASSERT_EQUAL_INT(0, pav_db_drain());
+    TEST_ASSERT_EQUAL_INT(3, g_batch_n);
+    TEST_ASSERT_TRUE(g_batch_ids[0] > 0);
+    TEST_ASSERT_EQUAL_INT(g_batch_ids[0], g_batch_ids[1]);
+    TEST_ASSERT_EQUAL_INT(g_batch_ids[0], g_batch_ids[2]);
+    close_test_store();
+}
+
+void test_failed_job_rolls_back_alone(void) {
+    char path[160];
+    static int fail = 1;
+    int first;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/mail.sqlite", g_cfg_dir);
+    open_v1(path);
+    g_batch_n = 0;
+    pav_db_writer_hold(1);
+    TEST_ASSERT_EQUAL_INT(0, pav_db_write(insert_key_job, "a", NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(0, pav_db_write(insert_key_job, "b", NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(0, pav_db_write(fail_key_job, &fail, NULL, NULL));
+    pav_db_writer_hold(0);
+    TEST_ASSERT_EQUAL_INT(0, pav_db_drain());
+    TEST_ASSERT_EQUAL_INT(6, g_batch_n);
+    first = g_batch_ids[0];
+    TEST_ASSERT_EQUAL_INT(first, g_batch_ids[1]);
+    TEST_ASSERT_EQUAL_INT(first, g_batch_ids[2]);
+    TEST_ASSERT_TRUE(g_batch_ids[3] != first);
+    TEST_ASSERT_TRUE(g_batch_ids[4] != g_batch_ids[3]);
+    TEST_ASSERT_TRUE(g_batch_ids[5] != g_batch_ids[4]);
+    close_test_store();
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM kv WHERE key='a'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM kv WHERE key='b'"));
+    TEST_ASSERT_EQUAL_INT(0, scalar_int(path, "SELECT count(*) FROM kv WHERE key='c'"));
+}
+
+void test_read_conn_refuses_insert(void) {
+    char path[160];
+    PavDbRead *read = NULL;
+    sqlite3_stmt *stmt = NULL;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/mail.sqlite", g_cfg_dir);
+    open_v1(path);
+    TEST_ASSERT_EQUAL_INT(0, pav_db_read_begin(&read));
+    TEST_ASSERT_EQUAL_INT(
+        -1, pav_db_prepare(pav_db_read_handle(read), "badins", "INSERT INTO kv(key,value) VALUES('a','b')", &stmt));
+    TEST_ASSERT_NULL(stmt);
+    TEST_ASSERT_EQUAL_INT(
+        0, pav_db_prepare(pav_db_read_handle(read), "oksel", "SELECT count(*) FROM kv", &stmt));
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, pav_db_step(stmt));
+    pav_db_read_end(read);
+    close_test_store();
+}
+
+static int put_n_job(void *ctx, sqlite3 *db) {
+    int n = *(int *)ctx;
+    char key[32];
+    sqlite3_stmt *stmt = NULL;
+    int rc;
+
+    snprintf(key, sizeof(key), "w%d", n);
+    if (pav_db_prepare(db, "wput", "INSERT INTO kv(key,value) VALUES(?, '1')", &stmt) != 0) {
+        __sync_fetch_and_add(&g_write_fail, 1);
+        return -1;
+    }
+    if (pav_db_bind_text(stmt, 1, key) != 0) {
+        __sync_fetch_and_add(&g_write_fail, 1);
+        return -1;
+    }
+    rc = pav_db_step(stmt);
+    if (rc == SQLITE_BUSY) {
+        __sync_fetch_and_add(&g_busy_hits, 1);
+        return SQLITE_BUSY;
+    }
+    if (rc != SQLITE_DONE) {
+        __sync_fetch_and_add(&g_write_fail, 1);
+        return -1;
+    }
+    return 0;
+}
+
+static void *read_loop(void *arg) {
+    int i;
+
+    (void)arg;
+    for (i = 0; i < 2000; i++) {
+        PavDbRead *read = NULL;
+        sqlite3_stmt *stmt = NULL;
+
+        if (pav_db_read_begin(&read) != 0) {
+            __sync_fetch_and_add(&g_read_fail, 1);
+            continue;
+        }
+        if (pav_db_prepare(pav_db_read_handle(read), "kvcnt", "SELECT count(*) FROM kv", &stmt) != 0 ||
+            pav_db_step(stmt) != SQLITE_ROW) {
+            __sync_fetch_and_add(&g_read_fail, 1);
+        }
+        pav_db_read_end(read);
+    }
+    return NULL;
+}
+
+void test_concurrent_reads_during_write_no_busy(void) {
+    char path[160];
+    static int ids[10000];
+    pthread_t threads[4];
+    int i;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/mail.sqlite", g_cfg_dir);
+    open_v1(path);
+    g_write_fail = 0;
+    g_read_fail = 0;
+    g_busy_hits = 0;
+    pav_db_writer_hold(1);
+    for (i = 0; i < 10000; i++) {
+        ids[i] = i;
+        TEST_ASSERT_EQUAL_INT(0, pav_db_write(put_n_job, &ids[i], NULL, NULL));
+    }
+    for (i = 0; i < 4; i++) {
+        TEST_ASSERT_EQUAL_INT(0, pthread_create(&threads[i], NULL, read_loop, NULL));
+    }
+    pav_db_writer_hold(0);
+    TEST_ASSERT_EQUAL_INT(0, pav_db_drain());
+    for (i = 0; i < 4; i++) {
+        pthread_join(threads[i], NULL);
+    }
+    TEST_ASSERT_EQUAL_INT(0, g_busy_hits);
+    TEST_ASSERT_EQUAL_INT(0, g_write_fail);
+    TEST_ASSERT_EQUAL_INT(0, g_read_fail);
+    close_test_store();
+    TEST_ASSERT_EQUAL_INT(10000, scalar_int(path, "SELECT count(*) FROM kv"));
+}
+
+static int busy_job(void *ctx, sqlite3 *db) {
+    (void)ctx;
+    (void)db;
+    g_busy_calls++;
+    return SQLITE_BUSY;
+}
+
+void test_writer_busy_retries_once(void) {
+    char path[160];
+    int before;
+    int rc;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/mail.sqlite", g_cfg_dir);
+    open_v1(path);
+    g_busy_calls = 0;
+    before = pav_db_busy_checkpoints();
+    rc = pav_db_call(busy_job, NULL);
+    TEST_ASSERT_EQUAL_INT(SQLITE_BUSY, rc);
+    TEST_ASSERT_EQUAL_INT(2, g_busy_calls);
+    TEST_ASSERT_EQUAL_INT(before + 1, pav_db_busy_checkpoints());
+    close_test_store();
+}
+
+void test_store_writer_stack_is_512kb(void) {
+    char path[160];
+    size_t stack = 0;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/mail.sqlite", g_cfg_dir);
+    open_v1(path);
+    TEST_ASSERT_EQUAL_INT(0, pav_db_writer_stack(&stack));
+    TEST_ASSERT_EQUAL_INT(512 * 1024, (int)stack);
+    close_test_store();
+}
+
+void test_migrate_fresh_to_v1(void) {
+    char path[160];
+    static const char *names[] = {
+        "activity", "account_state", "remote_account", "identity", "mailbox", "sync_state", "kv",
+    };
+    size_t i;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/mail.sqlite", g_cfg_dir);
+    open_v1(path);
+    TEST_ASSERT_EQUAL_INT(1, user_version(path));
+    TEST_ASSERT_EQUAL_INT(7, user_table_count(path));
+    TEST_ASSERT_TRUE(journal_is_wal(path));
+    for (i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+        TEST_ASSERT_TRUE(table_exists(path, names[i]));
+    }
+    TEST_ASSERT_FALSE(table_exists(path, "email"));
+    close_test_store();
+}
+
+void test_migrate_is_idempotent(void) {
+    char path[160];
+    char err[256];
+    sqlite3 *raw = NULL;
+    PavStore *store = NULL;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/mail.sqlite", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open_v2(path, &raw, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL));
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_exec(raw,
+                     "CREATE TABLE activity ("
+                     "id INTEGER PRIMARY KEY, kind TEXT NOT NULL, account_id TEXT, title TEXT NOT NULL, "
+                     "detail TEXT, state TEXT NOT NULL, started_ms INTEGER NOT NULL, ended_ms INTEGER, "
+                     "prog_done INTEGER, prog_total INTEGER, prog_unit TEXT, eta_ms INTEGER, "
+                     "cancellable INTEGER NOT NULL, error TEXT, parent_id INTEGER, "
+                     "dismissed INTEGER NOT NULL DEFAULT 0)",
+                     NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_exec(raw,
+                     "INSERT INTO activity (id, kind, title, state, started_ms, ended_ms, cancellable) "
+                     "VALUES (7, 'sync.mail', 'kept', 'done', 1, 2, 0)",
+                     NULL, NULL, NULL));
+    sqlite3_close(raw);
+    raw = NULL;
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pav_store_open(&store, "sqlite", path, err, sizeof(err)));
+    g_test_store = store;
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pav_store_migrate(store, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(1, user_version(path));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM activity WHERE id=7 AND title='kept'"));
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pav_store_migrate(store, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(1, user_version(path));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM activity WHERE id=7 AND title='kept'"));
+    TEST_ASSERT_EQUAL_INT(7, user_table_count(path));
+    close_test_store();
+}
+
+void test_newer_db_is_error(void) {
+    char path[160];
+    char err[256];
+    sqlite3 *raw = NULL;
+    PavStore *store = NULL;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/mail.sqlite", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open_v2(path, &raw, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(raw, "PRAGMA user_version = 9", NULL, NULL, NULL));
+    sqlite3_close(raw);
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pav_store_open(&store, "sqlite", path, err, sizeof(err)));
+    g_test_store = store;
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(-1, pav_store_migrate(store, err, sizeof(err)));
+    TEST_ASSERT_NOT_NULL(strstr(err, "9"));
+    TEST_ASSERT_NOT_NULL(strstr(err, "1"));
+    TEST_ASSERT_NOT_NULL(strstr(err, "newer"));
+    close_test_store();
+}
+
+void test_db_bind_never_concatenates(void) {
+    char path[160];
+    sqlite3 *db = NULL;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/mail.sqlite", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open_v2(path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL));
+    TEST_ASSERT_EQUAL_INT(0, pav_db_exec(db, 0, "CREATE TABLE kv(key TEXT PRIMARY KEY, value TEXT)"));
+    TEST_ASSERT_EQUAL_INT(-1, pav_db_exec(db, 1, "INSERT INTO kv(key,value) VALUES('%s','x')", "pwn"));
+    TEST_ASSERT_EQUAL_INT(0, pav_db_exec(db, 0, "INSERT INTO kv(key,value) VALUES('ok','1')"));
+    sqlite3_close(db);
+    TEST_ASSERT_EQUAL_INT(0, scalar_int(path, "SELECT count(*) FROM kv WHERE key='pwn'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM kv WHERE key='ok'"));
+}
+
+static int fk_job(void *ctx, sqlite3 *db) {
+    sqlite3_stmt *stmt = NULL;
+    int *on = ctx;
+
+    if (pav_db_prepare(db, "fkpragma", "PRAGMA foreign_keys", &stmt) != 0) {
+        return -1;
+    }
+    if (pav_db_step(stmt) != SQLITE_ROW) {
+        return -1;
+    }
+    *on = sqlite3_column_int(stmt, 0);
+    if (sqlite3_exec(db, "INSERT INTO identity(ra_id, id, email) VALUES('missing','i','a@b')", NULL, NULL, NULL) ==
+        SQLITE_OK) {
+        return -1;
+    }
+    return 0;
+}
+
+void test_foreign_keys_on(void) {
+    char path[160];
+    int on = 0;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/mail.sqlite", g_cfg_dir);
+    open_v1(path);
+    TEST_ASSERT_EQUAL_INT(0, pav_db_call(fk_job, &on));
+    TEST_ASSERT_EQUAL_INT(1, on);
+    close_test_store();
 }
 
 int main(void) {
@@ -3795,5 +4268,17 @@ int main(void) {
     RUN_TEST(test_activity_events_throttled);
     RUN_TEST(test_activity_history_capped);
     RUN_TEST(test_sync_now_does_nothing);
+    RUN_TEST(test_writes_are_serial_fifo);
+    RUN_TEST(test_write_batch_one_transaction);
+    RUN_TEST(test_failed_job_rolls_back_alone);
+    RUN_TEST(test_read_conn_refuses_insert);
+    RUN_TEST(test_concurrent_reads_during_write_no_busy);
+    RUN_TEST(test_writer_busy_retries_once);
+    RUN_TEST(test_store_writer_stack_is_512kb);
+    RUN_TEST(test_migrate_fresh_to_v1);
+    RUN_TEST(test_migrate_is_idempotent);
+    RUN_TEST(test_newer_db_is_error);
+    RUN_TEST(test_db_bind_never_concatenates);
+    RUN_TEST(test_foreign_keys_on);
     return UNITY_END();
 }

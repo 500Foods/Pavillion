@@ -26,13 +26,13 @@ void pav_activity_end(int64_t id, int state, const char *error);
 /* 1 when cancel was requested and the activity has not finished. */
 int pav_activity_cancelled(int64_t id);
 
-/* Loads the activity table from the open SQLite connection. Does not set
-   PRAGMA user_version and does not close db. NULL fails. A second attach
-   replaces the in-memory rows with the table. */
-int pav_activity_attach(void *db);
+/* Loads finished rows through the read pool. Does not take a write
+   connection. Fails when the store writer is not running. A second attach
+   replaces the in-memory rows. */
+int pav_activity_attach(void);
 
-/* Cancels running work, joins demo threads, persists finished rows, and
-   drops the SQLite statements. Does not close the connection. */
+/* Cancels running work, joins demo threads, and enqueues finished rows.
+   Does not close the store. Stop drains the write queue after this returns. */
 void pav_activity_shutdown(void);
 
 #endif

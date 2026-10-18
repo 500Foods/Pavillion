@@ -144,12 +144,27 @@ export const shellMarkup = `<div class="shell">
         </div>
         <div class="panel settings" id="panel-settings" role="tabpanel" hidden>
           <div data-settings="features">
-            <h2>Features</h2>
-            <p class="muted">Drag a row, or drag an icon on the rail. Left and right stay in that bar. Crossing to the other bar moves it. A short press still opens the section. Rows above the line are the top of the rail. Rows below it are the bottom. A shortcut is Ctrl and a number, and each number is used once. Settings stays available.</p>
-            <div id="feature-list" class="feature-list"></div>
+            <div class="button-bar settings-bar" role="toolbar" aria-label="Features">
+              <span class="settings-bar-title">Features</span>
+              <span class="log-bar-spacer"></span>
+              <button type="button" class="help-jump" data-help-page="settings" data-help-section="features" aria-label="Help for Features">
+                <i class="icon fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="settings-body">
+              <p class="muted">Show a button, hide it, or move it between the bars. Dragging an icon on the top or bottom bar does the same move: left or right stays in that bar, and crossing to the other bar moves it. A short press on the bar still opens the section. A check shows that button. Settings stays on. A shortcut is Ctrl and a number, and each number is used once.</p>
+              <div id="feature-list" class="feature-list"></div>
+            </div>
           </div>
           <div data-settings="zoom" hidden>
-            <h2>Zooms</h2>
+            <div class="button-bar settings-bar" role="toolbar" aria-label="Zooms">
+              <span class="settings-bar-title">Zooms</span>
+              <span class="log-bar-spacer"></span>
+              <button type="button" class="help-jump" data-help-page="settings" data-help-section="zoom" aria-label="Help for Zooms">
+                <i class="icon fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="settings-body">
             <div class="zoom-list">
               <label class="zoom" data-zoom="shell"><span class="zoom-label">Shell</span>
                 <input id="zoom" type="range" min="0.5" max="2" step="0.05" value="1" />
@@ -191,10 +206,17 @@ export const shellMarkup = `<div class="shell">
             </div>
             <p class="muted">Shell multiplies every row below. Button bars covers the navigation, the main tabs, the log bars, the Help search bar, and the bars on other settings pages. Each row is its own key on the profile. Hold Ctrl and roll the wheel over a button bar, the nav, the calendar, a mail pane, the log, the Help index, or the Help page to change that row by 5%. The wheel leaves Shell alone. Away zooms in unless the switch says toward.</p>
             <p class="muted" id="profile-name"></p>
+            </div>
           </div>
           <div data-settings="theme" hidden>
+            <div class="button-bar settings-bar" role="toolbar" aria-label="Themes">
+              <span class="settings-bar-title">Themes</span>
+              <span class="log-bar-spacer"></span>
+              <button type="button" class="help-jump" data-help-page="settings" data-help-section="theme" aria-label="Help for Themes">
+                <i class="icon fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
+              </button>
+            </div>
             <div class="theme-head">
-              <h2>Themes</h2>
               <p class="muted">Light, Dark, and System are built in. System follows the desktop, and Dark is used when that scheme cannot be read. A theme file is plain CSS. The row name is the Title inside the file. The same Title twice shows the filename in brackets. A selected theme file sets the rail icons. Settings → Icons Override puts this profile's icons back on Light, Dark, and System.</p>
             </div>
             <div class="button-bar theme-actions" role="toolbar" aria-label="Theme">
@@ -214,7 +236,14 @@ export const shellMarkup = `<div class="shell">
             </div>
           </div>
           <div data-settings="fonts" hidden>
-            <h2>Fonts</h2>
+            <div class="button-bar settings-bar" role="toolbar" aria-label="Fonts">
+              <span class="settings-bar-title">Fonts</span>
+              <span class="log-bar-spacer"></span>
+              <button type="button" class="help-jump" data-help-page="settings" data-help-section="fonts" aria-label="Help for Fonts">
+                <i class="icon fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="settings-body">
             <label class="font-row">Source
               <select id="font-source">
                 <option value="theme" selected>Theme</option>
@@ -236,9 +265,17 @@ export const shellMarkup = `<div class="shell">
               </select>
             </label>
             <p class="muted">Vanadium Sans is the default body font. Packaging those font files is still open. Mono is used for logs and the icon fields.</p>
+            </div>
           </div>
           <div data-settings="icons" hidden>
-            <h2>Icons</h2>
+            <div class="button-bar settings-bar" role="toolbar" aria-label="Icons">
+              <span class="settings-bar-title">Icons</span>
+              <span class="log-bar-spacer"></span>
+              <button type="button" class="help-jump" data-help-page="settings" data-help-section="icons" aria-label="Help for Icons">
+                <i class="icon fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="settings-body">
             <label class="font-row">Source
               <select id="icon-source">
                 <option value="theme" selected>Theme</option>
@@ -330,10 +367,18 @@ export const shellMarkup = `<div class="shell">
                <button type="button" id="icon-preview" disabled>Preview</button>
                <button type="submit" id="icon-reload" disabled>Reload &amp; Save</button>
              </form>
-             <p class="muted">Icons are rendered from your registered Font Awesome kit. Use class prefixes like <code>fa-sharp-duotone fa-solid</code> for Sharp Duotone Solid, or <code>fa-solid</code> for classic Solid. Or paste raw HTML like an inline SVG.</p>
-          </div>
-          <div data-settings="tabs" hidden>
-            <h2>Tabs</h2>
+              <p class="muted">Icons are rendered from your registered Font Awesome kit. Use class prefixes like <code>fa-sharp-duotone fa-solid</code> for Sharp Duotone Solid, or <code>fa-solid</code> for classic Solid. Or paste raw HTML like an inline SVG.</p>
+            </div>
+           </div>
+           <div data-settings="tabs" hidden>
+             <div class="button-bar settings-bar" role="toolbar" aria-label="Tabs">
+               <span class="settings-bar-title">Tabs</span>
+               <span class="log-bar-spacer"></span>
+               <button type="button" class="help-jump" data-help-page="tabs" data-help-section="restore" aria-label="Help for Tabs">
+                 <i class="icon fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
+               </button>
+             </div>
+             <div class="settings-body">
             <label class="swatch-row">
               <input id="session-restore" type="checkbox" checked />
               Restore tabs on launch
@@ -344,6 +389,7 @@ export const shellMarkup = `<div class="shell">
               <input id="session-max" type="number" min="1" max="200" step="1" value="50" />
             </label>
             <p class="muted">The strip stops at this many tabs. Home tabs still open, so Settings stays reachable. A restart keeps every home tab, then the active tab and the pins, and leaves the rest closed. The default is 50.</p>
+            </div>
           </div>
         </div>
         <div class="panel" id="panel-activity" role="tabpanel" hidden>

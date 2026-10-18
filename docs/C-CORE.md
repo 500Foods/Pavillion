@@ -104,10 +104,11 @@ typedef struct PavStoreVtable {
     int  (*open)(PavStore *store, const char *path_or_conn, char *err, size_t err_len);
     void (*close)(PavStore *store);
     int  (*exec)(PavStore *store, const char *sql, char *err, size_t err_len);
+    int  (*migrate)(PavStore *store, char *err, size_t err_len);
 } PavStoreVtable;
 ```
 
-SQLite is the only driver in this document. `open` takes a filesystem path and creates an empty file, mode `0600`. It does not create the mail tables. `search` and migrations are a later document. Another engine fails `open` with an error that names it. No `dlopen` in this document.
+SQLite is the only driver in this document. `open` takes a filesystem path and creates an empty file, mode `0600`. It does not create the mail tables and it sets no PRAGMAs. `migrate` is L-1: the store writer applies the L Lock PRAGMAs, runs embedded migrations, then opens the read pool. C-6 calls it after `open` and before the activity registry attaches. Failure is state `error` and does not attach. Another engine fails `open` with an error that names it. No `dlopen` in this document.
 
 ## C-1: Log function
 

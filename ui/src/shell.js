@@ -964,6 +964,9 @@ function placeRailButtons() {
   if (!topBar || !bottomBar) {
     return;
   }
+  for (const jump of mountRoot.querySelectorAll(".help-jump")) {
+    jump.hidden = !featureVisible("help");
+  }
   for (const key of ui.rail.top) {
     const button = mountRoot.querySelector(`.nav [data-rail="${key}"]`);
     if (button) {
@@ -1361,6 +1364,16 @@ function homeIconLabel(section) {
     return classes.join(" ");
   }
   return icon.dataset.iconDefinition || "";
+}
+
+function onHelpJump(event) {
+  const button = event.target instanceof Element ? event.target.closest("[data-help-page]") : null;
+  if (!button || !mountRoot || !mountRoot.contains(button) || !featureVisible("help") || !helpView) {
+    return;
+  }
+  helpView.open(button.dataset.helpPage || "", button.dataset.helpSection || "");
+  showNav("help");
+  openHome("help");
 }
 
 function showNav(section) {
@@ -2125,6 +2138,9 @@ export function stopShell() {
     mountRoot.removeEventListener("wheel", onZoomWheel, true);
   }
   onZoomWheel = null;
+  if (mountRoot && onHelpJump) {
+    mountRoot.removeEventListener("click", onHelpJump);
+  }
   wheelRemainder = 0;
   if (featureEditor) {
     featureEditor.destroy();
@@ -2377,6 +2393,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
     });
   }
   helpView = createHelpView(mountRoot);
+  mountRoot.addEventListener("click", onHelpJump);
   await openInitialTabs();
   if (activityView) {
     await activityView.ready();

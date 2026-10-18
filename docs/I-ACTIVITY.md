@@ -55,7 +55,7 @@ int     pav_activity_cancelled(int64_t id);   /* the operation polls this betwee
 - Cancel is cooperative: `activity.cancel {id}` sets a flag; the operation checks `pav_activity_cancelled` between requests or rows and ends itself as `cancelled`. curl transfers in M-1 use the flag in their progress callback to abort. Cancel never kills a thread. The public id is `act-<n>`.
 - ETA is computed in the core from the progress rate over the last 10 seconds (exponential moving average), and is null until two samples exist or when `total` is unknown.
 - Events: `activity.changed {activity}` on begin, end, and dismiss, and at most every 250 ms per activity on progress. Begin, end, and dismiss are not throttled.
-- History is the profile SQLite table `activity` (I-Q1, 2026-10-16: finished activities persist; the log file stays the human record). `pav_store_open` still creates no tables. After that open, the registry runs the statement below. It does not set `PRAGMA user_version`. L-1's first migration repeats it and keeps the rows. Until L-1 this connection is the only writer of the table. L-1 moves the writes onto `pav_db_write`.
+- History is the profile SQLite table `activity` (I-Q1, 2026-10-16: finished activities persist; the log file stays the human record). `pav_store_open` creates no tables. L-1's first migration repeats the statement below and keeps the rows. It does not put the queued-row `DELETE` in that file. From L-1, activity writes go through `pav_db_write`. The registry does not step statements on the write connection. `pav_activity_end` and dismiss enqueue and return. They do not wait for `on_done`. Stop drains the write queue before the writer joins.
 
 ```sql
 CREATE TABLE IF NOT EXISTS activity (

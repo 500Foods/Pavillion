@@ -9,11 +9,13 @@ typedef struct PavStoreVtable {
     int (*open)(PavStore *store, const char *path_or_conn, char *err, size_t err_len);
     void (*close)(PavStore *store);
     int (*exec)(PavStore *store, const char *sql, char *err, size_t err_len);
+    int (*migrate)(PavStore *store, char *err, size_t err_len);
 } PavStoreVtable;
 
 struct PavStore {
     const PavStoreVtable *vt;
     void *handle;
+    char *path;
 };
 
 /* Opens path with the named engine. sqlite creates the file mode 0600 and
@@ -27,8 +29,13 @@ int pav_store_exec(PavStore *store, const char *sql, char *err, size_t err_len);
 /* Closes the database and frees store. The file stays on disk. NULL is safe. */
 void pav_store_close(PavStore *store);
 
-/* The engine handle. SQLite returns sqlite3 *. NULL when store is closed.
-   I-1 reads it. L-1 replaces that direct use with pav_db_write. */
+/* The engine handle. SQLite returns sqlite3 * before migrate. NULL when
+   closed. After migrate the writer owns that connection; this still returns
+   it so close can release it. Callers do not step it. */
 void *pav_store_handle(const PavStore *store);
+
+/* Applies PRAGMAs, runs embedded migrations, and opens the read pool.
+   Failure leaves the store open and the caller publishes state error. */
+int pav_store_migrate(PavStore *store, char *err, size_t err_len);
 
 #endif

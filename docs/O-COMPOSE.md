@@ -16,7 +16,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | O-3 | Identities, reply/reply-all/forward, quoting, address autocomplete | Medium | Not started |
 | O-4 | Attachments, inline images, HTML signatures with `cid:` images | Medium | Not started |
 | O-5 | Outbox and sending: MIME build, upload, `EmailSubmission/set`, undo send, retry | Hard | Not started |
-| O-6 | `mailto:` handler and single instance | Medium | Not started |
+| O-6 | `mailto:` and one window per workdir | Medium | Not started |
 
 Kind: **Easy** is one module and a test. **Medium** crosses one boundary. **Hard** is a security boundary or the first irreversible network action.
 
@@ -67,7 +67,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 ### `mailto:` and single instance (was plan §12)
 
-- `tauri-plugin-deep-link` registers `mailto:`; the desktop file declares `MimeType=x-scheme-handler/mailto;`; document `xdg-mime default com.500nodes.Pavillion.desktop x-scheme-handler/mailto`. `tauri-plugin-single-instance` forwards a `mailto:` from a second launch to the running app, which emits `app.mailto` and opens a composer. RFC 6068 parsing (to, cc, bcc, subject, body; never attachments).
+- `tauri-plugin-deep-link` registers `mailto:`; the desktop file declares `MimeType=x-scheme-handler/mailto;`; document `xdg-mime default com.500nodes.Pavillion.desktop x-scheme-handler/mailto`. The lock is the canonical workdir, the same hash the V Lock uses for the socket. A plugin that can only lock the app id is not used, because that would block a second directory. A second launch of the same workdir focuses that window and does not start a second core. A different workdir starts. `mailto:` with no directory goes to the default workdir only (`$HOME/.local/share/pavillion`) and does not pick another running instance. RFC 6068 parsing (to, cc, bcc, subject, body; never attachments).
 
 ## O-1: Draft model
 
@@ -176,19 +176,19 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 **Kind:** Medium
 **Status:** Not started.
 
-**Goal:** Clicking a `mailto:` link anywhere on the desktop opens a composer in the running app.
+**Goal:** Clicking a `mailto:` link anywhere on the desktop opens a composer in the default workdir's app.
 
 **Entry gate:** O-5 complete.
 
 **Work items:**
 
-- [ ] `tauri-plugin-single-instance` and `tauri-plugin-deep-link`; RFC 6068 parser in the core (`mailto.parse`) with Unity tests; `app.mailto` event opens a composer.
+- [ ] `tauri-plugin-deep-link`; RFC 6068 parser in the core (`mailto.parse`) with Unity tests; `app.mailto` event opens a composer in the default-workdir instance. The lock id is the workdir hash from the V Lock. Do not take `tauri-plugin-single-instance` unless its identifier can include that hash.
 - [ ] The desktop file entry and the `xdg-mime` note in [W-SHIP.md](W-SHIP.md).
-- [ ] A second plain launch focuses the existing window instead of starting a second core (the CLI never reaches this path; V Lock).
+- [ ] A second plain launch of the same workdir focuses that window instead of starting a second core. A different workdir starts. The CLI never reaches this path (V Lock).
 
 **Done means:** `xdg-open 'mailto:someone@example.com?subject=Hi'` opens a composer with those fields.
 
-**Exit gate:** `make test` exits 0. With the built binary registered, the `xdg-open` call opens the composer in the running app, and a second launch focuses the window.
+**Exit gate:** `make test` exits 0. With the built binary registered, the `xdg-open` call opens the composer in the default workdir's app. A second launch of that workdir focuses the window. A second workdir starts its own window.
 
 ## Open questions for Andrew
 
@@ -199,4 +199,5 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 - 2026-10-16 Opened from plan §5.8, §6.7–§6.11, §10, §12. Decisions: the composer runs in a sandboxed `allow-scripts` page (resolving SunEditor against the F Lock), sanitize in and out, undo send and send later, draft replace by destroy-and-create, signatures sanitized and synced with `Identity/set`, `mailto:` parsed in the core.
 - 2026-10-16 The outbox builds MIME to a file with GMime streams and uploads it with curl's read callback, with a flat-memory test.
+- 2026-10-18 O-6 is one window per canonical workdir, not one window per user. `mailto:` with no directory goes to the default workdir. The app-id single-instance plugin is not the lock. No phase was started.
 - 2026-10-16 Andrew restored SunEditor as the O-2 composer. It still runs in the sandboxed frame. Isolation is unchanged. A plain-text mode remains.

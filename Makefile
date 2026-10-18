@@ -43,6 +43,10 @@ $(LIB): core/CMakeLists.txt core/include/pavillion.h core/include/pav_config.h \
 		core/src/protocol.c core/src/themes.c core/src/themes.h core/src/cli.c \
 		core/src/cfg.c core/src/config.c core/src/config_prefs.c \
 		core/src/config_fs.c core/src/config_internal.h core/src/store.c \
+		core/src/db.c core/src/db_writer.c core/src/db_readpool.c \
+		core/src/migrate.c core/src/migrations_embed.h \
+		core/src/migrations/001_accounts.sql core/embed_sql.cmake \
+		core/include/pav_db.h \
 		core/src/activity.c core/include/pav_activity.h \
 		core/platform/platform_internal.h core/platform/posix/posix.c \
 		core/platform/linux/linux.c

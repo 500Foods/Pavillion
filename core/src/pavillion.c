@@ -183,11 +183,12 @@ static void core_boot(void) {
         return;
     }
     if (pav_config_prepare(g_core_workdir, profile, err, sizeof(err)) != 0 ||
-        pav_store_open(&g_store, profile->engine, profile->resolved_storage, err, sizeof(err)) != 0) {
+        pav_store_open(&g_store, profile->engine, profile->resolved_storage, err, sizeof(err)) != 0 ||
+        pav_store_migrate(g_store, err, sizeof(err)) != 0) {
         publish_boot("error", profile->name, profile->id, err);
         return;
     }
-    if (pav_activity_attach(pav_store_handle(g_store)) != 0) {
+    if (pav_activity_attach() != 0) {
         publish_boot("error", profile->name, profile->id, "cannot open activity registry");
         return;
     }

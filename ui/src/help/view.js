@@ -188,7 +188,23 @@ export function createHelpView(root, pages = helpPages) {
   }
   paint();
 
+  function open(nextPage, nextSection) {
+    const page = pages.find((item) => item.id === nextPage);
+    if (!page) {
+      return false;
+    }
+    query = "";
+    if (search) {
+      search.value = "";
+    }
+    pageId = page.id;
+    sectionId = page.sections.some((item) => item.id === nextSection) ? nextSection : "";
+    paint();
+    return true;
+  }
+
   return {
+    open,
     destroy() {
       if (search) {
         search.removeEventListener("input", onInput);
