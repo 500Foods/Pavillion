@@ -1,4 +1,5 @@
 import { normalizeFilter } from "./log/filter.js";
+import { clampSession } from "./shell/session.js";
 import { themeNameOk } from "./theme-catalog.js";
 
 export const DEFAULT_UI = {
@@ -19,6 +20,7 @@ export const DEFAULT_UI = {
     wheel: "away",
   },
   activity: { view: "log", history: false },
+  session: { tabs: null, restore: true, shutdown: "open", maxTabs: 50 },
   log: {
     levels: ["ERROR", "WARN", "INFO", "DEBUG"],
     subsystems: null,
@@ -56,6 +58,7 @@ const KNOWN = new Set([
   "fonts",
   "activity",
   "log",
+  "session",
   "themeChoice",
   "fontSource",
   "iconSource",
@@ -196,6 +199,7 @@ export function clampUi(raw) {
     fonts: fontsOf(src.fonts),
     activity: activityOf(src.activity),
     log: normalizeFilter(src.log === undefined ? DEFAULT_UI.log : src.log),
+    session: clampSession(src.session),
   };
   const themeChoice = choiceOf(src.themeChoice);
   if (themeChoice) {

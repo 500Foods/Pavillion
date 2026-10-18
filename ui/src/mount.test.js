@@ -145,6 +145,7 @@ test("mount renders inside the element and unmount leaves the page", async () =>
     expect(strut.getPropertyValue("content")).toBe('"Mg"');
     expect(strut.getPropertyValue("padding-top")).toBe("0.55rem");
     expect(strut.getPropertyValue("padding-bottom")).toBe("0.55rem");
+    expect(declared.get(".pav-root .help-bar .search").getPropertyValue("font-size")).toBe("0.75rem");
     expect(declared.get(".pav-root .button-bar").getPropertyValue("max-height")).toBe("");
     expect(declared.get(".pav-root .button-bar").getPropertyValue("min-height")).toBe("");
     const shellButton = root.querySelector(".nav-buttons button");

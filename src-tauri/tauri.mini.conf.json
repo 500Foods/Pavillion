@@ -1,0 +1,5 @@
+{
+  "build": {
+    "beforeBuildCommand": "npm run build --prefix ../ui && bash ../scripts/mini-assets.sh"
+  }
+}

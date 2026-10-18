@@ -5,10 +5,14 @@ import { expect, test } from "vitest";
 import { createApi } from "../api.js";
 import { filterHelp } from "./view.js";
 import { helpPages } from "./pages.js";
+import { APP_VERSION } from "../version.js";
 import { mount, unmount } from "../index.js";
 import { mockTransport } from "../transport/mock.js";
 
 test("help search keeps a title hit whole and a text hit narrow", () => {
+  expect(helpPages[0].id).toBe("app");
+  expect(helpPages[0].title).toBe(`Pavillion ${APP_VERSION}`);
+  expect(helpPages[1].id).toBe("introduction");
   expect(filterHelp(helpPages, "").map((hit) => hit.page.id)).toContain("developer");
   const titled = filterHelp(helpPages, "Mail");
   const mail = titled.find((hit) => hit.page.id === "mail");
@@ -30,7 +34,7 @@ test("the help button opens the index and search opens a page", async () => {
     document.querySelector('[data-section="help"]').click();
     const panel = document.querySelector("#panel-help");
     expect(panel.hidden).toBe(false);
-    expect(document.querySelector("#help-article h2").textContent).toBe("Introduction");
+    expect(document.querySelector("#help-article h2").textContent).toBe(`Pavillion ${APP_VERSION}`);
     expect(document.querySelector("#help-index").textContent).toContain("Developer");
     expect(document.querySelector("#open-test-tab").hidden).toBe(true);
 

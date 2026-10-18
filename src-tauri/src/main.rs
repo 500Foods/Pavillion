@@ -3,7 +3,7 @@
 fn version_line() -> String {
     format!(
         "pavillion {} ({})",
-        env!("CARGO_PKG_VERSION"),
+        env!("PAVILLION_VERSION"),
         env!("PAVILLION_RELEASE_DATE")
     )
 }

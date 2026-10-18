@@ -1,7 +1,23 @@
 /* Help topics. A page is one row in the index. A section is the snippet a later help icon can open.
    Text is shown as text. Nothing here is read from the working directory. */
 
+import { APP_VERSION } from "../version.js";
+
 export const helpPages = [
+  {
+    id: "app",
+    title: `Pavillion ${APP_VERSION}`,
+    sections: [
+      {
+        id: "build",
+        title: "This build",
+        paragraphs: [
+          `This copy is Pavillion ${APP_VERSION}. The window title shows the same number.`,
+          "The middle number moves when a phase is accepted. The last number counts builds. make dev, make build, and make mini add one before they compile. Accepting a phase leaves that count in place.",
+        ],
+      },
+    ],
+  },
   {
     id: "introduction",
     title: "Introduction",
@@ -114,6 +130,13 @@ export const helpPages = [
           "Nav icons come from a Font Awesome kit, or from an override on this profile. A selected theme file can supply the icons. Settings → Icons Override puts the profile's icons back on Light, Dark, and System.",
         ],
       },
+      {
+        id: "version",
+        title: "Version",
+        paragraphs: [
+          "The window title is the app version. Help lists that number before Introduction. The middle number moves when a phase is accepted. The last number counts builds, and a phase acceptance leaves it in place. make dev, make build, and make mini add one before they compile.",
+        ],
+      },
     ],
   },
   {
@@ -142,7 +165,17 @@ export const helpPages = [
         title: "Pinned tabs",
         paragraphs: [
           "Pin sits in the tab menu. A pinned tab moves to the left group and shows its icon only. Unpin puts it at the left of the unpinned tabs. Dragging a tab does not cross that boundary. Home tabs cannot be pinned or duplicated.",
-          "Pins last until you quit. A restart does not bring them back yet. Close others, Close to the right, and Close all sub-tabs leave pinned tabs open.",
+          "A pin is saved with the tab. After a restart it comes back in the pinned group. Close others, Close to the right, and Close all sub-tabs leave pinned tabs open.",
+        ],
+      },
+      {
+        id: "restore",
+        title: "After a restart",
+        paragraphs: [
+          "Quit with tabs open and they come back in the same order, with the same pin, mute, and active tab. The active tab loads immediately. The others load when you show them. A tab whose item is gone is left out, and a notice names it.",
+          "An empty strip stays empty after a clean quit. The first launch, with nothing saved, opens Mail.",
+          "Settings → Tabs has Restore tabs on launch. Turn it off and the next launch opens nothing. Click a nav button to open that section. An unexpected shutdown does the same and shows a notice: Unexpected shutdown, performing quick start.",
+          "Max tabs defaults to 50. The page keeps it between 1 and 200. The strip will not open another sub-tab past that number. Home tabs still open. A restart keeps every home tab, then the active tab and the pins, and leaves the rest closed.",
         ],
       },
     ],
@@ -185,7 +218,8 @@ export const helpPages = [
         title: "The profile",
         paragraphs: [
           "One profile stays loaded until the process stops. Paths are relative to the working directory unless they begin with a slash. The engine is sqlite. The connection field is only for another engine, and it holds no password. Message bodies are files under blobs.",
-          "preferences.ui is opaque to the core. The page stores zoom, nav width, splits, fonts, icons, and the activity view there. The core does not invent missing zoom keys. The page clamps the keys it knows and keeps the rest. log_level lives on the index because logging starts before a profile is usable. themes_folder is an optional index key. Absent, theme files sit beside Pavillion.json.",
+          "preferences.ui is opaque to the core. The page stores zoom, nav width, splits, fonts, icons, the activity view, and the open tabs there. The core does not invent missing zoom keys and does not read the tab list. The page clamps the keys it knows and keeps the rest. log_level lives on the index because logging starts before a profile is usable. themes_folder is an optional index key. Absent, theme files sit beside Pavillion.json.",
+          "The open tabs are preferences.ui.session.tabs. preferences.ui.session.restore defaults to on. preferences.ui.session.shutdown is clean after a quit and open while the app is running. The window stays up until that clean value is stored. preferences.ui.session.maxTabs defaults to 50. Zoom, the nav width, and the theme stay in their own keys.",
         ],
         code: `{
   "kind": "pavillion-profile",
@@ -227,6 +261,7 @@ export const helpPages = [
         title: "How the window talks to the core",
         paragraphs: [
           "The API version is 3. A mismatch prints to stderr and exits before the window. Commands and events cross one forwarding call. The Rust shell does the Tauri work and does not grow new commands. WebKit stays the system library. It is not copied into the executable.",
+          "The app version is separate. It is 0.phase.build. The phase stamp is 0.phase.0 in Cargo.toml and tauri.conf.json. The build count is the PAVILLION_BUILD file, and the shell and the page read it. make dev, make build, and make mini add one before they compile. Accepting a phase moves the middle number and leaves the build count in place. make test does not add one.",
         ],
       },
       {

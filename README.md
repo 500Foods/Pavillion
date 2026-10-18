@@ -56,7 +56,7 @@ On Fedora, install the packages named in [scripts/fedora-deps.txt](scripts/fedor
 dnf install $(grep -vE '^[[:space:]]*(#|$)' scripts/fedora-deps.txt)
 ```
 
-`make test` runs the C tests and the UI tests. `make build` writes `dist/pavillion`. `make dev` serves the page and opens the window, which is how to look at the shell while the mail screens are still empty. [`.github/workflows/ci.yml`](.github/workflows/ci.yml) installs that same package list, then runs `make test` and `make build`.
+`make test` runs the C tests and the UI tests. `make build` writes `dist/pavillion`. `make mini` writes `dist/pavillion-mini`, the same program built for size and packed with UPX. `make dev` serves the page and opens the window, which is how to look at the shell while the mail screens are still empty. [`.github/workflows/ci.yml`](.github/workflows/ci.yml) installs that same package list, then runs `make test` and `make build`.
 
 ## Repository Information
 

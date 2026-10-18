@@ -4,6 +4,7 @@ import { createKeys } from "./common/keys.js";
 import { createMenu } from "./common/menu.js";
 import { createToaster } from "./common/toast.js";
 import { createTooltip } from "./common/tooltip.js";
+import { clampMaxTabs, planRestore, serializeTabs, SESSION_MS } from "./shell/session.js";
 import { createTabs, KIND_ICONS } from "./shell/tabs.js";
 import { createActivityView } from "./activity/view.js";
 import { createHelpView } from "./help/view.js";
@@ -743,6 +744,12 @@ function destroyWidgets() {
 
 const SAVE_MS = 300;
 let saveTimer = 0;
+let sessionTimer = 0;
+let sessionDirty = false;
+let sessionSnapshot = "";
+let quitNoted = false;
+let restoring = false;
+let launching = false;
 let dirty = false;
 let saveChain = Promise.resolve();
 
@@ -762,30 +769,100 @@ function scheduleUiSave() {
 
 function flushUiSave() {
   if (!canSave || !dirty) {
-    return saveChain;
+    return saveChain.then(() => true);
   }
   dirty = false;
+  sessionDirty = false;
+  sessionSnapshot = JSON.stringify(ui.session);
   const snapshot = clampUi(ui);
   const writer = api;
-  saveChain = saveChain.catch(() => {}).then(() => {
+  const pending = saveChain.catch(() => {}).then(() => {
     if (!writer || writer !== api) {
-      return undefined;
+      return false;
     }
-    return writer.prefs.ui.set(snapshot);
+    return writer.prefs.ui.set(snapshot).then(() => true);
   }).catch((err) => {
     if (mountRoot && writer === api) {
       showSaveFailure(err);
     }
+    return false;
   });
-  return saveChain;
+  saveChain = pending.then(() => {});
+  return pending;
 }
 
-function onPageHide() {
+function sessionRecord(shutdown) {
+  return {
+    tabs: serializeTabs(tabCtl.list()),
+    restore: ui.session.restore !== false,
+    shutdown: shutdown === "clean" ? "clean" : "open",
+    maxTabs: clampMaxTabs(ui.session.maxTabs),
+  };
+}
+
+function noteSession(shutdown) {
+  if (!tabCtl || !ui.session) {
+    return;
+  }
+  const next = sessionRecord(shutdown);
+  const encoded = JSON.stringify(next);
+  ui.session = next;
+  if (encoded === sessionSnapshot) {
+    return;
+  }
+  sessionSnapshot = encoded;
+  sessionDirty = true;
+  if (shutdown === "clean" || sessionTimer || !canSave) {
+    return;
+  }
+  sessionTimer = window.setTimeout(() => {
+    sessionTimer = 0;
+    if (!sessionDirty) {
+      return;
+    }
+    dirty = true;
+    flushUiSave();
+  }, SESSION_MS);
+}
+
+/* Write shutdown open before any tab loads. The live list is whatever is already
+   open, which is empty at launch. A crash in the first page is then not a clean quit. */
+async function markSessionOpen() {
+  if (!canSave || !tabCtl || !ui.session) {
+    return true;
+  }
+  ui.session = sessionRecord("open");
+  sessionDirty = true;
+  dirty = true;
+  if (sessionTimer) {
+    window.clearTimeout(sessionTimer);
+    sessionTimer = 0;
+  }
+  return flushUiSave();
+}
+
+function finishSession(shutdown) {
+  noteSession(shutdown);
+  if (sessionDirty) {
+    dirty = true;
+  }
   if (saveTimer) {
     window.clearTimeout(saveTimer);
     saveTimer = 0;
   }
-  flushUiSave();
+  if (sessionTimer) {
+    window.clearTimeout(sessionTimer);
+    sessionTimer = 0;
+  }
+  return flushUiSave();
+}
+
+function onPageHide() {
+  if (quitNoted) {
+    return;
+  }
+  quitNoted = true;
+  finishSession("clean");
 }
 
 function persistLayout() {
@@ -820,6 +897,10 @@ async function loadPrefs() {
     ui.themeChoice = stored.themeChoice;
     themeChoice = stored.themeChoice;
   }
+  ui.session = stored.session;
+  sessionSnapshot = JSON.stringify(ui.session);
+  sessionDirty = false;
+  paintSessionRestore();
   const kitInput = mountRoot.querySelector("#fa-kit-html");
   if (kitInput) {
     kitInput.value = ui.fontawesome_kit;
@@ -1070,8 +1151,125 @@ function showNav(section) {
   }
 }
 
-function openHome(section, context) {
+function paintSessionRestore() {
+  const box = mountRoot && mountRoot.querySelector("#session-restore");
+  if (box) {
+    box.checked = !ui.session || ui.session.restore !== false;
+  }
+  const max = mountRoot && mountRoot.querySelector("#session-max");
+  if (max) {
+    max.value = String(clampMaxTabs(ui.session && ui.session.maxTabs));
+  }
+}
+
+function applyHomeContext(entry) {
+  if (!mountRoot || !entry || entry.kind !== "home") {
+    return;
+  }
+  const ctx = entry.context;
+  if (entry.section === "settings" && ctx && typeof ctx.heading === "string") {
+    const buttons = [...mountRoot.querySelectorAll("[data-heading]")];
+    const button = buttons.find((item) => item.dataset.heading === ctx.heading);
+    if (button) {
+      for (const other of buttons) {
+        if (other === button) {
+          other.setAttribute("aria-current", "true");
+        } else {
+          other.removeAttribute("aria-current");
+        }
+      }
+      for (const pane of mountRoot.querySelectorAll("[data-settings]")) {
+        pane.hidden = pane.dataset.settings !== ctx.heading;
+      }
+    }
+  }
+  if (entry.section === "mail" && ctx && typeof ctx.mailboxId === "string") {
+    for (const button of mountRoot.querySelectorAll('[data-nav="mail"] .tree button')) {
+      if (button.dataset.mailbox === ctx.mailboxId) {
+        button.setAttribute("aria-current", "true");
+      } else {
+        button.removeAttribute("aria-current");
+      }
+    }
+  }
+  if (entry.section === "contacts" && ctx && typeof ctx.letter === "string") {
+    for (const button of mountRoot.querySelectorAll("#letters-nav button")) {
+      button.setAttribute("aria-pressed", button.dataset.letter === ctx.letter ? "true" : "false");
+    }
+  }
+}
+
+async function openInitialTabs() {
   if (!tabCtl) {
+    return;
+  }
+  const saved = ui.session;
+  launching = true;
+  restoring = true;
+  tabCtl.restore([]);
+  restoring = false;
+  let marked = true;
+  try {
+    marked = await markSessionOpen();
+    if (!tabCtl || !mountRoot) {
+      return;
+    }
+    const plan = planRestore(saved, marked ? (tab) => tabCtl.resolves(tab) : undefined);
+    const use = marked ? plan : {
+      mode: "quick",
+      tabs: [],
+      dropped: [],
+      unexpected: plan.unexpected === true,
+      limited: 0,
+    };
+    restoring = true;
+    launching = false;
+    let dropped = [];
+    try {
+      if (use.mode === "first") {
+        showNav("mail");
+        openHome("mail");
+      } else if (use.mode === "quick") {
+        dropped = tabCtl.restore([]);
+      } else if (use.mode === "empty") {
+        showNav("mail");
+        dropped = tabCtl.restore([]);
+      } else {
+        dropped = tabCtl.restore(use.tabs);
+        const active = tabCtl.list().find((item) => item.active);
+        if (active && active.kind === "home") {
+          showNav(active.section);
+        } else {
+          showNav("mail");
+        }
+        applyHomeContext(active);
+      }
+    } finally {
+      restoring = false;
+    }
+    if (use.unexpected && widgets) {
+      widgets.toaster.toast("Unexpected shutdown, performing quick start.");
+    }
+    if (use.limited > 0 && widgets) {
+      const max = clampMaxTabs(saved && saved.maxTabs);
+      widgets.toaster.toast(`Max tabs is ${max}. Some tabs stayed closed.`);
+    }
+    const gone = [...use.dropped, ...dropped];
+    if (widgets) {
+      for (const item of gone) {
+        const title = item && typeof item.title === "string" && item.title !== "" ? item.title : "Tab";
+        widgets.toaster.toast(`${title} could not be restored.`);
+      }
+    }
+    noteSession();
+  } finally {
+    launching = false;
+    restoring = false;
+  }
+}
+
+function openHome(section, context) {
+  if (!tabCtl || launching) {
     return null;
   }
   return tabCtl.openHome(section, context);
@@ -1224,6 +1422,24 @@ function chooseTheme(next, record, onFail) {
 }
 
 function bindSettings() {
+  const sessionRestore = mountRoot.querySelector("#session-restore");
+  if (sessionRestore) {
+    sessionRestore.addEventListener("change", () => {
+      ui.session.restore = sessionRestore.checked === true;
+      noteSession();
+      persistLayout();
+    });
+  }
+  const sessionMax = mountRoot.querySelector("#session-max");
+  if (sessionMax) {
+    sessionMax.addEventListener("change", () => {
+      const next = clampMaxTabs(sessionMax.value);
+      sessionMax.value = String(next);
+      ui.session.maxTabs = next;
+      noteSession();
+      persistLayout();
+    });
+  }
   for (const label of mountRoot.querySelectorAll("[data-zoom]")) {
     const key = label.dataset.zoom;
     if (!(key in ui.zoom)) {
@@ -1608,7 +1824,7 @@ function bindDemo(enabled) {
   }
   opener.hidden = !shown;
   opener.addEventListener("click", () => {
-    if (!tabCtl) {
+    if (!tabCtl || launching) {
       return;
     }
     testSerial += 1;
@@ -1646,6 +1862,7 @@ export function stopShell() {
   }
   if (current) {
     window.removeEventListener("pagehide", onPageHide);
+    window.removeEventListener("beforeunload", onPageHide);
     if (current.isolationStop) {
       current.isolationStop();
     }
@@ -1653,6 +1870,18 @@ export function stopShell() {
   if (saveTimer) {
     window.clearTimeout(saveTimer);
     saveTimer = 0;
+  }
+  if (sessionTimer) {
+    window.clearTimeout(sessionTimer);
+    sessionTimer = 0;
+  }
+  sessionDirty = false;
+  sessionSnapshot = "";
+  quitNoted = false;
+  restoring = false;
+  launching = false;
+  if (host) {
+    host.onQuit = null;
   }
   if (logView) {
     logView.destroy();
@@ -1705,6 +1934,10 @@ export async function startShell(surface, nextApi, nextHost, result) {
   mountRoot.addEventListener("wheel", onZoomWheel, { capture: true, passive: false });
   api = nextApi;
   host = nextHost || {};
+  host.onQuit = () => {
+    quitNoted = true;
+    return finishSession("clean");
+  };
   widgets = {
     menus: createMenu(mountRoot),
     tooltips: createTooltip(mountRoot),
@@ -1733,6 +1966,9 @@ export async function startShell(surface, nextApi, nextHost, result) {
         danger: true,
       });
     },
+    maxTabs() {
+      return clampMaxTabs(ui.session && ui.session.maxTabs);
+    },
   });
   keys = createKeys(mountRoot);
   bindTabKeys();
@@ -1744,11 +1980,22 @@ export async function startShell(surface, nextApi, nextHost, result) {
       el.append(note);
     },
   });
-  tabCtl.subscribe(() => {
+  tabCtl.subscribe((change) => {
     syncLog();
+    if (change.type === "limit" && widgets) {
+      widgets.toaster.toast(`Max tabs is ${change.max}.`);
+    }
+    if (change.type === "activate" || change.type === "open" || change.type === "context") {
+      const active = tabCtl.list().find((item) => item.active);
+      applyHomeContext(active);
+    }
+    if (!restoring && change.type !== "limit") {
+      noteSession();
+    }
   });
   bindNavAffordances();
   window.addEventListener("pagehide", onPageHide);
+  window.addEventListener("beforeunload", onPageHide);
   const banner = mountRoot.querySelector("#banner");
   if (result.state === "error") {
     banner.hidden = false;
@@ -1889,8 +2136,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
     });
   }
   helpView = createHelpView(mountRoot);
-  showNav("mail");
-  openHome("mail");
+  await openInitialTabs();
   if (activityView) {
     await activityView.ready();
   }

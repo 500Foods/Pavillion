@@ -1,3 +1,5 @@
+import { clampMaxTabs } from "./session.js";
+
 export const KIND_ICONS = {
   message: "fa-sharp-duotone fa-solid fa-envelope",
   contact: "fa-sharp-duotone fa-solid fa-address-card",
@@ -25,6 +27,7 @@ export function createTabs(tablist, options = {}) {
   let activeId = null;
   let orderClock = 0;
   let closing = false;
+  let limitNoted = false;
   let suppressClick = false;
   const indicator = tablist.ownerDocument.createElement("div");
   indicator.className = "tab-drop";
@@ -77,6 +80,26 @@ export function createTabs(tablist, options = {}) {
     for (const listener of listeners) {
       listener(change);
     }
+  }
+
+  function tabLimit() {
+    const raw = typeof options.maxTabs === "function" ? options.maxTabs() : options.maxTabs;
+    return clampMaxTabs(raw);
+  }
+
+  /* A new sub-tab past the cap is refused. One notice covers a burst. A close arms the next notice. */
+  function admit() {
+    if (entries.size < tabLimit()) {
+      return true;
+    }
+    if (!limitNoted) {
+      limitNoted = true;
+      const change = { type: "limit", id: "", tabs: list(), max: tabLimit() };
+      for (const listener of listeners) {
+        listener(change);
+      }
+    }
+    return false;
   }
 
   function subscribe(listener) {
@@ -261,9 +284,11 @@ export function createTabs(tablist, options = {}) {
     tab.classList.toggle("is-muted", entry.muted === true);
     paintIcon(tab.querySelector(".tab-icon"), entry);
     bindTabMenu(entry, tab);
-    const panel = ensurePanel(entry);
-    if (panel) {
-      tab.setAttribute("aria-controls", panel.id);
+    if (!entry.defer) {
+      const panel = ensurePanel(entry);
+      if (panel) {
+        tab.setAttribute("aria-controls", panel.id);
+      }
     }
     let close = tab.querySelector(".tab-close");
     if (entry.closable) {
@@ -301,6 +326,7 @@ export function createTabs(tablist, options = {}) {
     }
     const previous = activeId;
     activeId = id;
+    entry.defer = false;
     for (const [key, node] of nodes) {
       const on = key === id;
       node.setAttribute("aria-selected", on ? "true" : "false");
@@ -308,11 +334,13 @@ export function createTabs(tablist, options = {}) {
     }
     hidePanels();
     const panel = ensurePanel(entry);
+    applyContext(entry);
     if (panel) {
       panel.hidden = false;
       const node = nodes.get(id);
       if (node) {
         panel.setAttribute("aria-labelledby", node.id);
+        node.setAttribute("aria-controls", panel.id);
       }
     }
     if (previous !== id) {
@@ -333,6 +361,7 @@ export function createTabs(tablist, options = {}) {
     const id = `${section}:home`;
     let entry = entries.get(id);
     if (!entry) {
+      /* Home tabs stay available at the cap. One home per section, so Settings can still open. */
       entry = {
         id,
         section,
@@ -389,6 +418,9 @@ export function createTabs(tablist, options = {}) {
       renderTab(entry);
       activate(id);
       return snapshot(entry);
+    }
+    if (!admit()) {
+      return null;
     }
     const icon = typeof spec.icon === "string" && spec.icon !== "" ? spec.icon : (KIND_ICONS[kind] || "");
     entry = {
@@ -450,6 +482,7 @@ export function createTabs(tablist, options = {}) {
       }
       nodes.delete(id);
       entries.delete(id);
+      limitNoted = false;
       unbindMenu(id);
       rememberClosed(entry);
       const wasActive = activeId === id;
@@ -845,6 +878,84 @@ export function createTabs(tablist, options = {}) {
     emit("reorder", item);
   }
 
+  function resolves(tab) {
+    if (!isPlain(tab) || tab.kind === "home") {
+      return true;
+    }
+    const view = views.get(tab.kind);
+    if (view && typeof view.resolve === "function") {
+      return view.resolve(tab.context) === true;
+    }
+    return true;
+  }
+
+  function savedEntry(rec) {
+    if (!isPlain(rec)) {
+      return null;
+    }
+    const section = rec.section;
+    const kind = rec.kind;
+    const key = rec.key == null ? "" : String(rec.key);
+    if (!sections[section] || typeof kind !== "string" || kind === "") {
+      return null;
+    }
+    if (kind !== "home" && key === "") {
+      return null;
+    }
+    const id = kind === "home" ? `${section}:home` : `${section}:${kind}:${key}`;
+    if (rec.id !== id || entries.has(id)) {
+      return null;
+    }
+    const meta = sections[section];
+    const fallback = kind === "home" && typeof meta.title === "string" && meta.title !== "" ? meta.title : kind;
+    const title = typeof rec.title === "string" && rec.title.trim() !== "" ? rec.title : fallback;
+    const icon = kind === "home"
+      ? labelFor(section)
+      : (typeof rec.icon === "string" && rec.icon !== "" && !rec.icon.startsWith("<") ? rec.icon : (KIND_ICONS[kind] || ""));
+    return {
+      id,
+      section,
+      kind,
+      key: kind === "home" ? "" : key,
+      title,
+      icon,
+      closable: true,
+      pinned: kind !== "home" && rec.pinned === true,
+      muted: kind === "browse" && rec.muted === true,
+      context: isPlain(rec.context) ? rec.context : null,
+      order: Number.isFinite(rec.order) ? rec.order : entries.size + 1,
+      defer: true,
+    };
+  }
+
+  /* Opens a saved set without loading a background tab. The active tab loads now. */
+  function restore(records) {
+    const dropped = [];
+    const made = [];
+    const list = Array.isArray(records) ? records : [];
+    for (const rec of list) {
+      const entry = savedEntry(rec);
+      if (!entry) {
+        const title = rec && typeof rec.title === "string" && rec.title.trim() !== "" ? rec.title.trim() : "Tab";
+        dropped.push({ id: rec && rec.id, title });
+        continue;
+      }
+      entries.set(entry.id, entry);
+      orderClock = Math.max(orderClock, entry.order);
+      renderTab(entry);
+      made.push({ entry, active: rec.active === true });
+      emit("open", entry);
+    }
+    tablist.append(indicator);
+    const chosen = made.find((item) => item.active) || made[0];
+    if (chosen) {
+      activate(chosen.entry.id);
+    } else {
+      hidePanels();
+    }
+    return dropped;
+  }
+
   function refreshIcons() {
     for (const entry of entries.values()) {
       if (entry.kind !== "home") {
@@ -891,6 +1002,8 @@ export function createTabs(tablist, options = {}) {
   return {
     openHome,
     openTab,
+    restore,
+    resolves,
     closeTab,
     activate,
     list,

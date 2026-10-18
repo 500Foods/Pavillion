@@ -1,5 +1,6 @@
 # build/ is the C library and the Unity binary. ui/dist/ is the page Tauri embeds.
 # src-tauri/target/ is Cargo's tree. dist/pavillion is the program make build publishes.
+# dist/pavillion-mini is make mini: a size build, then UPX. It is not the rpm.
 # The shell links the archive from src-tauri/build.rs.
 
 BUILD_DIR := build
@@ -7,6 +8,12 @@ DIST_DIR := dist
 LIB := $(BUILD_DIR)/libpavillion_core.a
 TEST_BIN := $(BUILD_DIR)/core_test
 RELEASE_BIN := src-tauri/target/release/pavillion
+MINI_CMAKE_DIR := build-mini
+MINI_BIN := src-tauri/target/mini/pavillion
+MINI_DIST := $(DIST_DIR)/pavillion-mini
+# Override with `make mini UPX_FLAGS='--ultra-brute'` if you want UPX to search longer.
+UPX_FLAGS ?= --best --lzma
+MINI_RUSTFLAGS := $(strip $(RUSTFLAGS) -C force-unwind-tables=no -C link-arg=-Wl,--gc-sections -C link-arg=-Wl,--as-needed -C link-arg=-Wl,-O1)
 
 UNITY_DIR := tests/unity/framework/src
 TEST_SRC := tests/unity/src/core_test.c
@@ -19,7 +26,7 @@ PLATFORM_TEST_SRC :=
 PLATFORM_TEST_INC :=
 endif
 
-.PHONY: all lib dev build test clean
+.PHONY: all lib dev build test clean mini
 
 all: lib
 
@@ -46,15 +53,45 @@ $(TEST_BIN): $(LIB) $(TEST_SRC) $(PLATFORM_TEST_SRC) $(UNITY_DIR)/unity.c $(UNIT
 		-o $@ $(TEST_SRC) $(UNITY_DIR)/unity.c $(PLATFORM_TEST_SRC) $(LIB) \
 		-ljansson -lsqlite3 $(LDFLAGS)
 
+# dev, build, and mini add one to PAVILLION_BUILD before they compile.
+# test does not. The shell and the page read that file.
 dev: lib
+	bash scripts/bump-build.sh
 	npm --prefix ui install
 	npm --prefix ui exec -- tauri dev $(if $(DEV_DIR),-- -- "$(DEV_DIR)",)
 
 build: lib
+	bash scripts/bump-build.sh
 	npm --prefix ui install
 	npm --prefix ui exec -- tauri build
 	mkdir -p $(DIST_DIR)
 	cp -f $(RELEASE_BIN) $(DIST_DIR)/pavillion
+
+# Same program as make build, aimed at the smallest file. Uses build-mini/ and
+# target/mini/ so it does not rewrite build/ or dist/pavillion.
+mini:
+	@command -v upx >/dev/null 2>&1 || { printf '%s\n' "make mini needs upx" >&2; exit 1; }
+	@command -v strip >/dev/null 2>&1 || { printf '%s\n' "make mini needs strip" >&2; exit 1; }
+	@command -v magick >/dev/null 2>&1 || command -v convert >/dev/null 2>&1 || { printf '%s\n' "make mini needs ImageMagick" >&2; exit 1; }
+	bash scripts/bump-build.sh
+	npm --prefix ui install
+	PAVILLION_CMAKE_DIR=$(MINI_CMAKE_DIR) PAVILLION_SIZE=1 \
+		RUSTFLAGS="$(MINI_RUSTFLAGS)" \
+		npm --prefix ui exec -- tauri build --config "$(CURDIR)/src-tauri/tauri.mini.conf.json" -- --profile mini --no-default-features
+	strip --strip-unneeded $(MINI_BIN)
+	@readelf -d $(MINI_BIN) | grep -q 'Shared library: \[libwebkit2gtk-4.1.so.0\]' \
+		|| { printf '%s\n' "mini binary does not dynamically need libwebkit2gtk" >&2; exit 1; }
+	@grep -a -q -F '.pav-root .nav-mark.is-shown' $(MINI_BIN) \
+		|| { printf '%s\n' "mini binary is missing the raw stylesheet" >&2; exit 1; }
+	mkdir -p $(DIST_DIR)
+	rm -f $(MINI_DIST)
+	upx $(UPX_FLAGS) --no-backup -o $(MINI_DIST) $(MINI_BIN)
+	upx -t -q $(MINI_DIST)
+	$(MINI_DIST) --version
+	$(MINI_DIST) --help >/dev/null
+	@echo "mini unpacked $$(stat -c%s $(MINI_BIN)) bytes"
+	@echo "mini packed   $$(stat -c%s $(MINI_DIST)) bytes"
+	@if [ -f $(DIST_DIR)/pavillion ]; then echo "make build    $$(stat -c%s $(DIST_DIR)/pavillion) bytes"; fi
 
 test: $(TEST_BIN)
 	$(TEST_BIN)
@@ -62,4 +99,4 @@ test: $(TEST_BIN)
 	npm --prefix ui test
 
 clean:
-	rm -rf $(BUILD_DIR) $(DIST_DIR)
+	rm -rf $(BUILD_DIR) $(MINI_CMAKE_DIR) $(DIST_DIR)

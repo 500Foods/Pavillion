@@ -48,6 +48,7 @@ export const shellMarkup = `<div class="shell">
               <button type="button" data-heading="theme">Theme</button>
               <button type="button" data-heading="fonts">Fonts</button>
               <button type="button" data-heading="icons">Icons</button>
+              <button type="button" data-heading="tabs">Tabs</button>
             </div>
           </div>
         </div>
@@ -253,6 +254,19 @@ export const shellMarkup = `<div class="shell">
                <button type="submit" id="icon-reload" disabled>Reload &amp; Save</button>
              </form>
              <p class="muted">Icons are rendered from your registered Font Awesome kit. Use class prefixes like <code>fa-sharp-duotone fa-solid</code> for Sharp Duotone Solid, or <code>fa-solid</code> for classic Solid. Or paste raw HTML like an inline SVG.</p>
+          </div>
+          <div data-settings="tabs" hidden>
+            <h2>Tabs</h2>
+            <label class="swatch-row">
+              <input id="session-restore" type="checkbox" checked />
+              Restore tabs on launch
+            </label>
+            <p class="muted">On brings back the open tabs, including pins and the active tab. Off opens nothing, so the first nav button you click opens that section. The first launch opens Mail. A clean quit with no tabs open stays empty. An unexpected shutdown opens nothing and says so.</p>
+            <label class="swatch-row">
+              Max tabs
+              <input id="session-max" type="number" min="1" max="200" step="1" value="50" />
+            </label>
+            <p class="muted">The strip stops at this many tabs. Home tabs still open, so Settings stays reachable. A restart keeps every home tab, then the active tab and the pins, and leaves the rest closed. The default is 50.</p>
           </div>
         </div>
         <div class="panel" id="panel-activity" role="tabpanel" hidden>

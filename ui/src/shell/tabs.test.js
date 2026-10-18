@@ -48,6 +48,7 @@ function harness(options = {}) {
     onReveal: options.onReveal,
     menu: options.menu,
     strip: options.strip,
+    maxTabs: options.maxTabs,
   });
   return {
     root,
@@ -59,6 +60,29 @@ function harness(options = {}) {
     },
   };
 }
+
+test("max tabs blocks a new sub-tab and still opens a home", async () => {
+  const events = [];
+  const { tabs } = harness({ maxTabs: 2 });
+  tabs.subscribe((change) => {
+    if (change.type === "limit") {
+      events.push(change.max);
+    }
+  });
+  tabs.openHome("mail");
+  expect(tabs.openTab({ section: "help", kind: "test", key: "1", title: "One", icon: KIND_ICONS.file })).not.toBeNull();
+  expect(tabs.openTab({ section: "help", kind: "test", key: "2", title: "Two", icon: KIND_ICONS.file })).toBeNull();
+  expect(tabs.openTab({ section: "help", kind: "test", key: "3", title: "Three", icon: KIND_ICONS.file })).toBeNull();
+  expect(events).toEqual([2]);
+  expect(tabs.list().map((item) => item.id)).toEqual(["mail:home", "help:test:1"]);
+  expect(tabs.openHome("contacts")).not.toBeNull();
+  expect(tabs.openTab({ section: "help", kind: "test", key: "1", title: "One", icon: KIND_ICONS.file }).id).toBe("help:test:1");
+  expect(await tabs.closeTab("help:test:1")).toBe(true);
+  expect(await tabs.closeTab("contacts:home")).toBe(true);
+  expect(tabs.openTab({ section: "help", kind: "test", key: "2", title: "Two", icon: KIND_ICONS.file })).not.toBeNull();
+  expect(tabs.openTab({ section: "help", kind: "test", key: "3", title: "Three", icon: KIND_ICONS.file })).toBeNull();
+  expect(events).toEqual([2, 2]);
+});
 
 test("one id is one tab and a second open only activates it", () => {
   const { tablist, tabs } = harness();

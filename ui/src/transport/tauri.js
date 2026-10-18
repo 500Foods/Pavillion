@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { APP_VERSION } from "../version.js";
 
 function asError(err) {
   if (err instanceof Error && err.code) {
@@ -28,7 +30,7 @@ function asError(err) {
 }
 
 export function tauriHost() {
-  return {
+  const host = {
     setRootFontSize(scale) {
       const value = Number(scale);
       if (!Number.isFinite(value)) {
@@ -55,6 +57,27 @@ export function tauriHost() {
       },
     },
   };
+  /* Rust keeps the window up once this listener exists, and destroys it only
+     after the handler returns. pagehide does not finish the profile write. */
+  if (typeof window !== "undefined" && window.__TAURI_INTERNALS__) {
+    const current = getCurrentWindow();
+    current.setTitle(`Pavillion ${APP_VERSION}`).catch(() => {});
+    let closing = false;
+    current.onCloseRequested(async () => {
+      if (closing) {
+        return;
+      }
+      closing = true;
+      try {
+        if (typeof host.onQuit === "function") {
+          await host.onQuit();
+        }
+      } catch {
+        /* The window still closes. A failed write leaves shutdown open. */
+      }
+    }).catch(() => {});
+  }
+  return host;
 }
 
 export function tauriTransport() {

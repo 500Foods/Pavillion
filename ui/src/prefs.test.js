@@ -1,6 +1,41 @@
 import { expect, test } from "vitest";
 import { clampUi } from "./prefs.js";
 
+test("a missing session restores, and an empty tab list stays empty", () => {
+  expect(clampUi({}).session).toEqual({ tabs: null, restore: true, shutdown: "open", maxTabs: 50 });
+  expect(clampUi({ session: { restore: false, tabs: [] } }).session).toEqual({
+    tabs: [],
+    restore: false,
+    shutdown: "open",
+    maxTabs: 50,
+  });
+  expect(clampUi({ session: { maxTabs: 0, tabs: [] } }).session.maxTabs).toBe(1);
+  expect(clampUi({ session: { maxTabs: 999, tabs: [] } }).session.maxTabs).toBe(200);
+  expect(clampUi({ session: { maxTabs: 12, tabs: [] } }).session.maxTabs).toBe(12);
+  expect(clampUi({ session: { restore: true, shutdown: "clean", tabs: [] } }).session.shutdown).toBe("clean");
+  expect(clampUi({ session: { shutdown: "closed", tabs: [] } }).session.shutdown).toBe("open");
+  const session = clampUi({
+    session: {
+      restore: "yes",
+      tabs: [
+        { id: "mail:home", section: "mail", kind: "home", title: "Mail", order: 1, active: true, pinned: true },
+        { id: "bad" },
+      ],
+    },
+  }).session;
+  expect(session.restore).toBe(true);
+  expect(session.tabs).toHaveLength(1);
+  expect(session.tabs[0]).toMatchObject({
+    id: "mail:home",
+    kind: "home",
+    key: "",
+    title: "Mail",
+    pinned: false,
+    active: true,
+    context: null,
+  });
+});
+
 test("log zoom snaps and the activity view defaults to log", () => {
   const blank = clampUi({});
   expect(blank.zoom.log).toBe(1);

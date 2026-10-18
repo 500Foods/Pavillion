@@ -379,6 +379,10 @@
   padding: 0.2rem 0;
 }
 
+.pav-root .swatch-row input[type="number"] {
+  width: 4.5rem;
+}
+
 .pav-root .swatch {
   width: 0.75rem;
   height: 0.75rem;
@@ -825,6 +829,8 @@
   border-right: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
   background: transparent;
   padding: 0 0.7rem;
+  /* A few points under the 1rem bar face. Toolbar zoom still scales it. */
+  font-size: 0.75rem;
 }
 
 .pav-root .help-bar > button {
