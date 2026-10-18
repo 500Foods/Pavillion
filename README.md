@@ -63,27 +63,28 @@ dnf install $(grep -vE '^[[:space:]]*(#|$)' scripts/fedora-deps.txt)
 [![Count Lines of Code](https://github.com/500Foods/Pavillion/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/main.yml)
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-18 01:27:21 UTC
+Last updated at 2026-10-18 01:48:31 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
 C                               19           1425            235          13270
-JavaScript                      58            688            122          10256
-Markdown                        28           2224              2           4479
-JSON                             7              0              0           2648
-CSS                              6            315              2           1955
+JavaScript                      62            740            149          11559
+Markdown                        28           2227              2           4494
+JSON                             8              0              0           2653
+CSS                              6            316              3           1959
 C/C++ Header                    14            345            406           1826
-Rust                             3             19              7            402
+Rust                             3             22             11            464
 YAML                             3             21             17             92
+Bourne Shell                     2             13              9             85
 HTML                             3              4              0             82
+make                             1             12              9             81
 Text                             2              7              0             51
-make                             1             11              3             51
+TOML                             1              6              5             39
 CMake                            1              3              1             30
-TOML                             1              4              0             21
 -------------------------------------------------------------------------------
-SUM:                           146           5066            795          35163
+SUM:                           153           5141            847          36685
 -------------------------------------------------------------------------------
-25 Files were skipped (duplicate, binary, or without source code):
+26 Files were skipped (duplicate, binary, or without source code):
   png: 17
   gitignore: 2
   theme: 2
@@ -91,6 +92,7 @@ SUM:                           146           5066            795          35163
   icns: 1
   ico: 1
   lock: 1
+  pavillion_build: 1
 ```
 <!--CLOC-END-->
 
