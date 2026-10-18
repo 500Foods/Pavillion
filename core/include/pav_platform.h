@@ -12,6 +12,11 @@
 #define PAV_DIR_LOG 4
 #define PAV_DIR_RUNTIME 5
 
+/* secret_get/set/delete. 0 is stored or deleted. */
+#define PAV_SECRET_MISSING 1
+#define PAV_SECRET_LOCKED 2
+#define PAV_SECRET_FAILED 3
+
 typedef struct PavPlatform {
     const char *name; /* "linux" or "fake" */
     int (*dir)(int which, char *out, size_t len);
@@ -37,6 +42,8 @@ void pav_platform_fake_set_now_ms(int64_t ms);
 void pav_platform_fake_reset(void);
 /* The next write_private builds the temp file, deletes it, and fails. */
 void pav_platform_fake_abort_next_write(void);
+/* Non-zero: secret_get/set/delete return PAV_SECRET_LOCKED and do not touch the store. */
+void pav_platform_fake_set_locked(int locked);
 
 int pav_path_join(char *out, size_t len, const char *a, const char *b);
 int pav_path_is_absolute(const char *path);

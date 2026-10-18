@@ -346,6 +346,14 @@ export const helpPages = [
         ],
       },
       {
+        id: "secrets",
+        title: "Secrets",
+        paragraphs: [
+          "Account passwords are not in the profile, the database, or the log. They live in a Stronghold snapshot under the profile data directory. The operating-system keyring holds only the snapshot password, so unlocking the session opens the snapshot without a second prompt. A locked keyring is a locked account, not a retry loop.",
+          "The credentials form clears its field after submit. A command result never includes the secret. The Linux check is tests/manual/secret_smoke.sh. secret-tool search service pavillion shows the snapshot-password entry and not the dummy secret.",
+        ],
+      },
+      {
         id: "store",
         title: "The store",
         paragraphs: [

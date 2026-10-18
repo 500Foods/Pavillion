@@ -57,7 +57,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 ### L1 Platform
 
 - The core includes `pav_platform.h` and nothing OS-specific. `#ifdef __linux__`, `<sys/stat.h>`, `libsecret`, and XDG names appear only under `core/platform/`.
-- `core/platform/posix/` holds what Linux and macOS share (pthreads, `open`/`fchmod`, `clock_gettime`). `core/platform/linux/` holds libsecret and XDG dirs. `macos/`, `windows/`, and `ios/` come later (Keychain, Credential Manager, `%APPDATA%`, Win32 threads or a pthreads shim).
+- `core/platform/posix/` holds what Linux and macOS share (pthreads, `open`/`fchmod`, `clock_gettime`). `core/platform/linux/` holds libsecret, the Stronghold link, and XDG dirs. libsecret stores only the Stronghold snapshot password (K Secrets lock). Account secrets are Stronghold records. `macos/`, `windows/`, and `ios/` come later (Keychain, Credential Manager, `%APPDATA%`, Win32 threads or a pthreads shim). The snapshot password still comes from that platform's secret store; the Stronghold file does not change.
 - The table, installed once before the core thread starts:
 
 ```c
@@ -66,7 +66,7 @@ typedef struct PavPlatform {
     int  (*dir)(int which, char *out, size_t len);      /* PAV_DIR_DATA, CONFIG, CACHE, LOG, RUNTIME */
     int  (*mkdir_private)(const char *path);            /* 0700, or the platform equivalent */
     int  (*write_private)(const char *path, const void *buf, size_t n); /* 0600, atomic rename */
-    int  (*secret_get)(const char *service, const char *user, char **out);
+    int  (*secret_get)(const char *service, const char *user, char **out); /* 0, or PAV_SECRET_* */
     int  (*secret_set)(const char *service, const char *user, const char *label, const char *val);
     int  (*secret_delete)(const char *service, const char *user);
     int64_t (*now_ms)(void);                            /* UTC unix ms */

@@ -5,6 +5,7 @@
 #include "pav_cfg.h"
 #include "pav_db.h"
 #include "pav_platform.h"
+#include "pav_secret.h"
 #include "pav_store.h"
 #include "pavillion.h"
 #include "logring.h"
@@ -1895,7 +1896,7 @@ void test_platform_fake_dirs_secrets_and_clock(void) {
     platform->on_network_change(NULL, NULL);
     platform->on_resume(NULL, NULL);
 
-    TEST_ASSERT_EQUAL_INT(-1, platform->secret_get("pavillion", "default/a", &secret));
+    TEST_ASSERT_EQUAL_INT(PAV_SECRET_MISSING, platform->secret_get("pavillion", "default/a", &secret));
     TEST_ASSERT_NULL(secret);
     TEST_ASSERT_EQUAL_INT(0,
                           platform->secret_set("pavillion", "default/a", "Account", "s3cret"));
@@ -1904,7 +1905,7 @@ void test_platform_fake_dirs_secrets_and_clock(void) {
     free(secret);
     secret = NULL;
     TEST_ASSERT_EQUAL_INT(0, platform->secret_delete("pavillion", "default/a"));
-    TEST_ASSERT_EQUAL_INT(-1, platform->secret_get("pavillion", "default/a", &secret));
+    TEST_ASSERT_EQUAL_INT(PAV_SECRET_MISSING, platform->secret_get("pavillion", "default/a", &secret));
 
     pav_platform_fake_set_now_ms(1700000000123LL);
     TEST_ASSERT_TRUE(platform->now_ms() == 1700000000123LL);
@@ -4184,6 +4185,76 @@ static int fk_job(void *ctx, sqlite3 *db) {
     return 0;
 }
 
+static int log_has(const char *needle) {
+    json_t *out = NULL;
+    json_t *lines;
+    size_t i;
+    int found = 0;
+
+    if (pav_logring_read(0, 10000, PAV_DEBUG, NULL, &out) != 0 || out == NULL) {
+        return 0;
+    }
+    lines = json_object_get(out, "lines");
+    if (!json_is_array(lines)) {
+        json_decref(out);
+        return 0;
+    }
+    for (i = 0; i < json_array_size(lines); i++) {
+        const char *text = json_string_value(json_object_get(json_array_get(lines, i), "text"));
+        if (text != NULL && strstr(text, needle) != NULL) {
+            found = 1;
+            break;
+        }
+    }
+    json_decref(out);
+    return found;
+}
+
+void test_secret_roundtrip(void) {
+    char *secret = NULL;
+
+    pav_platform_fake_set_locked(0);
+    TEST_ASSERT_EQUAL_INT(0, pav_secret_set("pavillion", "default/a", "Pavillion 001 a", "fixture-secret"));
+    TEST_ASSERT_EQUAL_INT(0, pav_secret_get("pavillion", "default/a", &secret));
+    TEST_ASSERT_EQUAL_STRING("fixture-secret", secret);
+    pav_secret_free(secret);
+    TEST_ASSERT_EQUAL_INT(0, pav_secret_delete("pavillion", "default/a"));
+}
+
+void test_secret_missing(void) {
+    char *secret = NULL;
+
+    pav_platform_fake_set_locked(0);
+    TEST_ASSERT_EQUAL_INT(PAV_SECRET_MISSING, pav_secret_get("pavillion", "default/missing", &secret));
+    TEST_ASSERT_NULL(secret);
+}
+
+void test_secret_locked_reports_locked(void) {
+    char *secret = NULL;
+
+    pav_platform_fake_set_locked(1);
+    TEST_ASSERT_EQUAL_INT(PAV_SECRET_LOCKED, pav_secret_get("pavillion", "default/a", &secret));
+    TEST_ASSERT_NULL(secret);
+    TEST_ASSERT_EQUAL_INT(PAV_SECRET_LOCKED,
+                          pav_secret_set("pavillion", "default/a", "label", "fixture-secret"));
+    pav_platform_fake_set_locked(0);
+    TEST_ASSERT_EQUAL_INT(PAV_SECRET_MISSING, pav_secret_get("pavillion", "default/a", &secret));
+}
+
+void test_secret_never_logged(void) {
+    char *secret = NULL;
+
+    pav_logring_reset();
+    pav_platform_fake_set_locked(0);
+    TEST_ASSERT_EQUAL_INT(0, pav_secret_set("pavillion", "default/a", "label", "fixture-secret"));
+    TEST_ASSERT_EQUAL_INT(0, pav_secret_get("pavillion", "default/a", &secret));
+    pav_secret_free(secret);
+    TEST_ASSERT_EQUAL_INT(0, pav_secret_delete("pavillion", "default/a"));
+    TEST_ASSERT_EQUAL_INT(PAV_SECRET_MISSING, pav_secret_get("pavillion", "default/a", &secret));
+    TEST_ASSERT_FALSE(log_has("fixture-secret"));
+    TEST_ASSERT_TRUE(log_has("secret missing"));
+}
+
 void test_foreign_keys_on(void) {
     char path[160];
     int on = 0;
@@ -4279,6 +4350,10 @@ int main(void) {
     RUN_TEST(test_migrate_is_idempotent);
     RUN_TEST(test_newer_db_is_error);
     RUN_TEST(test_db_bind_never_concatenates);
+    RUN_TEST(test_secret_roundtrip);
+    RUN_TEST(test_secret_missing);
+    RUN_TEST(test_secret_locked_reports_locked);
+    RUN_TEST(test_secret_never_logged);
     RUN_TEST(test_foreign_keys_on);
     return UNITY_END();
 }

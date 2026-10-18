@@ -4,6 +4,7 @@
 #include "logring.h"
 #include "themes.h"
 #include "window_state.h"
+#include "pav_secret.h"
 
 #include "pav_platform.h"
 #include "pavillion.h"
@@ -41,6 +42,9 @@ static int cmd_prefs_ui_get(json_t *args, json_t **data, PavError *err);
 static int cmd_prefs_ui_set(json_t *args, json_t **data, PavError *err);
 static int cmd_status(json_t *args, json_t **data, PavError *err);
 static int cmd_sync_now(json_t *args, json_t **data, PavError *err);
+#ifndef NDEBUG
+int pav_cmd_secret_smoke(json_t *args, json_t **data, PavError *err);
+#endif
 
 /* strcmp order. bsearch requires it. */
 static const PavCommand k_commands[] = {
@@ -49,6 +53,7 @@ static const PavCommand k_commands[] = {
     {"activity.list", pav_activity_cmd_list, 0},
 #ifndef NDEBUG
     {"debug.activity_demo", pav_activity_cmd_demo, PAV_CMD_WORKER},
+    {"debug.secret_smoke", pav_cmd_secret_smoke, 0},
 #endif
     {"log.client", cmd_log_client, 0},
     {"log.export", cmd_log_export, 0},

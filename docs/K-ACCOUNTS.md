@@ -11,7 +11,7 @@ One phase is one session. Do not start the next one in the same conversation.
 
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
-| K-1 | Secrets through the platform: libsecret backend, fake, and the rules | Medium | Not started |
+| K-1 | Secrets through the platform: Stronghold, snapshot password in libsecret, fake | Medium | Done |
 | K-2 | Account model and commands: number, add, update, remove, set secret | Medium | Not started |
 | K-3 | Settings → Accounts panel: add with test, credentials, edit, remove | Medium | Not started |
 | K-4 | OpenID Connect sign-in (authorization code + PKCE) | Hard | Not started |
@@ -35,9 +35,11 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 ### Secrets
 
-- The keyring abstraction is G-1's secrets function table (`secret_get`, `secret_set`, and the rest of `PavPlatform` in the [G-LAYERS.md](G-LAYERS.md) L1 Lock). K-1 implements the libsecret backend and the test fake behind it, and nothing in K calls libsecret directly.
-- Credentials live only in the platform secret store (Secret Service through libsecret on Linux: gnome-keyring or KeePassXC). Never in a profile, SQLite, a log, crash output, CLI output, or frontend memory beyond the add-account or credentials form, which clears its field after submit.
-- Keyring entry: service `pavillion`, attribute `user` = `<profile id>/<account id>`, label `Pavillion <account number> <account name>`. One secret per account: the password in v1, or, from K-4, the OIDC refresh token as JSON `{"refresh":"…"}`.
+- The keyring abstraction is G-1's secrets function table (`secret_get`, `secret_set`, and the rest of `PavPlatform` in the [G-LAYERS.md](G-LAYERS.md) L1 Lock). K-1 implements that table. Nothing outside `core/platform/` calls libsecret or Stronghold.
+- Account secrets live in an IOTA Stronghold snapshot, one file per profile, mode 0600, under that profile's data directory. The core links the Stronghold library. It does not use `tauri-plugin-stronghold`: L1 cannot import Tauri, and the same library later links into Hydrogen. Never in a profile, SQLite, a log, crash output, CLI output, or frontend memory beyond the add-account or credentials form, which clears its field after submit.
+- The OS keyring holds only the snapshot password (K-Q4, resolved 2026-10-18). On Linux that is Secret Service through libsecret (gnome-keyring or KeePassXC): service `pavillion`, attribute `user` = `<profile id>/stronghold`, label `Pavillion snapshot`. The first unlock generates 32 random bytes, stores them, and never prompts. Later launches read that value after the session keyring unlocks and open Stronghold with it. No second prompt. The snapshot password is not an account secret and is not deleted when an account is removed.
+- Stronghold client `pavillion`. Account secrets are Store entries, not vault records: a vault record cannot be read back, and Basic auth must put the password on the wire. The key is `<profile id>/<account id>`. The value is the secret. The label `Pavillion <account number> <account name>` is a second Store entry, key `<profile id>/<account id>/label`. One secret per account: the password in v1, or, from K-4, the OIDC refresh token as JSON `{"refresh":"…"}`. The 1Password service token and the cached vault list use the same snapshot, under keys `<profile id>/op-token` and `<profile id>/op-cache`, when that phase writes them.
+- `secret_get`, `secret_set`, and `secret_delete` are the account-secret calls. Return 0, or `PAV_SECRET_MISSING`, `PAV_SECRET_LOCKED`, or `PAV_SECRET_FAILED`. `LOCKED` means the OS keyring is locked, so the snapshot password cannot be read. It does not mean a Stronghold record is absent.
 - The core reads a secret only on the network thread when building a request, keeps it in memory for that request, and `explicit_bzero`s the buffer after. It is never put in a JSON command result.
 - A locked keyring at startup is not an error loop: the account goes to `state = "locked"`, one banner says "Unlock your keyring to sync", and sync retries when the keyring signals unlock (libsecret's collection `locked` property change) or on the next manual sync.
 - A profile containing `password`, `token`, `secret`, or `refresh_token` is still rejected (B Lock).
@@ -85,28 +87,34 @@ Andrew asked for this beside the usual URL, username, and password. It is not pa
 - Three things are stored in the secure store, not held only in memory: the service token, the vault and item list the picker shows, and the username and password the account actually uses. A restart must not ask 1Password again while that stored copy is still current.
 - The cap he named is the 1Password service-account limit of 1000. The published table, checked the same day, puts 1000 on token writes per hour for Business, on token reads per hour for personal accounts, and on the personal and families daily cap. Caching is what keeps ordinary use off that API.
 - If a stored username and password are rejected, refresh that one item from 1Password once. If the new value is rejected too, do not prompt in a loop and do not keep calling 1Password. Surface it on the Activity control (a yellow state or similar). I-2 owns that control; K does not paint it early.
-- The store he named is Tauri Stronghold (`tauri-plugin-stronghold` v2, IOTA Stronghold), because it is the same library on every platform. The Secrets bullets above still say libsecret. K-1 changes those bullets before any secret code. The platform function table stays. The WebView still drops the token when the form closes. Stronghold asks for a snapshot password on every launch; K-Q4 is how that password is supplied without a second prompt. Do not implement libsecret as the only store.
+- The store he named is IOTA Stronghold, the library inside `tauri-plugin-stronghold` v2, because it is the same library on every platform. K-1 links that library from the platform layer and does not load the Tauri plugin. The platform function table stays. The WebView still drops the token when the form closes. K-Q4 is resolved: libsecret holds the snapshot password, so a session unlock opens Stronghold with no second prompt. Do not implement libsecret as the account-secret store.
 
 ## K-1: Secrets through the platform
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Complete (2026-10-18).
 
-**Goal:** The core can store, read, and delete a secret on Linux, and tests use the fake.
+**Goal:** The core can store, read, and delete an account secret on Linux (Stronghold, snapshot password from libsecret), and tests use the fake.
 
 **Entry gate:** L-1 complete.
 
 **Work items:**
 
-- [ ] `core/platform/linux/secrets.c`: `secret_get/set/delete` with `secret_password_lookup_sync`, `secret_password_store_sync` on the default collection, and a schema `com.500nodes.pavillion.Account` with the `user` attribute. Link `libsecret-1`.
-- [ ] The fake platform's in-memory store, with a switch to simulate a locked keyring.
-- [ ] `core/src/secret.c` wrappers that zero buffers and map errors to `locked`, `missing`, `failed`.
-- [ ] Unity on the fake: `test_secret_roundtrip`, `test_secret_missing`, `test_secret_locked_reports_locked`, `test_secret_never_logged` (log capture contains no fixture secret).
-- [ ] A manual check script `tests/manual/secret_smoke.sh` that stores, reads, and deletes a dummy entry with the real keyring through a debug-only command `debug.secret_smoke`.
+- [x] `core/platform/linux/secrets.c`: read or create the snapshot password with `secret_password_lookup_sync` / `secret_password_store_sync` on the default collection, schema `com.500nodes.pavillion.Snapshot`, attribute `user`. Open the Stronghold snapshot with that password. `secret_get/set/delete` read and write the account record. Link `libsecret-1` and the Stronghold static library. Nothing else calls either.
+- [x] The fake platform's in-memory store, with a switch to simulate a locked keyring.
+- [x] `core/src/secret.c` wrappers that zero buffers and map errors to `locked`, `missing`, `failed`.
+- [x] Unity on the fake: `test_secret_roundtrip`, `test_secret_missing`, `test_secret_locked_reports_locked`, `test_secret_never_logged` (log capture contains no fixture secret).
+- [x] A manual check script `tests/manual/secret_smoke.sh` that stores, reads, and deletes a dummy account secret through a debug-only command `debug.secret_smoke`. `secret-tool search service pavillion` shows the snapshot-password entry and never the dummy secret. Deleting the dummy does not delete the snapshot password.
 
-**Done means:** Secrets work on the real keyring and on the fake, and none reaches the log.
+**Done means:** Account secrets work in Stronghold and on the fake, the snapshot password is the only OS-keyring value, and none reaches the log.
 
-**Exit gate:** `make test` exits 0. The smoke script passes on Andrew's Fedora session, and `secret-tool search service pavillion` shows the entry before deletion and nothing after.
+**Exit gate:** `make test` exits 0. The smoke script passes on Andrew's Fedora session. `secret-tool search service pavillion` shows the snapshot-password entry and not the dummy secret, before and after the dummy is deleted.
+
+**Accomplished:** Linux `secret_get/set/delete` open a Stronghold snapshot with a snapshot password from libsecret. The fake still covers Unity. `tests/manual/secret_smoke.sh` stored, read, and deleted `smoke/dummy` and left only the `smoke/stronghold` snapshot-password entry. `make test` is 85 Unity tests and 134 Vitest tests, exit 0. `PAVILLION_API_VERSION` stays 3. The phase stamp is `0.47`.
+
+**Lessons learned:** `secret-tool search` prints attributes on stderr, so the smoke check has to read both streams. `make test` and the shell must link `libsecret` once `secrets.c` is in the archive. The Stronghold crate is a shell dependency so the window does not link a second Rust runtime. `#[used]` keeps the three C entry points.
+
+**Handoff:** K-2 is next, step 44, in this file. Do not start it in this sitting. Do not rebuild the writer, the snapshot schema, or `debug.secret_smoke`. Account commands write secrets through `pav_secret_*`, not libsecret. Tests stay on the fake. The smoke profile `smoke/stronghold` is still in the session keyring; it is not a real account. Do not commit the `PAVILLION_BUILD` bump. The phase stamp is `0.47.0`.
 
 ## K-2: Account model and commands
 
@@ -174,7 +182,7 @@ Andrew asked for this beside the usual URL, username, and password. It is not pa
 - K-Q1. Which accounts to add first at K-3? Name two or three, ideally from two tenants, with their hostnames. (Still open, not blocking until K-3.)
 - K-Q2. Resolved 2026-10-16: username and password for every account (Basic or SASL PLAIN over TLS), stored in the keyring. OIDC comes later (K-4).
 - K-Q3. Resolved 2026-10-16: discovery uses `https://<email domain>/.well-known/jmap` with a manual override. Andrew gives the hostnames at K-3.
-- K-Q4. Open before K-1 writes secret code. Stronghold needs a snapshot password every launch. How is that password supplied so Pavillion does not prompt again while the stored 1Password copy is current? The rest of the 1Password request is recorded above.
+- K-Q4. Resolved 2026-10-18: the OS keyring holds the Stronghold snapshot password. A session unlock opens the snapshot. No second prompt. Account secrets stay in Stronghold.
 
 ## Working log
 
@@ -183,3 +191,5 @@ Andrew asked for this beside the usual URL, username, and password. It is not pa
 - 2026-10-17 Andrew: 1Password service accounts are a first-class source next to URL, username, and password. Persist the token, the picker list, and the chosen username and password in Tauri Stronghold. Refresh once on auth failure, then show it on the Activity control. K-Q4 (the snapshot password) is open. Not built in J-1.
 - 2026-10-18 Tasks appear when CalDAV reports VTODO. Notes use one home account. K-3 does not grow Tasks, Notes, or Argent headings. `account.test` does not gain a tasks capability.
 - 2026-10-18 GitHub adds no Settings → Accounts heading and no `account.test` row.
+- 2026-10-18 K-Q4 resolved: libsecret stores only the snapshot password. Account secrets are Stronghold records. K-1 rewrote the Secrets lock before secret code. Status in progress. Last finished work item: Unity on the fake. `libsecret-devel` is not installed here, so `secrets.c` is not linked yet. The smoke script has not been run.
+- 2026-10-18 K-1 complete, step 43. `libsecret-devel` is installed. The smoke script passed. `make test` is 85 Unity tests and 134 Vitest tests. The phase stamp is `0.47`. K-2 is next, step 44. Do not start it in this sitting.

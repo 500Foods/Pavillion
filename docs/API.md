@@ -204,6 +204,18 @@ Result: `{id}`. `id` is `act-<n>`.
 
 Errors: `bad_args`, `internal`.
 
+### debug.secret_smoke
+
+State: real (K-1)
+
+Debug builds only. A build with `NDEBUG` does not register this command. `make test` builds the core without `NDEBUG`.
+
+`{op, user, label?, value?, expect?}`. `op` is `set`, `get`, or `delete`. `user` is the account key. `set` requires `label` and `value`. `get` compares `expect` when it is present and does not return the secret.
+
+Result: `{state}` for `set` and `delete` (`ok` or `missing`). `{state, match}` for `get`. `state` is `stored` or `missing`. `match` is true only when the stored value equals `expect`.
+
+Errors: `bad_args`, `locked`, `failed`, `internal`.
+
 ### draft.attach
 
 State: planned (O-4)

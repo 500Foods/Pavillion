@@ -6,30 +6,33 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* K-1 replaces these with libsecret. Until then every call is "not yet". */
-static int secret_not_yet_get(const char *service, const char *user, char **out) {
+#ifdef PAV_HAVE_LIBSECRET
+void pav_linux_secret_bind(PavPlatform *platform);
+#else
+static int secret_unavailable(const char *service, const char *user, char **out) {
     (void)service;
     (void)user;
     if (out != NULL) {
         *out = NULL;
     }
-    return -1;
+    return PAV_SECRET_FAILED;
 }
 
-static int secret_not_yet_set(const char *service, const char *user, const char *label,
-                              const char *val) {
+static int secret_unavailable_set(const char *service, const char *user, const char *label,
+                                  const char *val) {
     (void)service;
     (void)user;
     (void)label;
     (void)val;
-    return -1;
+    return PAV_SECRET_FAILED;
 }
 
-static int secret_not_yet_delete(const char *service, const char *user) {
+static int secret_unavailable_delete(const char *service, const char *user) {
     (void)service;
     (void)user;
-    return -1;
+    return PAV_SECRET_FAILED;
 }
+#endif
 
 static void (*g_net)(void *);
 static void *g_net_user;
@@ -102,9 +105,13 @@ static const PavPlatform *linux_platform(void) {
         platform.dir = linux_dir;
         platform.mkdir_private = pav_posix_mkdir_private;
         platform.write_private = pav_posix_write_private;
-        platform.secret_get = secret_not_yet_get;
-        platform.secret_set = secret_not_yet_set;
-        platform.secret_delete = secret_not_yet_delete;
+#ifdef PAV_HAVE_LIBSECRET
+        pav_linux_secret_bind(&platform);
+#else
+        platform.secret_get = secret_unavailable;
+        platform.secret_set = secret_unavailable_set;
+        platform.secret_delete = secret_unavailable_delete;
+#endif
         platform.now_ms = pav_posix_now_ms;
         platform.on_network_change = linux_on_network;
         platform.on_resume = linux_on_resume;

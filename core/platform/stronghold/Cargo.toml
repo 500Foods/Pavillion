@@ -1,0 +1,12 @@
+[package]
+name = "pav_stronghold"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+iota_stronghold = "=2.1.0"
+libc = "0.2"
+zeroize = "1"

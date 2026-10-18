@@ -8,6 +8,16 @@ struct EventNote { name: String, json: String }
 struct SchemeOut { status: i32, headers_json: *mut c_char, body: *mut c_void, body_len: usize }
 static EVENT_TX: Mutex<Option<tauri::async_runtime::Sender<EventNote>>> = Mutex::new(None);
 static WINDOW_READY: AtomicBool = AtomicBool::new(false);
+#[used]
+static STRONGHOLD_KEEP: (
+    unsafe extern "C" fn(*const c_char, *const u8, usize, *const c_char, *const c_char, *const c_char) -> i32,
+    unsafe extern "C" fn(*const c_char, *const u8, usize, *const c_char, *mut *mut c_char) -> i32,
+    unsafe extern "C" fn(*const c_char, *const u8, usize, *const c_char) -> i32,
+) = (
+    pav_stronghold::pav_stronghold_set,
+    pav_stronghold::pav_stronghold_get,
+    pav_stronghold::pav_stronghold_delete,
+);
 unsafe extern "C" {
     fn pavillion_api_version() -> i32;
     fn pavillion_start(workdir: *const c_char, err: *mut c_char, err_len: usize) -> i32;

@@ -17,6 +17,7 @@ typedef struct FakeSecret {
 } FakeSecret;
 
 static FakeSecret g_secrets[SECRET_CAP];
+static int g_locked;
 static char g_root[64];
 static int g_now_set;
 static int64_t g_now_ms;
@@ -58,15 +59,18 @@ static int fake_secret_get(const char *service, const char *user, char **out) {
     FakeSecret *slot;
 
     if (service == NULL || user == NULL || out == NULL) {
-        return -1;
+        return PAV_SECRET_FAILED;
     }
     *out = NULL;
+    if (g_locked) {
+        return PAV_SECRET_LOCKED;
+    }
     slot = secret_find(service, user, NULL);
     if (slot == NULL) {
-        return -1;
+        return PAV_SECRET_MISSING;
     }
     *out = strdup(slot->value);
-    return *out == NULL ? -1 : 0;
+    return *out == NULL ? PAV_SECRET_FAILED : 0;
 }
 
 static int fake_secret_set(const char *service, const char *user, const char *label, const char *val) {
@@ -78,7 +82,10 @@ static int fake_secret_set(const char *service, const char *user, const char *la
     char *value_copy;
 
     if (service == NULL || user == NULL || label == NULL || val == NULL) {
-        return -1;
+        return PAV_SECRET_FAILED;
+    }
+    if (g_locked) {
+        return PAV_SECRET_LOCKED;
     }
     slot = secret_find(service, user, &free_slot);
     value_copy = strdup(val);
@@ -86,7 +93,7 @@ static int fake_secret_set(const char *service, const char *user, const char *la
     if (value_copy == NULL || label_copy == NULL) {
         free(value_copy);
         free(label_copy);
-        return -1;
+        return PAV_SECRET_FAILED;
     }
     if (slot != NULL) {
         free(slot->label);
@@ -98,7 +105,7 @@ static int fake_secret_set(const char *service, const char *user, const char *la
     if (free_slot < 0) {
         free(label_copy);
         free(value_copy);
-        return -1;
+        return PAV_SECRET_FAILED;
     }
     service_copy = strdup(service);
     user_copy = strdup(user);
@@ -107,7 +114,7 @@ static int fake_secret_set(const char *service, const char *user, const char *la
         free(user_copy);
         free(label_copy);
         free(value_copy);
-        return -1;
+        return PAV_SECRET_FAILED;
     }
     g_secrets[free_slot].service = service_copy;
     g_secrets[free_slot].user = user_copy;
@@ -120,11 +127,14 @@ static int fake_secret_delete(const char *service, const char *user) {
     FakeSecret *slot;
 
     if (service == NULL || user == NULL) {
-        return -1;
+        return PAV_SECRET_FAILED;
+    }
+    if (g_locked) {
+        return PAV_SECRET_LOCKED;
     }
     slot = secret_find(service, user, NULL);
     if (slot == NULL) {
-        return -1;
+        return PAV_SECRET_MISSING;
     }
     secret_clear(slot);
     return 0;
@@ -215,6 +225,11 @@ void pav_platform_fake_reset(void) {
     g_now_set = 0;
     g_now_ms = 0;
     g_abort_write = 0;
+    g_locked = 0;
+}
+
+void pav_platform_fake_set_locked(int locked) {
+    g_locked = locked ? 1 : 0;
 }
 
 void pav_platform_fake_abort_next_write(void) {

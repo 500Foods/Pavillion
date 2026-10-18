@@ -49,7 +49,9 @@ $(LIB): core/CMakeLists.txt core/include/pavillion.h core/include/pav_config.h \
 		core/include/pav_db.h \
 		core/src/activity.c core/include/pav_activity.h \
 		core/platform/platform_internal.h core/platform/posix/posix.c \
-		core/platform/linux/linux.c
+		core/platform/linux/linux.c core/platform/linux/secrets.c \
+		core/platform/stronghold/Cargo.toml core/platform/stronghold/src/lib.rs \
+		core/src/secret.c core/include/pav_secret.h
 	cmake -S core -B $(BUILD_DIR)
 	cmake --build $(BUILD_DIR)
 
@@ -58,7 +60,9 @@ $(TEST_BIN): $(LIB) $(TEST_SRC) $(PLATFORM_TEST_SRC) $(UNITY_DIR)/unity.c $(UNIT
 	$(CC) -std=c11 -Wall -Wextra -Wpedantic -pthread -DUNITY_INCLUDE_DOUBLE \
 		-Icore/include -Icore/src -I$(UNITY_DIR) $(PLATFORM_TEST_INC) $(CFLAGS) \
 		-o $@ $(TEST_SRC) $(UNITY_DIR)/unity.c $(PLATFORM_TEST_SRC) $(LIB) \
-		-ljansson -lsqlite3 $(LDFLAGS)
+		-ljansson -lsqlite3 $(LDFLAGS) \
+		$(shell pkg-config --libs libsecret-1 2>/dev/null) \
+		$(if $(wildcard core/platform/stronghold/target/release/libpav_stronghold.a),core/platform/stronghold/target/release/libpav_stronghold.a -ldl -lm,)
 
 # dev, build, and mini add one to PAVILLION_BUILD before they compile.
 # test does not. The shell and the page read that file.
