@@ -116,6 +116,7 @@ def state_mismatch():
 
 class JMapHandler(BaseHTTPRequestHandler):
     server_version = "PavillionFixture/0.1"
+    protocol_version = "HTTP/1.1"
 
     def log_message(self, format, *args):
         pass
@@ -125,6 +126,7 @@ class JMapHandler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
         if extra_headers:
             for key, value in extra_headers.items():
                 self.send_header(key, value)
@@ -136,6 +138,7 @@ class JMapHandler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 
@@ -157,6 +160,7 @@ class JMapHandler(BaseHTTPRequestHandler):
             "downloadUrl": f"https://{domain}/jmap/download",
             "uploadUrl": f"https://{domain}/jmap/upload",
             "eventSourceUrl": f"https://{domain}/jmap/events",
+            "state": "state-1",
             "primaryAccounts": {
                 "mail": accounts[0]["id"] if accounts else "",
             },
@@ -234,6 +238,8 @@ class JMapHandler(BaseHTTPRequestHandler):
             host = self.headers.get("Host", "localhost")
             self.send_response(302)
             self.send_header("Location", f"https://{host}/jmap/session")
+            self.send_header("Content-Length", "0")
+            self.send_header("Connection", "close")
             self.end_headers()
             return
 
@@ -258,6 +264,7 @@ class JMapHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/octet-stream")
             self.send_header("Content-Length", str(len(data)))
+            self.send_header("Connection", "close")
             self.end_headers()
             self.wfile.write(data)
             return

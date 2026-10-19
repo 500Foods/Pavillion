@@ -377,6 +377,7 @@ export const helpPages = [
           "Accounts live in the active profile as a list of objects. Each has an id, a number (001 and up), a name, a kind (jmap or imap), a session URL (https only), a username, an auth method (basic in v1), a color, sync flags, and fetch_bodies (none, recent, or all). No password is a field.",
           "Secrets live in a Stronghold snapshot under the profile data directory. The operating-system keyring holds only the snapshot password, so unlocking the session opens the snapshot without a second prompt. A locked keyring is a locked account, not a retry loop.",
           "The account commands are account.add (writes the secret to the keyring first, then the profile, then inserts account_state, rolling back on failure), account.list, account.update, account.remove, and account.set_secret. account.remove deletes the keyring entry, the profile entry, and account_state, with an optional purgeLocal cascade. accounts.changed is emitted after any of them. account.test comes with M-2.",
+          "account.test follows the session URL (or builds it from the username's domain via /.well-known/jmap) over HTTPS with curl, honoring a 302/301/307/308 Location redirect. It maps JMAP capability URNs to mail, submission, contacts, calendars, sieve, files, and websocket, and resolves the primary account per capability. The session is fetched on a background net thread per server.",
         ],
       },
       {

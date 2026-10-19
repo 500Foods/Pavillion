@@ -37,6 +37,10 @@ typedef struct {
     size_t *body_len;
 } DlCtx;
 
+typedef struct {
+    json_t *headers;
+} HeaderCtx;
+
 typedef struct NetReqItem {
     PavReq *req;
     int retry_count;
@@ -46,10 +50,60 @@ typedef struct NetReqItem {
     FILE *up_file;
     FILE *dl_file;
     DlCtx dlctx;
+    HeaderCtx hctx;
     struct curl_slist *chunks;
     int in_flight;
     struct NetReqItem *next;
 } NetReqItem;
+
+static size_t header_callback(char *buffer, size_t size, size_t nitems,
+                              void *userdata) {
+    size_t len = size * nitems;
+    HeaderCtx *hctx = (HeaderCtx *)userdata;
+
+    if (len > 0 && buffer[len - 1] == '\n') {
+        len--;
+        if (len > 0 && buffer[len - 1] == '\r') {
+            len--;
+        }
+    }
+    if (len > 0) {
+        char *colon = memchr(buffer, ':', len);
+        if (colon != NULL && hctx->headers != NULL &&
+            json_is_object(hctx->headers)) {
+            size_t key_len = (size_t)(colon - buffer);
+            char key[256];
+            char *val = colon + 1;
+            size_t val_len = len - key_len - 1;
+
+            if (key_len > 0 && key_len < sizeof(key)) {
+                memcpy(key, buffer, key_len);
+                key[key_len] = '\0';
+                char *val_copy = NULL;
+                while (val_len > 0 && *val == ' ') {
+                    val++;
+                    val_len--;
+                }
+                while (val_len > 0 && (val[val_len - 1] == ' ' ||
+                                       val[val_len - 1] == '\t')) {
+                    val_len--;
+                }
+                if (val_len > 0) {
+                    val_copy = malloc(val_len + 1);
+                    if (val_copy != NULL) {
+                        memcpy(val_copy, val, val_len);
+                        val_copy[val_len] = '\0';
+                    }
+                }
+                if (val_copy != NULL) {
+                    json_object_set_new(hctx->headers, key, json_string(val_copy));
+                    free(val_copy);
+                }
+            }
+        }
+    }
+    return size * nitems;
+}
 
 typedef struct NetAccountEntry {
     char id[128];
@@ -296,6 +350,8 @@ static int setup_request(PavNetServer *s, NetReqItem *item) {
     curl_easy_setopt(eh, CURLOPT_XFERINFOFUNCTION, xfer_info_callback);
     curl_easy_setopt(eh, CURLOPT_XFERINFODATA, req);
     curl_easy_setopt(eh, CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(eh, CURLOPT_HEADERFUNCTION, header_callback);
+    curl_easy_setopt(eh, CURLOPT_HEADERDATA, &item->hctx);
 
     if (req->ca_file && req->ca_file[0] != '\0') {
         curl_easy_setopt(eh, CURLOPT_CAINFO, req->ca_file);
@@ -358,6 +414,7 @@ static int setup_request(PavNetServer *s, NetReqItem *item) {
     if (req->resp_headers == NULL) {
         req->resp_headers = json_object();
     }
+    item->hctx.headers = req->resp_headers;
 
     item->eh = eh;
     item->up_file = up_file;
@@ -516,6 +573,27 @@ static void *server_thread_main(void *arg) {
             pthread_cond_wait(&s->cv, &s->mu);
             pthread_mutex_unlock(&s->mu);
             continue;
+        }
+
+        if (s->stop) {
+            NetReqItem *it = s->q_head;
+            while (it) {
+                NetReqItem *next = it->next;
+                it->in_flight = 0;
+                if (it->req->on_done) {
+                    it->req->status_code = 0;
+                    it->req->on_done(it->req, it->req->user);
+                }
+                release_item_resources(it);
+                free(it);
+                it = next;
+            }
+            s->q_head = NULL;
+            s->q_tail = NULL;
+            s->q_count = 0;
+            s->in_flight = 0;
+            pthread_mutex_unlock(&s->mu);
+            break;
         }
 
         while (s->q_count > 0 && s->in_flight < PAV_NET_PER_SERVER_CAP) {

@@ -1,14 +1,17 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "pav_activity.h"
+#include "dispatch.h"
 #include "pav_net.h"
+#include "pav_jmap.h"
 #include "pav_auth.h"
-#include "pav_config.h"
-#include "pav_cfg.h"
-#include "pav_db.h"
+#include "account.h"
 #include "pav_platform.h"
 #include "pav_secret.h"
 #include "pav_store.h"
+#include "pav_cfg.h"
+#include "pav_config.h"
+#include "pav_db.h"
 #include "pavillion.h"
 #include "logring.h"
 #include "unity.h"
@@ -5216,6 +5219,280 @@ void test_fixture_server_session(void) {
                                  "session must advertise mail capability");
 }
 
+static int net_get_once(const char *url, const char *ca, int expect_status,
+                        char **body_out, int timeout_sec) {
+    PavNetServer *s;
+    PavReq req;
+    NetDone done;
+    int ok;
+
+    if (pav_net_start() != 0) return -1;
+    s = pav_net_server_for(url);
+    if (s == NULL) {
+        pav_net_stop();
+        return -1;
+    }
+    net_done_init(&done);
+    memset(&req, 0, sizeof(req));
+    req.method = "GET";
+    req.url = url;
+    req.ca_file = ca;
+    req.on_done = net_done_cb;
+    req.user = &done;
+    if (pav_net_request(&req) != 0) {
+        pav_net_stop();
+        return -1;
+    }
+    ok = net_wait_done(&done, timeout_sec);
+    if (!ok) {
+        pav_net_stop();
+        return -1;
+    }
+    if (done.status_code != expect_status) {
+        if (done.body_len > 0) pav_net_free(req.body_out);
+        pav_net_stop();
+        return -2;
+    }
+    if (body_out != NULL && req.body_out != NULL) {
+        *body_out = strdup(req.body_out);
+    }
+    if (req.body_out) pav_net_free(req.body_out);
+    pav_net_stop();
+    return 0;
+}
+
+void test_session_parse_stalwart(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char session_url[512];
+    char *body = NULL;
+    PavJmapSession sess;
+    char err[512];
+    int rc;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+
+    snprintf(session_url, sizeof(session_url), "%s/jmap/session", url);
+    rc = net_get_once(session_url, ca, 200, &body, 5);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, rc, "fixture session GET must succeed 200");
+    TEST_ASSERT_NOT_NULL(body);
+
+    memset(&sess, 0, sizeof(sess));
+    rc = pav_jmap_parse_session(body, strlen(body), &sess, err, sizeof(err));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, rc, "pav_jmap_parse_session must succeed");
+    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(sess.api_url, "/jmap/api"), "apiUrl must be parsed");
+    TEST_ASSERT_TRUE_MESSAGE(sess.has_mail, "session must have mail capability");
+    TEST_ASSERT_TRUE_MESSAGE(sess.has_submission, "session must have submission capability");
+    TEST_ASSERT_TRUE_MESSAGE(sess.has_contacts, "session must have contacts capability");
+    TEST_ASSERT_TRUE_MESSAGE(sess.has_calendars, "session must have calendars capability");
+    TEST_ASSERT_TRUE_MESSAGE(sess.has_sieve == 0, "fixture must not advertise sieve");
+    TEST_ASSERT_TRUE_MESSAGE(sess.has_files == 0, "fixture must not advertise files");
+    TEST_ASSERT_TRUE_MESSAGE(sess.has_websocket == 0, "fixture must not advertise websocket");
+    TEST_ASSERT_NOT_NULL_MESSAGE(sess.accounts, "session must have accounts array");
+    TEST_ASSERT_TRUE_MESSAGE(json_array_size(sess.accounts) > 0, "accounts array must be non-empty");
+    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(sess.session_state, "state-1"), "sessionState must be parsed");
+    pav_jmap_session_free(&sess);
+    free(body);
+}
+
+void test_session_redirect_wellknown(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char wellknown_url[512];
+    json_t *args;
+    json_t *data = NULL;
+    PavError err;
+    int rc;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+
+    snprintf(wellknown_url, sizeof(wellknown_url), "%s/.well-known/jmap", url);
+
+    args = json_object();
+    TEST_ASSERT_NOT_NULL(args);
+    json_object_set_new(args, "sessionUrl", json_string(wellknown_url));
+    json_object_set_new(args, "username", json_string("andrew@test-a.local"));
+    json_object_set_new(args, "auth", json_string("basic"));
+    json_object_set_new(args, "secret", json_string("testpassword"));
+    json_object_set_new(args, "caFile", json_string(ca));
+
+    memset(&err, 0, sizeof(err));
+    rc = pav_account_test(args, &data, &err);
+    json_decref(args);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, rc, "account.test must follow .well-known redirect");
+    TEST_ASSERT_NOT_NULL(data);
+    if (data != NULL) {
+        TEST_ASSERT_TRUE_MESSAGE(json_is_true(json_object_get(data, "ok")),
+                                 "ok must be true after following redirect");
+        TEST_ASSERT_TRUE_MESSAGE(json_is_true(json_object_get(data, "has_mail")),
+                                 "has_mail must be true after redirect");
+    }
+    json_decref(data);
+}
+
+void test_account_test_reports_caps(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    json_t *args;
+    json_t *data = NULL;
+    PavError err;
+    int rc;
+    char *text;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+
+    {
+        char session_url[512];
+        snprintf(session_url, sizeof(session_url), "%s/jmap/session", url);
+        args = json_object();
+        TEST_ASSERT_NOT_NULL(args);
+        json_object_set_new(args, "sessionUrl", json_string(session_url));
+        json_object_set_new(args, "username", json_string("andrew@test-a.local"));
+        json_object_set_new(args, "auth", json_string("basic"));
+        json_object_set_new(args, "secret", json_string("testpassword"));
+        json_object_set_new(args, "caFile", json_string(ca));
+    }
+    memset(&err, 0, sizeof(err));
+    rc = pav_account_test(args, &data, &err);
+    json_decref(args);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, rc, "account.test must succeed against fixture");
+    TEST_ASSERT_NOT_NULL(data);
+    if (data != NULL) {
+        TEST_ASSERT_TRUE_MESSAGE(json_is_true(json_object_get(data, "ok")),
+                                 "ok must be true");
+        {
+            json_t *caps = json_object_get(data, "capabilities");
+            TEST_ASSERT_TRUE_MESSAGE(caps != NULL && json_is_array(caps),
+                                     "capabilities must be an array");
+            if (caps != NULL) {
+                size_t n = json_array_size(caps);
+                size_t i;
+                int has_mail = 0, has_submission = 0, has_contacts = 0,
+                    has_calendars = 0, has_tasks = 0, has_github = 0;
+                for (i = 0; i < n; i++) {
+                    const char *c = json_string_value(json_array_get(caps, i));
+                    if (c != NULL) {
+                        if (strcmp(c, "mail") == 0) has_mail = 1;
+                        else if (strcmp(c, "submission") == 0) has_submission = 1;
+                        else if (strcmp(c, "contacts") == 0) has_contacts = 1;
+                        else if (strcmp(c, "calendars") == 0) has_calendars = 1;
+                        else if (strcmp(c, "tasks") == 0) has_tasks = 1;
+                        else if (strcmp(c, "github") == 0) has_github = 1;
+                    }
+                }
+                TEST_ASSERT_TRUE_MESSAGE(has_mail, "capabilities must include mail");
+                TEST_ASSERT_TRUE_MESSAGE(has_submission, "capabilities must include submission");
+                TEST_ASSERT_TRUE_MESSAGE(has_contacts, "capabilities must include contacts");
+                TEST_ASSERT_TRUE_MESSAGE(has_calendars, "capabilities must include calendars");
+                TEST_ASSERT_FALSE_MESSAGE(has_tasks, "capabilities must NOT include tasks");
+                TEST_ASSERT_FALSE_MESSAGE(has_github, "capabilities must NOT include github");
+            }
+        }
+        text = json_dumps(data, JSON_COMPACT);
+        TEST_ASSERT_NOT_NULL(text);
+        TEST_ASSERT_NULL_MESSAGE(strstr(text, "VTODO"), "capabilities must NOT include VTODO");
+        free(text);
+    }
+    json_decref(data);
+}
+
+void test_account_test_bad_password(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char auth_url[512];
+    json_t *args;
+    json_t *data = NULL;
+    PavError err;
+    int rc;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+
+    snprintf(auth_url, sizeof(auth_url), "%s/jmap/session?error=401", url);
+    args = json_object();
+    TEST_ASSERT_NOT_NULL(args);
+    json_object_set_new(args, "sessionUrl", json_string(auth_url));
+    json_object_set_new(args, "username", json_string("andrew@test-a.local"));
+    json_object_set_new(args, "auth", json_string("basic"));
+    json_object_set_new(args, "secret", json_string("wrongpassword"));
+    json_object_set_new(args, "caFile", json_string(ca));
+
+    memset(&err, 0, sizeof(err));
+    rc = pav_account_test(args, &data, &err);
+    json_decref(args);
+    TEST_ASSERT_NOT_EQUAL_INT_MESSAGE(0, rc, "bad password must fail");
+    TEST_ASSERT_EQUAL_STRING_MESSAGE("auth", err.code, "error must be auth code");
+    TEST_ASSERT_EQUAL_STRING_MESSAGE("credentials rejected", err.message, "error must say credentials rejected");
+    json_decref(data);
+}
+
+void test_account_test_bad_args(void) {
+    json_t *args;
+    json_t *data = NULL;
+    PavError err;
+    int rc;
+
+    memset(&err, 0, sizeof(err));
+
+    args = json_object();
+    TEST_ASSERT_NOT_NULL(args);
+    rc = pav_account_test(args, &data, &err);
+    TEST_ASSERT_NOT_EQUAL_INT(0, rc);
+    TEST_ASSERT_EQUAL_STRING("bad_args", err.code);
+    pavillion_free(NULL);
+    json_decref(args);
+
+    args = json_object();
+    json_object_set_new(args, "sessionUrl", json_string("http://insecure.example/.well-known/jmap"));
+    json_object_set_new(args, "username", json_string("user"));
+    json_object_set_new(args, "secret", json_string("pass"));
+    memset(&err, 0, sizeof(err));
+    rc = pav_account_test(args, &data, &err);
+    TEST_ASSERT_NOT_EQUAL_INT(0, rc);
+    TEST_ASSERT_EQUAL_STRING("bad_args", err.code);
+    json_decref(args);
+}
+
+void test_remote_accounts_from_session(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char session_url[512];
+    char *body = NULL;
+    PavJmapSession sess;
+    char err[512];
+    int rc;
+    size_t i;
+    size_t n;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+
+    snprintf(session_url, sizeof(session_url), "%s/jmap/session", url);
+    rc = net_get_once(session_url, ca, 200, &body, 5);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, rc, "fixture session GET must succeed");
+    TEST_ASSERT_NOT_NULL(body);
+
+    memset(&sess, 0, sizeof(sess));
+    rc = pav_jmap_parse_session(body, strlen(body), &sess, err, sizeof(err));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, rc, "parse session for remote accounts");
+
+    TEST_ASSERT_NOT_NULL(sess.accounts);
+    n = json_array_size(sess.accounts);
+    TEST_ASSERT_TRUE_MESSAGE(n >= 1, "fixture must expose at least 1 remote account");
+    for (i = 0; i < n; i++) {
+        json_t *acct = json_array_get(sess.accounts, i);
+        const char *id = json_string_value(json_object_get(acct, "id"));
+        TEST_ASSERT_NOT_NULL(id);
+        TEST_ASSERT_TRUE_MESSAGE(id[0] != '\0', "remote account id must be non-empty");
+    }
+
+    pav_jmap_session_free(&sess);
+    free(body);
+}
+
 int main(void) {
     pav_platform_install(pav_platform_fake());
     UNITY_BEGIN();
@@ -5333,5 +5610,11 @@ int main(void) {
     RUN_TEST(test_net_401_not_retried);
     RUN_TEST(test_net_release_account_exits_thread);
     RUN_TEST(test_net_overall_cap);
+    RUN_TEST(test_session_parse_stalwart);
+    RUN_TEST(test_session_redirect_wellknown);
+    RUN_TEST(test_account_test_reports_caps);
+    RUN_TEST(test_account_test_bad_password);
+    RUN_TEST(test_account_test_bad_args);
+    RUN_TEST(test_remote_accounts_from_session);
     return UNITY_END();
 }

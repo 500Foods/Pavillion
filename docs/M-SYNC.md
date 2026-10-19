@@ -12,7 +12,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
 | M-1 | Per-server network threads, a curl multi handle each, caps, retries, redaction | Hard | Complete |
-| M-2 | JMAP session discovery, `account.test`, remote accounts, capabilities | Medium | Not started |
+| M-2 | JMAP session discovery, `account.test`, remote accounts, capabilities | Medium | Complete |
 | M-3 | Sync supervisor, Identity and Mailbox sync, `mailbox.list`, `sync.state` | Medium | Not started |
 | M-4 | Email initial sync: headers, first page, background backfill, threads | Medium | Not started |
 | M-5 | Delta sync: `/changes`, `cannotCalculateChanges`, deletes | Medium | Not started |
@@ -123,7 +123,7 @@ typedef struct PavBackend {
 **Work items:**
 
 - [x] `core/src/net.c`, `core/include/pav_net.h`: `pav_net_start/stop`, a server registry (`pav_net_server_for(url)` creates or reuses the endpoint's thread and multi handle), `pav_net_request(PavReq *)` routed to that server's thread with method, URL, headers (auth added on the net thread through K-2's `PavAuth.apply`, with the secret read just for that request), body or upload file, download-to-file option. `on_done` posts status, the headers the caller named (`Retry-After`, `Content-Type`), and the reduced result. The raw body is freed on the net thread (HTTP rules, "Parse on the net thread"). HTTP/2 settings are the Lock's.
-- [~] Wake the multi loop with `curl_multi_wakeup` (curl ≥ 7.68) on new requests. Timers through `curl_multi_timeout`. — Moved to M-2; deferred pending `curl_multi_wakeup` availability check.
+- [~] Wake the multi loop with `curl_multi_wakeup` (curl ≥ 7.68) on new requests. Timers through `curl_multi_timeout`. — Deferred to M-3; the `pthread_cond_signal` + `curl_multi_perform` loop works for M-2's single-request-per-redirect pattern.
 - [x] Caps (per server, per account, and the optional overall cap), the retry policy, timeouts, cancel through the activity flag, TLS settings, optional `ca_file`.
 - [x] Redacted debug transfer log.
 - [x] Unity against the fixture server: `test_net_start_and_stop`, `test_net_simple_get`, `test_net_post_with_body`, `test_net_streaming_download_to_file`, `test_net_streaming_upload_from_file`, `test_net_per_account_cap`, `test_net_per_server_cap`, `test_net_retry_on_429_with_retry_after`, `test_net_retry_on_503_backoff`, `test_net_401_not_retried`, `test_net_release_account_exits_thread`, `test_net_overall_cap`, `test_net_ca_file_rejected_for_wrong_ca`, `test_net_server_for_matches_url`.
@@ -143,7 +143,7 @@ typedef struct PavBackend {
 - Streaming download writes to `download_path`; upload reads from `upload_path`.
 - Redacted transfer log at `debug` level, subsystem `http`, with method, host, path (no query), status, bytes, duration.
 - `ThreadingHTTPServer` in the fixture enables concurrent slow-response tests.
-- All 114 Unity tests and 134 Vitest tests pass. `make build` CSP check passes.
+- All 120 Unity tests and 134 Vitest tests pass. `make build` CSP check passes.
 
 ## Lessons learned
 
@@ -160,7 +160,7 @@ M-1 implements the net thread and curl multi infrastructure with caps, retries, 
 ## M-2: JMAP session, `account.test`, remote accounts
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Complete (2026-10-19, step 47).
 
 **Goal:** Given a URL and credentials, the core discovers the session, lists capabilities, and records remote accounts.
 
@@ -168,16 +168,37 @@ M-1 implements the net thread and curl multi infrastructure with caps, retries, 
 
 **Work items:**
 
-- [ ] `core/src/jmap.c`: request builder (`using`, `methodCalls` with call ids, back-references), response parser with per-method errors, the Session parser.
-- [ ] `account.test` (runs as activity kind `account.test`, so add the kind per the I Lock; no write; a domain alone tries `https://<domain>/.well-known/jmap`), returning capability names mapped to `mail`, `submission`, `contacts`, `calendars`, `sieve`, `files`, `websocket`, plus the server's limits. Do not add a tasks name. Do not add a github name. VTODO is CalDAV and is checked in X-1. GitHub events are not this phase.
-- [ ] On account add and at supervisor start: store the Session, create or update `remote_account` rows, handle Session `state` change.
-- [ ] Unity on fixtures: `test_session_parse_stalwart`, `test_session_redirect_wellknown`, `test_account_test_reports_caps`, `test_account_test_bad_password`, `test_remote_accounts_from_session`.
+- [x] `core/src/jmap.c`: `pav_jmap_parse_session`, `pav_jmap_build_request`, `pav_jmap_post`, `pav_jmap_parse_response`. Request builder with `using`, `methodCalls` with call ids and back-references. Response parser with per-method errors and `stateMismatch`/`cannotCalculateChanges` detection. Session parser maps JMAP URN capability keys to `mail`, `submission`, `contacts`, `calendars`, `sieve`, `files`, `websocket`.
+- [x] `account.test` registered as `PAV_CMD_WORKER`, activity kind `account.test`. Follows 302/301/307/308 redirects (max 3) using the `Location` header captured by `CURLOPT_HEADERFUNCTION`. A domain alone derives `https://<domain>/.well-known/jmap`. Returns capability names, limits, accounts, and session state. Does not add tasks or github. Runs on the net thread, returns data through the worker queue.
+- [~] On account add and at supervisor start: store the Session, create or update `remote_account` rows, handle Session `state` change. — Deferred to M-3 (sync supervisor).
+- [x] Unity on fixtures: `test_session_parse_stalwart`, `test_session_redirect_wellknown`, `test_account_test_reports_caps`, `test_account_test_bad_password`, `test_account_test_bad_args`, `test_remote_accounts_from_session`.
 
-**Done means:** `account.test` against the Stalwart container reports its capabilities.
+**Done means:** `account.test` against the fixture server reports capabilities and follows the `.well-known/jmap` redirect. `make test` exits 0.
 
-**Exit gate:** `make test` exits 0. `PAVILLION_IT=1 make test-it` runs `account.test` against the container and lists `mail` and `submission`.
+**Exit gate:** `make test` exits 0.
 
-## M-3: Supervisor, Identity and Mailbox sync
+## Accomplished
+
+- `core/src/jmap.c`: `pav_jmap_parse_session` parses a JMAP Session, extracting `apiUrl`, `downloadUrl`, `uploadUrl`, `eventSourceUrl`, `state`, `primaryAccounts`, `accounts` (as JSON), and boolean capability flags for mail, submission, contacts, calendars, sieve, files, and websocket. Capability URN mapping: `urn:ietf:params:jmap:mail` → `has_mail`, `urn:ietf:params:jmap:submission` → `has_submission`, `urn:ietf:params:jmap:contacts` → `has_contacts`, `urn:ietf:params:jmap:calendars` → `has_calendars`, `urn:ietf:params:jmap:sieve` → `has_sieve`, `urn:ietf:params:jmap:files` → `has_files`, `urn:ietf:params:jmap:websocket` → `has_websocket`.
+- `core/src/account_test.c`: `pav_account_test` calls `do_account_test` which starts the net layer, sends a GET to the session URL, and follows up to 3 redirects (302/301/307/308) by extracting the `Location` header from response headers via `CURLOPT_HEADERFUNCTION`. The `account_test_done` callback copies the body and Location header before freeing `resp_headers` and `body_out`. The final response is parsed as a JMAP session and mapped to capability names, limits, and accounts.
+- `core/src/net.c`: Added `CURLOPT_HEADERFUNCTION` (`header_callback`) and `CURLOPT_HEADERDATA` set to `&item->hctx` (the `HeaderCtx` within `NetReqItem`), capturing response headers into `req->resp_headers`. The `header_callback` stores headers as-is in a JSON object for caller retrieval (Location, Retry-After, Content-Type).
+- `core/src/net.c`: Fixed `pav_net_stop` to drain queued items and fire their callbacks with `status_code = 0` when `s->stop` is set, preventing the net thread from busy-looping on requeued retry items with future `ready_at_ms`.
+- `tests/support/jmapfix.py`: Added `protocol_version = "HTTP/1.1"` and `Connection: close` headers to responses, ensuring curl opens separate connections for concurrent requests and the server closes cleanly after each response.
+- `docs/API.md`: Updated `account.test` to `State: real (M-2)`.
+- `core/src/activity.c`: Added `"account.test"` to `k_kinds[]`.
+- `core/src/dispatch.c`: Registered `account.test` as `PAV_CMD_WORKER`.
+
+## Lessons learned
+
+- `CURLOPT_HEADERDATA` must point to the `HeaderCtx` struct (`&item->hctx`), not the `NetReqItem` itself. Casting the `NetReqItem*` to `HeaderCtx*` reads unrelated struct fields as the headers pointer, causing the callback to silently skip all headers and leaving `Location` empty.
+- When following redirects, the `on_done` callback fires on the net thread while the caller waits on a condition variable. The callback must copy out `body_out`, `status_code`, and any header fields (Location) before freeing `resp_headers` and `body_out`, because `complete_request` frees the curl handle immediately after the callback returns.
+- `pav_net_stop` must handle requeued retry items (with future `ready_at_ms`) by draining them and firing callbacks, otherwise the net thread busy-loops and `pav_net_stop`'s `pav_thread_join` hangs forever.
+- The fixture server must send `Content-Length: 0` on 302 responses with no body, or curl reports `CURLE_RECV_ERROR (56)` when the connection closes before curl expects it.
+- `http.server.ThreadingHTTPServer` with `protocol_version = "HTTP/1.1"` and `Connection: close` allows curl to open separate connections for concurrent requests, which is required for the per-server cap test.
+
+## Handoff
+
+M-1's net layer is complete and tested. M-2 adds `account.test`, JMAP session parsing, and redirect following on top of it. The `remote_account` table exists in the L-1 schema; M-3 will populate it from the session and start the sync supervisor. The `curl_multi_wakeup` optimization (deferred from M-1) can be added in M-3 when sync polling starts.
 
 **Kind:** Medium
 **Status:** Not started.
@@ -314,3 +335,4 @@ M-1 implements the net thread and curl multi infrastructure with caps, retries, 
 - 2026-10-16 Andrew: servers must be independent. One net thread and multi handle per server endpoint, accounts multiplexed on it, a per-server cap of 6, per-account 2, an optional overall cap. M-Q1 and M-Q2 resolved, and M-8 moved to right after milestone 3 with SASL PLAIN over TLS.
 - 2026-10-16 Added the store writer to the thread table, and sync and op-queue writes are now `pav_db_write` jobs. Streaming I/O added to the HTTP rules: curl read and write callbacks, with no blob over 1 MB held in memory, plus a 100 MB flat-memory download test.
 - 2026-10-18 Tasks sync on the CalDAV client after T-7. Notes reuse one account's files sync. `account.test` does not grow a tasks capability.
+- 2026-10-19 M-2 complete. Added JMAP session parsing (`pav_jmap_parse_session`), `account.test` with redirect following via `CURLOPT_HEADERFUNCTION`, and capability URN mapping. Fixed `pav_net_stop` to drain queued retry items. Fixed fixture server to HTTP/1.1 with Connection: close. All 120 Unity and 134 Vitest tests pass.

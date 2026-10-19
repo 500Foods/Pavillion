@@ -87,7 +87,7 @@ Errors: `bad_args`, `not_found`, `failed` (keyring).
 
 ### account.test
 
-State: planned (M-2)
+State: real (M-2)
 
 `{sessionUrl, username, auth, secret}` returns `{ok, capabilities[], error?}`. It does not write the profile.
 

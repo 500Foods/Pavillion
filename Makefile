@@ -54,7 +54,9 @@ $(LIB): core/CMakeLists.txt core/include/pavillion.h core/include/pav_config.h \
 		core/src/secret.c core/include/pav_secret.h \
 		core/src/auth_basic.c core/include/pav_auth.h \
 		core/src/account.c core/include/account.h \
-		core/src/net.c core/include/pav_net.h
+		core/src/net.c core/include/pav_net.h \
+	core/src/jmap.c core/include/pav_jmap.h \
+	core/src/account_test.c
 	cmake -S core -B $(BUILD_DIR)
 	cmake --build $(BUILD_DIR)
 

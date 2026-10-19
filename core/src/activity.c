@@ -32,6 +32,7 @@
 #define ST_CANCELLED 4
 
 static const char *const k_kinds[] = {
+    "account.test",
     "attachment.download",
     "body.fetch",
     "export",

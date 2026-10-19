@@ -53,6 +53,7 @@ static const PavCommand k_commands[] = {
     {"account.list", pav_account_list, 0},
     {"account.remove", pav_account_remove, 0},
     {"account.set_secret", pav_account_set_secret, 0},
+    {"account.test", pav_account_test, PAV_CMD_WORKER},
     {"account.update", pav_account_update, 0},
     {"activity.cancel", pav_activity_cmd_cancel, 0},
     {"activity.dismiss", pav_activity_cmd_dismiss, 0},

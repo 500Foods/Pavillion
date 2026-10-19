@@ -41,8 +41,10 @@ add_library(pavillion_core STATIC
     src/secret.c
     src/auth_basic.c
     src/account.c
-    src/net.c
-    platform/posix/posix.c)
+     src/net.c
+     src/jmap.c
+     src/account_test.c
+     platform/posix/posix.c)
 target_include_directories(pavillion_core PUBLIC include)
 target_include_directories(pavillion_core PRIVATE platform src ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_options(pavillion_core PRIVATE -Wall -Wextra -Wpedantic)
