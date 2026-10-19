@@ -123,6 +123,7 @@ test: PAVILLION_BUILD $(TEST_BIN)
 # Skipped until M-2 (account.test) exists; for now it only checks the
 # container is reachable.
 it-up:
+	bash tests/support/testca.sh build/stalwart-tls
 	docker compose -f tests/stalwart/compose.yaml up -d
 
 it-seed: it-up

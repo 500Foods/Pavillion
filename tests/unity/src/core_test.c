@@ -4572,6 +4572,53 @@ void test_account_update_patch(void) {
     pavillion_stop();
 }
 
+void test_account_ca_file_round_trip(void) {
+    json_t *root = NULL;
+    json_t *data;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_platform_fake_set_locked(0);
+
+    root = call_reply("account.add",
+        "{\"kind\":\"jmap\",\"sessionUrl\":\"https://example.com/jmap\","
+        "\"username\":\"alice\",\"secret\":\"pw\",\"id\":\"ca\",\"caFile\":7}");
+    assert_call_error(root, "bad_args", "caFile");
+    json_decref(root);
+    root = call_reply("account.add",
+        "{\"kind\":\"jmap\",\"sessionUrl\":\"https://example.com/jmap\","
+        "\"username\":\"alice\",\"secret\":\"pw\",\"id\":\"ca\",\"caFile\":\"rel/ca.crt\"}");
+    assert_call_error(root, "bad_args", "caFile");
+    json_decref(root);
+
+    root = call_reply("account.add",
+        "{\"kind\":\"jmap\",\"sessionUrl\":\"https://example.com/jmap\","
+        "\"username\":\"alice\",\"secret\":\"pw\",\"id\":\"ca\",\"caFile\":\"/tmp/a.crt\"}");
+    assert_ok(root);
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_STRING("/tmp/a.crt", json_string_value(json_object_get(data, "caFile")));
+    json_decref(root);
+
+    root = call_reply("account.update", "{\"id\":\"ca\",\"patch\":{\"caFile\":false}}");
+    assert_call_error(root, "bad_args", "caFile");
+    json_decref(root);
+
+    root = call_reply("account.update", "{\"id\":\"ca\",\"patch\":{\"caFile\":\"/tmp/b.crt\"}}");
+    assert_ok(root);
+    json_decref(root);
+    root = call_reply("account.list", "{}");
+    assert_ok(root);
+    data = json_array_get(json_object_get(json_object_get(root, "data"), "accounts"), 0);
+    TEST_ASSERT_EQUAL_STRING("/tmp/b.crt", json_string_value(json_object_get(data, "caFile")));
+    json_decref(root);
+
+    root = call_reply("account.update", "{\"id\":\"ca\",\"patch\":{\"caFile\":\"\"}}");
+    assert_ok(root);
+    TEST_ASSERT_NULL(json_object_get(json_object_get(root, "data"), "caFile"));
+    json_decref(root);
+    pavillion_stop();
+}
+
 void test_account_set_secret(void) {
     char *secret = NULL;
     json_t *root;
@@ -5594,6 +5641,7 @@ int main(void) {
     RUN_TEST(test_account_remove_purges);
     RUN_TEST(test_account_remove_not_found);
     RUN_TEST(test_account_update_patch);
+    RUN_TEST(test_account_ca_file_round_trip);
     RUN_TEST(test_account_set_secret);
     RUN_TEST(test_fixture_server_session);
     RUN_TEST(test_net_start_and_stop);

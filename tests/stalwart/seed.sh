@@ -7,7 +7,8 @@
 # mailboxes and messages from tests/corpus/ is still to come.
 #
 # Environment (defaults): PAV_STALWART_HOST (localhost), PAV_STALWART_PORT
-# (1443), PAV_STALWART_USER (andrew@test-a.local), PAV_STALWART_PASS (test).
+# (1443), PAV_STALWART_USER (andrew@test-a.local), PAV_STALWART_PASS (test),
+# PAV_STALWART_CA (build/stalwart-tls/test-ca.crt).
 # Needs curl and jq.
 set -euo pipefail
 
@@ -16,6 +17,8 @@ port=${PAV_STALWART_PORT:-1443}
 user=${PAV_STALWART_USER:-andrew@test-a.local}
 pass=${PAV_STALWART_PASS:-test}
 base_url="https://$host:$port"
+ca=${PAV_STALWART_CA:-$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)/build/stalwart-tls/test-ca.crt}
+[ -f "$ca" ] || { echo "seed: $ca is missing; run make it-up" >&2; exit 1; }
 
 for tool in curl jq; do
   command -v "$tool" >/dev/null 2>&1 || { echo "seed: $tool is required" >&2; exit 1; }
@@ -24,9 +27,10 @@ done
 body=$(mktemp)
 trap 'rm -f "$body"' EXIT
 
-# -k: the container uses a self-signed certificate. The password goes to curl
+# The container serves the self-signed test CA that `make it-up` writes to
+# build/stalwart-tls/ (PAV_STALWART_CA overrides). The password goes to curl
 # on stdin as a config line so it never shows in the process list.
-status=$(printf 'user = "%s:%s"\n' "$user" "$pass" | curl -sS -k --max-time 10 \
+status=$(printf 'user = "%s:%s"\n' "$user" "$pass" | curl -sS --cacert "$ca" --max-time 10 \
   --config - \
   -X POST -H 'Content-Type: application/json' \
   --data '{"methodCalls": [["Capability/get", {}, "0"]]}' \

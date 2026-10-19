@@ -10,7 +10,7 @@ services:
       - "1465:465"
     volumes:
       - ./config.toml:/etc/stalwart/config.toml:ro
-      - ./secrets:/etc/stalwart/secrets:ro
+      - ../../build/stalwart-tls:/etc/stalwart/tls:ro
       - ./data:/var/lib/stalwart/data
     environment:
       - STALWART_CONFIG_PATH=/etc/stalwart/config.toml

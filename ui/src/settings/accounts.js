@@ -16,6 +16,7 @@ export function createAccountsView(api, root) {
     syncCalendars: true,
     fetchBodies: "recent",
     enabled: true,
+    caFile: "",
   };
 
   function textContent(el, text) {
@@ -37,6 +38,7 @@ export function createAccountsView(api, root) {
     formState.syncCalendars = true;
     formState.fetchBodies = "recent";
     formState.enabled = true;
+    formState.caFile = "";
     selectedId = null;
     testResult = { ok: false, capabilities: [], error: "" };
   }
@@ -140,6 +142,10 @@ export function createAccountsView(api, root) {
     if (usernameInput) {
       usernameInput.value = formValue("username") || "";
     }
+    const caFileInput = formEl.querySelector("#account-ca-file-input");
+    if (caFileInput) {
+      caFileInput.value = formValue("caFile") || "";
+    }
     const colorInput = formEl.querySelector("#account-color-input");
     if (colorInput) {
       colorInput.value = formValue("color") || "#2a7";
@@ -195,6 +201,7 @@ export function createAccountsView(api, root) {
     const colorInput = root.querySelector("#account-color-input");
     const secretInput = root.querySelector("#account-secret-input");
     const kindSelect = root.querySelector("#account-kind");
+    const caFileInput = root.querySelector("#account-ca-file-input");
     if (nameInput) {
       formState.name = nameInput.value;
     }
@@ -209,6 +216,9 @@ export function createAccountsView(api, root) {
     }
     if (kindSelect) {
       formState.kind = kindSelect.value;
+    }
+    if (caFileInput) {
+      formState.caFile = caFileInput.value.trim();
     }
     if (secretInput) {
       formState.secret = secretInput.value;
@@ -228,6 +238,7 @@ export function createAccountsView(api, root) {
       formState.syncCalendars = selected.syncCalendars !== false;
       formState.fetchBodies = selected.fetchBodies || "recent";
       formState.enabled = selected.enabled !== false;
+      formState.caFile = selected.caFile || "";
     }
   }
 
@@ -293,7 +304,11 @@ export function createAccountsView(api, root) {
     addBtn.addEventListener("click", async () => {
         updateFormState();
         try {
-          await api.account.add(formState);
+          const body = { ...formState };
+          if (!body.caFile) {
+            delete body.caFile;
+          }
+          await api.account.add(body);
           clearForm();
           clearSecretField();
           await refresh();
@@ -324,6 +339,7 @@ export function createAccountsView(api, root) {
           syncCalendars: formState.syncCalendars,
           fetchBodies: formState.fetchBodies,
           enabled: formState.enabled,
+          caFile: formState.caFile,
         });
         await refresh();
         clearSecretField();
@@ -381,6 +397,7 @@ export function createAccountsView(api, root) {
         username,
         auth: formState.auth,
         secret,
+        ...(formState.caFile ? { caFile: formState.caFile } : {}),
       });
       testResult = { ok: true, capabilities: result.capabilities || [], error: "" };
     } catch (err) {

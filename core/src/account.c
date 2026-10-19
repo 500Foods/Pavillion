@@ -114,6 +114,11 @@ static int color_is_valid(const char *color) {
     return 1;
 }
 
+/* caFile is an optional absolute path to a PEM CA bundle, under 4096 bytes. */
+static int ca_file_is_valid(const char *path) {
+    return path != NULL && path[0] == '/' && strlen(path) < 4096;
+}
+
 static int profile_is_ready(PavError *err) {
     PavConfigLoad *load = pav_core_load();
 
@@ -341,7 +346,8 @@ static json_t *build_account_json(const char *id, const char *number, const char
                                   const char *kind, const char *session_url,
                                   const char *username, const char *auth, const char *color,
                                   int enabled, int sync_mail, int sync_contacts,
-                                  int sync_calendars, const char *fetch_bodies) {
+                                  int sync_calendars, const char *fetch_bodies,
+                                  const char *ca_file) {
     json_t *obj = json_object();
 
     if (obj == NULL) {
@@ -372,6 +378,10 @@ static json_t *build_account_json(const char *id, const char *number, const char
         return NULL;
     }
     if (fetch_bodies != NULL && set_json_str(obj, "fetchBodies", fetch_bodies) != 0) {
+        json_decref(obj);
+        return NULL;
+    }
+    if (ca_file != NULL && set_json_str(obj, "caFile", ca_file) != 0) {
         json_decref(obj);
         return NULL;
     }
@@ -436,6 +446,7 @@ int pav_account_add(json_t *args, json_t **data, PavError *err) {
     const char *secret = NULL;
     const char *color = NULL;
     const char *fetch_bodies = NULL;
+    const char *ca_file = NULL;
     int sync_mail = 1;
     int sync_contacts = 1;
     int sync_calendars = 1;
@@ -540,6 +551,12 @@ int pav_account_add(json_t *args, json_t **data, PavError *err) {
                 return -1;
             }
             fetch_bodies = json_string_value(value);
+        } else if (strcmp(key, "caFile") == 0) {
+            if (!json_is_string(value) || !ca_file_is_valid(json_string_value(value))) {
+                pav_error_set(err, "bad_args", "caFile must be an absolute path", 0);
+                return -1;
+            }
+            ca_file = json_string_value(value);
         } else if (strcmp(key, "enabled") == 0) {
             if (!json_is_boolean(value)) {
                 pav_error_set(err, "bad_args", "enabled must be a boolean", 0);
@@ -630,7 +647,7 @@ int pav_account_add(json_t *args, json_t **data, PavError *err) {
 
         json_t *acct = build_account_json(account_id, number_str, name, kind, session_url,
                                           username, auth_arg, color, enabled, sync_mail,
-                                          sync_contacts, sync_calendars, fetch_bodies);
+                                          sync_contacts, sync_calendars, fetch_bodies, ca_file);
         if (acct == NULL) {
             pav_secret_delete("pavillion", keyring_user);
             pav_error_set(err, "internal", "out of memory", 0);
@@ -882,6 +899,12 @@ int pav_account_update(json_t *args, json_t **data, PavError *err) {
                     pav_error_set(err, "bad_args", "name must be a non-empty string", 0);
                     return -1;
                 }
+            } else if (strcmp(pkey, "caFile") == 0) {
+                if (!json_is_string(pval) ||
+                    (json_string_value(pval)[0] != '\0' && !ca_file_is_valid(json_string_value(pval)))) {
+                    pav_error_set(err, "bad_args", "caFile must be an absolute path or empty", 0);
+                    return -1;
+                }
             } else {
                 snprintf(buf, sizeof(buf), "unknown patch key %s", pkey);
                 pav_error_set(err, "bad_args", buf, 0);
@@ -911,6 +934,10 @@ int pav_account_update(json_t *args, json_t **data, PavError *err) {
             return -1;
         }
         json_object_foreach(patch, pkey, pval) {
+            if (strcmp(pkey, "caFile") == 0 && json_string_value(pval)[0] == '\0') {
+                json_object_del(acct, "caFile");
+                continue;
+            }
             if (json_object_set(acct, pkey, pval) != 0) {
                 pav_error_set(err, "internal", "out of memory", 0);
                 return -1;

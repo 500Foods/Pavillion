@@ -319,3 +319,91 @@ test("Save updates account details", async () => {
     el.remove();
   }
 });
+
+test("the Advanced CA file field is sent with add, test, and save", async () => {
+  const el = document.createElement("div");
+  document.body.append(el);
+  try {
+    const transport = mockTransport();
+    const callSpy = vi.spyOn(transport, "call");
+    const api = createApi(transport);
+    await mount(el, api, {});
+    openAccountsPanel();
+
+    const caInput = document.querySelector("#account-ca-file-input");
+    expect(caInput).not.toBeNull();
+    expect(caInput.closest("details.accounts-advanced")).not.toBeNull();
+
+    document.querySelector("#account-name-input").value = "Pinned";
+    document.querySelector("#account-session-url-input").value = "https://localhost:1443/.well-known/jmap";
+    document.querySelector("#account-username-input").value = "andrew@test-a.local";
+    document.querySelector("#account-secret-input").value = "test";
+    caInput.value = "/tmp/test-ca.crt";
+    document.querySelector("#account-secret-input").dispatchEvent(new Event("input", { bubbles: true }));
+
+    document.querySelector("#account-test").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("#account-test-status").textContent).toBe("OK");
+    });
+    const testCall = callSpy.mock.calls.find(([cmd]) => cmd === "account.test");
+    expect(testCall[1].caFile).toBe("/tmp/test-ca.crt");
+
+    document.querySelector("#account-add").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-account-id="pinned"]')).not.toBeNull();
+    });
+    const addCall = callSpy.mock.calls.find(([cmd]) => cmd === "account.add");
+    expect(addCall[1].caFile).toBe("/tmp/test-ca.crt");
+
+    document.querySelector('[data-account-id="pinned"]').click();
+    expect(document.querySelector("#account-ca-file-input").value).toBe("/tmp/test-ca.crt");
+    document.querySelector("#account-secret-input").value = "test";
+    document.querySelector("#account-secret-input").dispatchEvent(new Event("input", { bubbles: true }));
+    document.querySelector("#account-test").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("#account-test-status").textContent).toBe("OK");
+    });
+    document.querySelector("#account-ca-file-input").value = "";
+    document.querySelector("#account-save").click();
+    await vi.waitFor(() => {
+      expect(callSpy.mock.calls.some(([cmd]) => cmd === "account.update")).toBe(true);
+    });
+    const updateCall = callSpy.mock.calls.find(([cmd]) => cmd === "account.update");
+    expect(updateCall[1].patch.caFile).toBe("");
+  } finally {
+    unmount();
+    el.remove();
+  }
+});
+
+test("a blank CA file is left out of add and test", async () => {
+  const el = document.createElement("div");
+  document.body.append(el);
+  try {
+    const transport = mockTransport();
+    const callSpy = vi.spyOn(transport, "call");
+    const api = createApi(transport);
+    await mount(el, api, {});
+    openAccountsPanel();
+    document.querySelector("#account-name-input").value = "Plain";
+    document.querySelector("#account-session-url-input").value = "https://example.com/.well-known/jmap";
+    document.querySelector("#account-username-input").value = "p@example.com";
+    document.querySelector("#account-secret-input").value = "pw";
+    document.querySelector("#account-secret-input").dispatchEvent(new Event("input", { bubbles: true }));
+    document.querySelector("#account-test").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("#account-test-status").textContent).toBe("OK");
+    });
+    document.querySelector("#account-add").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-account-id="plain"]')).not.toBeNull();
+    });
+    const testCall = callSpy.mock.calls.find(([cmd]) => cmd === "account.test");
+    const addCall = callSpy.mock.calls.find(([cmd]) => cmd === "account.add");
+    expect("caFile" in testCall[1]).toBe(false);
+    expect("caFile" in addCall[1]).toBe(false);
+  } finally {
+    unmount();
+    el.remove();
+  }
+});

@@ -194,6 +194,7 @@ export function mockTransport() {
          syncContacts: input.syncContacts !== false,
          syncCalendars: input.syncCalendars !== false,
          fetchBodies: input.fetchBodies || "recent",
+         ...(typeof input.caFile === "string" && input.caFile !== "" ? { caFile: input.caFile } : {}),
        };
        accounts = [...accounts, account];
        accountTestState = { accountId: id, capabilities: ["mail", "submission", "contacts", "calendars"] };
@@ -234,6 +235,13 @@ export function mockTransport() {
        }
        if (input.patch.fetchBodies !== undefined) {
          updated.fetchBodies = input.patch.fetchBodies;
+       }
+       if (input.patch.caFile !== undefined) {
+         if (input.patch.caFile === "") {
+           delete updated.caFile;
+         } else {
+           updated.caFile = input.patch.caFile;
+         }
        }
        accounts = accounts.map((a) => (a.id === input.id ? updated : a));
        return structuredClone(updated);

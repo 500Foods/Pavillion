@@ -49,7 +49,7 @@ State: real (K-2)
 
 Creates an account and stores its secret in the keyring. When `id` is absent it is generated from `name` (lowercase, non-alphanum to `-`, deduplicated with a `-2` suffix).
 
-Args: `{name?, kind, sessionUrl, username, auth?, secret, color?, syncMail?, syncContacts?, syncCalendars?, fetchBodies?, enabled?}`. `auth` defaults to `basic` and is the only K-2 method. `kind` is `jmap` (imap is accepted but unsupported). `sessionUrl` must be `https://`. `color` is `#rgb` or `#rrggbb`. `fetchBodies` is `none`, `recent`, or `all`. Booleans default true except `enabled` which defaults true. `name` is required when `id` is absent.
+Args: `{name?, kind, sessionUrl, username, auth?, secret, color?, syncMail?, syncContacts?, syncCalendars?, fetchBodies?, enabled?, caFile?}`. `caFile` is an absolute path to a PEM CA bundle trusted for this account (B Lock); it is omitted from the account object when unset. `auth` defaults to `basic` and is the only K-2 method. `kind` is `jmap` (imap is accepted but unsupported). `sessionUrl` must be `https://`. `color` is `#rgb` or `#rrggbb`. `fetchBodies` is `none`, `recent`, or `all`. Booleans default true except `enabled` which defaults true. `name` is required when `id` is absent.
 
 Result: the account object (without the secret). Includes `number`.
 
@@ -89,13 +89,13 @@ Errors: `bad_args`, `not_found`, `failed` (keyring).
 
 State: real (M-2)
 
-`{sessionUrl, username, auth, secret}` returns `{ok, capabilities[], error?}`. It does not write the profile.
+`{sessionUrl | email, username, auth?, secret, caFile?}` returns `{ok, capabilities[], error?}`. `caFile` pins a CA bundle for this test; without it the system store is used (the test build also honours `PAV_FIXTURE_CA`). It does not write the profile.
 
 ### account.update
 
 State: real (K-2)
 
-`{id, patch}`. Changes account fields other than the secret. `sessionUrl`, `username`, `color`, `syncMail`, `syncContacts`, `syncCalendars`, `fetchBodies`, `enabled`, and `name` may be patched. `kind` and `auth` are not patchable.
+`{id, patch}`. Changes account fields other than the secret. `sessionUrl`, `username`, `color`, `syncMail`, `syncContacts`, `syncCalendars`, `fetchBodies`, `enabled`, `name`, and `caFile` may be patched. `caFile: ""` removes the field. `kind` and `auth` are not patchable.
 
 Result: the updated account object (without the secret).
 

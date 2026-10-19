@@ -439,6 +439,14 @@ export const shellMarkup = `<div class="shell">
                           <input id="account-session-url-input" type="url" spellcheck="false" autocomplete="off" placeholder="https://example.com/.well-known/jmap" />
                         </label>
                       </div>
+                      <details class="accounts-advanced">
+                        <summary>Advanced</summary>
+                        <div class="accounts-field">
+                          <label>CA file
+                            <input id="account-ca-file-input" type="text" spellcheck="false" autocomplete="off" placeholder="/path/to/ca.pem (blank: system store)" />
+                          </label>
+                        </div>
+                      </details>
                       <div class="accounts-field-row">
                         <label class="accounts-field">Username
                           <input id="account-username-input" type="text" spellcheck="false" autocomplete="off" />

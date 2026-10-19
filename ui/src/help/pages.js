@@ -197,7 +197,7 @@ export const helpPages = [
         id: "accounts",
         title: "Accounts",
         paragraphs: [
-          "Settings → Accounts is a split panel. The account tree is on the left, the selected account's form on the right. Adding an account takes a name, a JMAP session URL (https only), a username, a password, and a color. The session URL can be discovered from the email domain, or overridden by hand.",
+          "Settings → Accounts is a split panel. The account tree is on the left, the selected account's form on the right. Adding an account takes a name, a JMAP session URL (https only), a username, a password, and a color. The session URL can be discovered from the email domain, or overridden by hand. Under Advanced, an optional CA file (an absolute path to a PEM bundle) is trusted for that account in addition to the system store, for internal or test servers.",
           "The Test button checks the credentials against the server before Save is enabled. A wrong password shows one error and does not retry. The Password field is cleared after submit, and the secret is never shown once stored in the keyring. The Credentials area shows whether a password is stored, not what it is.",
           "Each account gets a three-digit number (001 and up) that never changes and is never reused after removal. The auth method is Basic in v1; OpenID Connect comes later.",
         ],
@@ -436,7 +436,7 @@ export const helpPages = [
         paragraphs: [
           "make test runs Unity (build/core_test) then Vitest (npm --prefix ui test). The Unity test binary links the core library, jansson, SQLite, libsecret, and Stronghold. Vitest runs src/**/*.test.js in node.",
           "The fixture server is tests/support/jmapfix.sh, a Bash HTTPS server (socat for TLS, openssl for the test CA, jq for JSON) that serves a JMAP Session at /jmap/session, a /.well-known/jmap redirect, and a JMAP API at /jmap/api. It generates a test CA into build/test-ca/ and writes build/fixture-state.txt (port, CA path). make test starts it, runs Unity with PAV_FIXTURE_URL and PAV_FIXTURE_CA, then stops it. socat forks one handler per connection, so concurrent slow-response tests do not serialize.",
-          "make it-up starts tests/stalwart/compose.yaml (Stalwart v0.16.26 pinned). make it-seed seeds accounts and mailboxes. make it-down removes the container. make test-it runs integration tests with PAVILLION_IT=1 and is skipped until M-2 (account.test) exists.",
+          "make it-up writes the self-signed test certificate to build/stalwart-tls/ (tests/support/testca.sh, shared with the fixture server) and starts tests/stalwart/compose.yaml (Stalwart v0.16.26 pinned), which mounts it read-only. Accounts added against the container set CA file to build/stalwart-tls/test-ca.crt. make it-seed seeds accounts and mailboxes. make it-down removes the container. make test-it runs integration tests with PAVILLION_IT=1 and is skipped until M-2 (account.test) exists.",
         ],
       },
       {

@@ -196,13 +196,7 @@ serve() {
     command -v "$tool" >/dev/null 2>&1 || { echo "jmapfix: $tool is required" >&2; exit 1; }
   done
 
-  mkdir -p "$ca_dir"
-  if [ ! -f "$key_file" ] || [ ! -f "$cert_file" ]; then
-    openssl req -x509 -newkey rsa:2048 -keyout "$key_file" -out "$cert_file" \
-      -days 365 -nodes -subj "/CN=pavillion-test-ca" \
-      -addext "subjectAltName=IP:127.0.0.1,DNS:test-a.local,DNS:test-b.local" \
-      >/dev/null 2>&1 || { echo "jmapfix: openssl could not create the test CA" >&2; exit 1; }
-  fi
+  bash "$self_dir/testca.sh" "$ca_dir" || exit 1
 
   rm -rf "$run"
   mkdir -p "$run/blobs"

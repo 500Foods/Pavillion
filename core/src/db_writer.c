@@ -216,9 +216,24 @@ static void collect(DbJob **batch, int *n) {
         if (mono_ms() - t0 >= BATCH_MS) {
             return;
         }
+#if defined(__APPLE__)
+        /* macOS has no pthread_condattr_setclock; g_cv uses the default clock,
+           so wait for the remaining monotonic budget as a relative interval. */
+        {
+            int64_t left = t0 + BATCH_MS - mono_ms();
+
+            if (left < 1) {
+                left = 1;
+            }
+            ts.tv_sec = left / 1000;
+            ts.tv_nsec = (left % 1000) * 1000000L;
+            pthread_cond_timedwait_relative_np(&g_cv, &g_mu, &ts);
+        }
+#else
         ts.tv_sec = (t0 + BATCH_MS) / 1000;
         ts.tv_nsec = ((t0 + BATCH_MS) % 1000) * 1000000L;
         pthread_cond_timedwait(&g_cv, &g_mu, &ts);
+#endif
     }
 }
 
@@ -266,7 +281,11 @@ static int ensure_cv(void) {
     if (pthread_condattr_init(&attr) != 0) {
         return -1;
     }
+#if defined(__APPLE__)
+    if (pthread_cond_init(&g_cv, &attr) != 0) {
+#else
     if (pthread_condattr_setclock(&attr, CLOCK_MONOTONIC) != 0 || pthread_cond_init(&g_cv, &attr) != 0) {
+#endif
         pthread_condattr_destroy(&attr);
         return -1;
     }
@@ -284,6 +303,14 @@ static void note_stack(void) {
         return;
     }
     thread = g_thread;
+#if defined(__APPLE__)
+    /* No pthread_getattr_np on macOS; this reports the same stack size. */
+    (void)attr;
+    sz = pthread_get_stacksize_np(*thread);
+    if (sz != 0) {
+        g_stack = sz;
+    }
+#else
     if (pthread_getattr_np(*thread, &attr) != 0) {
         return;
     }
@@ -291,6 +318,7 @@ static void note_stack(void) {
         g_stack = sz;
     }
     pthread_attr_destroy(&attr);
+#endif
 }
 
 int pav_db_writer_start(sqlite3 *db) {

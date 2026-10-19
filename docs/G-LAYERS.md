@@ -353,7 +353,7 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 
 - [ ] `core/platform/macos/` with Keychain secrets (`SecItem*`) and Application Support dirs, or `windows/` per the toolchain answer (open question G-Q4).
 - [ ] Homebrew (or vcpkg) dependency list in [W-SHIP.md](W-SHIP.md).
-- [ ] The CI macOS job loses `continue-on-error`.
+- [ ] The CI job for the chosen second platform (`macos-core` or `windows-core`) loses `continue-on-error`.
 
 **Done means:** `make test` passes on the second platform.
 
@@ -377,3 +377,4 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 - 2026-10-16 G-4. `mount` / `unmount`, `--pav-*` on the served sheets, harness. Andrew confirmed `make dev` and `make build` look unchanged. After that check, Shell zoom is 50%–200% and the other rows stay 5%–500%. Not pushed.
 - 2026-10-17 G-4 follow-ons closed. Session zoom stack, shared bar strut, icons on `--pav-bar-zoom`, toolbar rules held at 1px. `make test` is 67 Unity tests and 34 Vitest tests. D-4 is next. Not pushed.
 - 2026-10-18 The L3 Lock no longer execs `pavillion-gui`. One ELF calls `pav_cli_main` before the window. No phase was started.
+- 2026-10-19 Added the `windows-core` CI job (MSYS2 UCRT64, `make test`, no window, `continue-on-error` until G-6), beside `macos-core`. G-Q4 stays open.
