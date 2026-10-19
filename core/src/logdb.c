@@ -323,7 +323,7 @@ int pav_logdb_walk(sqlite3 *db, const PavLogQuery *q, PavLogLineFn fn, void *ctx
         return 0;
     }
     snprintf(sql, sizeof(sql),
-             "SELECT seq, ts, level, subsystem, text FROM log WHERE level IN (%s)%s%s%s%s ORDER BY seq DESC", levels,
+             "SELECT seq, ts, level, subsystem, text, session FROM log WHERE level IN (%s)%s%s%s%s ORDER BY seq DESC", levels,
              q->before_seq > 0 ? " AND seq < ?" : "", q->has_since ? " AND ts >= ?" : "",
              q->has_until ? " AND ts < ?" : "", q->session > 0 ? " AND session = ?" : "");
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
@@ -376,7 +376,7 @@ int pav_logdb_walk(sqlite3 *db, const PavLogQuery *q, PavLogLineFn fn, void *ctx
             break;
         }
         snprintf(line, (size_t)n + 1, "%s %-5s %s  %s\n", stamp, name, sub, text);
-        rc = fn(ctx, sqlite3_column_int64(stmt, 0), line);
+        rc = fn(ctx, sqlite3_column_int64(stmt, 0), sqlite3_column_int64(stmt, 5), line);
         free(line);
     }
     sqlite3_finalize(stmt);
@@ -399,4 +399,21 @@ int pav_logdb_previous_session(sqlite3 *db, int64_t current, int64_t *out) {
     }
     sqlite3_finalize(stmt);
     return 0;
+}
+
+int pav_logdb_session_started(sqlite3 *db, int64_t id, int64_t *started) {
+    sqlite3_stmt *stmt = NULL;
+    int rc = -1;
+
+    if (db == NULL || started == NULL ||
+        sqlite3_prepare_v2(db, "SELECT started FROM session WHERE id = ?", -1, &stmt, NULL) != SQLITE_OK) {
+        return -1;
+    }
+    sqlite3_bind_int64(stmt, 1, id);
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        *started = sqlite3_column_int64(stmt, 0);
+        rc = 0;
+    }
+    sqlite3_finalize(stmt);
+    return rc;
 }

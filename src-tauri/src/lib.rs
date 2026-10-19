@@ -27,7 +27,17 @@ unsafe extern "C" {
     fn pav_on_event(cb: Option<unsafe extern "C" fn(*const c_char, *const c_char, *mut c_void)>, user: *mut c_void);
     fn pav_protocol(req_json: *const c_char, out: *mut SchemeOut) -> i32;
     fn pav_cli_main(argc: i32, argv: *mut *mut c_char) -> i32;
+    fn pav_ui_log(subsystem: *const c_char, level: i32, message: *const c_char) -> i32;
 }
+/// H-4: shell lines go through the core's pav_log (1 = WARN, 0 = ERROR).
+/// Safe before pavillion_start: the core keeps them and copies WARN and
+/// ERROR to stderr until a profile attaches.
+pub fn core_log(level: i32, message: &str) {
+    let text = CString::new(message.replace('\0', " ")).unwrap_or_default();
+    unsafe { pav_ui_log(c"shell".as_ptr(), level, text.as_ptr()); }
+}
+macro_rules! shell_warn { ($($arg:tt)*) => { core_log(1, &format!($($arg)*)) }; }
+macro_rules! shell_error { ($($arg:tt)*) => { core_log(0, &format!($($arg)*)) }; }
 pub fn unknown_subcommand() -> i32 {
     unsafe { pav_cli_main(0, std::ptr::null_mut()) }
 }
@@ -95,7 +105,7 @@ fn report_window(window: &tauri::WebviewWindow) {
     }
     let args = json!({"x": x, "y": y, "w": w, "h": h, "maximized": window.is_maximized().unwrap_or(false), "monitors": monitor_list(window)});
     if let Err(err) = core_data("window.report", &args) {
-        eprintln!("cannot report window: {}", err_str(Some(&err), "message", "core call failed"));
+        shell_warn!("cannot report window: {}", err_str(Some(&err), "message", "core call failed"));
     }
 }
 
@@ -103,7 +113,7 @@ fn apply_initial(window: &tauri::WebviewWindow) {
     let data = match core_data("window.initial", &json!({"monitors": monitor_list(window)})) {
         Ok(data) => data,
         Err(err) => {
-            eprintln!("cannot read window: {}", err_str(Some(&err), "message", "core call failed"));
+            shell_warn!("cannot read window: {}", err_str(Some(&err), "message", "core call failed"));
             let _ = window.show();
             return;
         }
@@ -174,10 +184,10 @@ fn require_api_version() {
 }
 fn start_core(workdir: &str) {
     require_api_version();
-    let Ok(path) = CString::new(workdir) else { eprintln!("workdir contains a NUL"); std::process::exit(1); };
+    let Ok(path) = CString::new(workdir) else { shell_error!("workdir contains a NUL"); std::process::exit(1); };
     let mut err = [0u8; 512];
     if unsafe { pavillion_start(path.as_ptr(), err.as_mut_ptr().cast(), err.len()) } != 0 {
-        eprintln!("pavillion_start failed: {}", unsafe { CStr::from_ptr(err.as_ptr().cast()) }.to_string_lossy());
+        shell_error!("pavillion_start failed: {}", unsafe { CStr::from_ptr(err.as_ptr().cast()) }.to_string_lossy());
     }
 }
 
@@ -204,7 +214,7 @@ fn quit_signals() -> libc::sigset_t {
 pub fn block_quit_signals() {
     let set = quit_signals();
     if unsafe { libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut()) } != 0 {
-        eprintln!("cannot block SIGINT");
+        shell_warn!("cannot block SIGINT");
         std::process::exit(1);
     }
 }
@@ -222,7 +232,7 @@ fn install_quit_handler() {
         if libc::sigaction(libc::SIGINT, &action, std::ptr::null_mut()) != 0
             || libc::sigaction(libc::SIGTERM, &action, std::ptr::null_mut()) != 0
         {
-            eprintln!("cannot catch SIGINT");
+            shell_warn!("cannot catch SIGINT");
             std::process::exit(1);
         }
     }
@@ -278,7 +288,7 @@ fn wait_quit_signal() -> bool {
 fn watch_sigint(app: tauri::AppHandle) {
     std::thread::spawn(move || {
         if !wait_quit_signal() {
-            eprintln!("cannot catch SIGINT");
+            shell_warn!("cannot catch SIGINT");
             return;
         }
         let (tx, rx) = std::sync::mpsc::channel();
@@ -288,7 +298,7 @@ fn watch_sigint(app: tauri::AppHandle) {
             window.eval("window.__pavQuit&&window.__pavQuit()").ok()
         }).is_some();
         if !started {
-            eprintln!("session save did not start");
+            shell_warn!("session save did not start");
             let _ = app.exit(130);
             return;
         }
@@ -297,7 +307,7 @@ fn watch_sigint(app: tauri::AppHandle) {
             Err(_) => false,
         };
         if !saved {
-            eprintln!("{}", quit_timeout_message());
+            shell_warn!("{}", quit_timeout_message());
         }
         let _ = app.exit(if saved { 0 } else { 130 });
         if wait_quit_signal() {
@@ -315,7 +325,7 @@ fn start_events(app: &tauri::AppHandle) {
         while let Some(note) = rx.recv().await {
             let payload = serde_json::from_str::<Value>(&note.json).unwrap_or(Value::String(note.json));
             if let Err(err) = handle.emit("pav", json!({"name": note.name, "payload": payload})) {
-                eprintln!("cannot emit pav: {err}");
+                shell_warn!("cannot emit pav: {err}");
             }
         }
     });
@@ -338,20 +348,54 @@ fn scheme_reply(scheme: &str, request: &tauri::http::Request<Vec<u8>>) -> tauri:
     builder.body(body).unwrap_or_else(|_| empty())
 }
 
+
+fn canonical_workdir(workdir: &str) -> String {
+    let path = std::fs::canonicalize(workdir).map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|_| workdir.to_string());
+    let trimmed = path.trim_end_matches('/');
+    if trimmed.is_empty() { "/".to_string() } else { trimmed.to_string() }
+}
+
+/// Single-instance id (O-COMPOSE Lock): the default workdir keeps the app id;
+/// any other workdir appends the first 32 hex of SHA-256 of its canonical path (V Lock hash).
+fn instance_identifier(base: &str, workdir: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let canonical = canonical_workdir(workdir);
+    let default = std::env::var("HOME").ok().filter(|h| !h.is_empty()).map(|h| canonical_workdir(&format!("{h}/.local/share/pavillion")));
+    if default.as_deref() == Some(canonical.as_str()) {
+        return base.to_string();
+    }
+    let digest = Sha256::digest(canonical.as_bytes());
+    let hex: String = digest.iter().take(16).map(|b| format!("{b:02x}")).collect();
+    format!("{base}.w{hex}")
+}
+
+fn focus_existing(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window("main") else { shell_warn!("second launch: main window is missing"); return };
+    core_log(2, "second launch of this workdir: focusing the existing window");
+    let _ = window.show();
+    let _ = window.unminimize();
+    let _ = window.set_focus();
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run(workdir: &str) {
     block_quit_signals();
     install_quit_handler();
     quiet_webkit_exit();
-    start_core(workdir);
-    let mut builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init()).invoke_handler(tauri::generate_handler![core]);
+    let mut context = tauri::generate_context!();
+    let identifier = instance_identifier(&context.config().identifier, workdir);
+    context.config_mut().identifier = identifier;
+    let workdir = workdir.to_string();
+    let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| focus_existing(app)))
+        .plugin(tauri_plugin_dialog::init()).invoke_handler(tauri::generate_handler![core]);
     for scheme in ["pav-blob", "pav-cid", "pav-link", "pav-theme"] {
         let name = scheme.to_string();
         builder = builder.register_uri_scheme_protocol(scheme, move |_ctx, request| scheme_reply(&name, &request));
     }
-    let app = builder.setup(|app| {
+    let app = builder.setup(move |app| {
+        start_core(&workdir);
         start_events(app.handle());
-        let Some(window) = app.get_webview_window("main") else { eprintln!("main window is missing"); return Ok(()) };
+        let Some(window) = app.get_webview_window("main") else { shell_error!("main window is missing"); return Ok(()) };
         let watch = window.clone();
         window.on_window_event(move |event| {
             if WINDOW_READY.load(Ordering::SeqCst) && matches!(event, tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Moved(_)) {
@@ -370,7 +414,7 @@ pub fn run(workdir: &str) {
         });
         app.listen("pav-quit-done", |_| note_quit_result(true));
         Ok(())
-    }).build(tauri::generate_context!()).expect("error while building pavillion");
+    }).build(context).expect("error while building pavillion");
     watch_sigint(app.handle().clone());
     app.run(|app, event| match event {
         tauri::RunEvent::ExitRequested { .. } => {

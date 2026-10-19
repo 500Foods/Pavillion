@@ -972,6 +972,7 @@ int pav_activity_cmd_cancel(json_t *args, json_t **data, PavError *err) {
     }
     a->cancel_req = 1;
     obj = activity_json(a);
+    pav_log("activity", PAV_INFO, 1, "cancel requested for %s", a->kind);
     pthread_mutex_unlock(&g_mu);
     if (obj == NULL) {
         pav_error_set(err, "internal", "out of memory", 0);
@@ -1013,6 +1014,7 @@ int pav_activity_cmd_dismiss(json_t *args, json_t **data, PavError *err) {
     trim_history();
     pthread_mutex_unlock(&g_mu);
     emit_text(text);
+    pav_log("activity", PAV_INFO, 1, "dismissed failed %s", snap.kind);
     if (obj == NULL) {
         pav_error_set(err, "internal", "out of memory", 0);
         return -1;
@@ -1287,6 +1289,7 @@ int pav_activity_attach(void) {
     int rc;
 
     if (!pav_db_writer_running() || pav_db_call(clear_running_job, NULL) != 0) {
+        pav_log("activity", PAV_ERROR, 0, "cannot clear running activities");
         return -1;
     }
     if (pav_db_read_begin(&read) != 0) {
@@ -1305,6 +1308,7 @@ int pav_activity_attach(void) {
         g_attached = 1;
         trim_history();
     } else {
+        pav_log("activity", PAV_ERROR, 0, "cannot load activity history");
         clear_items();
         g_next_id = 1;
     }
@@ -1355,6 +1359,7 @@ static void end_still_running(void) {
 }
 
 void pav_activity_shutdown(void) {
+    pav_log("activity", PAV_DEBUG, 0, "shutting down, cancelling running work");
     join_demos();
     end_still_running();
     pthread_mutex_lock(&g_mu);

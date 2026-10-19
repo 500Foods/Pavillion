@@ -68,6 +68,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 ### `mailto:` and single instance (was plan §12)
 
 - `tauri-plugin-deep-link` registers `mailto:`; the desktop file declares `MimeType=x-scheme-handler/mailto;`; document `xdg-mime default com.500nodes.Pavillion.desktop x-scheme-handler/mailto`. The lock is the canonical workdir, the same hash the V Lock uses for the socket. A plugin that can only lock the app id is not used, because that would block a second directory. A second launch of the same workdir focuses that window and does not start a second core. A different workdir starts. `mailto:` with no directory goes to the default workdir only (`$HOME/.local/share/pavillion`) and does not pick another running instance. RFC 6068 parsing (to, cc, bcc, subject, body; never attachments).
+- Single instance pulled forward (Andrew, 2026-10-19): `tauri-plugin-single-instance` (Apache-2.0 OR MIT) is in the shell now, ahead of O-6. Its identifier carries the workdir: the default workdir keeps `com.500nodes.pavillion`; any other workdir uses `com.500nodes.pavillion.w` plus the first 32 hex of the V Lock hash, so a different workdir still starts. A second launch of the same workdir shows, unminimizes and focuses the existing window and exits before starting a core. Behind it, the core holds a profile lock ([B-CONFIG.md](B-CONFIG.md) Lock). O-6 keeps the `mailto:` forwarding: deep-link registration, RFC 6068 parsing, and handing the URL from the second launch's argv to the running window through this plugin's callback.
 
 ## O-1: Draft model
 
@@ -182,9 +183,9 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Work items:**
 
-- [ ] `tauri-plugin-deep-link`; RFC 6068 parser in the core (`mailto.parse`) with Unity tests; `app.mailto` event opens a composer in the default-workdir instance. The lock id is the workdir hash from the V Lock. Do not take `tauri-plugin-single-instance` unless its identifier can include that hash.
+- [ ] `tauri-plugin-deep-link`; RFC 6068 parser in the core (`mailto.parse`) with Unity tests; `app.mailto` event opens a composer in the default-workdir instance. The lock id is the workdir hash from the V Lock. `tauri-plugin-single-instance` is already in, with the workdir hash in its identifier (Lock); O-6 forwards the `mailto:` argv through its callback.
 - [ ] The desktop file entry and the `xdg-mime` note in [W-SHIP.md](W-SHIP.md).
-- [ ] A second plain launch of the same workdir focuses that window instead of starting a second core. A different workdir starts. The CLI never reaches this path (V Lock).
+- [x] A second plain launch of the same workdir focuses that window instead of starting a second core. A different workdir starts. The CLI never reaches this path (V Lock). Pulled forward 2026-10-19 (Lock, single instance); O-6 adds only the `mailto:` hand-off in the plugin callback.
 
 **Done means:** `xdg-open 'mailto:someone@example.com?subject=Hi'` opens a composer with those fields.
 
@@ -201,3 +202,4 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - 2026-10-16 The outbox builds MIME to a file with GMime streams and uploads it with curl's read callback, with a flat-memory test.
 - 2026-10-18 O-6 is one window per canonical workdir, not one window per user. `mailto:` with no directory goes to the default workdir. The app-id single-instance plugin is not the lock. No phase was started.
 - 2026-10-16 Andrew restored SunEditor as the O-2 composer. It still runs in the sandboxed frame. Isolation is unchanged. A plain-text mode remains.
+- 2026-10-19 Single instance pulled forward ahead of O-6 (Andrew): `tauri-plugin-single-instance` with a per-workdir identifier, plus the core profile lock in B. O-6 keeps the `mailto:` forwarding. O-6 is still Not started.

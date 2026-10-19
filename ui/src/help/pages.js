@@ -263,6 +263,7 @@ export const helpPages = [
         paragraphs: [
           "Activity and Logs share one tab. The nav button opens whichever you used last. Logs are the live log, with severity, subsystem, and search. Activity is the list of work the app is doing. The column is labeled Action.",
           "The log shows a time range: the last 12 hours unless you pick 24 hours, 7 days, All, or Custom (a From and To date and time). The choice is kept. The session list shows This run, Last run, or All. Scroll above the oldest line, or widen the range, and older lines are read from the profile's log database. Copy, Save, and Print use the same range, session, and filters.",
+          "Times in the log are local 24-hour time in the profile time zone; hover a line to see its UTC stamp. Copy, Save, and Print use the UTC lines. Every level is kept, from ERROR down to TRACE; the view starts at INFO. When the same line repeats, it is shown once, followed by \"previous line repeated N times\". Passwords, tokens, Authorization headers, URL queries, and user:password in URLs never reach the log, and email addresses appear only at DEBUG and TRACE.",
           "Update asks for a sync and spins while sync work is running. Until accounts exist, that request does nothing. Settings → Features can hide Update, and can give it a shortcut that runs the same sync. Activity can be hidden there too. A release build hides the demo item on the Help bar.",
         ],
       },
@@ -300,6 +301,15 @@ export const helpPages = [
     id: "developer",
     title: "Developer",
     sections: [
+      {
+        id: "logging",
+        title: "Logging",
+        paragraphs: [
+          "Everything that logs goes through pav_log in the core: C, the Rust shell (subsystem shell), and the UI through log.client (user actions at INFO, navigation at DEBUG, at most 50 lines a second; console.warn and console.error are forwarded too). bypass.test.js fails on any new direct stderr, println!, or console call; the allowed ones are --help, --version, the API version mismatch line, and pav_log's own stderr copy.",
+          "Lines are stored in <profile id>.log.db next to the store (UTC milliseconds), batched about every 100 ms; an ERROR waits for its commit. The file is trimmed to preferences.log_max_mb at shutdown. log.query pages history; log.export writes UTC lines.",
+          "pav_log redacts every line before it is stored: the rest of an Authorization header, Basic and Bearer credentials, URL query strings and fragments, user:password@ in URLs, the value after a secret-named key (password, secret, token, key), and email addresses at INFO and above. Identical consecutive lines collapse into one plus a \"previous line repeated N times\" line, flushed by a different line, 1 s of quiet, a flush, or shutdown. Callers still pass ids, never content.",
+        ],
+      },
       {
         id: "index",
         title: "Pavillion.json",

@@ -144,6 +144,16 @@ static int endpoint_key(const char *url, char *out, size_t out_len) {
     const char *p = url;
     if (strncmp(p, "https://", 8) == 0) p += 8;
     else if (strncmp(p, "http://", 7) == 0) p += 7;
+    {
+        /* Skip user:password@ so credentials are never part of the server key
+           (which is logged). */
+        const char *at = strchr(p, '@');
+        const char *end = strpbrk(p, "/?#");
+
+        if (at != NULL && (end == NULL || at < end)) {
+            p = at + 1;
+        }
+    }
     const char *slash = strchr(p, '/');
     size_t host_len = slash ? (size_t)(slash - p) : strlen(p);
     if (host_len >= out_len) return -1;
@@ -199,7 +209,7 @@ static void log_transfer(const char *method, const char *url, int status,
         strncpy(path_only, path, sizeof(path_only) - 1);
         path_only[sizeof(path_only) - 1] = '\0';
     }
-    pav_log("http", PAV_DEBUG, 6,
+    pav_log("http", PAV_TRACE, 6,
             "%s %s%s -> %d (%lld bytes, %lld ms)",
             method, host_only, path_only, status,
             (long long)bytes, (long long)duration_ms);
@@ -221,7 +231,7 @@ static int apply_auth_header(PavReq *req) {
     acct.auth = req->auth_method;
     auth = pav_auth_for(&acct, errbuf, sizeof(errbuf));
     if (auth == NULL) {
-        pav_log("http", PAV_WARN, 0,
+        pav_log("http", PAV_WARN, 1,
                 "auth setup failed: %s", errbuf);
         return -1;
     }
@@ -506,6 +516,11 @@ static int complete_request(PavNetServer *s, NetReqItem *item, CURLcode res) {
             if (retry_after_ms == 0) {
                 retry_after_ms = backoff_ms(req->retry_count);
             }
+            pav_log("http", PAV_DEBUG, 4, "retry %d to %s in %lld ms (%s)", req->retry_count, s->key, (long long)retry_after_ms, res != CURLE_OK ? curl_easy_strerror(res) : "server busy or error");
+        } else if (res != CURLE_OK) {
+            pav_log("http", PAV_WARN, 2, "transfer to %s failed: %s", s->key, curl_easy_strerror(res));
+        } else if (req->status_code >= 400) {
+            pav_log("http", PAV_DEBUG, 2, "%s answered %d", s->key, req->status_code);
         }
     }
 
@@ -542,7 +557,7 @@ static void *server_thread_main(void *arg) {
 
     s->multi = curl_multi_init();
     if (!s->multi) {
-        pav_log("http", PAV_ERROR, 0,
+        pav_log("http", PAV_ERROR, 1,
                 "curl_multi_init failed for %s", s->key);
         pthread_mutex_lock(&s->mu);
         s->running = -1;
@@ -797,6 +812,7 @@ static void *server_thread_main(void *arg) {
         s->multi = NULL;
     }
     s->running = 0;
+    pav_log("http", PAV_DEBUG, 1, "server thread stopped: %s", s->key);
     return NULL;
 }
 
@@ -827,6 +843,7 @@ static PavNetServer *server_create_locked(const char *key) {
         free(s);
         return NULL;
     }
+    pav_log("http", PAV_DEBUG, 1, "server thread started: %s", s->key);
     return s;
 }
 
@@ -840,7 +857,11 @@ static PavNetServer *find_server_locked(const char *key) {
 
 int pav_net_start(void) {
     if (g_net_started) return 0;
-    if (curl_global_init(CURL_GLOBAL_DEFAULT) != 0) return -1;
+    if (curl_global_init(CURL_GLOBAL_DEFAULT) != 0) {
+        pav_log("http", PAV_ERROR, 0, "curl_global_init failed");
+        return -1;
+    }
+    pav_log("http", PAV_DEBUG, 1, "net started (%s)", curl_version());
     g_net_started = 1;
     g_overall_cap = 0;
     g_overall_in_flight = 0;
@@ -868,6 +889,7 @@ void pav_net_stop(void) {
         pthread_cond_destroy(&s->cv);
         free(s);
     }
+    pav_log("http", PAV_DEBUG, 1, "net stopped, %d server threads joined", g_server_count);
     g_server_count = 0;
 
     curl_global_cleanup();
@@ -882,6 +904,7 @@ PavNetServer *pav_net_server_for(const char *url) {
     PavNetServer *s = find_server_locked(key);
     if (!s) {
         if (g_server_count >= PAV_NET_SERVER_MAX) {
+            pav_log("http", PAV_WARN, 1, "server limit reached, refusing %s", key);
             pthread_mutex_unlock(&g_reg_mu);
             return NULL;
         }

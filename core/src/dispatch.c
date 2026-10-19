@@ -12,6 +12,8 @@
 #include "pavillion.h"
 
 #include <pthread.h>
+#include <stdint.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -335,6 +337,43 @@ static char *replace_newlines(const char *message) {
     return out;
 }
 
+/* H-4: log.client accepts 50 lines per second. Lines over the limit are
+   dropped, still answer ok, and are counted into one WARN when the next
+   second's first line arrives. */
+#define LOG_CLIENT_PER_SECOND 50
+static pthread_mutex_t g_client_mu = PTHREAD_MUTEX_INITIALIZER;
+static int64_t g_client_window;
+static int g_client_count;
+static int g_client_dropped;
+
+static int client_rate_ok(void) {
+    struct timespec ts;
+    int64_t second;
+    int dropped = 0;
+    int ok;
+
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    second = (int64_t)ts.tv_sec;
+    pthread_mutex_lock(&g_client_mu);
+    if (second != g_client_window) {
+        dropped = g_client_dropped;
+        g_client_window = second;
+        g_client_count = 0;
+        g_client_dropped = 0;
+    }
+    ok = g_client_count < LOG_CLIENT_PER_SECOND;
+    if (ok) {
+        g_client_count++;
+    } else {
+        g_client_dropped++;
+    }
+    pthread_mutex_unlock(&g_client_mu);
+    if (dropped > 0) {
+        pav_log("ui", PAV_WARN, 2, "log.client dropped %d lines over %d per second", dropped, LOG_CLIENT_PER_SECOND);
+    }
+    return ok;
+}
+
 static int cmd_log_client(json_t *args, json_t **data, PavError *err) {
     const char *key;
     json_t *value;
@@ -386,13 +425,15 @@ static int cmd_log_client(json_t *args, json_t **data, PavError *err) {
         pav_error_set(err, "too_large", "message is too large", 0);
         return -1;
     }
-    clean = replace_newlines(message);
-    if (clean == NULL) {
-        pav_error_set(err, "internal", "out of memory", 0);
-        return -1;
+    if (client_rate_ok()) {
+        clean = replace_newlines(message);
+        if (clean == NULL) {
+            pav_error_set(err, "internal", "out of memory", 0);
+            return -1;
+        }
+        pav_ui_log(subsystem, level, clean);
+        free(clean);
     }
-    pav_ui_log(subsystem, level, clean);
-    free(clean);
     *data = json_object();
     if (*data == NULL) {
         pav_error_set(err, "internal", "out of memory", 0);
@@ -575,16 +616,32 @@ typedef struct QueryCtx {
     LogFilter *f;
     int limit;
     json_t *newest_first;
+    json_t *sessions; /* "id" -> started UTC ms, for the separators */
+    sqlite3 *db;
+    int64_t current;
 } QueryCtx;
 
-static int query_line(void *ctx, int64_t seq, const char *line) {
+static int query_line(void *ctx, int64_t seq, int64_t session, const char *line) {
     QueryCtx *q = ctx;
     json_t *obj;
+    char key[24];
 
     if (!pav_logring_line_kept(line, q->f->levels, q->f->subsystems, q->f->text)) {
         return 0;
     }
     obj = pav_logring_line_json((uint64_t)seq, line);
+    if (obj != NULL && json_object_set_new(obj, "session", json_integer((json_int_t)session)) != 0) {
+        json_decref(obj);
+        obj = NULL;
+    }
+    snprintf(key, sizeof(key), "%lld", (long long)session);
+    if (obj != NULL && json_object_get(q->sessions, key) == NULL) {
+        int64_t started = 0;
+
+        if (pav_logdb_session_started(q->db, session, &started) == 0) {
+            json_object_set_new(q->sessions, key, json_integer((json_int_t)started));
+        }
+    }
     if (obj == NULL || json_array_append_new(q->newest_first, obj) != 0) {
         return -1;
     }
@@ -593,6 +650,9 @@ static int query_line(void *ctx, int64_t seq, const char *line) {
 
 static int query_on_log_thread(void *ctx, sqlite3 *db, int64_t session) {
     QueryCtx *q = ctx;
+
+    q->db = db;
+    q->current = session;
 
     if (filter_session(q->f, db, session) != 0) {
         return 0;
@@ -642,7 +702,11 @@ static int cmd_log_query(json_t *args, json_t **data, PavError *err) {
     q.f = &f;
     q.limit = limit;
     q.newest_first = json_array();
-    if (q.newest_first == NULL) {
+    q.sessions = json_object();
+    q.db = NULL;
+    q.current = 0;
+    if (q.newest_first == NULL || q.sessions == NULL) {
+        json_decref(q.sessions);
         pav_error_set(err, "internal", "out of memory", 0);
         return -1;
     }
@@ -650,11 +714,13 @@ static int cmd_log_query(json_t *args, json_t **data, PavError *err) {
     rc = pav_log_db_call(query_on_log_thread, &q);
     if (rc == -2) {
         json_decref(q.newest_first);
+        json_decref(q.sessions);
         pav_error_set(err, "not_ready", "log.db is not open", 0);
         return -1;
     }
     if (rc != 0) {
         json_decref(q.newest_first);
+        json_decref(q.sessions);
         pav_error_set(err, "internal", "cannot read the log", 0);
         return -1;
     }
@@ -663,7 +729,7 @@ static int cmd_log_query(json_t *args, json_t **data, PavError *err) {
         json_array_append(lines, json_array_get(q.newest_first, i - 1));
     }
     json_decref(q.newest_first);
-    *data = lines != NULL ? json_pack("{s:o}", "lines", lines) : NULL;
+    *data = lines != NULL ? json_pack("{s:o,s:o,s:I}", "lines", lines, "sessions", q.sessions, "currentSession", (json_int_t)q.current) : NULL;
     if (*data == NULL) {
         pav_error_set(err, "internal", "out of memory", 0);
         return -1;
@@ -682,8 +748,10 @@ typedef struct ExportCtx {
     int too_large;
 } ExportCtx;
 
-static int export_line(void *ctx, int64_t seq, const char *line) {
+static int export_line(void *ctx, int64_t seq, int64_t session, const char *line) {
     ExportCtx *e = ctx;
+
+    (void)session;
     size_t len = strlen(line);
 
     (void)seq;
@@ -1008,7 +1076,59 @@ static int cmd_log_tail(json_t *args, json_t **data, PavError *err) {
     return 0;
 }
 
+/* H-4 commit 4: command logging. TRACE name and duration (log.* is skipped so
+   the log view's own reads do not feed the log), WARN when slow or unknown,
+   INFO outcome for account commands with the account id and error code only. */
+#define PAV_SLOW_COMMAND_MS 250
+
+static int64_t dispatch_mono_ms(void) {
+    struct timespec ts;
+
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+static const char *account_id_of(json_t *args, json_t *data) {
+    const char *keys[2] = {"id", "accountId"};
+    int i;
+
+    for (i = 0; i < 2; i++) {
+        json_t *v = json_is_object(data) ? json_object_get(data, keys[i]) : NULL;
+
+        if (json_is_string(v)) {
+            return json_string_value(v);
+        }
+        v = json_object_get(args, keys[i]);
+        if (json_is_string(v)) {
+            return json_string_value(v);
+        }
+    }
+    return "?";
+}
+
+static void log_command(const char *name, json_t *args, json_t *data, int rc, const PavError *err, int64_t ms) {
+    if (strncmp(name, "account.", 8) == 0 && strcmp(name, "account.list") != 0) {
+        if (rc == 0) {
+            pav_log("account", PAV_INFO, 2, "%s ok: %s", name, account_id_of(args, data));
+        } else {
+            pav_log("account", PAV_WARN, 3, "%s failed: %s (%s)", name, account_id_of(args, NULL), err->code);
+        }
+    }
+    if (strncmp(name, "log.", 4) == 0) {
+        return;
+    }
+    if (ms >= PAV_SLOW_COMMAND_MS) {
+        pav_log("dispatch", PAV_WARN, 2, "slow command %s: %lld ms", name, (long long)ms);
+    } else if (rc != 0) {
+        pav_log("dispatch", PAV_DEBUG, 2, "%s failed: %s", name, err->code);
+    } else {
+        pav_log("dispatch", PAV_TRACE, 2, "%s %lld ms", name, (long long)ms);
+    }
+}
+
 char *pav_dispatch_reply(const char *name, json_t *args) {
+    int64_t started;
+    int rc;
     const PavCommand *cmd;
     json_t *data = NULL;
     PavError err;
@@ -1025,9 +1145,16 @@ char *pav_dispatch_reply(const char *name, json_t *args) {
     cmd = command_find(name);
     if (cmd == NULL) {
         snprintf(buf, sizeof(buf), "unknown command %s", name);
+        pav_log("dispatch", PAV_WARN, 1, "unknown command %s", name);
         return pav_reply_error("bad_args", buf, 0);
     }
-    if (cmd->handler(args, &data, &err) != 0) {
+    started = dispatch_mono_ms();
+    rc = cmd->handler(args, &data, &err);
+    if (rc != 0 && err.code[0] == '\0') {
+        pav_error_set(&err, "internal", "command failed", 0);
+    }
+    log_command(name, args, data, rc, &err, dispatch_mono_ms() - started);
+    if (rc != 0) {
         json_decref(data);
         if (err.code[0] == '\0') {
             pav_error_set(&err, "internal", "command failed", 0);
@@ -1220,4 +1347,13 @@ unsigned long long pav_event_dropped(void) {
     n = g_ev_dropped;
     pthread_mutex_unlock(&g_ev_mu);
     return n;
+}
+
+/* Test hook: forget the log.client rate window. */
+void pav_log_client_rate_reset(void) {
+    pthread_mutex_lock(&g_client_mu);
+    g_client_window = 0;
+    g_client_count = 0;
+    g_client_dropped = 0;
+    pthread_mutex_unlock(&g_client_mu);
 }

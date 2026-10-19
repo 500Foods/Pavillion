@@ -157,7 +157,7 @@ int pav_protocol(const char *req_json, PavBytes *out);
 
 ### L4 UI
 
-- `ui/src/api.js` is `createApi(transport)`. A transport is `{ call(cmd, args) -> Promise, on(handler) -> unsubscribe }`. Screens call `api.mailbox.list(...)` style methods and `api.on("mail.messages_changed", fn)`; they never see the transport.
+- `ui/src/api.js` is `createApi(transport)`. A transport is `{ call(cmd, args) -> Promise, on(handler) -> unsubscribe }`. Screens call `api.mailbox.list(...)` style methods and `api.on("mail.messages_changed", fn)`; they never see the transport. The Tauri transport keeps one app-wide `listen("pav")` and fans each event out to a handler set; an `on()` unsubscribe only removes its handler, and the Tauri listener is released only by `transport.stop()` (called through `api.stop()` from `stopShell`), so a view closing never races a Rust emit (2026-10-19).
 - The UI is one ES module root with no global singletons. `mount(el, api, { hostServices })` renders into `el` and leaves `document` and `window` alone outside it, except keyboard shortcuts registered through the mount's own listener. `hostServices` is the optional window chrome (drag region, window controls) that only the Tauri host provides.
 - CSS custom properties are namespaced `--pav-*`, and every rule is scoped under `.pav-root`. Theme files assign `--pav-*` names only.
 - Icon libraries (F-3) are loaded by the host page, not the UI module; the UI draws icons only through the registry (F-7).
@@ -177,7 +177,7 @@ int pav_protocol(const char *req_json, PavBytes *out);
 | Data dir | `$XDG_DATA_HOME/pavillion` | `%APPDATA%\Pavillion` | `~/Library/Application Support/Pavillion` | app container |
 | Autostart | XDG autostart | Run key | launch agent | n/a |
 | mailto | deep-link plugin + xdg-mime | protocol registration | `CFBundleURLTypes` | custom scheme |
-| Single instance | plugin (D-Bus/socket) | named mutex | plugin | n/a |
+| Single instance | `tauri-plugin-single-instance` (D-Bus), id per workdir; core profile lock (`flock`) | plugin (named mutex); `LockFileEx` | plugin (socket); `flock` | n/a |
 | Packaging | rpm + dnf repo, Arch PKGBUILD | MSI | notarized .app | App Store |
 
 - The core must not: call X11, Wayland, or libayatana; use a `dlopen` database layer; take on libmicrohttpd, libwebsockets, MagickWand, or Brotli; assume `/` separators or `~`.

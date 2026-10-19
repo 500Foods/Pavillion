@@ -246,6 +246,7 @@ static int write_pending(void) {
         return -1;
     }
     if (pav_core_prefs_set(args, &data, &err) != 0) {
+        pav_log("window", PAV_WARN, 1, "cannot save window state: %s", err.code);
         json_decref(args);
         json_decref(data);
         return -1;
@@ -253,6 +254,7 @@ static int write_pending(void) {
     json_decref(args);
     json_decref(data);
     g_armed = 0;
+    pav_log("window", PAV_DEBUG, 5, "window saved %dx%d at %d,%d%s", g_w, g_h, g_x, g_y, g_maximized ? " (maximized)" : "");
     g_pending = 0;
     return 0;
 }

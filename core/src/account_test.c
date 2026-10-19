@@ -51,6 +51,7 @@ static void account_test_done(PavReq *req, void *user) {
     }
     pthread_cond_broadcast(&w->cv);
     pthread_mutex_unlock(&w->mu);
+    pav_log("account", PAV_DEBUG, 1, "test response %d", req->status_code);
 
     if (req->resp_headers != NULL) {
         json_decref(req->resp_headers);
@@ -79,6 +80,7 @@ static int session_url_for(const char *email, const char *session_url,
         size_t dlen = strlen(domain);
         if (dlen == 0 || dlen > 253) return -1;
         snprintf(out, out_len, "https://%s/.well-known/jmap", domain);
+        pav_log("account", PAV_DEBUG, 0, "session URL from the address domain (well-known)");
     }
     return 0;
 }

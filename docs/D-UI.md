@@ -18,6 +18,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | D-6 | Theme catalog: files, the list, and fallback | Medium | Complete |
 | D-7 | Theme skin: fonts, icons, mark, and HTML in CSS | Medium | Complete |
 | D-5 | Theme extras: density, gradient tuning, the contrast audit | Medium | Not started |
+| D-8 | Settings → Formats: app-wide display formats through Luxon (before N-3) | Medium | Not started |
 
 Kind: **Easy** is the static frame or one function in `api.js`. **Medium** crosses one boundary. **Hard** is unused.
 
@@ -300,6 +301,43 @@ D-1 keeps the five variables in the lock above. A later theme phase follows Lith
 
 **Exit gate:** `make test` exits 0 including the contrast test. In `make build`, all three modes and both densities look right.
 
+## D-8: Settings → Formats
+
+**Kind:** Medium
+**Status:** Not started. Added 2026-10-19 at Andrew's request. The same day he moved it ahead of N-3 in the sequence; it keeps step number 132.
+
+**Goal:** One place, Settings → Formats, where the user sets how dates and times are shown everywhere in the app (date, time, datetime, and the other display formats below), with every conversion done by Luxon. Storage, the wire, and exports do not change: UTC ms and ISO 8601 stay the stored and exported forms.
+
+**Entry gate:** Q-1 complete (the row before it in the sequence). D-8 comes before N-3 so the message list (N-3), the calendar views (T-3), tasks (X), notes (Y), and every later screen use `formats.js` from the start. Until it lands, only the H-4 log view and the activity list format times with their own fixed 24 h code in the profile zone; D-8 switches them.
+
+**Work items:**
+
+- [ ] Add `luxon` as an npm dependency of `ui/` (pinned, bundled by Vite; record the gzip cost of `ui/dist` in Accomplished). No other date library.
+- [ ] `ui/src/formats.js`: the only module that turns a stored instant into display text. `formatInstant(ms|iso, kind)` for `kind` in `date`, `time`, `timeSeconds` (`HH:mm:ss.SSS`, the log view), `datetime`, `dateShort` (message list), `weekday`, `relative` (Luxon `toRelative`), and `duration`. It reads the profile zone (`prefs.get` `timezone`, default `America/Vancouver`, else the system zone) and the profile locale.
+- [ ] Defaults are 24 h: `date` `yyyy-MM-dd`, `time` `HH:mm`, `timeSeconds` `HH:mm:ss.SSS`, `datetime` `yyyy-MM-dd HH:mm`. The existing profile `time_format` (`24h`, `prefs.set` `timeFormat`) stays the 12/24 h switch; a format string chosen in the pane wins over it.
+- [ ] Where the formats live: proposed `preferences.ui.formats` (one key per kind, Luxon format strings), validated in the UI with Luxon before save. Lock entry in this file and in [B-CONFIG.md](B-CONFIG.md) before code.
+- [ ] Settings → Formats pane: one row per kind with the format field, a live preview of now and of a fixed sample instant, a Reset per row, and a zone picker that writes `timezone` (IANA names from `Intl.supportedValuesOf("timeZone")`).
+- [ ] Switch every screen to `formats.js`: the log view (H-4 commit 4 shows local 24 h `HH:mm:ss.SSS` in the profile zone with its own code; it moves to `timeSeconds`), the activity list, and any screen already using `Intl.DateTimeFormat` or a hand-written stamp. Later phases (N-3 message list, T calendar views, X tasks, Y notes) call `formats.js` and never format a date themselves.
+- [ ] Help: a Formats page under Settings that lists the Luxon format tokens (`yyyy`, `yy`, `MM`, `M`, `MMM`, `MMMM`, `dd`, `d`, `EEE`, `EEEE`, `HH`, `H`, `hh`, `h`, `mm`, `ss`, `SSS`, `a`, `ZZ`, `ZZZZ`, `z`, quoting with `'...'`) with an example for each, and links to the Luxon formatting docs.
+
+**Tests:**
+
+- Vitest `formats.test.js`: each kind's default against fixed instants in `America/Vancouver` (both sides of a DST change) and `UTC`; 24 h by default; a custom format string; an invalid format string is refused with a message; the zone fallback order.
+- Vitest: the Formats pane saves, previews, and resets; the log view re-renders on a format change.
+- A bypass-style Vitest that fails on `toLocaleString`, `toLocaleTimeString`, `Intl.DateTimeFormat`, or a new date formatter outside `formats.js` (same pattern as `bypass.test.js`).
+- `make test` exits 0; the window check covers the pane and the log view.
+
+**Done means:** Changing a format or the zone in Settings → Formats changes every date and time on screen at once, the defaults are 24 h in the profile zone, and Help lists the tokens.
+
+**Exit gate:** `make test` exits 0. In `make build`, the pane and two screens (the log view and the activity list) follow a changed format and zone.
+
+**Open questions for Andrew:**
+
+- D-Q2: `preferences.ui.formats` (UI blob, no core change) or core-validated profile fields like `time_format`?
+- D-Q3: which kinds beyond date, time, and datetime (relative times, durations, first day of week, number and size formats)?
+- D-Q4: a locale setting separate from the system locale?
+- D-Q5: do exports and copy stay ISO UTC with `Z` (the H-4 choice) or follow the display format?
+
 ## Working log
 
 - 2026-10-14 D-1: Dark frame. `theme.css` has the five variables. Title row shows Pavillion. Profile slot and body are empty.
@@ -315,6 +353,8 @@ D-1 keeps the five variables in the lock above. A later theme phase follows Lith
 - 2026-10-17 D-6/D-7 still in progress. Theme choice saves even when icon paint throws. A file theme paints its icons without a reload. The folder field is blank, with placeholder `Default:` plus the working directory, and Browse. Theme Default, Undo, and Redo do not change zoom. The window check is still open.
 - 2026-10-17 D-6 and D-7 complete. Andrew accepted the window. The launch terminal no longer prints profile info. `core ready` stays in the profile log and the Activity log. `make test` is 68 Unity tests and 44 Vitest tests. The next phase is J-1. Do not start it in this sitting.
 - 2026-10-18 Recorded at the J-9 close (moved from the index Resume): the host page still starts on `color-scheme: dark` and `background: #000`, and `data-pav-theme` follows the resolved theme. `pav-theme` is on the existing scheme list in `src-tauri/src/lib.rs`.
+- 2026-10-19 D-8 added (not started): Settings → Formats, app-wide display formats through Luxon, sequence step 132 after D-5. The H-4 log view's local 24 h time moves to it when it lands.
+- 2026-10-19 D-8 moved (Andrew): sequence row 132 now sits just before N-3 (step 61), entry gate Q-1, so N-3, T-3, and later screens use Settings → Formats; D-Q1 (placement) resolved and removed.
 
 ## Shell preview
 

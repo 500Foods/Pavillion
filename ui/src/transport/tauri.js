@@ -104,6 +104,35 @@ export function tauriHost() {
 }
 
 export function tauriTransport() {
+  const handlers = new Set();
+  let unlisten = null;
+  let listening = null;
+  let generation = 0;
+
+  function ensureListening() {
+    if (listening) {
+      return;
+    }
+    generation += 1;
+    const mine = generation;
+    listening = listen("pav", (event) => {
+      const body = event && event.payload ? event.payload : {};
+      for (const handler of [...handlers]) {
+        handler(body.name, body.payload);
+      }
+    }).then((stop) => {
+      /* A stop() before this resolved (or a newer listen) owns the slot. */
+      if (mine !== generation) {
+        stop();
+        return;
+      }
+      unlisten = stop;
+    }).catch(() => {
+      if (mine === generation) {
+        listening = null;
+      }
+    });
+  }
   if (typeof window !== "undefined") {
     window.addEventListener("keydown", (event) => {
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === "KeyI") {
@@ -118,26 +147,25 @@ export function tauriTransport() {
         throw asError(err);
       });
     },
+    /* One app-wide listen("pav") fans out to every handler (G-3 Lock). An
+       unsubscribe only removes its handler, so a view closing never drops the
+       Tauri callback while Rust is emitting. stop() releases the listener. */
     on(handler) {
-      let closed = false;
-      let unlisten = () => {};
-      listen("pav", (event) => {
-        if (closed) {
-          return;
-        }
-        const body = event && event.payload ? event.payload : {};
-        handler(body.name, body.payload);
-      }).then((stop) => {
-        if (closed) {
-          stop();
-          return;
-        }
-        unlisten = stop;
-      });
+      handlers.add(handler);
+      ensureListening();
       return () => {
-        closed = true;
-        unlisten();
+        handlers.delete(handler);
       };
+    },
+    stop() {
+      handlers.clear();
+      const release = unlisten;
+      unlisten = null;
+      listening = null;
+      generation += 1;
+      if (release) {
+        release();
+      }
     },
   };
 }

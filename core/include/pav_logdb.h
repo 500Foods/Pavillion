@@ -49,7 +49,10 @@ typedef struct PavLogQuery {
     int64_t session;
     unsigned level_mask;
 } PavLogQuery;
-typedef int (*PavLogLineFn)(void *ctx, int64_t seq, const char *line);
+/* session is the row's session id (H-4 separators). */
+typedef int (*PavLogLineFn)(void *ctx, int64_t seq, int64_t session, const char *line);
+/* The session row's start, UTC ms. -1 when there is no such session. */
+int pav_logdb_session_started(sqlite3 *db, int64_t id, int64_t *started);
 int pav_logdb_walk(sqlite3 *db, const PavLogQuery *q, PavLogLineFn fn, void *ctx);
 /* The newest session id below current, or 0 when there is none. */
 int pav_logdb_previous_session(sqlite3 *db, int64_t current, int64_t *out);

@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "pav_jmap.h"
+#include "pavillion.h"
 
 #include <curl/curl.h>
 
@@ -82,6 +83,7 @@ int pav_jmap_parse_session(const char *body, size_t len, PavJmapSession *out,
     root = json_loads(body, 0, &jerr);
     if (root == NULL) {
         snprintf(err, err_len, "invalid session JSON: %s", jerr.text);
+        pav_log("jmap", PAV_WARN, 1, "invalid session JSON at line %d", jerr.line);
         return -1;
     }
 
@@ -159,6 +161,7 @@ int pav_jmap_parse_session(const char *body, size_t len, PavJmapSession *out,
     }
 
     json_decref(root);
+    pav_log("jmap", PAV_DEBUG, 2, "session parsed: %d capabilities, %d accounts", out->cap_count, out->accounts != NULL ? (int)json_array_size(out->accounts) : 0);
     return 0;
 }
 
@@ -211,6 +214,7 @@ int pav_jmap_build_request(json_t *method_calls, char **out) {
 static void jmap_post_done(PavReq *req, void *user) {
     PavJmapCtx *ctx = (PavJmapCtx *)user;
 
+    pav_log("jmap", PAV_DEBUG, 2, "response %d (%lld bytes)", req->status_code, (long long)req->body_out_len);
     ctx->on_done(ctx, req->status_code, req->body_out, req->body_out_len,
                  req->resp_headers, ctx->user);
 
@@ -223,9 +227,10 @@ static void jmap_post_done(PavReq *req, void *user) {
     ctx->request_json = NULL;
 }
 
+/* The request keeps ctx->session_url, which the caller owns for the life of
+   ctx (until on_done). It used to point at a stack buffer of this function,
+   which was gone by the time the network thread read it. */
 int pav_jmap_post(PavJmapCtx *ctx) {
-    char full_url[2048];
-
     if (ctx == NULL || ctx->on_done == NULL || ctx->session_url == NULL ||
         ctx->session_url[0] == '\0') {
         return -1;
@@ -235,11 +240,9 @@ int pav_jmap_post(PavJmapCtx *ctx) {
         return -1;
     }
 
-    snprintf(full_url, sizeof(full_url), "%s", ctx->session_url);
-
     memset(&ctx->req, 0, sizeof(ctx->req));
     ctx->req.method = "POST";
-    ctx->req.url = full_url;
+    ctx->req.url = ctx->session_url;
     ctx->req.body = ctx->request_json;
     ctx->req.body_len = strlen(ctx->request_json);
     ctx->req.ca_file = ctx->ca_file;
@@ -249,6 +252,7 @@ int pav_jmap_post(PavJmapCtx *ctx) {
     ctx->req.on_done = jmap_post_done;
     ctx->req.user = ctx;
 
+    pav_log("jmap", PAV_DEBUG, 1, "post %zu bytes", ctx->req.body_len);
     return pav_net_request(&ctx->req);
 }
 
@@ -268,6 +272,7 @@ int pav_jmap_parse_response(const char *body, size_t len, PavJmapResp *out,
     root = json_loads(body, 0, &jerr);
     if (root == NULL) {
         snprintf(err, err_len, "invalid JMAP response: %s", jerr.text);
+        pav_log("jmap", PAV_WARN, 1, "invalid response JSON at line %d", jerr.line);
         return -1;
     }
 
@@ -283,6 +288,7 @@ int pav_jmap_parse_response(const char *body, size_t len, PavJmapResp *out,
     method_responses = json_object_get(root, "methodResponses");
     if (!json_is_array(method_responses)) {
         snprintf(err, err_len, "missing methodResponses array");
+        pav_log("jmap", PAV_WARN, 0, "response has no methodResponses");
         json_decref(root);
         return -1;
     }
@@ -308,8 +314,8 @@ int pav_jmap_parse_response(const char *body, size_t len, PavJmapResp *out,
             type = json_string_value(json_array_get(first, 0));
             if (type != NULL && strcmp(type, "error") == 0) {
                 json_t *emsg = json_array_get(first, 1);
+                const char *code = json_is_object(emsg) ? json_string_value(json_object_get(emsg, "code")) : NULL;
                 if (json_is_object(emsg)) {
-                    const char *code = json_string_value(json_object_get(emsg, "code"));
                     const char *desc = json_string_value(json_object_get(emsg, "description"));
                     snprintf(out->error, sizeof(out->error), "%s: %s",
                              code != NULL ? code : "unknown",
@@ -318,6 +324,7 @@ int pav_jmap_parse_response(const char *body, size_t len, PavJmapResp *out,
                     snprintf(out->error, sizeof(out->error), "JMAP error response");
                 }
                 out->is_success = 0;
+                pav_log("jmap", PAV_WARN, 1, "method error: %s", code != NULL ? code : "unknown");
             } else {
                 out->is_success = 1;
             }

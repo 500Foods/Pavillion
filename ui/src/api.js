@@ -117,5 +117,11 @@ export function createApi(transport) {
         }
       });
     },
+    /* Releases the transport's event listener (shell stop). */
+    stop() {
+      if (typeof transport.stop === "function") {
+        transport.stop();
+      }
+    },
   };
 }

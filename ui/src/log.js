@@ -72,4 +72,71 @@ export function installLogHooks(api) {
   window.addEventListener("unhandledrejection", (event) => {
     report(`unhandledrejection: ${reasonText(event.reason)}`);
   });
+  routeConsole(api);
+}
+
+/* H-4: console.warn and console.error also go to the core log through
+   log.client (the browser console keeps its copy for the inspector). This
+   file is the only allowed console call site in ui/src (bypass.test.js). */
+let consoleOriginals = null;
+
+function consoleText(args) {
+  return args.map((arg) => (arg instanceof Error ? reasonText(arg) : typeof arg === "string" ? arg : (() => {
+    try {
+      return JSON.stringify(arg);
+    } catch {
+      return String(arg);
+    }
+  })())).join(" ");
+}
+
+/* Known framework messages, reworded so users never see the framework name
+   at WARN (H-4 Lock). Any other [TAURI] message stays as it was. */
+const FRAMEWORK_NOTES = [
+  { pattern: /^\[TAURI\] Couldn't find callback id/, level: "debug", message: "late reply ignored after a view closed" },
+];
+
+export function frameworkNote(text) {
+  return FRAMEWORK_NOTES.find((note) => note.pattern.test(text)) || null;
+}
+
+export function routeConsole(api) {
+  if (typeof console === "undefined") {
+    return;
+  }
+  if (!consoleOriginals) {
+    consoleOriginals = { warn: console.warn, error: console.error };
+  }
+  let busy = false;
+  for (const level of ["warn", "error"]) {
+    const original = consoleOriginals[level];
+    console[level] = (...args) => {
+      original.apply(console, args);
+      if (busy) {
+        return;
+      }
+      busy = true;
+      try {
+        const text = consoleText(args);
+        const known = frameworkNote(text);
+        Promise.resolve(api.log.client(known
+          ? { subsystem: "ui", level: known.level, message: known.message }
+          : { subsystem: "ui", level, message: clip(text) }))
+          .catch(() => {})
+          .finally(() => {
+            busy = false;
+          });
+      } catch {
+        busy = false;
+      }
+    };
+  }
+}
+
+export function restoreConsole() {
+  if (consoleOriginals) {
+    console.warn = consoleOriginals.warn;
+    console.error = consoleOriginals.error;
+    consoleOriginals = null;
+  }
 }

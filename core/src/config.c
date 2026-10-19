@@ -343,6 +343,9 @@ static void consider_file(const char *dir, const char *name, const char *active,
     if (!pav_exists(path) || pav_is_dir(path)) {
         return;
     }
+    if (strlen(name) > 10 && strcmp(name + strlen(name) - 10, ".json.lock") == 0) {
+        return; /* profile lock (B Lock), not a profile and not worth a warning */
+    }
     if (strlen(name) < 5 || strcmp(name + strlen(name) - 5, ".json") != 0) {
         pav_log("config", PAV_WARN, 1, "ignored %s: not a profile", name);
         return;
@@ -476,6 +479,7 @@ int pav_config_load(const char *workdir, PavConfigLoad **out, char *err, size_t 
                            index->active);
             } else {
                 memcpy(load->state, "ready", sizeof("ready"));
+                pav_log("config", PAV_DEBUG, 2, "index loaded: active %s, log level %s", index->active, index->log_level);
             }
         } else {
             load_error(load, "active profile missing: %s", index->active);

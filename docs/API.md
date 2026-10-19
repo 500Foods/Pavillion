@@ -364,7 +364,7 @@ State: real (G-2)
 
 Replaces `pav_ui_log` for hosts that speak JSON.
 
-Args: `{subsystem, level, message}`. `subsystem` matches `^[a-z][a-z0-9_]{0,15}$`. `level` is `error`, `warn`, `info`, `debug`, or `trace`. `message` is a string of at most 2000 bytes. CR, LF, and CRLF become U+23CE. The formatted line keeps that message.
+Args: `{subsystem, level, message}`. `subsystem` matches `^[a-z][a-z0-9_]{0,15}$`. `level` is `error`, `warn`, `info`, `debug`, or `trace`. `message` is a string of at most 2000 bytes. CR, LF, and CRLF become U+23CE. The formatted line keeps that message. The core accepts 50 lines per second (H-4): later lines in that second are dropped, still answer `{}`, and are counted into one `WARN ui log.client dropped N lines over 50 per second` at the next accepted second. Every line is redacted and collapses with an identical previous line like any `pav_log` line.
 
 Result: `{}`.
 
@@ -390,7 +390,7 @@ Reads older lines from the profile's `log.db` through the log thread ([H-LOGGING
 
 Args: `{beforeSeq?, since?, until?, limit, levels?, subsystems?, text?, session?}`. `since` and `until` are UTC milliseconds (`since <= ts < until`; either omitted is open), read through the `ts` index; the Log view passes its time range (default the last 12 hours) when the user widens it. The result is the newest matching lines with a `seq` below `beforeSeq`, oldest first. `session` is `current`, `previous`, `all` (default), or a session id. `limit` is required, an integer from 1 to 10000. `beforeSeq` is an integer >= 1. `levels`, `subsystems`, and `text` are as in `log.export`'s filter; `levels` omitted keeps every level.
 
-Result: `{lines:[{seq, ts, level, subsystem, text}]}`, the `log.tail` row shape. Fewer than `limit` lines means there is nothing older in range. `previous` with no earlier run returns no lines.
+Result: `{lines:[{seq, ts, level, subsystem, text, session}], sessions:{"<id>": startedMs}, currentSession}`: the `log.tail` row shape plus each row's session id, the start (UTC ms) of each session in the page, and this run's id (separators, H-4). Fewer than `limit` lines means there is nothing older in range. `previous` with no earlier run returns no lines.
 
 Errors: `bad_args`, `not_ready` (no `log.db` open), `internal`.
 

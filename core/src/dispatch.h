@@ -56,4 +56,6 @@ int pav_command_is_worker(const char *name);
 int pav_event_thread_start(void);
 void pav_event_thread_stop(void);
 
+/* H-4 test hook: clears the log.client 50-per-second window. */
+void pav_log_client_rate_reset(void);
 #endif

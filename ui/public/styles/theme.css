@@ -1710,3 +1710,12 @@
   display: flex;
   gap: 0.5rem;
 }
+
+/* H-4 session separator in the log view (screen only). */
+.pav-root .pav-log .pav-log-session {
+  border-top: 1px solid var(--pav-border);
+  color: var(--pav-log-debug);
+  font-style: italic;
+  margin: 0.4em 0 0.2em;
+  padding-top: 0.2em;
+}

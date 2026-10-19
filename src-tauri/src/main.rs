@@ -71,7 +71,7 @@ fn default_workdir() -> String {
     match std::env::var("HOME") {
         Ok(home) if !home.is_empty() => format!("{home}/.local/share/pavillion"),
         _ => {
-            eprintln!("HOME is not set");
+            pavillion_lib::core_log(0, "HOME is not set");
             std::process::exit(1);
         }
     }

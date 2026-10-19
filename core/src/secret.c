@@ -57,6 +57,8 @@ int pav_secret_get(const char *service, const char *user, char **out) {
             *out = NULL;
         }
         pav_log("secret", PAV_WARN, 1, "secret %s", secret_name(code));
+    } else {
+        pav_log("secret", PAV_DEBUG, 0, "secret get ok");
     }
     return code;
 }
@@ -73,6 +75,8 @@ int pav_secret_set(const char *service, const char *user, const char *label, con
     code = platform->secret_set(service, user, label, val);
     if (code != 0) {
         pav_log("secret", PAV_WARN, 1, "secret %s", secret_name(code));
+    } else {
+        pav_log("secret", PAV_DEBUG, 0, "secret set ok");
     }
     return code;
 }
@@ -88,6 +92,8 @@ int pav_secret_delete(const char *service, const char *user) {
     code = platform->secret_delete(service, user);
     if (code != 0) {
         pav_log("secret", PAV_WARN, 1, "secret %s", secret_name(code));
+    } else {
+        pav_log("secret", PAV_DEBUG, 0, "secret delete ok");
     }
     return code;
 }

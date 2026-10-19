@@ -307,7 +307,13 @@ export function mockTransport() {
           && (wanted === null || (line.session || 1) === wanted)
           && (!Array.isArray(input.levels) || input.levels.includes(line.level));
       });
-      return { lines: kept.slice(-input.limit).map(({ session, ...line }) => line) };
+      const page = kept.slice(-input.limit).map((line) => ({ ...line, session: line.session || 1 }));
+      const sessions = {};
+      for (const line of page) {
+        const first = logHistory.find((row) => (row.session || 1) === line.session);
+        sessions[String(line.session)] = first ? Date.parse(first.ts) : 0;
+      }
+      return { lines: page, sessions, currentSession: current };
     }
     if (cmd === "log.stats" || cmd === "log.trim") {
       if (cmd === "log.trim") {

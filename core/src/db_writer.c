@@ -96,6 +96,7 @@ static int run_one(sqlite3 *db, DbJob *job) {
     }
     rc = job->fn(job->ctx, db);
     if (rc == SQLITE_BUSY) {
+        pav_log("store", PAV_DEBUG, 0, "write busy, checkpoint and retry");
         pav_db_tx_rollback(db);
         checkpoint_passive(db);
         if (pav_db_tx_begin(db) != 0) {
@@ -359,11 +360,13 @@ int pav_db_writer_start(sqlite3 *db) {
     g_started = g_pragma_rc == 0;
     pthread_mutex_unlock(&g_mu);
     if (!g_started) {
+        pav_log("store", PAV_ERROR, 0, "writer pragmas failed");
         pav_thread_join(g_thread);
         g_thread = NULL;
         g_write = NULL;
         return -1;
     }
+    pav_log("store", PAV_DEBUG, 0, "writer started");
     return 0;
 }
 
@@ -400,6 +403,7 @@ int pav_db_writer_shutdown(sqlite3 *db) {
     g_in_batch = 0;
     g_ready = 0;
     pthread_mutex_unlock(&g_mu);
+    pav_log("store", PAV_DEBUG, 0, "writer stopped");
     return 1;
 }
 

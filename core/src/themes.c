@@ -615,6 +615,7 @@ int pav_themes_folder_set(json_t *args, json_t **data, PavError *err) {
             return -1;
         }
     }
+    pav_log("themes", PAV_INFO, 1, "themes folder %s", folder[0] == '\0' ? "reset to default" : "set");
     if (write_index(index, err) != 0) {
         pav_index_free(index);
         return -1;

@@ -21,6 +21,12 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include "pav_compat.h"
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/file.h>
+#endif
 
 #define CORE_QUEUE_CAP 256
 #define CORE_CMD_STOP 1
@@ -138,17 +144,79 @@ static int core_apply_ui(char *err, size_t err_len);
 static int worker_submit(PavCall *call);
 static void worker_drain(void);
 
+/* One process per profile (B Lock, 2026-10-19): an exclusive, non-blocking
+   lock on "<profile file>.lock" is held from attach to detach. Linux and
+   macOS use flock (per open file, so the kernel drops it if the process
+   dies); Windows uses LockFileEx on the same file. */
+#define PAV_PROFILE_LOCKED_MSG "This profile is open in another Pavillion window."
+static int g_profile_lock_fd = -1;
+
+static int profile_lock_take(const char *profile_path, char *err, size_t err_len) {
+    char path[4200];
+    int fd;
+
+    if (snprintf(path, sizeof(path), "%s.lock", profile_path) >= (int)sizeof(path)) {
+        snprintf(err, err_len, "path is too long");
+        return -1;
+    }
+    fd = open(path, O_RDWR | O_CREAT | O_BINARY, 0600);
+    if (fd < 0) {
+        snprintf(err, err_len, "cannot open the profile lock");
+        return -1;
+    }
+#ifdef _WIN32
+    {
+        OVERLAPPED ov;
+        HANDLE h = (HANDLE)_get_osfhandle(fd);
+
+        memset(&ov, 0, sizeof(ov));
+        if (h == INVALID_HANDLE_VALUE ||
+            !LockFileEx(h, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &ov)) {
+            close(fd);
+            snprintf(err, err_len, "%s", PAV_PROFILE_LOCKED_MSG);
+            return -1;
+        }
+    }
+#else
+    if (flock(fd, LOCK_EX | LOCK_NB) != 0) {
+        int busy = errno == EWOULDBLOCK;
+
+        close(fd);
+        snprintf(err, err_len, "%s", busy ? PAV_PROFILE_LOCKED_MSG : "cannot lock the profile");
+        return -1;
+    }
+#endif
+    g_profile_lock_fd = fd;
+    pav_log("core", PAV_DEBUG, 0, "profile lock held");
+    return 0;
+}
+
+static void profile_lock_release(void) {
+    if (g_profile_lock_fd < 0) {
+        return;
+    }
+#ifndef _WIN32
+    (void)flock(g_profile_lock_fd, LOCK_UN);
+#endif
+    close(g_profile_lock_fd); /* closing also releases LockFileEx */
+    g_profile_lock_fd = -1;
+}
+
 static void core_release_profile(void) {
     pav_activity_shutdown();
     pav_store_close(g_store);
     g_store = NULL;
     pav_config_load_free(g_load);
     g_load = NULL;
+    profile_lock_release();
 }
 
 /* Flushes queued log lines, then publishes. The caller is the core thread
    and does not hold g_core_mu. */
 static void publish_boot(const char *state, const char *name, const char *id, const char *error) {
+    if (strcmp(state, "error") == 0) {
+        pav_log("core", PAV_ERROR, 1, "profile attach failed: %s", error != NULL ? error : "unknown");
+    }
     pav_log_flush();
     pthread_mutex_lock(&g_core_mu);
     core_publish_unlocked(state, name, id, error);
@@ -217,6 +285,11 @@ static void core_boot(void) {
         return;
     }
     profile = g_load->profile;
+    if (profile_lock_take(g_load->profile_path, err, sizeof(err)) != 0) {
+        publish_boot("error", profile->name, profile->id, err);
+        return;
+    }
+    pav_log("core", PAV_INFO, 3, "profile %s attaching (engine %s, timezone %s)", profile->id, profile->engine, profile->timezone);
     if (pav_profile_check_engine(profile, err, sizeof(err)) != 0) {
         publish_boot("error", profile->name, profile->id, err);
         return;
@@ -233,12 +306,13 @@ static void core_boot(void) {
     }
     (void)pav_log_set_cap_mb(profile->log_max_mb);
     (void)pav_log_attach_profile(profile->resolved_logs);
+    pav_log("core", PAV_DEBUG, 1, "log.db attached, cap %d MB", profile->log_max_mb);
     remove_old_logs(g_core_workdir, profile->id);
     if (core_prepare_prefs(err, sizeof(err)) != 0) {
         publish_boot("error", profile->name, profile->id, err);
         return;
     }
-    pav_log("core", PAV_INFO, 0, "core ready");
+    pav_log("core", PAV_INFO, 2, "core ready: profile %s, %d accounts", profile->id, (int)profile->account_count);
     publish_boot("ready", profile->name, profile->id, NULL);
 }
 
@@ -270,6 +344,7 @@ static int core_prepare_prefs(char *err, size_t err_len) {
 }
 
 static void set_start_err(char *err, size_t err_len, const char *msg) {
+    pav_log("core", PAV_ERROR, 1, "start failed: %s", msg);
     if (err == NULL || err_len == 0) {
         return;
     }
@@ -733,6 +808,10 @@ int pavillion_start(const char *workdir, char *err, size_t err_len) {
         pthread_cond_wait(&g_core_cv, &g_core_mu);
     }
     pthread_mutex_unlock(&g_core_mu);
+    pav_log("core", PAV_INFO, 3, "started: api %d, %s build, workdir %s", PAVILLION_API_VERSION, g_host_debug ? "debug" : "release", g_core_workdir[0] != '\0' ? g_core_workdir : "(none)");
+    if (g_host_selftest) {
+        pav_log("core", PAV_INFO, 0, "selftest mode");
+    }
     return 0;
 }
 
@@ -747,6 +826,7 @@ void pavillion_stop(void) {
         pav_log_thread_shutdown();
         return;
     }
+    pav_log("core", PAV_INFO, 0, "stopping");
     g_core_stop = 1;
     if (core_queue_push_unlocked(CORE_CMD_STOP, NULL) != 0) {
         pthread_cond_broadcast(&g_core_cv);
@@ -757,8 +837,10 @@ void pavillion_stop(void) {
     if (join) {
         pthread_join(thread, NULL);
     }
+    pav_log("core", PAV_DEBUG, 0, "core thread joined");
     /* After the core thread has finished. A second stop joins nothing. */
     pav_event_thread_stop();
+    pav_log("core", PAV_INFO, 0, "stopped");
     pav_log_thread_shutdown();
 }
 
@@ -1419,6 +1501,44 @@ static int apply_pref_string(PavProfile *profile, const char *file_key, const ch
     return 0;
 }
 
+/* H-4: names the changed preferences.ui keys as dotted paths. Values are
+   never logged. Stops at depth 4 and at the buffer end ("..."). */
+static void ui_diff_add(char *buf, size_t len, const char *path) {
+    size_t used = strlen(buf);
+
+    if (used + 4 >= len || strstr(buf, "...") != NULL) {
+        return;
+    }
+    if (used + strlen(path) + 2 >= len - 4) {
+        snprintf(buf + used, len - used, "%s...", used > 0 ? "," : "");
+        return;
+    }
+    snprintf(buf + used, len - used, "%s%s", used > 0 ? "," : "", path);
+}
+
+static void ui_diff_keys(json_t *old, json_t *cur, const char *prefix, int depth, char *buf, size_t len) {
+    const char *key;
+    json_t *value;
+    char path[256];
+
+    if (json_is_object(old) && json_is_object(cur) && depth < 4) {
+        json_object_foreach(cur, key, value) {
+            snprintf(path, sizeof(path), "%s%s%s", prefix, prefix[0] != '\0' ? "." : "", key);
+            ui_diff_keys(json_object_get(old, key), value, path, depth + 1, buf, len);
+        }
+        json_object_foreach(old, key, value) {
+            if (json_object_get(cur, key) == NULL) {
+                snprintf(path, sizeof(path), "%s%s%s", prefix, prefix[0] != '\0' ? "." : "", key);
+                ui_diff_add(buf, len, path);
+            }
+        }
+        return;
+    }
+    if (old == NULL || cur == NULL || !json_equal(old, cur)) {
+        ui_diff_add(buf, len, prefix[0] != '\0' ? prefix : "ui");
+    }
+}
+
 int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
     PavProfile *profile;
     PavShellPrefs shell;
@@ -1554,6 +1674,18 @@ int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
     if (profile_touched && pav_profile_store(g_load->profile_path, profile, errbuf, sizeof(errbuf)) != 0) {
         return fail_profile(err, errbuf[0] != '\0' ? errbuf : "cannot write profile");
     }
+    {
+        char keys[256];
+        const char *k;
+        json_t *v;
+
+        keys[0] = '\0';
+        json_object_foreach(args, k, v) {
+            (void)v;
+            ui_diff_add(keys, sizeof(keys), k);
+        }
+        pav_log("config", PAV_DEBUG, 1, "prefs set: %s", keys[0] != '\0' ? keys : "nothing");
+    }
     if (pav_profile_read_shell(profile, &shell, errbuf, sizeof(errbuf)) != 0) {
         return fail_profile(err, errbuf);
     }
@@ -1614,11 +1746,13 @@ int pav_core_set_log_max_mb(int mb, PavError *err) {
     if (pav_profile_store(g_load->profile_path, g_load->profile, errbuf, sizeof(errbuf)) != 0) {
         return fail_profile(err, errbuf);
     }
+    pav_log("config", PAV_INFO, 1, "log size cap set to %d MB", mb);
     return 0;
 }
 
 int pav_core_ui_set(json_t *args, json_t **data, PavError *err) {
     char *compact;
+    char changed[480];
     char errbuf[512];
 
     if (data == NULL) {
@@ -1639,6 +1773,13 @@ int pav_core_ui_set(json_t *args, json_t **data, PavError *err) {
         pav_error_set(err, "too_large", "preferences.ui is too large", 0);
         return -1;
     }
+    {
+        json_t *prefs_obj = json_object_get((json_t *)g_load->profile->doc, "preferences");
+        json_t *old_ui = json_is_object(prefs_obj) ? json_object_get(prefs_obj, "ui") : NULL;
+
+        changed[0] = '\0';
+        ui_diff_keys(old_ui, args, "", 0, changed, sizeof(changed));
+    }
     errbuf[0] = '\0';
     if (pav_profile_write_ui(g_load->profile, compact, errbuf, sizeof(errbuf)) != 0 ||
         pav_profile_store(g_load->profile_path, g_load->profile, errbuf, sizeof(errbuf)) != 0) {
@@ -1646,7 +1787,7 @@ int pav_core_ui_set(json_t *args, json_t **data, PavError *err) {
         return fail_profile(err, errbuf[0] != '\0' ? errbuf : "cannot write preferences.ui");
     }
     free(compact);
-    pav_log("config", PAV_DEBUG, 0, "prefs saved");
+    pav_log("config", PAV_DEBUG, 1, "prefs saved: %s", changed[0] != '\0' ? changed : "no changes");
     return pav_core_ui_get_data(data, err);
 }
 
@@ -1977,6 +2118,53 @@ static void free_node(LogNode *node) {
 /* The caller holds g_log_mu. A running log thread writes the line later.
    Otherwise the caller writes it now, so a line before start is not lost.
    Returns the line's ticket, or 0. */
+/* H-4 repeat collapse (Lock): the previous line, and how many identical
+   lines followed it. Guarded by g_log_mu. */
+#define LOG_DUP_IDLE_MS 1000
+static int g_dup_valid;
+static int g_dup_level;
+static char g_dup_subsystem[32];
+static char g_dup_msg[PAV_LOG_MSG_MAX];
+static unsigned long g_dup_n;
+static int64_t g_dup_last_ms;
+
+static uint64_t deliver_unlocked(int level, const char *subsystem, const char *msg);
+static int64_t mono_ms(void);
+
+static void dup_flush_unlocked(void) {
+    char text[96];
+
+    if (g_dup_valid && g_dup_n > 0) {
+        snprintf(text, sizeof(text), "previous line repeated %lu times", g_dup_n);
+        (void)deliver_unlocked(g_dup_level, g_dup_subsystem, text);
+    }
+    g_dup_n = 0;
+    g_dup_valid = 0;
+}
+
+/* Returns 1 when the line repeats the previous one and was only counted. */
+static int dup_check_unlocked(int level, const char *subsystem, const char *msg) {
+    if (g_dup_valid && level == g_dup_level && strcmp(subsystem, g_dup_subsystem) == 0 &&
+        strcmp(msg, g_dup_msg) == 0) {
+        g_dup_n++;
+        g_dup_last_ms = mono_ms();
+        pthread_cond_broadcast(&g_log_cv);
+        return 1;
+    }
+    dup_flush_unlocked();
+    g_dup_valid = 1;
+    g_dup_level = level;
+    snprintf(g_dup_subsystem, sizeof(g_dup_subsystem), "%s", subsystem);
+    snprintf(g_dup_msg, sizeof(g_dup_msg), "%s", msg);
+    g_dup_n = 0;
+    g_dup_last_ms = mono_ms();
+    return 0;
+}
+
+static int dup_idle_due_unlocked(void) {
+    return g_dup_valid && g_dup_n > 0 && mono_ms() - g_dup_last_ms >= LOG_DUP_IDLE_MS;
+}
+
 static uint64_t deliver_unlocked(int level, const char *subsystem, const char *msg) {
     char stamp[32];
     LogNode *node;
@@ -2314,6 +2502,10 @@ static void *log_thread_main(void *arg) {
             emit_batch_outside_lock();
             continue;
         }
+        if (dup_idle_due_unlocked() || ((g_log_flush_req || g_log_shutdown) && g_dup_valid && g_dup_n > 0)) {
+            dup_flush_unlocked();
+            continue;
+        }
         if (g_log_req != LOG_REQ_NONE) {
             run_req_outside_lock();
             continue;
@@ -2338,6 +2530,14 @@ static void *log_thread_main(void *arg) {
 
             if (g_batch_head != NULL && !batch_held_unlocked()) {
                 wait = batch_wait_ms_unlocked();
+            }
+            if (g_dup_valid && g_dup_n > 0) {
+                int64_t left = LOG_DUP_IDLE_MS - (mono_ms() - g_dup_last_ms);
+                int dup_wait = left < 1 ? 1 : (int)left;
+
+                if (wait < 0 || dup_wait < wait) {
+                    wait = dup_wait;
+                }
             }
             if (g_db_head != NULL && g_log_dest == LOG_DEST_PROFILE) {
                 int64_t left = LOG_DB_FLUSH_MS - (mono_ms() - g_db_started_ms);
@@ -2374,6 +2574,8 @@ int pav_log_thread_start(void) {
         pthread_mutex_unlock(&g_log_mu);
         return -1;
     }
+    g_dup_valid = 0;
+    g_dup_n = 0;
     g_log_shutdown = 0;
     if (pav_thread_create(&g_log_thread, log_thread_main, NULL) != 0) {
         pthread_mutex_unlock(&g_log_mu);
@@ -2580,6 +2782,164 @@ static void wait_ticket_unlocked(uint64_t ticket) {
     }
 }
 
+/* H-4 redaction, applied to every line in pav_log (core and log.client):
+   the rest of an Authorization header and any Basic/Bearer credential, a URL
+   query string, the value after a secret-named key (secret, password, token,
+   key) followed by = or :, and at INFO and above any email address. Callers
+   should still pass ids, not content; this is the safety net. */
+static int redact_word_end(char c) {
+    return c == '\0' || isspace((unsigned char)c) || c == ',' || c == ';' || c == '"' || c == '\'' ||
+           c == ')' || c == ']' || c == '}' || c == '&';
+}
+
+static int redact_ci_prefix(const char *s, const char *word) {
+    size_t i;
+
+    for (i = 0; word[i] != '\0'; i++) {
+        if (tolower((unsigned char)s[i]) != word[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int redact_email_char(char c) {
+    return isalnum((unsigned char)c) || c == '.' || c == '_' || c == '-' || c == '+' || c == '%';
+}
+
+static void pav_log_redact(char *msg, size_t cap, int level) {
+    static const char *const secret_words[] = {"password", "secret", "token", "key"};
+    char out[PAV_LOG_MSG_MAX];
+    size_t r = 0;
+    size_t w = 0;
+    size_t n = strlen(msg);
+
+#define REDACT_PUT(str) do { const char *p_ = (str); while (*p_ != '\0' && w + 1 < sizeof(out)) out[w++] = *p_++; } while (0)
+    while (r < n && w + 1 < sizeof(out)) {
+        const char *s = msg + r;
+        size_t i;
+        int done = 0;
+
+        if (redact_ci_prefix(s, "authorization:")) {
+            REDACT_PUT("Authorization: [redacted]");
+            while (r < n && msg[r] != '\n') {
+                r++;
+            }
+            continue;
+        }
+        if ((r == 0 || !isalnum((unsigned char)msg[r - 1])) &&
+            (redact_ci_prefix(s, "basic ") || redact_ci_prefix(s, "bearer "))) {
+            size_t word = redact_ci_prefix(s, "basic ") ? 6 : 7;
+            size_t j = r + word;
+
+            size_t k = j;
+
+            while (k < n && !redact_word_end(msg[k])) {
+                k++;
+            }
+            /* A credential is one long token; "basic apply" is not. */
+            if (k - j >= 8) {
+                while (r < j && w + 1 < sizeof(out)) {
+                    out[w++] = msg[r++];
+                }
+                REDACT_PUT("[redacted]");
+                r = j;
+                while (r < n && !redact_word_end(msg[r])) {
+                    r++;
+                }
+                continue;
+            }
+        }
+        if ((redact_ci_prefix(s, "https://") || redact_ci_prefix(s, "http://"))) {
+            size_t scheme = redact_ci_prefix(s, "https://") ? 8 : 7;
+            size_t j = r + scheme;
+            size_t at = 0;
+
+            while (j < n && !isspace((unsigned char)msg[j]) && msg[j] != '/' && msg[j] != '?' && msg[j] != '#') {
+                if (msg[j] == '@') {
+                    at = j;
+                }
+                j++;
+            }
+            if (at != 0) {
+                /* user:password@host: the credentials never reach the log. */
+                while (r < (size_t)(s - msg) + scheme && w + 1 < sizeof(out)) {
+                    out[w++] = msg[r++];
+                }
+                REDACT_PUT("[redacted]@");
+                r = at + 1;
+            }
+            while (r < n && !isspace((unsigned char)msg[r]) && msg[r] != '?' && msg[r] != '#' && w + 1 < sizeof(out)) {
+                out[w++] = msg[r++];
+            }
+            if (r < n && (msg[r] == '?' || msg[r] == '#')) {
+                REDACT_PUT(msg[r] == '?' ? "?[redacted]" : "#[redacted]");
+                while (r < n && !isspace((unsigned char)msg[r])) {
+                    r++;
+                }
+            }
+            continue;
+        }
+        for (i = 0; i < sizeof(secret_words) / sizeof(secret_words[0]) && !done; i++) {
+            size_t len = strlen(secret_words[i]);
+            size_t j = r + len;
+
+            if (!redact_ci_prefix(s, secret_words[i])) {
+                continue;
+            }
+            /* A secret word ending a key name: "apiKey=", "password: ", "\"token\":". */
+            if (j < n && (msg[j] == '"' || msg[j] == '\'')) {
+                j++;
+            }
+            while (j < n && msg[j] == ' ') {
+                j++;
+            }
+            if (j < n && (msg[j] == '=' || msg[j] == ':')) {
+                j++;
+                while (j < n && (msg[j] == ' ' || msg[j] == '"' || msg[j] == '\'')) {
+                    j++;
+                }
+                if (j < n && !redact_word_end(msg[j])) {
+                    while (r < j && w + 1 < sizeof(out)) {
+                        out[w++] = msg[r++];
+                    }
+                    REDACT_PUT("[redacted]");
+                    while (r < n && !redact_word_end(msg[r])) {
+                        r++;
+                    }
+                    done = 1;
+                }
+            }
+        }
+        if (done) {
+            continue;
+        }
+        if (level <= PAV_INFO && msg[r] == '@' && r > 0 && redact_email_char(msg[r - 1])) {
+            size_t start = w;
+            size_t j = r + 1;
+            int dot = 0;
+
+            while (j < n && redact_email_char(msg[j])) {
+                dot |= msg[j] == '.';
+                j++;
+            }
+            if (dot && j > r + 2) {
+                while (start > 0 && redact_email_char(out[start - 1])) {
+                    start--;
+                }
+                w = start;
+                REDACT_PUT("[email]");
+                r = j;
+                continue;
+            }
+        }
+        out[w++] = msg[r++];
+    }
+#undef REDACT_PUT
+    out[w] = '\0';
+    snprintf(msg, cap, "%s", out);
+}
+
 void pav_log(const char *subsystem, int level, int num_args, const char *fmt, ...) {
     size_t specifiers;
     char msg[PAV_LOG_MSG_MAX];
@@ -2605,6 +2965,11 @@ void pav_log(const char *subsystem, int level, int num_args, const char *fmt, ..
         va_start(ap, fmt);
         vsnprintf(msg, sizeof(msg), fmt, ap);
         va_end(ap);
+        pav_log_redact(msg, sizeof(msg), level);
+    }
+    if (dup_check_unlocked(level, subsystem, msg)) {
+        pthread_mutex_unlock(&g_log_mu);
+        return;
     }
     ticket = deliver_unlocked(level, subsystem, msg);
     if (level == PAV_ERROR) {

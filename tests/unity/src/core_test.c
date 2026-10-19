@@ -26,6 +26,9 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#ifndef _WIN32
+#include <sys/file.h>
+#endif
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -254,6 +257,7 @@ void tearDown(void) {
     pav_log_set_workdir(NULL);
     (void)pav_log_set_cap_mb(10);
     pav_logring_reset();
+    pav_log_client_rate_reset();
     restore_stderr();
     if (g_log_path[0] != '\0') {
         unlink(g_log_path);
@@ -376,6 +380,7 @@ void test_log_trace_captured_like_other_levels(void) {
     char *text;
 
     pav_logring_reset();
+    pav_log_client_rate_reset();
     open_log();
     pav_log("core", PAV_TRACE, 0, "trace-line");
     pav_log("core", PAV_DEBUG, 0, "debug-line");
@@ -2772,6 +2777,7 @@ void test_logring_wraps_at_capacity(void) {
     char line[80];
 
     pav_logring_reset();
+    pav_log_client_rate_reset();
     for (i = 1; i <= PAV_LOGRING_CAP + 1; i++) {
         snprintf(line, sizeof(line), "2026-10-16T00:00:00.000Z INFO  core  n-%d\n", i);
         TEST_ASSERT_EQUAL_INT(0, pav_logring_push((uint64_t)i, line));
@@ -3085,6 +3091,7 @@ void test_log_seq_continues_across_runs(void) {
     TEST_ASSERT_TRUE(first_max > 0);
 
     pav_logring_reset();
+    pav_log_client_rate_reset();
     TEST_ASSERT_EQUAL_INT(0, pav_log_set_workdir(g_cfg_dir));
     TEST_ASSERT_EQUAL_INT(0, pav_log_thread_start());
     pav_log("core", PAV_INFO, 0, "run-two-early");
@@ -3240,6 +3247,32 @@ void test_log_old_files_deleted(void) {
     TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/default.log.db", g_cfg_dir) < (int)sizeof(path));
     TEST_ASSERT_EQUAL_INT64(0, db_count(path, "old-file-line-h4"));
     TEST_ASSERT_EQUAL_INT64(1, db_count(path, "core ready"));
+}
+
+void test_log_old_files_delete_failure_warns(void) {
+    char path[200];
+    char logs[160];
+    char dbpath[200];
+    char *err;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_TRUE(snprintf(logs, sizeof(logs), "%s/logs", g_cfg_dir) < (int)sizeof(logs));
+    TEST_ASSERT_EQUAL_INT(0, mkdir(logs, 0700));
+    /* default.log is a non-empty directory, so remove() fails with ENOTEMPTY. */
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/default.log", logs) < (int)sizeof(path));
+    TEST_ASSERT_EQUAL_INT(0, mkdir(path, 0700));
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/default.log/keep", logs) < (int)sizeof(path));
+    write_text(path, "x\n");
+    capture_stderr();
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pavillion_stop();
+    pav_log_thread_shutdown();
+    err = take_stderr();
+    TEST_ASSERT_NOT_NULL(strstr(err, " WARN  core  cannot remove old log files in "));
+    free(err);
+    TEST_ASSERT_TRUE(snprintf(dbpath, sizeof(dbpath), "%s/default.log.db", g_cfg_dir) < (int)sizeof(dbpath));
+    TEST_ASSERT_EQUAL_INT64(1, db_count(dbpath, "cannot remove old log files"));
+    TEST_ASSERT_EQUAL_INT64(1, db_count(dbpath, "core ready"));
 }
 
 void test_logdb_trim_to_cap_at_shutdown(void) {
@@ -3609,6 +3642,7 @@ void test_index_log_level_and_prefs_saved(void) {
     /* log_level info no longer filters capture (H-4 Lock, Levels). */
     TEST_ASSERT_NOT_NULL(strstr(text, "debug-hidden-h2"));
     TEST_ASSERT_NOT_NULL(strstr(text, " DEBUG config  prefs saved"));
+    TEST_ASSERT_NOT_NULL(strstr(text, " DEBUG config  prefs saved: zoom.log"));
     free(text);
 
     pavillion_stop();
@@ -3632,6 +3666,314 @@ void test_index_log_level_and_prefs_saved(void) {
     TEST_ASSERT_NOT_NULL(strstr(text, " DEBUG config  prefs saved"));
     free(text);
 }
+
+void test_log_redacts_known_secret_shapes(void) {
+    json_t *root;
+    char *text;
+
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_log("http", PAV_DEBUG, 1, "%s", "header Authorization: Basic dXNlcjpwYXNzd29yZA==");
+    pav_log("http", PAV_DEBUG, 1, "%s", "sent Bearer abcdef0123456789xyz now");
+    pav_log("http", PAV_TRACE, 1, "%s", "GET https://mail.example.com/jmap?access_token=s3cr3tQ&x=1 -> 200");
+    pav_log("config", PAV_DEBUG, 1, "%s", "pref apiKey=hunter2value saved");
+    pav_log("config", PAV_DEBUG, 1, "%s", "{\"password\": \"pw-fixture-9\"}");
+    pav_log("account", PAV_INFO, 1, "%s", "added user@example.com");
+    pav_log("account", PAV_DEBUG, 1, "%s", "debug user2@example.com");
+    pav_log("auth", PAV_INFO, 1, "%s", "auth basic apply ok");
+    pav_log("http", PAV_DEBUG, 1, "%s", "GET https://alice:pa55-userinfo@mail.example.com/jmap -> 401");
+    pav_log("http", PAV_INFO, 1, "%s", "server http://bob@files.example.com:8080/dav");
+    root = call_reply("log.client",
+                      "{\"subsystem\":\"ui\",\"level\":\"info\",\"message\":\"token=tok-fixture-7 for c@d.org\"}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    json_decref(root);
+    root = call_reply("prefs.ui.set", "{\"zoom\":{\"log\":1.1},\"proxyPassword\":\"pref-secret-5\"}");
+    json_decref(root);
+    text = read_log();
+    TEST_ASSERT_NULL(strstr(text, "dXNlcjpwYXNzd29yZA"));
+    TEST_ASSERT_NULL(strstr(text, "abcdef0123456789xyz"));
+    TEST_ASSERT_NULL(strstr(text, "s3cr3tQ"));
+    TEST_ASSERT_NULL(strstr(text, "access_token"));
+    TEST_ASSERT_NULL(strstr(text, "hunter2value"));
+    TEST_ASSERT_NULL(strstr(text, "pw-fixture-9"));
+    TEST_ASSERT_NULL(strstr(text, "tok-fixture-7"));
+    TEST_ASSERT_NULL(strstr(text, "pref-secret-5"));
+    TEST_ASSERT_NULL(strstr(text, "user@example.com"));
+    TEST_ASSERT_NULL(strstr(text, "c@d.org"));
+    TEST_ASSERT_NOT_NULL(strstr(text, "debug user2@example.com"));
+    TEST_ASSERT_NOT_NULL(strstr(text, "https://mail.example.com/jmap?[redacted]"));
+    TEST_ASSERT_NOT_NULL(strstr(text, "added [email]"));
+    TEST_ASSERT_NOT_NULL(strstr(text, "auth basic apply ok"));
+    TEST_ASSERT_NULL(strstr(text, "pa55-userinfo"));
+    TEST_ASSERT_NULL(strstr(text, "alice"));
+    TEST_ASSERT_NULL(strstr(text, "bob@"));
+    TEST_ASSERT_NOT_NULL(strstr(text, "https://[redacted]@mail.example.com/jmap -> 401"));
+    TEST_ASSERT_NOT_NULL(strstr(text, "http://[redacted]@files.example.com:8080/dav"));
+    free(text);
+}
+
+void test_log_client_rate_limited(void) {
+    json_t *root;
+    char *text;
+    char *at;
+    int i;
+    int lines = 0;
+
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    /* Start at a fresh second so all 60 land in one window. */
+    {
+        struct timespec ts;
+        time_t start;
+
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        start = ts.tv_sec;
+        do {
+            usleep(2000);
+            clock_gettime(CLOCK_MONOTONIC, &ts);
+        } while (ts.tv_sec == start);
+    }
+    pav_log_client_rate_reset();
+    for (i = 0; i < 60; i++) {
+        char body[128];
+
+        /* Distinct lines: identical ones would collapse (H-4 Lock). */
+        snprintf(body, sizeof(body), "{\"subsystem\":\"ui\",\"level\":\"info\",\"message\":\"rate-line %d\"}", i);
+        root = call_reply("log.client", body);
+        TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+        json_decref(root);
+    }
+    usleep(1100000);
+    root = call_reply("log.client", "{\"subsystem\":\"ui\",\"level\":\"info\",\"message\":\"rate-after\"}");
+    json_decref(root);
+    text = read_log();
+    for (at = strstr(text, "rate-line"); at != NULL; at = strstr(at + 1, "rate-line")) {
+        lines++;
+    }
+    TEST_ASSERT_EQUAL_INT(50, lines);
+    TEST_ASSERT_NOT_NULL(strstr(text, " WARN  ui  log.client dropped 10 lines over 50 per second"));
+    TEST_ASSERT_NOT_NULL(strstr(text, "rate-after"));
+    free(text);
+}
+
+void test_log_points_lifecycle_and_commands(void) {
+    json_t *root;
+    char *text;
+
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    root = call_reply("no.such.command", "{}");
+    json_decref(root);
+    root = call_reply("prefs.set", "{\"timezone\":\"UTC\"}");
+    json_decref(root);
+    pavillion_stop();
+    text = read_log();
+    TEST_ASSERT_NOT_NULL(strstr(text, " INFO  core  started: api "));
+    TEST_ASSERT_NOT_NULL(strstr(text, " INFO  core  profile default attaching"));
+    TEST_ASSERT_NOT_NULL(strstr(text, " INFO  core  core ready: profile default"));
+    TEST_ASSERT_NOT_NULL(strstr(text, " WARN  dispatch  unknown command no.such.command"));
+    TEST_ASSERT_NOT_NULL(strstr(text, " DEBUG config  prefs set: timezone"));
+    TEST_ASSERT_NOT_NULL(strstr(text, " INFO  core  stopping"));
+    TEST_ASSERT_NOT_NULL(strstr(text, " INFO  core  stopped"));
+    free(text);
+}
+
+static int count_in(const char *text, const char *needle) {
+    int n = 0;
+    const char *at;
+
+    for (at = strstr(text, needle); at != NULL; at = strstr(at + 1, needle)) {
+        n++;
+    }
+    return n;
+}
+
+void test_log_repeats_collapse_on_different_line(void) {
+    char *text;
+    int i;
+
+    open_log();
+    for (i = 0; i < 5; i++) {
+        pav_log("window", PAV_DEBUG, 0, "same-line");
+    }
+    pav_log("window", PAV_DEBUG, 0, "other-line");
+    pav_log("window", PAV_INFO, 0, "other-line");
+    pav_log("core", PAV_INFO, 0, "other-line");
+    text = read_log();
+    TEST_ASSERT_EQUAL_INT(1, count_in(text, "same-line"));
+    TEST_ASSERT_NOT_NULL(strstr(text, " DEBUG window  previous line repeated 4 times"));
+    /* Same text at another level or subsystem is a different line. */
+    TEST_ASSERT_EQUAL_INT(3, count_in(text, "other-line"));
+    TEST_ASSERT_EQUAL_INT(1, count_in(text, "previous line repeated"));
+    TEST_ASSERT_TRUE(strstr(text, "repeated 4 times") < strstr(text, "other-line"));
+    free(text);
+}
+
+void test_log_repeats_flush_on_idle(void) {
+    char *text;
+    int i;
+
+    open_log();
+    for (i = 0; i < 3; i++) {
+        pav_log("http", PAV_ERROR, 0, "error-repeat");
+    }
+    usleep(1500000);
+    /* The idle summary went out; the same line now starts a new run. */
+    pav_log("http", PAV_ERROR, 0, "error-repeat");
+    text = read_log();
+    TEST_ASSERT_EQUAL_INT(2, count_in(text, "error-repeat"));
+    TEST_ASSERT_NOT_NULL(strstr(text, " ERROR http  previous line repeated 2 times"));
+    TEST_ASSERT_EQUAL_INT(1, count_in(text, "previous line repeated"));
+    TEST_ASSERT_TRUE(strstr(text, "repeated 2 times") < strstr(strstr(text, "error-repeat") + 1, "error-repeat"));
+    free(text);
+}
+
+void test_log_repeats_flush_at_shutdown(void) {
+    char *text;
+    int i;
+
+    open_log();
+    pav_log("store", PAV_WARN, 0, "warn-repeat");
+    for (i = 0; i < 9; i++) {
+        pav_log("store", PAV_WARN, 0, "warn-repeat");
+    }
+    text = read_log();
+    TEST_ASSERT_EQUAL_INT(1, count_in(text, "warn-repeat"));
+    TEST_ASSERT_NOT_NULL(strstr(text, " WARN  store  previous line repeated 9 times"));
+    free(text);
+}
+
+typedef struct JmapWait {
+    pthread_mutex_t mu;
+    pthread_cond_t cv;
+    int done;
+    int status;
+} JmapWait;
+
+static void jmap_wait_done(PavJmapCtx *ctx, int status, const char *body, size_t body_len,
+                           const json_t *headers, void *user) {
+    JmapWait *w = user;
+
+    (void)ctx;
+    (void)body;
+    (void)body_len;
+    (void)headers;
+    pthread_mutex_lock(&w->mu);
+    w->done = 1;
+    w->status = status;
+    pthread_cond_broadcast(&w->cv);
+    pthread_mutex_unlock(&w->mu);
+}
+
+static void scribble_stack(void) {
+    volatile char junk[8192];
+    size_t i;
+
+    for (i = 0; i < sizeof(junk); i++) {
+        junk[i] = 'x';
+    }
+}
+
+void test_jmap_post_url_outlives_call(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    PavJmapCtx ctx;
+    JmapWait w;
+    char session[512];
+    struct timespec ts;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_EQUAL_INT(0, pav_net_start());
+    memset(&ctx, 0, sizeof(ctx));
+    memset(&w, 0, sizeof(w));
+    pthread_mutex_init(&w.mu, NULL);
+    pthread_cond_init(&w.cv, NULL);
+    snprintf(session, sizeof(session), "%s/jmap/session", url);
+    ctx.session_url = session;
+    ctx.request_json = strdup("{\"using\":[],\"methodCalls\":[]}");
+    ctx.ca_file = ca;
+    ctx.on_done = jmap_wait_done;
+    ctx.user = &w;
+    TEST_ASSERT_EQUAL_INT(0, pav_jmap_post(&ctx));
+    /* The request must point at memory that outlives pav_jmap_post. */
+    TEST_ASSERT_EQUAL_PTR(session, ctx.req.url);
+    scribble_stack();
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 10;
+    pthread_mutex_lock(&w.mu);
+    while (!w.done && pthread_cond_timedwait(&w.cv, &w.mu, &ts) == 0) {
+    }
+    pthread_mutex_unlock(&w.mu);
+    TEST_ASSERT_TRUE_MESSAGE(w.done, "jmap post did not finish");
+    TEST_ASSERT_TRUE(w.status > 0);
+    pav_net_stop();
+    pthread_mutex_destroy(&w.mu);
+    pthread_cond_destroy(&w.cv);
+}
+
+#ifndef _WIN32
+static int lock_profile_fd(void) {
+    char path[220];
+    int fd;
+
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/profiles/default.json.lock", g_cfg_dir) < (int)sizeof(path));
+    fd = open(path, O_RDWR | O_CREAT, 0600);
+    TEST_ASSERT_TRUE(fd >= 0);
+    return fd;
+}
+
+void test_profile_lock_refuses_second_attach(void) {
+    PavillionStatus status;
+    int fd;
+
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pavillion_stop();
+    /* Another process holds the profile: flock is per open file, so this
+       descriptor stands in for it. */
+    fd = lock_profile_fd();
+    TEST_ASSERT_EQUAL_INT(0, flock(fd, LOCK_EX | LOCK_NB));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_status(&status));
+    TEST_ASSERT_EQUAL_STRING("error", status.state);
+    TEST_ASSERT_EQUAL_STRING("This profile is open in another Pavillion window.", status.error);
+    pavillion_stop();
+    close(fd);
+}
+
+void test_profile_lock_held_while_attached_and_released_at_stop(void) {
+    PavillionStatus status;
+    int fd;
+
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_status(&status));
+    TEST_ASSERT_EQUAL_STRING("ready", status.state);
+    fd = lock_profile_fd();
+    TEST_ASSERT_EQUAL_INT(-1, flock(fd, LOCK_EX | LOCK_NB));
+    pavillion_stop();
+    TEST_ASSERT_EQUAL_INT(0, flock(fd, LOCK_EX | LOCK_NB));
+    TEST_ASSERT_EQUAL_INT(0, flock(fd, LOCK_UN));
+    close(fd);
+    /* A fresh start takes it again. */
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_status(&status));
+    TEST_ASSERT_EQUAL_STRING("ready", status.state);
+}
+#else
+void test_profile_lock_refuses_second_attach(void) {
+    TEST_IGNORE_MESSAGE("flock test is POSIX; Windows uses LockFileEx");
+}
+
+void test_profile_lock_held_while_attached_and_released_at_stop(void) {
+    TEST_IGNORE_MESSAGE("flock test is POSIX; Windows uses LockFileEx");
+}
+#endif
 
 static void act_text(char *dst, size_t dst_len, int64_t id) {
     snprintf(dst, dst_len, "act-%lld", (long long)id);
@@ -4584,6 +4926,7 @@ void test_secret_never_logged(void) {
     char *secret = NULL;
 
     pav_logring_reset();
+    pav_log_client_rate_reset();
     pav_platform_fake_set_locked(0);
     TEST_ASSERT_EQUAL_INT(0, pav_secret_set("pavillion", "default/a", "label", "fixture-secret"));
     TEST_ASSERT_EQUAL_INT(0, pav_secret_get("pavillion", "default/a", &secret));
@@ -6248,6 +6591,9 @@ int main(void) {
     RUN_TEST(test_log_stderr_warn_error_only);
     RUN_TEST(test_no_logs_dir_created);
     RUN_TEST(test_log_old_files_deleted);
+    RUN_TEST(test_log_old_files_delete_failure_warns);
+    RUN_TEST(test_profile_lock_refuses_second_attach);
+    RUN_TEST(test_profile_lock_held_while_attached_and_released_at_stop);
     RUN_TEST(test_logdb_trim_to_cap_at_shutdown);
     RUN_TEST(test_logdb_trim_drops_empty_sessions);
     RUN_TEST(test_log_stats_reports_size_records_oldest);
@@ -6268,6 +6614,13 @@ int main(void) {
     RUN_TEST(test_log_before_workdir_stderr_all_levels);
     RUN_TEST(test_log_no_duplicate_after_profile_attach);
     RUN_TEST(test_index_log_level_and_prefs_saved);
+    RUN_TEST(test_log_redacts_known_secret_shapes);
+    RUN_TEST(test_log_client_rate_limited);
+    RUN_TEST(test_log_points_lifecycle_and_commands);
+    RUN_TEST(test_log_repeats_collapse_on_different_line);
+    RUN_TEST(test_log_repeats_flush_on_idle);
+    RUN_TEST(test_log_repeats_flush_at_shutdown);
+    RUN_TEST(test_jmap_post_url_outlives_call);
     RUN_TEST(test_log_export_filter);
     RUN_TEST(test_prefs_set_log_level);
     RUN_TEST(test_activity_begin_progress_end);

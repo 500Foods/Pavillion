@@ -2,6 +2,7 @@
 #include "pav_cfg.h"
 #include "pav_platform.h"
 #include "config_internal.h"
+#include "pavillion.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -123,6 +124,7 @@ int pav_profile_store(const char *path, const PavProfile *profile, char *err, si
         return -1;
     }
     free(text);
+    pav_log("config", PAV_TRACE, 0, "profile written");
     return 0;
 }
 
@@ -159,6 +161,7 @@ int pav_config_ensure(const char *workdir, char *err, size_t err_len) {
     if (pav_exists(index_path)) {
         return 0;
     }
+    pav_log("config", PAV_INFO, 0, "no Pavillion.json: creating the default profile");
     if (platform->mkdir_private(dir_path) != 0) {
         cfg_err(err, err_len, "cannot create %s", dir_path);
         return -1;
@@ -175,6 +178,7 @@ int pav_config_ensure(const char *workdir, char *err, size_t err_len) {
         remove(profile_path);
         return -1;
     }
+    pav_log("config", PAV_INFO, 0, "default profile created");
     return 0;
 }
 
@@ -203,5 +207,6 @@ int pav_config_prepare(const char *workdir, PavProfile *profile, char *err, size
         cfg_err(err, err_len, "cannot create %s", profile->resolved_cache);
         return -1;
     }
+    pav_log("config", PAV_DEBUG, 0, "profile folders ready");
     return 0;
 }

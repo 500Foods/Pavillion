@@ -32,7 +32,7 @@ function mount(transport, filter = {}) {
   return createLogView(parent, createApi(transport), { filter: { levels: LOG_LEVELS, ...filter } });
 }
 
-test("paging past the 10,000-line ring reads older lines from log.db", async () => {
+test("paging reads older lines from log.db, a page at a time", async () => {
   const transport = mockTransport();
   const now = Date.now();
   transport.setLogHistory(history(15000, now - 15000 * 1000, 1000));
@@ -40,17 +40,21 @@ test("paging past the 10,000-line ring reads older lines from log.db", async () 
      small in jsdom; paging counts what is loaded, not what is drawn. */
   const view = mount(transport, { levels: ["ERROR"] });
   await view.open();
-  expect(view.loadedCount()).toBe(10000);
-  await view.loadOlder();
+  /* Session All starts from log.db, not the ring (H-4 Lock). */
   const first = transport.seen.filter((item) => item.cmd === "log.query");
   expect(first).toHaveLength(1);
-  expect(first[0].args.beforeSeq).toBe(5001);
+  expect(first[0].args.beforeSeq).toBeUndefined();
   expect(first[0].args.limit).toBe(HISTORY_PAGE);
   expect(first[0].args.session).toBe("all");
   expect(first[0].args.since).toBeGreaterThan(now - 12 * 3600 * 1000 - 1000);
-  expect(view.loadedCount()).toBe(10000 + HISTORY_PAGE);
+  expect(view.loadedCount()).toBe(HISTORY_PAGE);
   await view.loadOlder();
-  await view.loadOlder();
+  const second = transport.seen.filter((item) => item.cmd === "log.query");
+  expect(second[1].args.beforeSeq).toBe(15000 - HISTORY_PAGE + 1);
+  expect(view.loadedCount()).toBe(2 * HISTORY_PAGE);
+  for (let i = 0; i < 6; i += 1) {
+    await view.loadOlder();
+  }
   expect(view.loadedCount()).toBe(15000);
   const before = transport.seen.length;
   await view.loadOlder();
@@ -58,6 +62,31 @@ test("paging past the 10,000-line ring reads older lines from log.db", async () 
   expect(transport.seen.length).toBe(before);
   view.destroy();
 }, 60000);
+
+test("Range All and Session All show earlier sessions on the first load, with a separator", async () => {
+  const transport = mockTransport();
+  const now = Date.now();
+  const earlier = history(5, now - 3 * 24 * 3600 * 1000, 1000, 1);
+  const thisRun = history(4, now - 60 * 1000, 1000, 2).map((line, i) => ({ ...line, seq: 6 + i }));
+  transport.setLogHistory(earlier.concat(thisRun));
+  const parent = document.createElement("div");
+  document.body.append(parent);
+  const view = createLogView(parent, createApi(transport), {
+    filter: { levels: LOG_LEVELS, range: "all", session: "all" },
+  });
+  await view.open();
+  expect(view.loadedCount()).toBe(9);
+  expect(parent.querySelector(".cm-content").textContent).toContain("line 1");
+  const dividers = [...parent.querySelectorAll(".pav-log-session")];
+  expect(dividers).toHaveLength(1);
+  expect(dividers[0].textContent).toMatch(/^Session 2 · started \d{4}-\d\d-\d\d \d\d:\d\d:\d\d \(this run\)$/);
+  /* Screen only: the document has no separator text. */
+  const lines = [...parent.querySelectorAll(".cm-line")].map((el) => el.textContent).filter((text) => text !== "");
+  expect(lines).toHaveLength(9);
+  expect(lines.some((text) => text.includes("Session"))).toBe(false);
+  view.destroy();
+  parent.remove();
+});
 
 test("the range defaults to 12 hours and widening reads older lines", async () => {
   const transport = mockTransport();

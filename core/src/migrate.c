@@ -2,6 +2,7 @@
 
 #include "migrations_embed.h"
 #include "pav_platform.h"
+#include "pavillion.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -66,10 +67,12 @@ static int migrate_job(void *ctx, sqlite3 *db) {
     }
     table = pav_migration_table(&count);
     binary = count > 0 ? table[count - 1].version : 0;
+    pav_log("store", PAV_DEBUG, 2, "schema version %d, binary %d", current, binary);
     if (current > binary) {
         if (job->err != NULL && job->err_len > 0) {
             snprintf(job->err, job->err_len, "database version %d is newer than binary %d", current, binary);
         }
+        pav_log("store", PAV_ERROR, 2, "database version %d is newer than binary %d", current, binary);
         return -1;
     }
     for (i = 0; i < count; i++) {
@@ -77,6 +80,7 @@ static int migrate_job(void *ctx, sqlite3 *db) {
             continue;
         }
         if (sqlite3_exec(db, table[i].sql, NULL, NULL, NULL) != SQLITE_OK) {
+            pav_log("store", PAV_ERROR, 2, "migration %d failed: %s", table[i].version, sqlite3_errmsg(db));
             set_err(job->err, job->err_len, sqlite3_errmsg(db));
             return -1;
         }
@@ -85,6 +89,7 @@ static int migrate_job(void *ctx, sqlite3 *db) {
             return -1;
         }
         current = table[i].version;
+        pav_log("store", PAV_INFO, 1, "applied migration %d", current);
     }
     return 0;
 }
@@ -116,6 +121,7 @@ int pav_db_migrate(sqlite3 *db, const char *path, char *err, size_t err_len) {
         set_err(err, err_len, "cannot open read pool");
         return -1;
     }
+    pav_log("store", PAV_DEBUG, 0, "read pool open");
     private_sidecars(path);
     return 0;
 }

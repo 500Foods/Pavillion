@@ -29,16 +29,47 @@ class LocalTimeWidget extends WidgetType {
   }
 }
 
+/* H-4: the divider drawn where the session changes between two adjacent
+   lines. Screen only; never part of the document, Copy, Save, or Print. */
+class SessionWidget extends WidgetType {
+  constructor(label) {
+    super();
+    this.label = label;
+  }
+
+  eq(other) {
+    return other.label === this.label;
+  }
+
+  toDOM() {
+    const row = document.createElement("div");
+    row.className = "pav-log-session";
+    row.setAttribute("role", "separator");
+    row.textContent = this.label;
+    return row;
+  }
+}
+
 /* The document is the screen line (local 24 h time in the profile zone,
    level, subsystem, message; H-4 Lock). Each line gets its level class and
    the UTC stamp as its title. A UTC file line (older callers, tests) is
    still drawn through the local-time widget. */
-export function buildLogDecorations(state, timeZone, stamps = []) {
+export function buildLogDecorations(state, timeZone, stamps = [], sessions = [], sessionLabel = null) {
   const builder = new RangeSetBuilder();
+  const separators = [];
   for (let number = 1; number <= state.doc.lines; number += 1) {
     const line = state.doc.line(number);
     const parsed = parseFileLine(line.text);
     if (!parsed || !LEVELS.has(parsed.level) || parsed.ts.length !== 24) {
+      const here = sessions[number - 1];
+      const before = sessions[number - 2];
+      if (number > 1 && here != null && before != null && here !== before) {
+        separators.push(Decoration.widget({
+          widget: new SessionWidget(sessionLabel ? sessionLabel(here) : `Session ${here}`),
+          block: true,
+          side: -1,
+        }).range(line.from));
+      }
       const level = line.text.slice(14, 19).trim();
       if (LEVELS.has(level)) {
         const utc = typeof stamps[number - 1] === "string" ? stamps[number - 1] : "";
@@ -57,7 +88,11 @@ export function buildLogDecorations(state, timeZone, stamps = []) {
       widget: new LocalTimeWidget(screenLine(parsed, timeZone), parsed.ts),
     }));
   }
-  return builder.finish();
+  const lines = builder.finish();
+  if (separators.length === 0) {
+    return lines;
+  }
+  return lines.update({ add: separators, sort: true });
 }
 
 function orderedLines(lines, sinceSeq) {
@@ -114,6 +149,21 @@ export function createLogView(parent, api, options = {}) {
   /* UTC stamp of each document line: the document is the local screen line
      (H-4 Lock), the stamp is the hover title. */
   let docStamps = [];
+  /* Session id of each document line, and what log.query said about sessions. */
+  let docSessions = [];
+  let currentSession = null;
+  const sessionStarts = new Map();
+  const sessionOf = (line) => (Number.isInteger(line.session) ? line.session : currentSession);
+  const sessionLabel = (id) => {
+    const started = sessionStarts.get(id);
+    if (!Number.isFinite(started)) {
+      return `Session ${id}`;
+    }
+    const when = new Date(started);
+    const date = when.toLocaleDateString("sv-SE", { timeZone });
+    const time = when.toLocaleTimeString("en-GB", { timeZone, hour12: false });
+    return `Session ${id} · started ${date} ${time}${id === currentSession ? " (this run)" : ""}`;
+  };
   const show = (entry) => screenLine(entry, timeZone);
   let exhausted = false;
   let olderPending = null;
@@ -454,12 +504,12 @@ export function createLogView(parent, api, options = {}) {
 
   const decorations = StateField.define({
     create(state) {
-      return buildLogDecorations(state, timeZone, docStamps);
+      return buildLogDecorations(state, timeZone, docStamps, docSessions, sessionLabel);
     },
     update(value, transaction) {
       const refresh = transaction.effects.some((effect) => effect.is(zoneEffect));
       if (transaction.docChanged || refresh) {
-        return buildLogDecorations(transaction.state, timeZone, docStamps);
+        return buildLogDecorations(transaction.state, timeZone, docStamps, docSessions, sessionLabel);
       }
       return value;
     },
@@ -613,6 +663,7 @@ export function createLogView(parent, api, options = {}) {
     const visible = visibleLines();
     const text = visible.length === 0 ? "" : `${visible.map(show).join("\n")}\n`;
     docStamps = visible.map((entry) => entry.ts);
+    docSessions = visible.map((entry) => entry.session);
     const end = view.state.doc.length;
     pinScroll();
     view.dispatch({
@@ -630,6 +681,7 @@ export function createLogView(parent, api, options = {}) {
     if (fresh.length > 0) {
       const chunk = `${fresh.map(show).join("\n")}\n`;
       docStamps.push(...fresh.map((entry) => entry.ts));
+      docSessions.push(...fresh.map((entry) => entry.session));
       const end = view.state.doc.length;
       pinScroll();
       view.dispatch({
@@ -664,6 +716,7 @@ export function createLogView(parent, api, options = {}) {
         level: typeof line.level === "string" ? line.level : "",
         subsystem: typeof line.subsystem === "string" ? line.subsystem : "",
         text: typeof line.text === "string" ? line.text : "",
+        session: sessionOf(line),
       };
       if (entry.seq > lastSeq) {
         lastSeq = entry.seq;
@@ -681,6 +734,7 @@ export function createLogView(parent, api, options = {}) {
       level: typeof line.level === "string" ? line.level : "",
       subsystem: typeof line.subsystem === "string" ? line.subsystem : "",
       text: typeof line.text === "string" ? line.text : "",
+      session: sessionOf(line),
     };
   }
 
@@ -768,7 +822,17 @@ export function createLogView(parent, api, options = {}) {
     if (!api.log || typeof api.log.query !== "function") {
       return Promise.resolve([]);
     }
-    return api.log.query(args).then((reply) => (reply && Array.isArray(reply.lines) ? reply.lines : []));
+    return api.log.query(args).then((reply) => {
+      if (reply && Number.isInteger(reply.currentSession) && reply.currentSession > 0) {
+        currentSession = reply.currentSession;
+      }
+      if (reply && reply.sessions && typeof reply.sessions === "object") {
+        for (const [id, started] of Object.entries(reply.sessions)) {
+          sessionStarts.set(Number(id), started);
+        }
+      }
+      return reply && Array.isArray(reply.lines) ? reply.lines : [];
+    });
   }
 
   function prependVisible(entries) {
@@ -779,6 +843,7 @@ export function createLogView(parent, api, options = {}) {
       const top = scroller.scrollTop;
       pinScroll();
       docStamps = fresh.map((entry) => entry.ts).concat(docStamps);
+      docSessions = fresh.map((entry) => entry.session).concat(docSessions);
       view.dispatch({ changes: { from: 0, insert: `${fresh.map(show).join("\n")}\n` } });
       /* Keep the line that was on screen where it was. */
       view.requestMeasure({
@@ -816,8 +881,22 @@ export function createLogView(parent, api, options = {}) {
     return olderPending;
   }
 
+  /* syncLog calls this on every tab change. Already open with the same range
+     and session: keep the subscription and the loaded lines (no re-tail). */
+  let openedKey = null;
+  let openPromise = null;
+  const openKey = () => JSON.stringify([filter.range, session]);
+
+  function openIfChanged() {
+    if (isOpen && openPromise && openedKey === openKey()) {
+      return openPromise;
+    }
+    return open();
+  }
+
   function open() {
     const ticket = generation + 1;
+    openedKey = openKey();
     generation = ticket;
     isOpen = true;
     exhausted = false;
@@ -840,20 +919,24 @@ export function createLogView(parent, api, options = {}) {
       }
       appendVisible(remember(lines, false));
     });
-    /* This run and All start from the ring inside the range; Last run is
-       only in log.db. */
-    const first = live
-      ? api.log.tail({}).then((tail) => {
-        const bounds = currentBounds();
-        return (tail && Array.isArray(tail.lines) ? tail.lines : []).filter((line) => inRange(line, bounds));
-      })
-      : fetchPage(undefined).then((lines) => {
-        if (lines.length < HISTORY_PAGE) {
-          exhausted = true;
-        }
-        return lines;
-      });
-    return first.then((lines) => {
+    /* This run starts from the ring inside the range. All and Last run read
+       log.db for the saved range first (H-4 Lock): the ring holds only this
+       run, so starting All from it hid earlier sessions until the range
+       changed. With no log.db, All falls back to the ring. */
+    const fromRing = () => api.log.tail({}).then((tail) => {
+      const bounds = currentBounds();
+      return (tail && Array.isArray(tail.lines) ? tail.lines : []).filter((line) => inRange(line, bounds));
+    });
+    const fromDb = () => fetchPage(undefined).then((lines) => {
+      if (lines.length < HISTORY_PAGE) {
+        exhausted = true;
+      }
+      return lines;
+    });
+    const first = session === "current"
+      ? fromRing()
+      : session === "all" ? fromDb().catch(() => fromRing()) : fromDb();
+    openPromise = first.then((lines) => {
       if (ticket !== generation) {
         return;
       }
@@ -871,9 +954,12 @@ export function createLogView(parent, api, options = {}) {
       }
       throw err;
     });
+    return openPromise;
   }
 
   function close() {
+    openedKey = null;
+    openPromise = null;
     generation += 1;
     isOpen = false;
     if (unsubscribe) {
@@ -883,7 +969,7 @@ export function createLogView(parent, api, options = {}) {
   }
 
   return {
-    open,
+    open: openIfChanged,
     close,
     measure() {
       view.requestMeasure();

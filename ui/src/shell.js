@@ -1,3 +1,4 @@
+import { createForwarder, forwardEvents } from "./log/forward.js";
 import { createDialogs } from "./common/dialog.js";
 import { installIsolationTest } from "./common/isolation.js";
 import { createKeys } from "./common/keys.js";
@@ -34,6 +35,8 @@ let host = null;
 let mountRoot = null;
 let session = null;
 let widgets = null;
+let forwarder = null;
+let unforward = null;
 
 function log(subsystem, level, message) {
   return api.log.client({ subsystem, level, message });
@@ -724,6 +727,10 @@ function messageOf(err) {
 }
 
 function showBanner(text) {
+  /* A late rejection after the shell stopped has nowhere to show. */
+  if (!mountRoot) {
+    return;
+  }
   const banner = mountRoot.querySelector("#banner");
   banner.hidden = false;
   banner.textContent = text;
@@ -1268,6 +1275,7 @@ function fillCalendar(today) {
 }
 
 function setActivityView(name) {
+  forwarder?.navigate(`activity view ${name === "activity" ? "activity" : "log"}`);
   ui.activity.view = name === "activity" ? "activity" : "log";
   paintActivity();
   persistLayout();
@@ -1535,6 +1543,7 @@ function openHome(section, context) {
   if (!tabCtl || launching) {
     return null;
   }
+  forwarder?.navigate(`home ${section}`);
   return tabCtl.openHome(section, context);
 }
 
@@ -2093,6 +2102,14 @@ function alive(mine) {
 }
 
 export function stopShell() {
+  if (api && typeof api.stop === "function") {
+    api.stop();
+  }
+  if (unforward) {
+    unforward();
+    unforward = null;
+  }
+  forwarder = null;
   destroyWidgets();
   const current = session;
   session = null;
@@ -2668,6 +2685,8 @@ export async function startShell(surface, nextApi, nextHost, result) {
     }
   }
 
+  forwarder = createForwarder(log);
+  unforward = forwardEvents(mountRoot, forwarder);
   bindMailTree();
   helpView = createHelpView(mountRoot);
   mountRoot.addEventListener("click", onHelpJump);

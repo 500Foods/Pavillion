@@ -4,6 +4,7 @@
 
 #include "pav_db.h"
 #include "pav_platform.h"
+#include "pavillion.h"
 
 #include <sqlite3.h>
 
@@ -127,6 +128,7 @@ int pav_store_open(PavStore **out, const char *engine, const char *path, char *e
     *out = NULL;
     if (engine == NULL || strcmp(engine, "sqlite") != 0) {
         set_err(err, err_len, "unknown engine %s", engine != NULL ? engine : "");
+        pav_log("store", PAV_ERROR, 1, "unknown engine %s", engine != NULL ? engine : "");
         return -1;
     }
     store = calloc(1, sizeof(*store));
@@ -136,9 +138,11 @@ int pav_store_open(PavStore **out, const char *engine, const char *path, char *e
     }
     store->vt = &g_sqlite_vtable;
     if (store->vt->open(store, path, err, err_len) != 0) {
+        pav_log("store", PAV_ERROR, 1, "open failed: %s", err != NULL ? err : "");
         free(store);
         return -1;
     }
+    pav_log("store", PAV_INFO, 1, "store open (%s)", engine);
     *out = store;
     return 0;
 }
@@ -158,6 +162,7 @@ void pav_store_close(PavStore *store) {
     if (store->vt != NULL && store->vt->close != NULL) {
         store->vt->close(store);
     }
+    pav_log("store", PAV_DEBUG, 0, "store closed");
     free(store);
 }
 
