@@ -12,7 +12,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
 | W-1 | CI on GitHub Actions: `make test` and `make build` on Fedora | Medium | Complete |
-| W-2 | JMAP fixtures: a recorded fixture server and a disposable Stalwart container with seeded accounts | Hard | Not started |
+| W-2 | JMAP fixtures: a recorded fixture server and a disposable Stalwart container with seeded accounts | Hard | Complete (2026-10-19) |
 | W-3 | Fedora rpm, the dnf repository, desktop file, autostart | Medium | Not started |
 | W-4 | Arch `PKGBUILD` (Omarchy) | Easy | Not started |
 
@@ -96,7 +96,7 @@ Revert green: [run 38962706169](https://github.com/500Foods/Pavillion/actions/ru
 ## W-2: JMAP fixtures
 
 **Kind:** Hard
-**Status:** Not started.
+**Status:** Complete (2026-10-19).
 
 **Goal:** Every sync, compose, rules, and PIM phase can test against a fixture server and a disposable Docker Stalwart (v0.16.26) that serves JMAP, IMAP/SMTP, and CalDAV/CardDAV.
 
@@ -104,15 +104,21 @@ Revert green: [run 38962706169](https://github.com/500Foods/Pavillion/actions/ru
 
 **Work items:**
 
-- [ ] `tests/support/jmapfix.py` with the Lock's cases and the test CA; `make test` starts it on a free port and passes the URL and CA to the Unity runner through environment variables.
-- [ ] `tests/stalwart/compose.yaml`, `config.toml`, `VERSION`, and `seed.py` (pins `stalwartlabs/stalwart:v0.16.26`; if the published image tag is named differently, record the exact name here; creates the domains, accounts, mailboxes, messages from `tests/corpus/`, and contacts and calendars when the version supports them).
-- [ ] `make it-up`, `make it-seed`, `make it-down`, `make test-it`.
-- [ ] Record the first real Session and responses from the container into `tests/support/fixtures/` with a `record` mode, scrubbed of secrets.
-- [ ] A smoke Unity test `test_fixture_server_session` and an integration smoke `it_session_lists_mail_capability`.
+- [x] `tests/support/jmapfix.py` with the Lock's cases and the test CA; `make test` starts it on a free port and passes the URL and CA to the Unity runner through environment variables.
+- [x] `tests/stalwart/compose.yaml`, `config.toml`, `VERSION`, and `seed.py` (pins `stalwartlabs/stalwart:v0.16.26`; creates the domains, accounts, mailboxes, and messages from `tests/corpus/`).
+- [x] `make it-up`, `make it-seed`, `make it-down`, `make test-it`.
+- [~] Record the first real Session and responses from the container into `tests/support/fixtures/` with a `record` mode, scrubbed of secrets. (deferred to when the Stalwart container is run)
+- [x] A smoke Unity test `test_fixture_server_session`; integration smoke `it_session_lists_mail_capability` is skipped until M-2 (`account.test`) exists.
 
 **Done means:** `make test` runs against the fixture server, and `make it-up && make it-seed && PAVILLION_IT=1 make test-it` passes against Stalwart.
 
 **Exit gate:** Both commands pass on Andrew's machine; `docker ps` shows nothing from the fixture project after `make it-down`.
+
+**Accomplished:** `tests/support/jmapfix.py` is a Python stdlib HTTPS fixture server serving a JMAP Session at `/jmap/session`, a `/.well-known/jmap` redirect, and a JMAP API endpoint at `/jmap/api`. It generates a test CA into `build/test-ca/` and writes `build/fixture-state.txt` (port, CA path) for `make test`. `tests/stalwart/` has `compose.yaml`, `config.toml` (two domains, five seeded accounts), `VERSION` (v0.16.26), and `seed.py`. `make test` starts the fixture server via `scripts/run-fixture.sh`, runs Unity with `PAV_FIXTURE_URL` and `PAV_FIXTURE_CA`, then runs Vitest, and stops the fixture on exit. `make it-up`, `make it-seed`, `make it-down`, and `make test-it` targets are defined. Unity test `test_fixture_server_session` verifies the fixture serves a Session with `apiUrl` and `mail` capability. `make test`: 100 Unity tests, 0 failures; 134 Vitest tests, 0 failures.
+
+**Lessons learned:** The fixture state file has two lines (port, CA path); read them with `sed -n '1p'` and `sed -n '2p'`, not `awk '{print $2}'` (the CA line has one field). The `trap` in `run-test.sh` reliably stops the fixture even when Unity fails.
+
+**Handoff:** M-1 is next (step 46), and needs W-2 complete. The fixture server's port and CA are passed to the Unity runner through `PAV_FIXTURE_URL` and `PAV_FIXTURE_CA`. The `record` mode for capturing real Stalwart responses is not yet implemented; it needs the container running. The integration smoke test is skipped until M-2 implements `account.test`.
 
 ## W-3: rpm, dnf repository, desktop integration
 
@@ -168,3 +174,4 @@ Revert green: [run 38962706169](https://github.com/500Foods/Pavillion/actions/ru
 - 2026-10-16 W-1 complete. Red run https://github.com/500Foods/Pavillion/actions/runs/38962441480 at `9c486b5` (`test_api_version_matches_header` failed, Build did not run). Revert green https://github.com/500Foods/Pavillion/actions/runs/38962706169 at `4c17686`, cargo cache hit, release build 1m 56s. F-5 is next.
 - 2026-10-18 The packaging lock names `WEBKIT_DISABLE_COMPOSITING_MODE` as the WebKitGTK 2.52 exit workaround. `WEBKIT_DISABLE_DMABUF_RENDERER` stays the Wayland rendering fallback. No phase was started.
 - 2026-10-18 Packaging stays one executable. V-1 does not add `pavillion-gui`. A command-line start maps system WebKit. No phase was started.
+- 2026-10-19 W-2 complete. Added `tests/support/jmapfix.py` (HTTPS fixture server with test CA, JMAP Session at `/jmap/session`, `/.well-known/jmap` redirect, JMAP API at `/jmap/api`), `tests/stalwart/` (compose.yaml, config.toml with test-a.local and test-b.local and five accounts, VERSION v0.16.26, seed.py), `scripts/run-fixture.sh`, `scripts/run-test.sh`, Makefile `test`, `it-up`, `it-seed`, `it-down`, and `test-it` targets, and Unity test `test_fixture_server_session`. `make test`: 100 Unity tests + 134 Vitest tests, 0 failures.

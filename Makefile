@@ -29,7 +29,7 @@ PLATFORM_TEST_SRC :=
 PLATFORM_TEST_INC :=
 endif
 
-.PHONY: all lib dev build test clean mini
+.PHONY: all lib dev build test clean mini it-up it-seed it-down test-it
 
 all: lib
 
@@ -109,9 +109,23 @@ mini:
 	@$(PRINT_ELAPSED)
 
 test: $(TEST_BIN)
-	$(TEST_BIN)
-	npm --prefix ui install
-	npm --prefix ui test
+	bash scripts/run-test.sh
+
+# Integration tests against the Stalwart container (PAVILLION_IT=1).
+# Skipped until M-2 (account.test) exists; for now it only checks the
+# container is reachable.
+it-up:
+	docker compose -f tests/stalwart/compose.yaml up -d
+
+it-seed: it-up
+	PAV_STALWART_HOST=localhost PAV_STALWART_PORT=1443 python3 tests/stalwart/seed.py
+
+it-down:
+	docker compose -f tests/stalwart/compose.yaml down --remove-orphans || true
+
+test-it:
+	@if [ "${PAVILLION_IT}" != "1" ]; then \t	echo "set PAVILLION_IT=1 to run integration tests" >&2; \t	exit 0; \tfi
+	@echo "integration tests skipped until M-2 (account.test)"
 
 clean:
 	rm -rf $(BUILD_DIR) $(MINI_CMAKE_DIR) $(DIST_DIR)

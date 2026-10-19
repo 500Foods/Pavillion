@@ -1,0 +1,22 @@
+# Stalwart test container for Pavillion.
+# Pinned to stalwartlabs/stalwart:v0.16.26.
+services:
+  stalwart:
+    image: stalwartlabs/stalwart:v0.16.26
+    container_name: pavillion-stalwart
+    ports:
+      - "1443:443"
+      - "1993:993"
+      - "1465:465"
+    volumes:
+      - ./config.toml:/etc/stalwart/config.toml:ro
+      - ./secrets:/etc/stalwart/secrets:ro
+      - ./data:/var/lib/stalwart/data
+    environment:
+      - STALWART_CONFIG_PATH=/etc/stalwart/config.toml
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "https://localhost:443/.well-known/jmap"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 5s

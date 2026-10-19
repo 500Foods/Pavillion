@@ -4590,6 +4590,31 @@ void test_account_set_secret(void) {
     pavillion_stop();
 }
 
+void test_fixture_server_session(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+    TEST_ASSERT_TRUE_MESSAGE(ca[0] != '\0', "PAV_FIXTURE_CA must not be empty");
+    /* The CA file should exist and be readable. */
+    FILE *caf = fopen(ca, "r");
+    TEST_ASSERT_NOT_NULL_MESSAGE(caf, "fixture CA file must exist");
+    fclose(caf);
+    /* Fetch the session endpoint and verify it is a JMAP session. */
+    char cmd[512];
+    snprintf(cmd, sizeof(cmd), "curl -sk '%s/jmap/session'", url);
+    FILE *f = popen(cmd, "r");
+    TEST_ASSERT_NOT_NULL_MESSAGE(f, "cannot run curl");
+    char buf[4096];
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    buf[n] = '\0';
+    int rc = pclose(f);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, rc, "curl must exit 0");
+    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(buf, "\"apiUrl\""), "session must include apiUrl");
+    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(buf, "urn:ietf:params:jmap:mail"),
+                                 "session must advertise mail capability");
+}
+
 int main(void) {
     pav_platform_install(pav_platform_fake());
     UNITY_BEGIN();
@@ -4692,5 +4717,6 @@ int main(void) {
     RUN_TEST(test_account_remove_not_found);
     RUN_TEST(test_account_update_patch);
     RUN_TEST(test_account_set_secret);
+    RUN_TEST(test_fixture_server_session);
     return UNITY_END();
 }
