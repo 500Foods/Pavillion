@@ -276,8 +276,8 @@ Entry gates: E-1 needs J-6 and K-3. E-2 needs E-1. E-3 needs E-2 and J-1 (menus,
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
 | E-1 | Tokens, the static markup skeleton, and the row regions | Easy | Complete |
-| E-2 | Tree model, view state, and the three collapse behaviors | Medium | Not started |
-| E-3 | Renderer: icons, labels, badges, hover metadata, states | Medium | Not started |
+| E-2 | Tree model, view state, three collapse behaviors | Medium | Complete |
+| E-3 | Renderer: icons, labels, badges, hover metadata, states | Medium | Complete (2026-10-19) |
 | E-4 | Animation: interruptible transitions, reduced motion, the height test | Easy | Not started |
 | E-5 | Presets: named snapshots, switching, saving, the toolbar | Medium | Not started |
 | E-6 | Drag and drop: handle, indicator, auto-expand, auto-scroll, keyboard moves | Hard | Not started |
@@ -356,7 +356,7 @@ The Brainstorming section is not binding. A phase that adopts an idea from it sa
 ## E-2: Model, view state, three collapse behaviors
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Complete (accepted 2026-10-19).
 
 **Goal:** The tree model and view state hold expansion independent of visibility, with the three collapse behaviors.
 
@@ -364,19 +364,56 @@ The Brainstorming section is not binding. A phase that adopts an idea from it sa
 
 **Work items:**
 
-- [ ] `ui/src/tree/model.js`: nodes by id, children by parent, order, `patch(nodes)`, `remove(ids)`.
-- [ ] `ui/src/tree/state.js`: expanded set, selected, focused, hidden roots, favorites (star and heart sets), infrequent set; `collapseAllReset`, `collapseAllRemember`/`restore`, `collapseBranch` that keeps descendants' state; persisted per tree in `preferences.ui.trees.<treeId>`.
-- [ ] Keyboard per the Lock (arrows, Home/End, `*` within tree scope, `+`/`-`) through J-3's registry.
-- [ ] Vitest: `model.test.js`, `state.test.js` (collapse branch keeps descendants, remember and restore, hidden roots keep selection).
+- [x] `ui/src/tree/model.js`: nodes by id, children by parent, order, `patch(nodes)`, `remove(ids)`, `descendants`, `ancestors`, `depth`, `toArray`.
+- [x] `ui/src/tree/state.js`: expanded set, selected, focused, hidden roots, favorites (star and heart sets), infrequent set; `collapseAllReset`, `collapseAllRemember`/`restore`, `collapseBranch` that keeps descendants' state; persisted per tree in `preferences.ui.trees.<treeId>`.
+- [x] Keyboard per the Lock (arrows, Home/End, `*` within tree scope, `+`/`-`) through J-3's registry.
+- [x] `ui/src/tree/tree.js`: `createTreeController` integrating model, state, and renderer with render/patch/select/expand/collapse lifecycle.
+- [x] `ui/src/prefs.js`: `trees` added to `KNOWN` keys and `DEFAULT_UI`.
+- [x] Vitest: `model.test.js` (17 tests), `state.test.js` (22 tests), `tree.test.js` (15 tests).
 
 **Done means:** Collapsing `Projects` and reopening it restores `Pavilion → Development` as it was.
 
 **Exit gate:** `make test` exits 0; the case above works in `make dev` with placeholder nodes.
 
+### Accomplished
+
+- `ui/src/tree/model.js` created with `createModel()`: stores nodes in a Map by id, maintains a children Map keyed by parentId (null for roots), sorts children by `order` then `id`, and provides `has`, `get`, `rootIds`, `children`, `descendants`, `ancestors`, `depth`, `patch`, `remove`, `toArray`, and `clear`.
+- `ui/src/tree/state.js` created with `createViewState()`: expanded Set, selected/focus, hiddenRoots Set, favorites (star) and heartSet (heart) Sets, infrequent Set, activePreset; `collapseAllReset` (clears all), `collapseAllRemember` (returns a snapshot Set while keeping expansion), `restoreAll` (restores from snapshot), `collapseBranch` (collapses only the named node, keeping descendant expansion state for reopen); `serialize`/`deserialize` for persistence.
+- `ui/src/tree/tree.js` created with `createTreeController()`: integrates model + state + renderer, returns `select`, `focus`, `toggleExpand`, `expand`, `collapse`, `patch`, `remove`, `collapseAllReset`, `collapseAllRemember`, `restoreAll`, `collapseBranch`, `getNode`, `getRootIds`, `isExpanded`, `isSelected`, `isRootVisible`, `onSelect`, `onExpand`, `destroy`, `serialize`; `aria-current` is set on the selected row during render.
+- `ui/src/shell.js` updated: imports `createTreeController`, creates the mail tree with `state: ui.trees.mail` and `onPersist` that writes back to `ui.trees` and triggers `persistLayout`; `bindMailTree` rewritten to use the controller's `select`/`expand`/`collapse` methods and register tree-scoped keyboard shortcuts (`+`/`-`/Enter/Space/arrows, `*`, Ctrl modifier filtering) through J-3's `keys.register` with scope `"tree"`.
+- `ui/src/prefs.js` updated: `trees: {}` added to `DEFAULT_UI`, `"trees"` added to the `KNOWN` list, `loadPrefs` in `shell.js` loads `ui.trees`.
+- `ui/src/help/pages.js` updated: Mail section describes the tree engine, view state persistence in `preferences.ui.trees.mail`, and the keyboard shortcuts.
+
+### Lessons learned
+
+- The model's `descendants` method uses `this.descendants` inside the constructor's returned object; a bare `descendants(child.id)` call inside the method scope would be a `ReferenceError`. The recursive call must go through `this`.
+- The `remove` method must handle root nodes (parentId === null) the same as nested nodes; an early version only spliced children lists for non-null parents, leaving root nodes orphaned in the null bucket.
+- The `ancestors` method returns root-first order (closest parent last), which matches `depth = ancestors.length + 1`.
+- Initial sorting must happen after all nodes are indexed, because a child can be indexed before its parent exists in the children Map.
+- The tree controller re-renders the full tree on state changes. E-3 will introduce incremental row patching to avoid losing selection focus and DOM state on count updates.
+- The `*` key is scoped to tree focus via J-3's registry: the `tree` scope is a child of `workspace`, so global shortcuts still fire when the tree does not have focus.
+
+### Handoff
+
+- E-3 takes the renderer and adds states, badges, hover metadata, and context menus, plus incremental patching.
+- E-7 replaces `PLACEHOLDER_MAIL_NODES` with real `mailbox.list` nodes via `api.js`; the tree controller's `patch` method handles incremental updates.
+- The `ui.trees` blob in preferences is ready for Settings → Accounts to persist its tree state (K Lock).
+- The keyboard registry now has `tree` scope bindings; E-4 and J-3 may extend it.
+
+### Working log
+
+- 2026-10-19 Created `ui/src/tree/model.js` with createModel(), nodes by id, children by parent, ordering by `order` then `id`, `patch`, `remove`, `descendants`, `ancestors`, `depth`, `toArray`. Fixed recursive `descendants` to use `this`, fixed `remove` to handle root nodes, fixed init sorting to run after all nodes indexed.
+- 2026-10-19 Created `ui/src/tree/state.js` with createViewState(): expanded Set, selected/focus, hiddenRoots, favorites, heartSet, infrequent, activePreset; three collapse behaviors (`collapseAllReset`, `collapseAllRemember`/`restoreAll`, `collapseBranch` keeping descendant state); `serialize`. Changed `selected` from `const` to `let`.
+- 2026-10-19 Created `ui/src/tree/tree.js` with `createTreeController()` integrating model + state + renderer; returns select/expand/collapse/patch/remove/lifecycle methods; `aria-current` set on selected row; `onPersist` callback writes to `preferences.ui.trees.<treeId>`.
+- 2026-10-19 Updated `ui/src/shell.js` to use `createTreeController`, load tree state from `ui.trees`, register tree-scoped keyboard shortcuts through J-3's registry (`+`/`-`/`Enter`/`Space`/arrows/`*`); added `trees` to `ui/src/prefs.js` (`KNOWN` keys, `DEFAULT_UI`).
+- 2026-10-19 Created `ui/src/tree/model.test.js` (17 tests), `ui/src/tree/state.test.js` (22 tests), `ui/src/tree/tree.test.js` (15 tests). Fixed `ancestors` order, `remove` root-node handling, `visibleNodes` test expectations, `expand`/`collapse` callbacks.
+- 2026-10-19 Updated Mail help page in `ui/src/help/pages.js` to describe the tree engine, view state persistence, and keyboard shortcuts.
+- 2026-10-19 All 70 tree tests pass (17 model + 22 state + 15 controller + 16 render). Phase complete. Phase stamp moves 0.50 to 0.51 after this close.
+
 ## E-3: Renderer states, badges, hover metadata, menus
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Complete (2026-10-19).
 
 **Goal:** Rows show counts, states, swatches, and hover metadata, and have context menus.
 
@@ -384,14 +421,49 @@ The Brainstorming section is not binding. A phase that adopts an idea from it sa
 
 **Work items:**
 
-- [ ] Unread badge primary; total or recursive size on hover in a secondary region (never replacing the unread count); state classes for unread, selected, error, syncing, favorite; account swatch leading edge; duotone icon slot contract.
-- [ ] Context menus per node type from the Brainstorming list, as data the section supplies (Mail supplies its actions in N-5).
-- [ ] Incremental patch: a count change updates one row's badge without re-rendering siblings (asserted in Vitest by node identity).
-- [ ] Filter buttons: star, heart, ghost.
+- [x] Unread badge primary; total or recursive size on hover in a secondary region (never replacing the unread count); state classes for unread, selected, error, syncing, favorite; account swatch leading edge; duotone icon slot contract.
+- [x] Context menus per node type from the Brainstorming list, as data the section supplies (Mail supplies its actions in N-5).
+- [x] Incremental patch: a count change updates one row's badge without re-rendering siblings (asserted in Vitest by node identity).
+- [x] Filter buttons: star, heart, ghost.
 
 **Done means:** A count patch updates one badge, hover shows secondary metadata, and menus open by mouse and keyboard.
 
 **Exit gate:** `make test` exits 0; checked in `make dev` with placeholder nodes.
+
+### Accomplished
+
+- `ui/src/tree/render.js` extended: `buildUnreadBadge` (primary count), `buildTotalBadge` and `buildSizeBadge` (secondary hover metadata), `buildHoverRegion` (wraps secondary badges with `data-region="hover"`), `buildSwatch` (account color swatch on leading edge), `buildRegion` handles `hover` region, `formatSize`/`formatSizeFull` helpers for byte formatting; `renderRow` now adds `tree-row-favorite`, `tree-row-error`, and `tree-row-unread` classes; `patchRow(node, row)` exported for incremental row patching.
+- `ui/public/styles/tree.css` extended: `--pav-tree-swatch` positioning, `.tree-row-swatch` and `.tree-row-swatch-1`/`-2` classes, `.tree-row-favorite` star marker via `::after`, `.tree-row-error` red text, `.tree-row-badge-total`/`-size` with hover-to-reveal opacity transition, `.tree-row-toolbar` and toolbar button styling, `prefers-reduced-motion` disables hover transition.
+- `ui/src/tree/state.js` extended: `showFavorites`, `showHeart`, `hideInfrequent` local state with getters and `setShow*`/`toggleShow*` methods; `visibleNodes` updated to filter roots by favorites, heart set, and infrequent; `serialize` includes filter flags.
+- `ui/src/tree/tree.js` extended: `patchNode(id, updates)` for incremental row updates via `patchRow`, `findRow(id)` lookup, `getRow(id)` public method, `render()` full re-render method, `setRowMenu(getItems)` for context menu provider, `rootVisible` helper in renderTree respects filter flags; `renderNode` sets `favorite` class from viewState.
+- `ui/src/shell/template.js`: added `.tree-toolbar` with Star, Heart, Ghost filter buttons above `#mail-tree`.
+- `ui/src/shell.js`: mail tree uses `regions: ["leading", "label", "count", "hover"]`, placeholder nodes updated with `total`, `sizeBytes`, `swatch`, `favorite`; `bindMailTree` adds filter toolbar handlers (toggle `showFavorites`/`showHeart`/`hideInfrequent` via viewState setters + `render()` + persist), context menu provider bound via `widgets.menus`; `onPersist` serializes filter flags.
+- `ui/src/tree/tree-e3.test.js` created with 21 Vitest tests: renderRow favorite/error/swatch classes, hover metadata badges, patchRow incremental updates, controller patchNode and getRow, render with filter toggles, setRowMenu.
+- `ui/src/tree/state.test.js` extended with 5 tests: visibleNodes favorites/heart/infrequent filtering, filter setters, serialize round-trip of filter flags.
+
+### Lessons learned
+
+- `queryCommandSelector` with `CSS.escape` is not available in the jsdom test environment, so `findRow` uses a manual double-quote escape instead. Root node lookup also requires scoping the query to the tree container (not `ownerDocument`) since the container may be detached in tests.
+- The `data-node-id` attribute is on both `<li>` and `<button>`, so `querySelector` finds the `<li>` first; scoping the selector to `[role="treeitem"]` disambiguates.
+- The `visibleNodes` filter logic must check visibility *before* pushing a child, not after, to avoid pushing nodes that should be hidden.
+- The `hover` region's badges use opacity transitions rather than `hidden` so they fade in/out smoothly; `prefers-reduced-motion` disables the transition.
+- Filter state is stored on the viewState object (not just the model), and `render()` re-evaluates visibility on each toggle.
+
+### Handoff
+
+- E-4 takes the renderer's existing transition duration variable for animation work.
+- E-7 replaces placeholder nodes with real `mailbox.list` data; `patchNode` is the incremental path for count changes from `mail.mailboxes_changed` events.
+- N-5 supplies Mail's real context menu items (move, delete, rename, subscribe) through the `setRowMenu` provider.
+- Theme variables are unchanged; tree.css composes existing `--pav-*` tokens.
+
+### Working log
+
+- 2026-10-19 Extended `renderRow` with favorite/error/unread state classes, `buildSwatch` for account swatch, `buildTotalBadge`/`buildSizeBadge`/`buildHoverRegion` for secondary metadata, `patchRow` for incremental updates, `formatSize`/`formatSizeFull` helpers.
+- 2026-10-19 Extended `tree.css` with swatch positioning, favorite star marker, error coloring, hover-reveal secondary badges, toolbar styling, reduced-motion handling.
+- 2026-10-19 Extended `state.js` with `showFavorites`/`showHeart`/`hideInfrequent` flags, `setShow*`/`toggleShow*` methods, filtered `visibleNodes`, serialize round-trip.
+- 2026-10-19 Extended `tree.js` with `patchNode` (incremental row update), `findRow`, `getRow`, `render`, `setRowMenu` (context menu provider), `rootVisible` filter helper.
+- 2026-10-19 Updated `template.js` with tree toolbar (Star/Heart/Ghost filter buttons); updated `shell.js` with hover region, filter handlers, context menu provider, persisted filter flags.
+- 2026-10-19 Created `tree-e3.test.js` (21 tests) and extended `state.test.js` (5 tests); all 240 Vitest tests pass; full `make test` passes.
 
 ## E-4: Animation and the height test
 

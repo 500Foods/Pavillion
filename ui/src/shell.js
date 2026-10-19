@@ -12,7 +12,8 @@ import { createActivityView } from "./activity/view.js";
 import { createAccountsView } from "./settings/accounts.js";
 import { createHelpView } from "./help/view.js";
 import { createLogView } from "./log/view.js";
-import { createTree, renderRow } from "./tree/render.js";
+import { createTreeController } from "./tree/tree.js";
+import { renderRow } from "./tree/render.js";
 import { DEFAULT_UI, FEATURE_KEYS, RAIL_KEYS, chordsOf, clampUi, railOf, snapZoom } from "./prefs.js";
 import {
   THEME_TEMPLATES,
@@ -904,9 +905,10 @@ async function loadPrefs() {
     ui.themeChoice = stored.themeChoice;
     themeChoice = stored.themeChoice;
   }
-  ui.features = stored.features;
+   ui.features = stored.features;
   ui.rail = stored.rail;
   ui.chords = stored.chords;
+  ui.trees = stored.trees || {};
   paintFeatures();
   ui.session = stored.session;
   sessionSnapshot = JSON.stringify(ui.session);
@@ -2395,19 +2397,32 @@ export async function startShell(surface, nextApi, nextHost, result) {
   });
 
   const PLACEHOLDER_MAIL_NODES = [
-    { id: "inbox", parentId: null, kind: "mailbox", label: "Inbox", role: "inbox", unread: 3, selected: true, hasChildren: false },
-    { id: "drafts", parentId: null, kind: "mailbox", label: "Drafts", role: "drafts", unread: 0, selected: false, hasChildren: false },
-    { id: "sent", parentId: null, kind: "mailbox", label: "Sent", role: "sent", unread: 0, selected: false, hasChildren: false },
-    { id: "archive", parentId: null, kind: "mailbox", label: "Archive", role: "archive", unread: 12, selected: false, hasChildren: false },
+    { id: "inbox", parentId: null, kind: "mailbox", label: "Inbox", role: "inbox", unread: 3, total: 47, sizeBytes: 20971520, sizeLabel: "recursive", selected: true, hasChildren: false, swatch: 2 },
+    { id: "drafts", parentId: null, kind: "mailbox", label: "Drafts", role: "drafts", unread: 0, total: 2, hasChildren: false, swatch: 1 },
+    { id: "sent", parentId: null, kind: "mailbox", label: "Sent", role: "sent", unread: 0, total: 1854, sizeBytes: 52428800, sizeLabel: "recursive", hasChildren: false, swatch: 1 },
+    { id: "archive", parentId: null, kind: "mailbox", label: "Archive", role: "archive", unread: 12, total: 2481, sizeBytes: 1932735283, sizeLabel: "recursive", hasChildren: false, swatch: 2 },
   ];
 
   const mailNav = mountRoot.querySelector('[data-nav="mail"]');
   if (mailNav) {
     const mailTreeContainer = mailNav.querySelector("#mail-tree");
     if (mailTreeContainer) {
-      mailTree = createTree(mailTreeContainer, PLACEHOLDER_MAIL_NODES, {
+      mailTree = createTreeController(mailTreeContainer, {
+        id: "mail",
         label: "Mail",
-        regions: ["leading", "label", "count"],
+        nodes: PLACEHOLDER_MAIL_NODES,
+        state: ui.trees && ui.trees.mail,
+        regions: ["leading", "label", "count", "hover"],
+        onPersist(treeId, patch) {
+          ui.trees = ui.trees || {};
+          ui.trees[treeId] = { ...ui.trees[treeId], ...patch };
+          if (treeId === "mail") {
+            ui.trees[treeId].showFavorites = mailTree.viewState.showFavorites;
+            ui.trees[treeId].showHeart = mailTree.viewState.showHeart;
+            ui.trees[treeId].hideInfrequent = mailTree.viewState.hideInfrequent;
+          }
+          persistLayout();
+        },
       });
     }
   }
@@ -2422,39 +2437,221 @@ export async function startShell(surface, nextApi, nextHost, result) {
       if (!button || !treeEl.contains(button)) {
         return;
       }
-      for (const other of treeEl.querySelectorAll('[role="treeitem"]')) {
-        other.removeAttribute("aria-current");
-      }
-      button.setAttribute("aria-current", "true");
       const nodeId = button.dataset.nodeId;
-      if (nodeId) {
-        showNav("mail");
-        openHome("mail", { mailboxId: nodeId });
+      if (!nodeId) {
+        return;
       }
+      if (event.target.closest("[data-region='trailing']")) {
+        if (mailTree.isExpanded(nodeId)) {
+          mailTree.collapseBranch(nodeId);
+        } else {
+          mailTree.expand(nodeId);
+        }
+        return;
+      }
+      mailTree.select(nodeId);
+      showNav("mail");
+      openHome("mail", { mailboxId: nodeId });
     });
-    treeEl.addEventListener("keydown", (event) => {
-      if (event.altKey || event.ctrlKey || event.metaKey) {
-        return;
+
+    function mailTreeMenu(nodeId) {
+      const node = mailTree.getNode(nodeId);
+      if (!node) {
+        return [];
       }
-      const button = event.target instanceof Element ? event.target.closest('[role="treeitem"]') : null;
-      if (!button || !treeEl.contains(button)) {
-        return;
+      const items = [
+        {
+          label: "Collapse this branch",
+          onSelect() {
+            mailTree.collapseBranch(nodeId);
+          },
+        },
+      ];
+      if (node.kind === "account") {
+        items.unshift(
+          { label: "Account settings", onSelect() { openHome("settings", { heading: "accounts" }); } },
+          {
+            label: "Hide account",
+            onSelect() {
+              mailTree.viewState.hideRoot(nodeId);
+              mailTree.render();
+            },
+          },
+        );
       }
-      if (event.key === "Enter" || event.key === " " || event.key === "ArrowRight") {
-        event.preventDefault();
-        button.setAttribute("aria-current", "true");
-        for (const other of treeEl.querySelectorAll('[role="treeitem"]')) {
-          if (other !== button) {
-            other.removeAttribute("aria-current");
+      if (node.kind === "mailbox" || node.kind === "folder") {
+        const isFav = mailTree.viewState.isFavorite(nodeId);
+        items.push({
+          label: isFav ? "Unmark favorite" : "Mark favorite",
+          onSelect() {
+            mailTree.viewState.toggleFavorite(nodeId);
+            mailTree.patchNode(nodeId, { favorite: !isFav });
+          },
+        });
+        const isInfreq = mailTree.viewState.isInfrequent(nodeId);
+        items.push({
+          label: isInfreq ? "Mark frequent" : "Mark infrequent (hide)",
+          onSelect() {
+            mailTree.viewState.toggleInfrequent(nodeId);
+            mailTree.viewState.hideRoot(nodeId);
+            mailTree.render();
+          },
+        });
+      }
+      items.push({ label: "Properties", onSelect() {} });
+      return items;
+    }
+
+    if (widgets && widgets.menus) {
+      mailTree.setRowMenu((nodeId) => mailTreeMenu(nodeId));
+    }
+
+    const toolbar = mountRoot.querySelector("#mail-tree-toolbar");
+    if (toolbar) {
+      toolbar.addEventListener("click", (event) => {
+        const button = event.target instanceof Element ? event.target.closest("[data-tree-filter]") : null;
+        if (!button || !toolbar.contains(button)) {
+          return;
+        }
+        const filter = button.dataset.treeFilter;
+        const pressed = button.getAttribute("aria-pressed") === "true";
+        button.setAttribute("aria-pressed", !pressed ? "true" : "false");
+        const on = !pressed;
+        if (filter === "star") {
+          ui.trees = ui.trees || {};
+          ui.trees.mail = ui.trees.mail || {};
+          ui.trees.mail.showFavorites = on;
+          mailTree.viewState.setShowFavorites(on);
+        } else if (filter === "heart") {
+          ui.trees = ui.trees || {};
+          ui.trees.mail = ui.trees.mail || {};
+          ui.trees.mail.showHeart = on;
+          mailTree.viewState.setShowHeart(on);
+        } else if (filter === "ghost") {
+          ui.trees = ui.trees || {};
+          ui.trees.mail = ui.trees.mail || {};
+          ui.trees.mail.hideInfrequent = on;
+          mailTree.viewState.setHideInfrequent(on);
+        }
+        mailTree.render();
+        persistLayout();
+      });
+    }
+
+    if (keys) {
+      keys.register({
+        id: "tree.expand",
+        scope: "tree",
+        chords: [["+"], ["ArrowRight"]],
+        run() {
+          const nodeId = treeEl.querySelector('[role="treeitem"][aria-current="true"]')?.dataset.nodeId;
+          if (nodeId) {
+            mailTree.expand(nodeId);
           }
-        }
-        const nodeId = button.dataset.nodeId;
-        if (nodeId) {
-          showNav("mail");
-          openHome("mail", { mailboxId: nodeId });
-        }
-      }
-    });
+        },
+      });
+      keys.register({
+        id: "tree.collapse",
+        scope: "tree",
+        chords: [["-"], ["ArrowLeft"]],
+        run() {
+          const nodeId = treeEl.querySelector('[role="treeitem"][aria-current="true"]')?.dataset.nodeId;
+          if (nodeId) {
+            if (mailTree.isExpanded(nodeId)) {
+              mailTree.collapse(nodeId);
+            } else {
+              const parent = mailTree.getNode(nodeId)?.parentId;
+              if (parent) {
+                mailTree.collapseBranch(parent);
+                const parentButton = treeEl.querySelector(`[data-node-id="${parent}"]`);
+                if (parentButton) {
+                  parentButton.focus();
+                }
+              }
+            }
+          }
+        },
+      });
+      keys.register({
+        id: "tree.toggle",
+        scope: "tree",
+        chords: [["Enter"], [" "]],
+        run() {
+          const nodeId = treeEl.querySelector('[role="treeitem"][aria-current="true"]')?.dataset.nodeId;
+          if (nodeId) {
+            const isOpen = mailTree.isExpanded(nodeId);
+            if (isOpen) {
+              mailTree.collapse(nodeId);
+            } else {
+              mailTree.expand(nodeId);
+            }
+          }
+        },
+      });
+      keys.register({
+        id: "tree.expandSiblings",
+        scope: "tree",
+        chords: [["*"]],
+        run() {
+          const nodeId = treeEl.querySelector('[role="treeitem"][aria-current="true"]')?.dataset.nodeId;
+          if (!nodeId) {
+            return;
+          }
+          const node = mailTree.getNode(nodeId);
+          if (!node || !node.parentId) {
+            return;
+          }
+          for (const child of mailTree.model.children(node.parentId)) {
+            mailTree.expand(child.id);
+          }
+        },
+      });
+      keys.register({
+        id: "tree.selectParent",
+        scope: "tree",
+        chords: [["ArrowUp"]],
+        run() {
+          const nodeId = treeEl.querySelector('[role="treeitem"][aria-current="true"]')?.dataset.nodeId;
+          if (nodeId) {
+            const node = mailTree.getNode(nodeId);
+            if (node && node.parentId && !mailTree.getNode(node.parentId)?.parentId) {
+              mailTree.select(node.parentId);
+              const btn = treeEl.querySelector(`[data-node-id="${node.parentId}"]`);
+              if (btn) {
+                btn.focus();
+              }
+            } else if (node && node.parentId) {
+              mailTree.select(node.parentId);
+              const btn = treeEl.querySelector(`[data-node-id="${node.parentId}"]`);
+              if (btn) {
+                btn.focus();
+              }
+            }
+          }
+        },
+      });
+      keys.register({
+        id: "tree.selectChild",
+        scope: "tree",
+        chords: [["ArrowDown"]],
+        run() {
+          const nodeId = treeEl.querySelector('[role="treeitem"][aria-current="true"]')?.dataset.nodeId;
+          if (nodeId) {
+            const node = mailTree.getNode(nodeId);
+            if (node && node.hasChildren && mailTree.isExpanded(nodeId)) {
+              const firstChild = mailTree.model.children(nodeId)[0];
+              if (firstChild) {
+                mailTree.select(firstChild.id);
+                const btn = treeEl.querySelector(`[data-node-id="${firstChild.id}"]`);
+                if (btn) {
+                  btn.focus();
+                }
+              }
+            }
+          }
+        },
+      });
+    }
   }
 
   bindMailTree();

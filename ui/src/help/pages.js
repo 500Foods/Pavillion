@@ -51,6 +51,9 @@ export const helpPages = [
         title: "The mail window",
         paragraphs: [
           "Mail opens as the nav beside an empty workspace. The nav shows a tree of mailboxes when Mail is on. The placeholders are Inbox, Drafts, Sent, and Archive. Clicking one opens Mail with that mailbox as the context. A selected row is marked. The unread count on Inbox and Archive is shown as a badge. The tree rows are buttons so the keyboard works like other nav.",
+          "The tree engine keeps view state separate from the node model: expansion, selection, and hidden roots persist in preferences.ui.trees.mail across restarts. Collapsing a branch and reopening it restores its descendants exactly as they were. Keyboard shortcuts scoped to the tree use the arrow keys, Home/End, +/- to expand and collapse, and * to expand all siblings of the current branch.",
+          "Rows show a primary unread badge, and a secondary badge that appears on hover for total messages or recursive folder size. Unread rows get a colored status marker, and a selected row stays selected on hover. Account nodes show a color swatch on the leading edge of the icon. Syncing folders show a spinner, and errors are marked in red.",
+          "Right-click a folder or press Shift+F10 (or the Menu key) to open a context menu with actions like Collapse this branch, Mark favorite, and Properties. A toolbar above the tree has filter buttons: Star shows only favorite roots, Heart shows the second favorite set, and Ghost hides infrequent folders.",
           "When mail arrives, an HTML message is drawn in a sandboxed frame. Remote images stay off until you allow them for that message.",
         ],
       },
@@ -360,6 +363,17 @@ export const helpPages = [
         title: "Where Help lives",
         paragraphs: [
           "The pages are in the UI bundle, in ui/src/help/pages.js. Nothing is read from the working directory, and there is no separate help file beside Pavillion.json. The index is a plain list. When the shared tree engine exists, that list is replaced by the engine. The pages stay in this file. A section id is the hook a later help icon will open.",
+        ],
+      },
+      {
+        id: "tree",
+        title: "The tree engine",
+        paragraphs: [
+          "The tree has four modules: a model (nodes by id, parent-child links, ordering), view state (expanded set, selected/focused, hidden roots, favorites, filter flags), a renderer (row templates, icons, badges, states, CSS classes), and a controller that ties them together. The renderer uses plain DOM, not a table library.",
+          "Row regions are configurable per tree: leading icon, label, status, count (unread badge), hover (secondary metadata), and trailing actions. The order comes from the options.regions array. All outside data is set via textContent; no HTML is parsed.",
+          "Incremental updates use patchRow and the controller's patchNode method to update one row's badge or state class without re-rendering siblings. A count change from the server patches the node in the model and calls patchRow on the existing DOM row.",
+          "Context menus are supplied by the section as data: an array of { label, onSelect, disabled, current } items. The J-1 menu module binds per-row, and Shift+F10 or the Menu key opens the menu for the focused row. The tree exposes rowMenuProvider via setRowMenu so the section can return per-node items.",
+          "Filter flags (showFavorites, showHeart, hideInfrequent) live in view state alongside expanded and hidden roots. The star/heart/ghost toolbar buttons toggle them, and renderTree re-evaluates root visibility on each filter toggle. These flags persist in preferences.ui.trees.<treeId>.",
         ],
       },
       {

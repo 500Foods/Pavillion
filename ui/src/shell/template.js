@@ -27,6 +27,17 @@ export const shellMarkup = `<div class="shell">
         </div>
         <div class="nav-body">
           <div data-nav="mail">
+            <div class="tree-toolbar" id="mail-tree-toolbar" role="toolbar" aria-label="Mail tree">
+              <button type="button" id="mail-tree-star" data-tree-filter="star" aria-pressed="false" aria-label="Show favorites only">
+                <i class="icon fa-sharp-duotone fa-solid fa-star" aria-hidden="true"></i>
+              </button>
+              <button type="button" id="mail-tree-heart" data-tree-filter="heart" aria-pressed="false" aria-label="Show heart favorites only">
+                <i class="icon fa-sharp-duotone fa-solid fa-heart" aria-hidden="true"></i>
+              </button>
+              <button type="button" id="mail-tree-ghost" data-tree-filter="ghost" aria-pressed="false" aria-label="Hide infrequent folders">
+                <i class="icon fa-sharp-duotone fa-solid fa-cloud" aria-hidden="true"></i>
+              </button>
+            </div>
             <div id="mail-tree" class="tree-root"></div>
           </div>
           <div data-nav="contacts" hidden>

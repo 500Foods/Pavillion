@@ -115,8 +115,8 @@ Pavillion is a personal desktop app for mail, contacts, calendars, tasks, files,
 | 47 | M-2 | JMAP session discovery, `account.test`, remote accounts | Medium | Complete (2026-10-19) |
 | 48 | K-3 | Settings → Accounts panel | Medium | Complete |
 | 49 | E-1 | Tree tokens, skeleton, row regions | Easy | Complete (2026-10-19) |
-| 50 | E-2 | Tree model, view state, three collapse behaviors | Medium | |
-| 51 | E-3 | Tree renderer states, badges, hover, menus | Medium | |
+| 50 | E-2 | Tree model, view state, three collapse behaviors | Medium | Complete (2026-10-19) |
+| 51 | E-3 | Tree renderer states, badges, hover, menus | Medium | Complete (2026-10-19) |
 | 52 | E-4 | Tree animation and the height test | Easy | |
 | 53 | M-3 | Sync supervisor, Identity and Mailbox sync, `mailbox.list` | Medium | |
 | 54 | E-7 | Real mailbox tree from `mailbox.list` | Hard | |
@@ -212,7 +212,7 @@ Andrew added Tasks, Notes, and Argent, and moved Grok Bots to the footer. The de
 - **Notes.** Files under `.pavillion/notes` on one account, plus a local contentless FTS index. Files hides the top-level `.pavillion` folder. The account is Y-Q1, confirmed at Y-1. U-Q1 still chooses the file protocol.
 - **Argent.** Icon only. No ledger, no protocol, no tables, no sequence rows. In this work order "account" stays a mail login. Z-Q1 is the word for a books row. The word CRM stays out of the work order until Argent has a screen.
 - **GitHub.** Icon only, the second footer cell. No event pull, no Projects field on a task, no contact link, no tables, no sequence rows, and no phase letter. The later intent is recorded in [docs/GH-GITHUB.md](docs/GH-GITHUB.md).
-- **Catch-up.** J-9 is step 124, immediately before L-1, and Andrew accepted the window on 2026-10-18. It is the icons, the Features list (every rail button, the divider, the drag order, and a shortcut on each row), drag on the rail icons, and the empty homes. It is not the task list, the note editor, the books, or a GitHub event list. L-1 completed later the same day, step 42. K-1 is complete (2026-10-18), step 43. The smoke script passed. The phase stamp is `0.47`. `PAVILLION_BUILD` is dirty at 169 from `make dev`; do not commit that bump. K-2 is complete (2026-10-19), step 44. W-2 is complete (2026-10-19), step 45. M-1 is complete (2026-10-19), step 46. The phase stamp is `0.48`. `PAVILLION_BUILD` is dirty at 169 from `make dev`; do not commit that bump. M-2 is complete (2026-10-19), step 47. K-3 (Settings → Accounts panel) is complete (2026-10-19), step 48. The phase stamp is `0.49`. E-1 (Tree tokens, skeleton, row regions) is complete (2026-10-19), step 49. The phase stamp is `0.50`.
+- **Catch-up.** J-9 is step 124, immediately before L-1, and Andrew accepted the window on 2026-10-18. It is the icons, the Features list (every rail button, the divider, the drag order, and a shortcut on each row), drag on the rail icons, and the empty homes. It is not the task list, the note editor, the books, or a GitHub event list. L-1 completed later the same day, step 42. K-1 is complete (2026-10-18), step 43. The smoke script passed. The phase stamp is `0.47`. `PAVILLION_BUILD` is dirty at 169 from `make dev`; do not commit that bump. K-2 is complete (2026-10-19), step 44. W-2 is complete (2026-10-19), step 45. M-1 is complete (2026-10-19), step 46. The phase stamp is `0.48`. `PAVILLION_BUILD` is dirty at 169 from `make dev`; do not commit that bump. M-2 is complete (2026-10-19), step 47. K-3 (Settings → Accounts panel) is complete (2026-10-19), step 48. The phase stamp is `0.49`. E-1 (Tree tokens, skeleton, row regions) is complete (2026-10-19), step 49. The phase stamp is `0.50`. E-2 (Tree model, view state, three collapse behaviors) is complete (2026-10-19), step 50. The phase stamp is `0.51`. E-3 (Tree renderer states, badges, hover metadata, context menus, filters) is complete (2026-10-19), step 51. The phase stamp is `0.52`.
 
 ## Review notes (2026-10-18, one executable)
 
