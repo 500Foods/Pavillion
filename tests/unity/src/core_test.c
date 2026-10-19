@@ -24,6 +24,7 @@
 #include <sqlite3.h>
 
 #include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -103,14 +104,20 @@ static void capture_stderr(void) {
     TEST_ASSERT_TRUE(fd >= 0);
     err_fd = fileno(stderr);
     g_saved_stderr = dup(err_fd);
-    if (g_saved_stderr < 0 || dup2(fd, err_fd) != err_fd) {
+    /* dup2 returns the new fd on POSIX but 0 on the Windows CRT; only -1 is failure. */
+    if (g_saved_stderr < 0 || dup2(fd, err_fd) < 0) {
+        char msg[160];
+        int e = errno;
+
+        snprintf(msg, sizeof(msg), "cannot capture stderr: %s failed: %s",
+                 g_saved_stderr < 0 ? "dup" : "dup2", strerror(e));
         close(fd);
         if (g_saved_stderr >= 0) {
             close(g_saved_stderr);
             g_saved_stderr = -1;
         }
         unlink(path);
-        TEST_FAIL_MESSAGE("cannot capture stderr");
+        TEST_FAIL_MESSAGE(msg);
     }
     TEST_ASSERT_EQUAL_INT(0, close(fd));
     TEST_ASSERT_TRUE(strlen(path) < sizeof(g_err_path));
@@ -156,7 +163,7 @@ static char *read_log(void) {
 
     pav_log_thread_shutdown();
     TEST_ASSERT_EQUAL_INT(0, pav_log_set_output(NULL));
-    f = fopen(g_log_path, "r");
+    f = fopen(g_log_path, "rb");
     TEST_ASSERT_NOT_NULL(f);
     TEST_ASSERT_EQUAL_INT(0, fseek(f, 0, SEEK_END));
     n = ftell(f);
@@ -648,7 +655,7 @@ static const char k_default_profile[] =
     "}\n";
 
 static char *slurp(const char *path) {
-    FILE *f = fopen(path, "r");
+    FILE *f = fopen(path, "rb");
     long n;
     char *buf;
     size_t got;
@@ -836,7 +843,7 @@ void test_ensure_writes_defaults_once(void) {
     free(index_text);
     free(profile_text);
 
-    out = fopen(profile_path, "w");
+    out = fopen(profile_path, "wb");
     TEST_ASSERT_NOT_NULL(out);
     TEST_ASSERT_TRUE(fputs("changed\n", out) >= 0);
     TEST_ASSERT_EQUAL_INT(0, fclose(out));
@@ -858,7 +865,7 @@ static void make_slot(char *slot, size_t slot_len) {
 }
 
 static void write_text(const char *path, const char *text) {
-    FILE *f = fopen(path, "w");
+    FILE *f = fopen(path, "wb");
 
     TEST_ASSERT_NOT_NULL(f);
     TEST_ASSERT_TRUE(fputs(text, f) >= 0);
@@ -866,7 +873,7 @@ static void write_text(const char *path, const char *text) {
 }
 
 static void write_profile_logs(const char *path, const char *id, const char *name, const char *logs) {
-    FILE *f = fopen(path, "w");
+    FILE *f = fopen(path, "wb");
 
     TEST_ASSERT_NOT_NULL(f);
     TEST_ASSERT_TRUE(fprintf(f,
@@ -918,7 +925,7 @@ static int tree_has_sqlite(const char *path) {
 }
 
 static void write_index(const char *path, const char *active, const char *profile_dir) {
-    FILE *f = fopen(path, "w");
+    FILE *f = fopen(path, "wb");
 
     TEST_ASSERT_NOT_NULL(f);
     if (profile_dir == NULL) {
@@ -2088,7 +2095,7 @@ void test_call_prefs_ui_and_log(void) {
 
     snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
     {
-        FILE *f = fopen(path, "r");
+        FILE *f = fopen(path, "rb");
         long n;
         char *buf;
 
@@ -2271,7 +2278,7 @@ void test_api_md_lists_every_command(void) {
     int i;
     int count;
 
-    f = fopen("docs/API.md", "r");
+    f = fopen("docs/API.md", "rb");
     TEST_ASSERT_NOT_NULL(f);
     g_api_real_n = 0;
     g_api_plan_n = 0;
@@ -5263,7 +5270,7 @@ void test_fixture_server_session(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
     TEST_ASSERT_TRUE_MESSAGE(ca[0] != '\0', "PAV_FIXTURE_CA must not be empty");
     /* The CA file should exist and be readable. */
-    FILE *caf = fopen(ca, "r");
+    FILE *caf = fopen(ca, "rb");
     TEST_ASSERT_NOT_NULL_MESSAGE(caf, "fixture CA file must exist");
     fclose(caf);
     /* Fetch the session endpoint and verify it is a JMAP session. */

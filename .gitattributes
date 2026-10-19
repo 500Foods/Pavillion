@@ -1,6 +1,9 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Auto detect text files; check out LF everywhere (Windows CI compares bytes).
+* text=auto eol=lf
 *.css linguist-detectable=false  
 *.js linguist-detectable=false  
 *.html linguist-detectable=false 
 *.ps1 linguist-detectable=false 
+*.png binary
+*.ico binary
+*.icns binary

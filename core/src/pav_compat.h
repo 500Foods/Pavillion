@@ -34,4 +34,9 @@ static inline int pav_compat_setenv(const char *name, const char *value, int ove
 #define fsync(fd) _commit(fd)
 #endif
 
+/* Binary file I/O everywhere: Windows text mode would rewrite \n as \r\n. */
+#include <fcntl.h>
+#ifndef O_BINARY
+#define O_BINARY 0
+#endif
 #endif

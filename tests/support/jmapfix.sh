@@ -135,7 +135,7 @@ not_found() {
 session_json() {
   local domain=$1 list
   list=$(printf '%s\n' "$ACCOUNTS" | while read -r id email name; do
-    case "$email" in *"@$domain") printf '%s\t%s\t%s\n' "$id" "$email" "$name" ;; esac
+    case "$email" in (*"@$domain") printf '%s\t%s\t%s\n' "$id" "$email" "$name" ;; esac
   done)
   printf '%s' "$list" | jq -R -s -r --arg domain "$domain" "$JQ_LIB"'
     [split("\n")[] | select(length > 0) | split("\t") | {id: .[0], email: .[1], name: .[2]}] as $acc

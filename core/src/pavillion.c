@@ -2001,7 +2001,7 @@ static int open_profile_unlocked(const char *path) {
     FILE *file;
 
     rotate_if_over(path);
-    file = fopen(path, "a");
+    file = fopen(path, "ab");
     if (file == NULL) {
         return -1;
     }
@@ -2152,7 +2152,7 @@ int pav_log_set_workdir(const char *workdir) {
         pav_path_join(path, sizeof(path), logs, "pavillion.log") != 0) {
         return -1;
     }
-    file = fopen(path, "a");
+    file = fopen(path, "ab");
     if (file == NULL) {
         return -1;
     }
@@ -2213,7 +2213,7 @@ int pav_log_set_output(const char *path) {
     g_log_out = NULL;
     g_log_dest = LOG_DEST_NONE;
     if (path != NULL) {
-        g_log_out = fopen(path, "w");
+        g_log_out = fopen(path, "wb");
         if (g_log_out == NULL) {
             pthread_mutex_unlock(&g_log_mu);
             return -1;

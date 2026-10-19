@@ -234,7 +234,7 @@ static int write_temp(const char *path, const void *buf, size_t n, int abort_ren
     }
     memcpy(tmp, path, path_len);
     memcpy(tmp + path_len, ".tmp", 5);
-    fd = open(tmp, O_CREAT | O_TRUNC | O_WRONLY, 0600);
+    fd = open(tmp, O_CREAT | O_TRUNC | O_WRONLY | O_BINARY, 0600);
     if (fd < 0) {
         return -1;
     }
