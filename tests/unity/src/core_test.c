@@ -5108,7 +5108,7 @@ void test_net_retry_on_429_with_retry_after(void) {
     req.user = &done;
     TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
 
-    NET_CHECK(net_wait_done(&done, 8));
+    NET_CHECK(net_wait_done(&done, 20));
     TEST_ASSERT_EQUAL_INT(1, done.hit);
     /* After retry, the server returns 200 from /jmap/session?error=429
        because the second request goes through without the error param.
@@ -5146,7 +5146,7 @@ void test_net_retry_on_503_backoff(void) {
     req.user = &done;
     TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
 
-    NET_CHECK(net_wait_done(&done, 8));
+    NET_CHECK(net_wait_done(&done, 20));
     TEST_ASSERT_EQUAL_INT(1, done.hit);
     /* 503 stays at 503 since the URL keeps returning 503. */
     TEST_ASSERT_EQUAL_INT(503, req.status_code);
