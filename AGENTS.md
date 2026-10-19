@@ -20,7 +20,7 @@ Close-out, in the owning document, before stopping: Status, Accomplished, Lesson
 
 ## Where the work stands
 
-K-1 (step 43) is complete. Account secrets are Stronghold records. libsecret holds only the snapshot password. The next session reads K-2 in `docs/K-ACCOUNTS.md` and asks before editing. Do not start K-2 in that sitting. The phase stamp is `0.47`. `PAVILLION_BUILD` is dirty at 169 from `make dev`; do not commit that bump. `PAVILLION_API_VERSION` stays 3.
+K-2 (step 44) is complete. Account commands and the auth interface are real. The phase stamp is `0.48`. `PAVILLION_BUILD` is dirty at 169 from `make dev`; do not commit that bump. `PAVILLION_API_VERSION` stays 3.
 
 Tasks, Notes, and Argent are icons and empty homes. GitHub is an icon. Do not build those screens, tables, event pulls, or a ledger. Do not add a Projects field or a contact link for GitHub. CalDAV and CardDAV are later and write the same tables JMAP will write. They are not a second PIM.
 

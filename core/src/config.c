@@ -126,7 +126,9 @@ int pav_index_parse(const char *text, PavIndex **out, char *err, size_t err_len)
         cfg_str(root, "log_level", NULL, index->log_level, sizeof(index->log_level), err, err_len) != 0 ||
         cfg_str(root, "active", "", index->active, sizeof(index->active), err, err_len) != 0 ||
         cfg_str(root, "profile_dir", "profiles", index->profile_dir, sizeof(index->profile_dir), err,
-                err_len) != 0) {
+                err_len) != 0 ||
+        cfg_int_range(root, "next_account_number", 1, 1, 9999, 0, &index->next_account_number,
+                      err, err_len) != 0) {
         json_decref(root);
         free(index);
         return -1;
@@ -427,6 +429,7 @@ int pav_config_load(const char *workdir, PavConfigLoad **out, char *err, size_t 
         return -1;
     }
     memcpy(load->log_level, index->log_level, sizeof(load->log_level));
+    load->next_account_number = index->next_account_number;
     if (index->active[0] == '\0') {
         load_error(load, "active profile missing: %s", "");
         pav_index_free(index);

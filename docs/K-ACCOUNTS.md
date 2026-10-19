@@ -12,7 +12,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
 | K-1 | Secrets through the platform: Stronghold, snapshot password in libsecret, fake | Medium | Done |
-| K-2 | Account model and commands: number, add, update, remove, set secret | Medium | Not started |
+| K-2 | Account model and commands: number, add, update, remove, set secret | Medium | Complete |
 | K-3 | Settings → Accounts panel: add with test, credentials, edit, remove | Medium | Not started |
 | K-4 | OpenID Connect sign-in (authorization code + PKCE) | Hard | Not started |
 
@@ -119,7 +119,7 @@ Andrew asked for this beside the usual URL, username, and password. It is not pa
 ## K-2: Account model and commands
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Complete (2026-10-19).
 
 **Goal:** Accounts can be added, updated, listed, and removed through commands, with numbers and secrets handled per the Lock.
 
@@ -127,15 +127,21 @@ Andrew asked for this beside the usual URL, username, and password. It is not pa
 
 **Work items:**
 
-- [ ] Add `number` and `next_account_number` to the B Lock and the parser (F-5 helpers). Validation: `id` matches `^[a-z0-9][a-z0-9-]{0,62}$`, generated from the name when absent; `kind` `jmap` (and `imap` accepted but marked unsupported); URLs must be `https://`; `color` `#rgb` or `#rrggbb`; `fetch_bodies` `none|recent|all`.
-- [ ] Commands `account.list`, `account.add`, `account.update`, `account.remove`, `account.set_secret`. `account.add` writes the keyring first, then the profile, then `account_state`; failure rolls back what was done. Results never include the secret.
-- [ ] Events `accounts.changed`.
-- [ ] `core/include/pav_auth.h` and `core/src/auth_basic.c` per the Authentication Lock. `auth` is validated as `basic` (K-4 adds `oidc` to the validator later). Unity (pure functions, no network): `test_auth_basic_header`, `test_auth_unknown_method_rejected`, `test_auth_basic_on_unauthorized_fails`. The wire-level 401 test is M-1's `test_net_401_not_retried`.
-- [ ] Unity: `test_account_add_assigns_next_number`, `test_account_numbers_never_reused`, `test_account_add_rolls_back_on_profile_write_failure`, `test_account_remove_purges`, `test_account_list_has_no_secret`, `test_account_rejects_http_url`.
+- [x] Add `number` and `next_account_number` to the B Lock and the parser (F-5 helpers). Validation: `id` matches `^[a-z0-9][a-z0-9-]{0,62}$`, generated from the name when absent; `kind` `jmap` (and `imap` accepted but marked unsupported); URLs must be `https://`; `color` `#rgb` or `#rrggbb`; `fetch_bodies` `none|recent|all`.
+- [x] Commands `account.list`, `account.add`, `account.update`, `account.remove`, `account.set_secret`. `account.add` writes the keyring first, then the profile, then `account_state`; failure rolls back what was done. Results never include the secret.
+- [x] Events `accounts.changed`.
+- [x] `core/include/pav_auth.h` and `core/src/auth_basic.c` per the Authentication Lock. `auth` is validated as `basic` (K-4 adds `oidc` to the validator later). Unity (pure functions, no network): `test_auth_basic_header`, `test_auth_unknown_method_rejected`, `test_auth_basic_on_unauthorized_fails`. The wire-level 401 test is M-1's `test_net_401_not_retried`.
+- [x] Unity: `test_account_add_assigns_next_number`, `test_account_numbers_never_reused`, `test_account_add_rolls_back_on_profile_write_failure`, `test_account_remove_purges`, `test_account_list_has_no_secret`, `test_account_rejects_http_url`.
 
 **Done means:** An account added by command survives a restart with its number, and its secret is only in the keyring.
 
 **Exit gate:** `make test` exits 0. `rg -a <fixture password> <workdir>` finds nothing after a debug-console add in `make dev`.
+
+**Accomplished:** `account.add` assigns a three-digit zero-padded number from the index `next_account_number`, writes the secret to the keyring first, then the profile, then inserts `account_state`, and rolls back what was done on failure. `account.update` patches allowed fields, refusing `kind` and `auth`. `account.remove` deletes the keyring entry, profile entry, and `account_state` row, with optional `purgeLocal` cascade. `account.set_secret` replaces the keyring value and never writes it to the profile or database. `accounts.changed` is emitted after every mutation as `{accounts:[account]}` with secrets omitted. `core/include/pav_auth.h` defines `PavAccount`, `PavReq`, `PavSecret`, `PavAuth`, and `pav_auth_for`; `core/src/auth_basic.c` implements the `basic` method with a self-contained base64 encoder, sets `Authorization: Basic`, and returns -1 from `on_unauthorized`. `auth` is validated as `basic` only. The index gains `next_account_number` (defaults to 1 on read); the account object gains `number`. Unity: 99 tests 0 failures, including `test_auth_basic_header`, `test_auth_unknown_method_rejected`, `test_auth_missing_method_rejected`, `test_auth_basic_on_unauthorized_fails`, `test_account_list_empty`, `test_account_list_has_no_secret`, `test_account_add_assigns_next_number`, `test_account_rejects_http_url`, `test_account_numbers_never_reused`, `test_account_add_rolls_back_on_profile_write_failure`, `test_account_remove_purges`, `test_account_remove_not_found`, `test_account_update_patch`, `test_account_set_secret`. `PAVILLION_API_VERSION` stays 3. The phase stamp moves to `0.48.0`.
+
+**Lessons learned:** The base64 encoder in `auth_basic.c` had a bug in the 2-remaining-bytes case: it was missing the 3rd data character `k_b64_chars[(b1 & 0x0f) << 2]` and had an extra `=` padding character. Fixed during testing. `pav_db_call` is synchronous, so `account.add`'s `store_account_state` blocks the core thread until the write job completes, simplifying rollback logic. The `account.update` handler copies the patch object's values into the account JSON by reference before serializing the profile, which avoids double-copy but requires careful ordering of validation before mutation. The `accounts.changed` event is emitted as a JSON text of the accounts array, not the full reply envelope.
+
+**Handoff:** K-3 (Settings → Accounts panel) is next, step 48, and needs M-2 (`account.test`) first. K-4 (OIDC) adds `auth_oidc.c` later without touching `auth_basic.c`, the keyring layer, or the account schema. W-2 (fixture server) comes before M-1. The auth interface is stable: `pav_auth_for(account)` is the only call backends will make. Account commands are real and callable now. Do not start K-3 in this sitting.
 
 ## K-3: Settings → Accounts panel
 
@@ -193,3 +199,4 @@ Andrew asked for this beside the usual URL, username, and password. It is not pa
 - 2026-10-18 GitHub adds no Settings → Accounts heading and no `account.test` row.
 - 2026-10-18 K-Q4 resolved: libsecret stores only the snapshot password. Account secrets are Stronghold records. K-1 rewrote the Secrets lock before secret code. Status in progress. Last finished work item: Unity on the fake. `libsecret-devel` is not installed here, so `secrets.c` is not linked yet. The smoke script has not been run.
 - 2026-10-18 K-1 complete, step 43. `libsecret-devel` is installed. The smoke script passed. `make test` is 85 Unity tests and 134 Vitest tests. The phase stamp is `0.47`. K-2 is next, step 44. Do not start it in this sitting.
+- 2026-10-19 K-2 complete, step 44. Implemented `account.add`, `account.list`, `account.update`, `account.remove`, `account.set_secret` in `core/src/account.c`, registered in `dispatch.c`. Added `core/include/pav_auth.h` and `core/src/auth_basic.c` with the `basic` auth method. `accounts.changed` event emitted after mutations. Index gained `next_account_number`, account object gained `number`. All 99 Unity tests pass (4 auth tests + 9 account tests). Fixed base64 encoder bug in `auth_basic.c` (missing 3rd char, extra padding). `PAVILLION_API_VERSION` stays 3. Phase stamp moves to `0.48.0`.

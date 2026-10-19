@@ -39,6 +39,8 @@ add_library(pavillion_core STATIC
     ${MIGRATION_EMBED}
     src/activity.c
     src/secret.c
+    src/auth_basic.c
+    src/account.c
     platform/posix/posix.c)
 target_include_directories(pavillion_core PUBLIC include)
 target_include_directories(pavillion_core PRIVATE platform src ${CMAKE_CURRENT_BINARY_DIR})

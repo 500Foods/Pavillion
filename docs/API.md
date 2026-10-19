@@ -45,27 +45,45 @@ Commands run on the core thread unless the dispatcher marks them `worker`. `debu
 
 ### account.add
 
-State: planned (K-2)
+State: real (K-2)
 
-`{name, kind, sessionUrl, username, auth, secret}`. Writes the keyring first, then the profile. The result does not include the secret.
+Creates an account and stores its secret in the keyring. When `id` is absent it is generated from `name` (lowercase, non-alphanum to `-`, deduplicated with a `-2` suffix).
+
+Args: `{name?, kind, sessionUrl, username, auth?, secret, color?, syncMail?, syncContacts?, syncCalendars?, fetchBodies?, enabled?}`. `auth` defaults to `basic` and is the only K-2 method. `kind` is `jmap` (imap is accepted but unsupported). `sessionUrl` must be `https://`. `color` is `#rgb` or `#rrggbb`. `fetchBodies` is `none`, `recent`, or `all`. Booleans default true except `enabled` which defaults true. `name` is required when `id` is absent.
+
+Result: the account object (without the secret). Includes `number`.
+
+Errors: `bad_args`, `forbidden` (secret in profile), `failed` (keyring), `internal`. A keyring failure rolls back the profile write and the `account_state` row insertion. A profile write failure deletes the keyring entry.
 
 ### account.list
 
-State: planned (K-2)
+State: real (K-2)
 
 Lists the accounts on the active profile. Secrets are not included.
 
+Args: `{}`.
+
+Result: `{accounts: [account]}`.
+
 ### account.remove
 
-State: planned (K-2)
+State: real (K-2)
 
-`{id, purgeLocal}`. Removes the account and, when asked, its local rows.
+`{id, purgeLocal?}`. Removes the keyring entry, the profile entry, and the `account_state` row. When `purgeLocal` is true, also deletes rows in `remote_account`, `identity`, `mailbox`, and `sync_state` belonging to the account (cascading).
+
+Result: `{id}`.
+
+Errors: `bad_args`, `not_found`.
 
 ### account.set_secret
 
-State: planned (K-2)
+State: real (K-2)
 
-`{id, secret}`. Replaces the keyring value for that account.
+`{id, secret}`. Replaces the keyring value for that account. The secret is never written to the profile or the database.
+
+Result: `{id}`.
+
+Errors: `bad_args`, `not_found`, `failed` (keyring).
 
 ### account.test
 
@@ -75,9 +93,13 @@ State: planned (M-2)
 
 ### account.update
 
-State: planned (K-2)
+State: real (K-2)
 
-`{id, patch}`. Changes account fields other than the secret.
+`{id, patch}`. Changes account fields other than the secret. `sessionUrl`, `username`, `color`, `syncMail`, `syncContacts`, `syncCalendars`, `fetchBodies`, `enabled`, and `name` may be patched. `kind` and `auth` are not patchable.
+
+Result: the updated account object (without the secret).
+
+Errors: `bad_args`, `not_found`.
 
 ### activity.cancel
 
@@ -729,6 +751,13 @@ Kind: event
 State: real (I-1)
 
 `{activity}`. The activity object from `activity.list`. Posted on begin, on end, on dismiss, and on progress when at least 250 ms have passed since the last event for that same activity. Begin, end, and dismiss are not throttled.
+
+### accounts.changed
+
+Kind: event
+State: real (K-2)
+
+`{accounts:[account]}`. Posted after any account mutation (add, update, remove, set_secret). Each account object omits the secret.
 
 ### app.mailto
 

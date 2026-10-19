@@ -290,7 +290,8 @@ export const helpPages = [
   "schema": 1,
   "active": "default.json",
   "profile_dir": "profiles",
-  "log_level": "info"
+  "log_level": "info",
+  "next_account_number": 1
 }`,
       },
       {
@@ -303,7 +304,7 @@ export const helpPages = [
           "The open tabs are preferences.ui.session.tabs. preferences.ui.session.restore defaults to on. preferences.ui.session.shutdown is clean after a quit and open while the app is running. Ctrl+C requests that same quit. The window stays up until that clean value is stored. A forced kill leaves it open. preferences.ui.session.maxTabs defaults to 50. Zoom, the nav width, and the theme stay in their own keys.",
           "Ctrl+C is caught in the UI process. JavaScriptCore's scavenger thread does not keep the blocked mask, so the shell installs a handler that only counts the signal and then runs the same quit as the window close. WebKitGTK 2.52 aborts its web process during EGL teardown after that save. The shell sets WEBKIT_DISABLE_COMPOSITING_MODE when it is unset, which turns accelerated compositing off. A value already in the environment is left alone.",
         ],
-        code: `{
+         code: `{
   "kind": "pavillion-profile",
   "schema": 1,
   "id": "default",
@@ -312,7 +313,23 @@ export const helpPages = [
   "logs": "logs/default.log",
   "blobs": "blobs/default",
   "cache": "cache/default",
-  "accounts": [],
+  "accounts": [
+    {
+      "id": "a-500foods-andrew",
+      "number": "001",
+      "name": "andrew@500foods.com",
+      "kind": "jmap",
+      "sessionUrl": "https://mail.500foods.com/.well-known/jmap",
+      "username": "andrew@500foods.com",
+      "auth": "basic",
+      "color": "#2a7",
+      "enabled": true,
+      "syncMail": true,
+      "syncContacts": true,
+      "syncCalendars": true,
+      "fetchBodies": "recent"
+    }
+  ],
   "preferences": {
     "timezone": "America/Vancouver",
     "week_start": "monday",
@@ -351,6 +368,15 @@ export const helpPages = [
         paragraphs: [
           "Account passwords are not in the profile, the database, or the log. They live in a Stronghold snapshot under the profile data directory. The operating-system keyring holds only the snapshot password, so unlocking the session opens the snapshot without a second prompt. A locked keyring is a locked account, not a retry loop.",
           "The credentials form clears its field after submit. A command result never includes the secret. The Linux check is tests/manual/secret_smoke.sh. secret-tool search service pavillion shows the snapshot-password entry and not the dummy secret.",
+        ],
+      },
+      {
+        id: "accounts",
+        title: "Accounts and secrets",
+        paragraphs: [
+          "Accounts live in the active profile as a list of objects. Each has an id, a number (001 and up), a name, a kind (jmap or imap), a session URL (https only), a username, an auth method (basic in v1), a color, sync flags, and fetch_bodies (none, recent, or all). No password is a field.",
+          "Secrets live in a Stronghold snapshot under the profile data directory. The operating-system keyring holds only the snapshot password, so unlocking the session opens the snapshot without a second prompt. A locked keyring is a locked account, not a retry loop.",
+          "The account commands are account.add (writes the secret to the keyring first, then the profile, then inserts account_state, rolling back on failure), account.list, account.update, account.remove, and account.set_secret. account.remove deletes the keyring entry, the profile entry, and account_state, with an optional purgeLocal cascade. accounts.changed is emitted after any of them. account.test comes with M-2.",
         ],
       },
       {

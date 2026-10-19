@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "pav_activity.h"
+#include "pav_auth.h"
 #include "pav_config.h"
 #include "pav_cfg.h"
 #include "pav_db.h"
@@ -580,7 +581,8 @@ static const char k_default_index[] =
     "  \"schema\": 1,\n"
     "  \"active\": \"default.json\",\n"
     "  \"profile_dir\": \"profiles\",\n"
-    "  \"log_level\": \"info\"\n"
+    "  \"log_level\": \"info\",\n"
+    "  \"next_account_number\": 1\n"
     "}\n";
 
 static const char k_default_profile[] =
@@ -4255,6 +4257,60 @@ void test_secret_never_logged(void) {
     TEST_ASSERT_TRUE(log_has("secret missing"));
 }
 
+void test_auth_basic_header(void) {
+    const PavAuth *auth;
+    char err[256];
+    PavAccount account = {.username = "alice", .auth = "basic"};
+    PavReq req = {.headers = NULL};
+    PavSecret secret = {.val = "p@ssw0rd", .len = 0};
+    json_t *header;
+    const char *value;
+
+    pav_platform_fake_set_locked(0);
+    err[0] = '\0';
+    auth = pav_auth_for(&account, err, sizeof(err));
+    TEST_ASSERT_NOT_NULL(auth);
+    TEST_ASSERT_EQUAL_STRING("basic", auth->method);
+    TEST_ASSERT_EQUAL_INT(0, auth->apply(&account, &req, &secret));
+    TEST_ASSERT_NOT_NULL(req.headers);
+    header = json_object_get(req.headers, "Authorization");
+    TEST_ASSERT_NOT_NULL(header);
+    TEST_ASSERT_TRUE(json_is_string(header));
+    value = json_string_value(header);
+    TEST_ASSERT_EQUAL_STRING("Basic YWxpY2U6cEBzc3cwcmQ=", value);
+    json_decref(req.headers);
+}
+
+void test_auth_unknown_method_rejected(void) {
+    char err[256];
+    PavAccount account = {.username = "alice", .auth = "kerberos"};
+
+    err[0] = '\0';
+    TEST_ASSERT_NULL(pav_auth_for(&account, err, sizeof(err)));
+    TEST_ASSERT_TRUE(err[0] != '\0');
+    TEST_ASSERT_NOT_NULL(strstr(err, "kerberos"));
+}
+
+void test_auth_missing_method_rejected(void) {
+    char err[256];
+    PavAccount account = {.username = "alice", .auth = NULL};
+
+    err[0] = '\0';
+    TEST_ASSERT_NULL(pav_auth_for(&account, err, sizeof(err)));
+    TEST_ASSERT_TRUE(err[0] != '\0');
+}
+
+void test_auth_basic_on_unauthorized_fails(void) {
+    const PavAuth *auth;
+    char err[256];
+    PavAccount account = {.username = "alice", .auth = "basic"};
+
+    err[0] = '\0';
+    auth = pav_auth_for(&account, err, sizeof(err));
+    TEST_ASSERT_NOT_NULL(auth);
+    TEST_ASSERT_EQUAL_INT(-1, auth->on_unauthorized(&account));
+}
+
 void test_foreign_keys_on(void) {
     char path[160];
     int on = 0;
@@ -4265,6 +4321,273 @@ void test_foreign_keys_on(void) {
     TEST_ASSERT_EQUAL_INT(0, pav_db_call(fk_job, &on));
     TEST_ASSERT_EQUAL_INT(1, on);
     close_test_store();
+}
+
+static void assert_ok(json_t *root) {
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    TEST_ASSERT_NULL(json_object_get(root, "error"));
+}
+
+void test_account_list_empty(void) {
+    json_t *root = NULL;
+    json_t *data;
+    json_t *accounts;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    root = call_reply("account.list", "{}");
+    assert_ok(root);
+    data = json_object_get(root, "data");
+    TEST_ASSERT_NOT_NULL(data);
+    accounts = json_object_get(data, "accounts");
+    TEST_ASSERT_NOT_NULL(accounts);
+    TEST_ASSERT_TRUE(json_is_array(accounts));
+    TEST_ASSERT_EQUAL_INT(0, json_array_size(accounts));
+    json_decref(root);
+    pavillion_stop();
+}
+
+void test_account_list_has_no_secret(void) {
+    json_t *root = NULL;
+    char *text;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    root = call_reply("account.add",
+        "{\"kind\":\"jmap\",\"sessionUrl\":\"https://example.com/jmap\","
+        "\"username\":\"alice\",\"secret\":\"p@ssw0rd\",\"id\":\"mail\"}");
+    assert_ok(root);
+    json_decref(root);
+    root = call_reply("account.list", "{}");
+    assert_ok(root);
+    TEST_ASSERT_EQUAL_INT(1, json_array_size(
+        json_object_get(json_object_get(root, "data"), "accounts")));
+    text = json_dumps(root, JSON_COMPACT);
+    TEST_ASSERT_NULL(strstr(text, "p@ssw0rd"));
+    TEST_ASSERT_NULL(strstr(text, "\"secret\""));
+    free(text);
+    json_decref(root);
+    pavillion_stop();
+}
+
+void test_account_add_assigns_next_number(void) {
+    json_t *root = NULL;
+    json_t *acct;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_platform_fake_set_locked(0);
+    root = call_reply("account.add",
+        "{\"kind\":\"jmap\",\"sessionUrl\":\"https://example.com/jmap\","
+        "\"username\":\"alice\",\"secret\":\"p@ssw0rd\",\"id\":\"mail\"}");
+    assert_ok(root);
+    acct = json_object_get(root, "data");
+    TEST_ASSERT_NOT_NULL(acct);
+    TEST_ASSERT_EQUAL_STRING("001", json_string_value(json_object_get(acct, "number")));
+    TEST_ASSERT_EQUAL_STRING("mail", json_string_value(json_object_get(acct, "id")));
+    TEST_ASSERT_EQUAL_STRING("jmap", json_string_value(json_object_get(acct, "kind")));
+    TEST_ASSERT_EQUAL_STRING("https://example.com/jmap",
+        json_string_value(json_object_get(acct, "sessionUrl")));
+    TEST_ASSERT_EQUAL_STRING("alice",
+        json_string_value(json_object_get(acct, "username")));
+    TEST_ASSERT_EQUAL_STRING("basic",
+        json_string_value(json_object_get(acct, "auth")));
+    json_decref(root);
+    pavillion_stop();
+}
+
+void test_account_rejects_http_url(void) {
+    json_t *root = NULL;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_platform_fake_set_locked(0);
+    root = call_reply("account.add",
+        "{\"kind\":\"jmap\",\"sessionUrl\":\"http://insecure.com/jmap\","
+        "\"username\":\"bob\",\"secret\":\"s3cret\",\"id\":\"sec\"}");
+    assert_call_error(root, "bad_args", "https");
+    json_decref(root);
+    pavillion_stop();
+}
+
+void test_account_numbers_never_reused(void) {
+    json_t *root = NULL;
+    json_t *acct;
+    json_t *list_root;
+    json_t *accounts;
+    const char *num1;
+    const char *num2;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_platform_fake_set_locked(0);
+    root = call_reply("account.add",
+        "{\"kind\":\"jmap\",\"sessionUrl\":\"https://a.com/jmap\","
+        "\"username\":\"u\",\"secret\":\"s\",\"id\":\"a\"}");
+    assert_ok(root);
+    json_decref(root);
+    root = call_reply("account.add",
+        "{\"kind\":\"imap\",\"sessionUrl\":\"https://b.com/imap\","
+        "\"username\":\"u2\",\"secret\":\"s2\",\"id\":\"b\"}");
+    assert_ok(root);
+    json_decref(root);
+    root = call_reply("account.list", "{}");
+    accounts = json_object_get(json_object_get(root, "data"), "accounts");
+    TEST_ASSERT_EQUAL_INT(2, json_array_size(accounts));
+    num1 = json_string_value(
+        json_object_get(json_array_get(accounts, 0), "number"));
+    num2 = json_string_value(
+        json_object_get(json_array_get(accounts, 1), "number"));
+    TEST_ASSERT_EQUAL_STRING("001", num1);
+    TEST_ASSERT_EQUAL_STRING("002", num2);
+    json_decref(root);
+    root = call_reply("account.remove", "{\"id\":\"a\"}");
+    assert_ok(root);
+    json_decref(root);
+    root = call_reply("account.add",
+        "{\"kind\":\"imap\",\"sessionUrl\":\"https://c.com/imap\","
+        "\"username\":\"u3\",\"secret\":\"s3\",\"id\":\"c\"}");
+    assert_ok(root);
+    json_decref(root);
+    list_root = call_reply("account.list", "{}");
+    accounts = json_object_get(json_object_get(list_root, "data"), "accounts");
+    for (size_t i = 0; i < json_array_size(accounts); i++) {
+        acct = json_array_get(accounts, i);
+        const char *id = json_string_value(json_object_get(acct, "id"));
+        if (strcmp(id, "c") == 0) {
+            const char *num = json_string_value(json_object_get(acct, "number"));
+            TEST_ASSERT_EQUAL_STRING("003", num);
+        }
+    }
+    json_decref(list_root);
+    pavillion_stop();
+}
+
+void test_account_add_rolls_back_on_profile_write_failure(void) {
+    json_t *root = NULL;
+    char *secret_val = NULL;
+    char db_path[160];
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_platform_fake_set_locked(0);
+    pav_platform_fake_abort_next_write();
+    root = call_reply("account.add",
+        "{\"kind\":\"jmap\",\"sessionUrl\":\"https://example.com/jmap\","
+        "\"username\":\"alice\",\"secret\":\"p@ssw0rd\",\"id\":\"fail\"}");
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(root, "ok")));
+    json_decref(root);
+    root = call_reply("account.list", "{}");
+    assert_ok(root);
+    TEST_ASSERT_EQUAL_INT(0,
+        json_array_size(json_object_get(json_object_get(root, "data"), "accounts")));
+    json_decref(root);
+    snprintf(db_path, sizeof(db_path), "%s/default.sqlite", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(0,
+        scalar_int(db_path, "SELECT count(*) FROM account_state WHERE account_id='fail'"));
+    TEST_ASSERT_EQUAL_INT(PAV_SECRET_MISSING,
+        pav_secret_get("pavillion", "default/fail", &secret_val));
+    TEST_ASSERT_NULL(secret_val);
+    pavillion_stop();
+}
+
+void test_account_remove_purges(void) {
+    json_t *root = NULL;
+    char db_path[160];
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_platform_fake_set_locked(0);
+    root = call_reply("account.add",
+        "{\"kind\":\"jmap\",\"sessionUrl\":\"https://example.com/jmap\","
+        "\"username\":\"alice\",\"secret\":\"p@ssw0rd\",\"id\":\"rm\"}");
+    assert_ok(root);
+    json_decref(root);
+    snprintf(db_path, sizeof(db_path), "%s/default.sqlite", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(1,
+        scalar_int(db_path, "SELECT count(*) FROM account_state WHERE account_id='rm'"));
+    root = call_reply("account.remove", "{\"id\":\"rm\"}");
+    assert_ok(root);
+    json_decref(root);
+    TEST_ASSERT_EQUAL_INT(0,
+        scalar_int(db_path, "SELECT count(*) FROM account_state WHERE account_id='rm'"));
+    pavillion_stop();
+}
+
+void test_account_remove_not_found(void) {
+    json_t *root = NULL;
+    json_t *error;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    root = call_reply("account.remove", "{\"id\":\"nope\"}");
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(root, "ok")));
+    error = json_object_get(root, "error");
+    TEST_ASSERT_NOT_NULL(error);
+    TEST_ASSERT_EQUAL_STRING("not_found",
+        json_string_value(json_object_get(error, "code")));
+    json_decref(root);
+    pavillion_stop();
+}
+
+void test_account_update_patch(void) {
+    json_t *root = NULL;
+    json_t *acct;
+    json_t *accounts;
+    json_t *found = NULL;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_platform_fake_set_locked(0);
+    root = call_reply("account.add",
+        "{\"kind\":\"jmap\",\"sessionUrl\":\"https://example.com/jmap\","
+        "\"username\":\"alice\",\"secret\":\"p@ssw0rd\",\"id\":\"upd\"}");
+    assert_ok(root);
+    json_decref(root);
+    root = call_reply("account.update",
+        "{\"id\":\"upd\",\"patch\":{\"name\":\"UPDATED\",\"color\":\"#ff0000\"}}");
+    assert_ok(root);
+    json_decref(root);
+    root = call_reply("account.list", "{}");
+    assert_ok(root);
+    accounts = json_object_get(json_object_get(root, "data"), "accounts");
+    for (size_t i = 0; i < json_array_size(accounts); i++) {
+        acct = json_array_get(accounts, i);
+        if (strcmp(json_string_value(json_object_get(acct, "id")), "upd") == 0) {
+            found = acct;
+            break;
+        }
+    }
+    TEST_ASSERT_NOT_NULL(found);
+    TEST_ASSERT_EQUAL_STRING("UPDATED",
+        json_string_value(json_object_get(found, "name")));
+    TEST_ASSERT_EQUAL_STRING("#ff0000",
+        json_string_value(json_object_get(found, "color")));
+    json_decref(root);
+    pavillion_stop();
+}
+
+void test_account_set_secret(void) {
+    char *secret = NULL;
+    json_t *root;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_platform_fake_set_locked(0);
+    root = call_reply("account.add",
+        "{\"kind\":\"jmap\",\"sessionUrl\":\"https://example.com/jmap\","
+        "\"username\":\"alice\",\"secret\":\"old-val\",\"id\":\"ss\"}");
+    assert_ok(root);
+    json_decref(root);
+    root = call_reply("account.set_secret",
+        "{\"id\":\"ss\",\"secret\":\"new-val\"}");
+    assert_ok(root);
+    json_decref(root);
+    TEST_ASSERT_EQUAL_INT(0,
+        pav_secret_get("pavillion", "default/ss", &secret));
+    TEST_ASSERT_EQUAL_STRING("new-val", secret);
+    pav_secret_free(secret);
+    pavillion_stop();
 }
 
 int main(void) {
@@ -4355,5 +4678,19 @@ int main(void) {
     RUN_TEST(test_secret_locked_reports_locked);
     RUN_TEST(test_secret_never_logged);
     RUN_TEST(test_foreign_keys_on);
+    RUN_TEST(test_auth_basic_header);
+    RUN_TEST(test_auth_unknown_method_rejected);
+    RUN_TEST(test_auth_missing_method_rejected);
+    RUN_TEST(test_auth_basic_on_unauthorized_fails);
+    RUN_TEST(test_account_list_empty);
+    RUN_TEST(test_account_list_has_no_secret);
+    RUN_TEST(test_account_add_assigns_next_number);
+    RUN_TEST(test_account_rejects_http_url);
+    RUN_TEST(test_account_numbers_never_reused);
+    RUN_TEST(test_account_add_rolls_back_on_profile_write_failure);
+    RUN_TEST(test_account_remove_purges);
+    RUN_TEST(test_account_remove_not_found);
+    RUN_TEST(test_account_update_patch);
+    RUN_TEST(test_account_set_secret);
     return UNITY_END();
 }

@@ -66,11 +66,14 @@ static int env_is_one(const char *name) {
     return value != NULL && strcmp(value, "1") == 0;
 }
 static char g_core_workdir[4096];
+static PavConfigLoad *g_load;
 
 const char *pav_core_workdir(void) {
     return g_core_workdir;
 }
-static PavConfigLoad *g_load;
+PavConfigLoad *pav_core_load(void) {
+    return g_load;
+}
 static PavStore *g_store;
 static PavShellPrefs g_prefs_snap;
 static PavShellPrefs g_prefs_req;

@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "dispatch.h"
+#include "account.h"
 #include "logring.h"
 #include "themes.h"
 #include "window_state.h"
@@ -48,6 +49,11 @@ int pav_cmd_secret_smoke(json_t *args, json_t **data, PavError *err);
 
 /* strcmp order. bsearch requires it. */
 static const PavCommand k_commands[] = {
+    {"account.add", pav_account_add, 0},
+    {"account.list", pav_account_list, 0},
+    {"account.remove", pav_account_remove, 0},
+    {"account.set_secret", pav_account_set_secret, 0},
+    {"account.update", pav_account_update, 0},
     {"activity.cancel", pav_activity_cmd_cancel, 0},
     {"activity.dismiss", pav_activity_cmd_dismiss, 0},
     {"activity.list", pav_activity_cmd_list, 0},

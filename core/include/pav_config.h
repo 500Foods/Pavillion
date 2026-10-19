@@ -25,6 +25,7 @@ typedef struct PavIndex {
     char active[256];
     char profile_dir[256];
     char log_level[16];
+    int next_account_number;
     void *doc;
 } PavIndex;
 
@@ -79,6 +80,7 @@ typedef struct PavConfigLoad {
     char error[512];
     char profile_path[4096]; /* set when profile is set */
     char log_level[16]; /* index log_level, copied before the index is freed */
+    int next_account_number; /* index next_account_number, copied before the index is freed */
     PavProfile *profile; /* set only when state is ready */
 } PavConfigLoad;
 

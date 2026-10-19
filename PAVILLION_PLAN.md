@@ -109,7 +109,7 @@ Pavillion is a personal desktop app for mail, contacts, calendars, tasks, files,
 | 124 | J-9 | Suite rail: Tasks, Notes, and Argent icons; Grok and GitHub on the footer | Medium | Done |
 | 42 | L-1 | Migration runner, statement helpers, schema v1 | Medium | Done |
 | 43 | K-1 | Secrets through the platform (Stronghold) | Medium | Done |
-| 44 | K-2 | Account model and commands, account numbers | Medium | |
+| 44 | K-2 | Account model and commands, account numbers | Medium | Complete |
 | 45 | W-2 | JMAP fixture server and the Stalwart container | Hard | |
 | 46 | M-1 | Per-server network threads (own curl multi each), caps, retries, redaction | Hard | |
 | 47 | M-2 | JMAP session discovery, `account.test`, remote accounts | Medium | |
@@ -212,7 +212,7 @@ Andrew added Tasks, Notes, and Argent, and moved Grok Bots to the footer. The de
 - **Notes.** Files under `.pavillion/notes` on one account, plus a local contentless FTS index. Files hides the top-level `.pavillion` folder. The account is Y-Q1, confirmed at Y-1. U-Q1 still chooses the file protocol.
 - **Argent.** Icon only. No ledger, no protocol, no tables, no sequence rows. In this work order "account" stays a mail login. Z-Q1 is the word for a books row. The word CRM stays out of the work order until Argent has a screen.
 - **GitHub.** Icon only, the second footer cell. No event pull, no Projects field on a task, no contact link, no tables, no sequence rows, and no phase letter. The later intent is recorded in [docs/GH-GITHUB.md](docs/GH-GITHUB.md).
-- **Catch-up.** J-9 is step 124, immediately before L-1, and Andrew accepted the window on 2026-10-18. It is the icons, the Features list (every rail button, the divider, the drag order, and a shortcut on each row), drag on the rail icons, and the empty homes. It is not the task list, the note editor, the books, or a GitHub event list. L-1 completed later the same day, step 42. K-1 is complete (2026-10-18), step 43. The smoke script passed. The phase stamp is `0.47`. `PAVILLION_BUILD` is dirty at 169 from `make dev`; do not commit that bump. K-2 is next, step 44. Do not start it in this sitting.
+- **Catch-up.** J-9 is step 124, immediately before L-1, and Andrew accepted the window on 2026-10-18. It is the icons, the Features list (every rail button, the divider, the drag order, and a shortcut on each row), drag on the rail icons, and the empty homes. It is not the task list, the note editor, the books, or a GitHub event list. L-1 completed later the same day, step 42. K-1 is complete (2026-10-18), step 43. The smoke script passed. The phase stamp is `0.47`. `PAVILLION_BUILD` is dirty at 169 from `make dev`; do not commit that bump. K-2 is complete (2026-10-19), step 44. The phase stamp is `0.48`. K-3 (Settings → Accounts panel) is next, after M-2.
 
 ## Review notes (2026-10-18, one executable)
 

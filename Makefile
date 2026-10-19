@@ -51,7 +51,9 @@ $(LIB): core/CMakeLists.txt core/include/pavillion.h core/include/pav_config.h \
 		core/platform/platform_internal.h core/platform/posix/posix.c \
 		core/platform/linux/linux.c core/platform/linux/secrets.c \
 		core/platform/stronghold/Cargo.toml core/platform/stronghold/src/lib.rs \
-		core/src/secret.c core/include/pav_secret.h
+		core/src/secret.c core/include/pav_secret.h \
+		core/src/auth_basic.c core/include/pav_auth.h \
+		core/src/account.c core/include/account.h
 	cmake -S core -B $(BUILD_DIR)
 	cmake --build $(BUILD_DIR)
 

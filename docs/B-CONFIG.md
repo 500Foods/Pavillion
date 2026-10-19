@@ -64,11 +64,14 @@ The app writes this on first run. Unknown keys are preserved on a later rewrite.
   "schema": 1,
   "active": "default.json",
   "profile_dir": "profiles",
-  "log_level": "info"
+  "log_level": "info",
+  "next_account_number": 1
 }
 ```
 
 `log_level` is `error`, `warn`, `info`, or `debug`. Default `info`. It lives on the index because logging starts before a profile is usable.
+
+`next_account_number` is the next account number to assign, starting at `1`. It is written by `account.add` and never reset, so numbers are never reused. A missing key defaults to `1` on read.
 
 `themes_folder` is optional and is omitted on first run. Absent or empty means `*.theme` files sit in the working directory beside this index. A relative path resolves against the working directory. An absolute path is stored as the user typed it. The folder is one level, shared by every profile in that working directory. The page does not read the index. D-6 sets the key through `themes.folder.set` and clears it when the field is empty. A missing folder does not fail startup. Unknown keys, including this one, survive a rewrite.
 
@@ -135,7 +138,7 @@ Relative paths are under the working directory. A path beginning with `/` is abs
 }
 ```
 
-A profile that does not have `preferences.ui` gains the object the next time it loads. The core does not fill missing zoom or pane keys into an object that already exists, and a new profile's `ui` does not contain `fonts`. The page adds `fonts.body` and `fonts.mono` on the next save. From F-2, `preferences.ui` is opaque to the core (except the icon-library allowlist check in F-3) and also holds zoom, fonts, icons, tabs, colors, and session; see the [F-HARDEN.md](F-HARDEN.md) Lock. The sample above the `ui` block is the profile B-2 wrote, before `ui` and the pane zoom keys were added. `preferences.ui.fontawesome_kit` (a kit id or raw HTML in the preview) is replaced by `preferences.ui.iconLibraries` in F-3. `preferences.ui.icons` (nav id to a class string or raw HTML in the preview) becomes registry key to sanitized HTML snippet in F-7. Both are migrated on load; see the Icons section of the [F-HARDEN.md](F-HARDEN.md) Lock. Later fields added by other documents: account `number` and the index `next_account_number` ([K-ACCOUNTS.md](K-ACCOUNTS.md) K-2), `preferences.cache` (`{bodiesMb, blobsMb}`, core-enforced, so it lives **outside** the opaque `preferences.ui` blob; [L-STORE.md](L-STORE.md) L-2), `preferences.mail`, `preferences.sync`, the profile `rules` and `scripts` arrays ([R-RULES.md](R-RULES.md)), and `preferences.ui.features` (`mail`, `contacts`, `calendars`, `files`, `bots`; the page clamps them; a missing value is on, except `bots`, which is off; [V-CLI.md](V-CLI.md) V-5). Each is added to this lock by the phase that introduces it.
+A profile that does not have `preferences.ui` gains the object the next time it loads. The core does not fill missing zoom or pane keys into an object that already exists, and a new profile's `ui` does not contain `fonts`. The page adds `fonts.body` and `fonts.mono` on the next save. From F-2, `preferences.ui` is opaque to the core (except the icon-library allowlist check in F-3) and also holds zoom, fonts, icons, tabs, colors, and session; see the [F-HARDEN.md](F-HARDEN.md) Lock. The sample above the `ui` block is the profile B-2 wrote, before `ui` and the pane zoom keys were added. `preferences.ui.fontawesome_kit` (a kit id or raw HTML in the preview) is replaced by `preferences.ui.iconLibraries` in F-3. `preferences.ui.icons` (nav id to a class string or raw HTML in the preview) becomes registry key to sanitized HTML snippet in F-7. Both are migrated on load; see the Icons section of the [F-HARDEN.md](F-HARDEN.md) Lock. Later fields added by other documents: the index `next_account_number` and account `number` (K-2, added), `preferences.cache` (`{bodiesMb, blobsMb}`, core-enforced, so it lives **outside** the opaque `preferences.ui` blob; [L-STORE.md](L-STORE.md) L-2), `preferences.mail`, `preferences.sync`, the profile `rules` and `scripts` arrays ([R-RULES.md](R-RULES.md)), and `preferences.ui.features` (`mail`, `contacts`, `calendars`, `files`, `bots`; the page clamps them; a missing value is on, except `bots`, which is off; [V-CLI.md](V-CLI.md) V-5). Each is added to this lock by the phase that introduces it.
 
 Modes: the index, the profile, the log, and the database file are `0600`. `blobs` is `0700`.
 
@@ -146,6 +149,7 @@ An account object in `accounts`:
 ```json
 {
   "id": "a-500foods-andrew",
+  "number": "001",
   "name": "andrew@500foods.com",
   "kind": "jmap",
   "session_url": "https://mail.500foods.com/.well-known/jmap",
@@ -159,6 +163,8 @@ An account object in `accounts`:
   "fetch_bodies": "recent"
 }
 ```
+
+`number` is a three-digit, zero-padded string (`"001"`), assigned by `account.add` and never renumbered. It is omitted on the first schema and added by K-2.
 
 `kind` is `jmap` or `imap`. An `imap` account uses `host`, `port`, `smtp_host`, and `smtp_port` instead of `session_url`. `auth` is the auth method. In v1 it is `basic`, a username plus a keyring password, used as HTTP Basic for JMAP and DAV and as SASL PLAIN for IMAP and SMTP, always over TLS. `oidc` arrives with K-4, and `bearer` is reserved. See the [K-ACCOUNTS.md](K-ACCOUNTS.md) Authentication Lock. `kind` gains `dav` when S-5 lands. `fetch_bodies` is `none`, `recent`, or `all`.
 
@@ -306,3 +312,4 @@ The core is the only writer. Hand-edits are allowed while the process is stopped
 - 2026-10-17 D-6: optional index key `themes_folder`. Absent means `*.theme` files sit beside `Pavillion.json`. The page does not read the index.
 - 2026-10-18 X will add `sync_tasks`. Y uses the files flag of one account and `preferences.ui.notes.accountId`. The sample JSON above stays as B wrote it.
 - 2026-10-18 GitHub does not add a sync flag. The sample JSON stays as B wrote it.
+- 2026-10-18 K-2: Added `next_account_number` to the index and `number` to the account object in the Lock.

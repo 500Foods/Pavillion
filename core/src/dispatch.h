@@ -1,6 +1,7 @@
 #ifndef DISPATCH_H
 #define DISPATCH_H
 
+#include "pav_config.h"
 #include <jansson.h>
 
 /* Filled by a handler. retryable is kept only for "server", and forced on
@@ -31,6 +32,7 @@ char *pav_reply_ok(json_t *data);
 char *pav_dispatch_reply(const char *name, json_t *args);
 
 /* Called on the core thread only. These do not touch the command queue. */
+PavConfigLoad *pav_core_load(void);
 int pav_core_status_data(json_t **data, PavError *err);
 int pav_core_prefs_get_data(json_t **data, PavError *err);
 int pav_core_prefs_set(json_t *args, json_t **data, PavError *err);

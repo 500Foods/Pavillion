@@ -13,7 +13,8 @@ static const char k_default_index[] =
     "  \"schema\": 1,\n"
     "  \"active\": \"default.json\",\n"
     "  \"profile_dir\": \"profiles\",\n"
-    "  \"log_level\": \"info\"\n"
+    "  \"log_level\": \"info\",\n"
+    "  \"next_account_number\": 1\n"
     "}\n";
 
 static const char k_default_profile[] =
