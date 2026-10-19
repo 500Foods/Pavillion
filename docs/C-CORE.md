@@ -39,11 +39,11 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 | --- | --- | --- |
 | Shell | The process, the WebView, argv | JSON, SQLite, curl, the keyring |
 | Core | The profile, the store, the command queue | The WebView |
-| Log | The open log file | Anything but the log queue |
+| Log | The log queue, the ring, and from H-4 the profile's `log.db` connection ([H-LOGGING.md](H-LOGGING.md) Lock) | The profile store, and anything but the log queue |
 | Worker | The work pool, net threads, and script worker added later (M, R) | SQLite. A worker posts a result back to the core |
-| Store writer | From L-1: the only read-write SQLite connection and the write queue ([L-STORE.md](L-STORE.md) Lock) | The profile, curl |
+| Store writer | From L-1: the only read-write connection to the profile store and the write queue ([L-STORE.md](L-STORE.md) Lock). `log.db` is the log thread's, not this thread's | The profile, curl, `log.db` |
 
-Hello world starts the shell, the core thread, and the log thread. No workers. The core thread is the only thread that writes a profile. Until L-1 it is also the only thread that opens the database. From L-1, the store writer owns the only write connection and the core thread uses the read pool ([L-STORE.md](L-STORE.md) Lock). A worker never holds a `sqlite3 *`.
+Hello world starts the shell, the core thread, and the log thread. No workers. The core thread is the only thread that writes a profile. Until L-1 it is also the only thread that opens the database. From L-1, the store writer owns the only write connection to the profile store and the core thread uses the read pool. From H-4, the log thread owns `log.db`, the one exception ([L-STORE.md](L-STORE.md) Lock). A worker never holds a `sqlite3 *`.
 
 Every thread Pavillion creates sets a 512 KB stack (`pthread_attr_setstacksize`) before `pthread_create`. The platform default (8 MB on Linux) is not used. Lua's cap is a heap cap ([R-RULES.md](R-RULES.md)), not a stack size. A Unity test in L-1 records the attribute the store writer was created with.
 
@@ -84,9 +84,9 @@ Levels: `PAV_ERROR`, `PAV_WARN`, `PAV_INFO`, `PAV_DEBUG`. A line below the index
 2026-10-14T17:04:01.123Z INFO  core  core ready
 ```
 
-The clock is `CLOCK_REALTIME`. Three digits, zero-padded. The Activity view may show the same instant in local time as `HH:mm:ss.mmm`. The file stays this line. Before a profile is loaded, lines also go to stderr and to `<workdir>/logs/pavillion.log` when that directory exists. After load, the profile log is the file. `warn` and `error` also go to stderr when stderr is a terminal. `info` and `debug` stay in the file and the ring.
+The clock is `CLOCK_REALTIME`. Three digits, zero-padded. The Activity view may show the same instant in local time as `HH:mm:ss.mmm`. Exports and the one-time import use this line. From H-4 (this Lock written 2026-10-19; until then the code writes `logs/`), there are no log files: `log.db` stores the line's fields and is the record ([H-LOGGING.md](H-LOGGING.md) Lock). A line logged before any workdir exists goes to stderr at every level, because stderr is the only record. From then on, `warn` and `error` go to stderr at all times, before and after attach; `info` and `debug` do not. Before the profile attaches, lines wait in the ring; after attach, `log.db` and the ring hold every line.
 
-When the log thread is running, `pav_log` queues the formatted line and returns. `pav_log_thread_shutdown` drains that queue and joins. A line logged while the thread is not running is written by the caller. `pavillion_start` opens `<workdir>/logs/pavillion.log` before the profile log is attached. A line logged before that file exists goes to stderr only.
+When the log thread is running, `pav_log` queues the formatted line and returns. `pav_log_thread_shutdown` drains that queue and joins. A line logged while the thread is not running is written by the caller. From H-4, `pavillion_start` opens no log file; the log thread opens `log.db` when the profile attaches. From H-4, `pav_log` at `error` waits for that line's commit for about 250 ms at most, then returns anyway.
 
 ```c
 int  pav_log_thread_start(void);
@@ -271,3 +271,5 @@ SQLite is the only driver in this document. `open` takes a filesystem path and c
 - 2026-10-14 C-4: The SQLite vtable opens a file mode 0600, runs `SELECT 1`, and opens the same path again. No other database client is linked.
 - 2026-10-14 C-5: Stop joins the core thread, then the log thread. A second stop does nothing. Start after stop works. A second start while running is refused.
 - 2026-10-14 C-6: Start loads the profile on the core thread, opens SQLite, and logs `core ready`. A broken profile or `db2` sets state `error` and leaves the thread alive.
+- 2026-10-19 Lock change for H-4 (logging redesign, written before code): the Log thread owns the profile's `log.db`, and from H-4 there are no log files. The line format is unchanged and is what exports and the one-time import use. Before any workdir, stderr only. Before attach, stderr and the ring. After attach, `warn` and `error` copy to a terminal. See [H-LOGGING.md](H-LOGGING.md) Lock.
+- 2026-10-19 Andrew approved the H-4 recommendations. stderr: every level before any workdir exists, then `warn` and `error` only, at all times. An `error` line waits for its `log.db` commit for about 250 ms at most. See [H-LOGGING.md](H-LOGGING.md) Lock.

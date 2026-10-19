@@ -314,6 +314,7 @@ D-1 keeps the five variables in the lock above. A later theme phase follows Lith
 - 2026-10-17 D-4 complete. Andrew accepted the look. The same sitting pulled D-6 and D-7 forward. Catalog, skin, `pav-theme`, and the commented starter files are in the tree. `make test` is 68 Unity tests and 43 Vitest tests. `PAVILLION_API_VERSION` stays 3. The D-6 and D-7 window check is still open. Do not start J-1 before that check.
 - 2026-10-17 D-6/D-7 still in progress. Theme choice saves even when icon paint throws. A file theme paints its icons without a reload. The folder field is blank, with placeholder `Default:` plus the working directory, and Browse. Theme Default, Undo, and Redo do not change zoom. The window check is still open.
 - 2026-10-17 D-6 and D-7 complete. Andrew accepted the window. The launch terminal no longer prints profile info. `core ready` stays in the profile log and the Activity log. `make test` is 68 Unity tests and 44 Vitest tests. The next phase is J-1. Do not start it in this sitting.
+- 2026-10-18 Recorded at the J-9 close (moved from the index Resume): the host page still starts on `color-scheme: dark` and `background: #000`, and `data-pav-theme` follows the resolved theme. `pav-theme` is on the existing scheme list in `src-tauri/src/lib.rs`.
 
 ## Shell preview
 

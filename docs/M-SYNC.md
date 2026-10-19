@@ -1,6 +1,6 @@
 # M — SYNC
 
-**Status:** Not started (scoped 2026-10-16 from plan §2.1, §2.4, §3, §5; closes F-6).
+**Status:** M-1 and M-2 complete (2026-10-19). M-3 through M-8 are not started. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The network and the sync engine: HTTP through libcurl, JMAP session discovery, initial and delta sync, the mutation queue, and push. Mail first; contacts, calendars, and files reuse the same engine with their own types ([S-CONTACTS.md](S-CONTACTS.md), [T-CALENDAR.md](T-CALENDAR.md), [U-FILES.md](U-FILES.md)). Tasks ([X-TASKS.md](X-TASKS.md)) sync over CalDAV after T-7, on that DAV client, not as a JMAP tasks capability. Notes ([Y-NOTES.md](Y-NOTES.md)) reuse the files sync of one account. Sending is [O-COMPOSE.md](O-COMPOSE.md).
@@ -133,7 +133,7 @@ typedef struct PavBackend {
 
 **Exit gate:** `make test` exits 0 with the thirteen tests and two fixture server instances started by `make test`.
 
-## Accomplished
+### Accomplished
 
 - `pav_net_start/stop` initialize/cleanup the net subsystem with `curl_global_init/cleanup`.
 - `pav_net_server_for(url)` keys servers by scheme+host+port, creates one `PavNetServer` with its own `CURLM *` multi handle per endpoint, and reuses existing servers for the same host.
@@ -145,7 +145,7 @@ typedef struct PavBackend {
 - `ThreadingHTTPServer` in the fixture enables concurrent slow-response tests.
 - All 120 Unity tests and 134 Vitest tests pass. `make build` CSP check passes.
 
-## Lessons learned
+### Lessons learned
 
 - The fixture server initially used `HTTPServer` (single-threaded), which serialized `?slow=1` requests and caused cap tests to time out with only 1 completion. Switching to `ThreadingHTTPServer` fixed this.
 - `curl_multi_setopt(CURLMOPT_MAX_HOST_CONNECTIONS, 2)` per the Lock limits concurrent HTTP/1.1 connections. With 6 concurrent requests against an HTTP/1.1 fixture, only 2 connections are available, so 3 batches of 2 × 2s = 6s. The per-server cap test timeout was increased to 8s to accommodate this.
@@ -153,7 +153,7 @@ typedef struct PavBackend {
 - The overall cap's `g_overall_in_flight` counter was not decremented on request completion, permanently blocking further requests. Fixed with a dedicated mutex.
 - Requeued retry items must be re-enqueued to the server's queue; the original code only set `in_flight = 0` without adding the item back, causing the item to be lost.
 
-## Handoff
+### Handoff
 
 M-1 implements the net thread and curl multi infrastructure with caps, retries, and redaction. The `pav_net_*` API is real and tested against the fixture server. M-2 can build on `PavReq` and `pav_net_request` to implement JMAP session discovery and `account.test`. The `curl_multi_wakeup` approach for immediate dispatch of new requests (vs. the current `pthread_cond_signal` + `curl_multi_perform` loop) is deferred to M-2.
 
@@ -177,18 +177,18 @@ M-1 implements the net thread and curl multi infrastructure with caps, retries, 
 
 **Exit gate:** `make test` exits 0.
 
-## Accomplished
+### Accomplished
 
 - `core/src/jmap.c`: `pav_jmap_parse_session` parses a JMAP Session, extracting `apiUrl`, `downloadUrl`, `uploadUrl`, `eventSourceUrl`, `state`, `primaryAccounts`, `accounts` (as JSON), and boolean capability flags for mail, submission, contacts, calendars, sieve, files, and websocket. Capability URN mapping: `urn:ietf:params:jmap:mail` → `has_mail`, `urn:ietf:params:jmap:submission` → `has_submission`, `urn:ietf:params:jmap:contacts` → `has_contacts`, `urn:ietf:params:jmap:calendars` → `has_calendars`, `urn:ietf:params:jmap:sieve` → `has_sieve`, `urn:ietf:params:jmap:files` → `has_files`, `urn:ietf:params:jmap:websocket` → `has_websocket`.
 - `core/src/account_test.c`: `pav_account_test` calls `do_account_test` which starts the net layer, sends a GET to the session URL, and follows up to 3 redirects (302/301/307/308) by extracting the `Location` header from response headers via `CURLOPT_HEADERFUNCTION`. The `account_test_done` callback copies the body and Location header before freeing `resp_headers` and `body_out`. The final response is parsed as a JMAP session and mapped to capability names, limits, and accounts.
 - `core/src/net.c`: Added `CURLOPT_HEADERFUNCTION` (`header_callback`) and `CURLOPT_HEADERDATA` set to `&item->hctx` (the `HeaderCtx` within `NetReqItem`), capturing response headers into `req->resp_headers`. The `header_callback` stores headers as-is in a JSON object for caller retrieval (Location, Retry-After, Content-Type).
 - `core/src/net.c`: Fixed `pav_net_stop` to drain queued items and fire their callbacks with `status_code = 0` when `s->stop` is set, preventing the net thread from busy-looping on requeued retry items with future `ready_at_ms`.
-- `tests/support/jmapfix.py`: Added `protocol_version = "HTTP/1.1"` and `Connection: close` headers to responses, ensuring curl opens separate connections for concurrent requests and the server closes cleanly after each response.
+- `tests/support/jmapfix.sh` (then `jmapfix.py`): responses are HTTP/1.1 with a `Connection: close` header, so curl opens separate connections for concurrent requests and the server closes cleanly after each response.
 - `docs/API.md`: Updated `account.test` to `State: real (M-2)`.
 - `core/src/activity.c`: Added `"account.test"` to `k_kinds[]`.
 - `core/src/dispatch.c`: Registered `account.test` as `PAV_CMD_WORKER`.
 
-## Lessons learned
+### Lessons learned
 
 - `CURLOPT_HEADERDATA` must point to the `HeaderCtx` struct (`&item->hctx`), not the `NetReqItem` itself. Casting the `NetReqItem*` to `HeaderCtx*` reads unrelated struct fields as the headers pointer, causing the callback to silently skip all headers and leaving `Location` empty.
 - When following redirects, the `on_done` callback fires on the net thread while the caller waits on a condition variable. The callback must copy out `body_out`, `status_code`, and any header fields (Location) before freeing `resp_headers` and `body_out`, because `complete_request` frees the curl handle immediately after the callback returns.
@@ -196,16 +196,18 @@ M-1 implements the net thread and curl multi infrastructure with caps, retries, 
 - The fixture server must send `Content-Length: 0` on 302 responses with no body, or curl reports `CURLE_RECV_ERROR (56)` when the connection closes before curl expects it.
 - `http.server.ThreadingHTTPServer` with `protocol_version = "HTTP/1.1"` and `Connection: close` allows curl to open separate connections for concurrent requests, which is required for the per-server cap test.
 
-## Handoff
+### Handoff
 
 M-1's net layer is complete and tested. M-2 adds `account.test`, JMAP session parsing, and redirect following on top of it. The `remote_account` table exists in the L-1 schema; M-3 will populate it from the session and start the sync supervisor. The `curl_multi_wakeup` optimization (deferred from M-1) can be added in M-3 when sync polling starts.
+
+## M-3: Supervisor, Identity and Mailbox sync
 
 **Kind:** Medium
 **Status:** Not started.
 
 **Goal:** Every enabled account keeps its identities and mailboxes in the store, and the UI can list them with counts.
 
-**Entry gate:** K-3 and E-4 complete.
+**Entry gate:** K-3 and E-4 complete, and K-3's exit gate verified against the W-2 Stalwart container (`make it-up`, `make it-seed`): in `make build`, add `andrew@test-a.local` and `alice@test-a.local` (tenant A) and `bob@test-b.local` (tenant B) with Override session URL `https://localhost:1443/.well-known/jmap`; each Test shows capabilities, all three are listed with numbers 001–003 after a restart, a wrong password on Test shows one error and no loop, and `rg -a` over the workdir finds none of the passwords from `tests/stalwart/config.toml` ([K-ACCOUNTS.md](K-ACCOUNTS.md) K-3 and K Lock, Accounts).
 
 **Work items:**
 
@@ -215,6 +217,8 @@ M-1's net layer is complete and tested. M-2 adds `account.test`, JMAP session pa
 - [ ] Activity `sync.mail` per account with detail per step.
 - [ ] 401 path per the K Lock; keyring locked path.
 - [ ] Unity on fixtures: `test_sync_mailboxes_initial`, `test_sync_mailboxes_delta_rename`, `test_sync_401_stops_account`, `test_mailbox_list_tree_shape`.
+- [ ] Moved from W-2: add a `record` mode to the fixture server in `tests/support/` and record the first real Session and responses from the W-2 Stalwart container into `tests/support/fixtures/`, scrubbed of secrets. This is what makes the W Lock's "serves recorded JMAP responses from `tests/support/fixtures/*.json`" true: it is not implemented yet. The directory is empty and `jmapfix.sh` builds every reply with jq ([W-SHIP.md](W-SHIP.md) Lock, Fixture server).
+- [ ] Moved from W-2: make `tests/stalwart/seed.sh` create mailboxes and the `tests/corpus/` messages in the container. Today it only sends `Capability/get`; the domains and accounts come from `config.toml`.
 
 **Done means:** Mailboxes and unread counts for the accounts in Settings are in the store and update on change.
 
@@ -335,4 +339,8 @@ M-1's net layer is complete and tested. M-2 adds `account.test`, JMAP session pa
 - 2026-10-16 Andrew: servers must be independent. One net thread and multi handle per server endpoint, accounts multiplexed on it, a per-server cap of 6, per-account 2, an optional overall cap. M-Q1 and M-Q2 resolved, and M-8 moved to right after milestone 3 with SASL PLAIN over TLS.
 - 2026-10-16 Added the store writer to the thread table, and sync and op-queue writes are now `pav_db_write` jobs. Streaming I/O added to the HTTP rules: curl read and write callbacks, with no blob over 1 MB held in memory, plus a 100 MB flat-memory download test.
 - 2026-10-18 Tasks sync on the CalDAV client after T-7. Notes reuse one account's files sync. `account.test` does not grow a tasks capability.
+- 2026-10-19 M-1 complete, step 46. Added `core/src/net.c` and `core/include/pav_net.h`: one net thread and multi handle per server endpoint, the per-server, per-account, and overall caps, retries, and the redacted transfer log. `curl_multi_wakeup` deferred to M-3. All 120 Unity and 134 Vitest tests pass.
 - 2026-10-19 M-2 complete. Added JMAP session parsing (`pav_jmap_parse_session`), `account.test` with redirect following via `CURLOPT_HEADERFUNCTION`, and capability URN mapping. Fixed `pav_net_stop` to drain queued retry items. Fixed fixture server to HTTP/1.1 with Connection: close. All 120 Unity and 134 Vitest tests pass.
+- 2026-10-19 Andrew: M-3's entry gate now includes K-3's exit gate (three accounts, two tenants, `make build`, the password scan). K-Q1 resolved the same day: the accounts are the W-2 Stalwart container's.
+- 2026-10-19 W-2's deferred item (record real Stalwart responses into `tests/support/fixtures/`) moved to M-3 as a work item.
+- 2026-10-19 Seeding mailboxes and corpus messages moved from W-2 to M-3. The record-mode item now notes that the W Lock's recorded `tests/support/fixtures/*.json` responses are not implemented yet.

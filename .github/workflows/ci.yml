@@ -64,7 +64,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install core libraries
-        run: brew install jansson sqlite cmake
+        run: brew install jansson sqlite cmake socat jq
 
       - name: Test
         run: |

@@ -8,9 +8,11 @@ A Linux desktop for one person, one process, one active profile: mail, contacts,
 
 Portable C11 core, a thin Tauri 2 shell, vanilla JS. The core will later link into Hydrogen. The page will later mount in Lithium. Do not write logic that would have to be rewritten for that.
 
+No Python anywhere in the repo: not in source, tests, fixtures, scripts, or CI. Use C for the core, Bash for scripts and test tooling, Lua where R allows it, and vanilla JS for the UI.
+
 ## Read before editing
 
-1. The Resume and the sequence row in [PAVILLION_PLAN.md](PAVILLION_PLAN.md).
+1. The Resume and the Implementation sequence in [PAVILLION_PLAN.md](PAVILLION_PLAN.md). Row order decides what is next; the step number is only a stable label.
 2. Only the named phase: Goal, Entry gate, Work items, Done means, Exit gate, plus the previous phase's Status, Accomplished, Lessons learned, and Handoff.
 3. The Lock that phase cites. Not the rest of the plan.
 
@@ -20,7 +22,7 @@ Close-out, in the owning document, before stopping: Status, Accomplished, Lesson
 
 ## Where the work stands
 
-K-3 (step 48) is complete. The Settings → Accounts panel with add/test/save/remove is real, backed by mock transport and 10 Vitest tests. M-2 (account.test) is complete. E-1 (step 49) is complete: tree tokens, skeleton, and row regions render a placeholder Mail tree scaled by shell and nav-body zoom, with 16 Vitest tests. E-2 (step 50) is complete: tree model, view state, and the three collapse behaviors, with tree-scoped keyboard navigation through J-3's registry, backed by 54 Vitest tests (17 model + 22 state + 15 controller). E-3 (step 51) is complete: renderer states, badges, hover metadata, swatches, context menus, and filter buttons, with 26 new Vitest tests (21 tree-e3 + 5 state). E-4 (step 52) is complete: container-level animation with disclosure arrow rotation, interruptible transitions, and reduced-motion respect, with 13 new Vitest tests. The phase stamp is `0.53`. `PAVILLION_BUILD` is dirty at 180 from `make dev`; do not commit that bump. `PAVILLION_API_VERSION` stays 3. E-5 (step 53) is next.
+Phase status lives in one place. The Resume and the Status column of the Implementation sequence in [PAVILLION_PLAN.md](PAVILLION_PLAN.md) say what is complete and what is next. Each phase's detail (Status, Accomplished, Lessons learned, Handoff, Working log) is in its owning `docs/<letter>-*.md`. Do not copy phase status, test counts, the phase stamp, or the build count into this file.
 
 Tasks, Notes, and Argent are icons and empty homes. GitHub is an icon. Do not build those screens, tables, event pulls, or a ledger. Do not add a Projects field or a contact link for GitHub. CalDAV and CardDAV are later and write the same tables JMAP will write. They are not a second PIM.
 
@@ -40,8 +42,8 @@ Tasks, Notes, and Argent are icons and empty homes. GitHub is an icon. Do not bu
 - The core's public C surface is `core/include/pavillion.h`: `pavillion_start`, `pavillion_stop`, `pavillion_call`, `pavillion_free`, `pav_on_event`, `pav_protocol`, `pav_cli_main`, `pavillion_api_version`. Free every buffer the core hands out with `pavillion_free`.
 - Commands are `noun.verb`. Events are `noun.change`. Wire fields are camelCase. C stays snake_case. A command is not real until `docs/API.md` lists it as `State: real` under `## Commands`, in the same shape the Unity test parses. Planned headings are not callable.
 - Bulk data does not cross as JSON over 2 MB. Use a file path or `pav-cid` / `pav-blob` / `pav-link`.
-- One store writer will own the only write connection (L-1, not started). Until then the core thread is the only database opener. A worker never holds `sqlite3 *`. Every thread Pavillion creates uses a 512 KB stack.
-- `pav_log(subsystem, level, num_args, fmt, ...)`. `num_args` must match the format string. Never log a password, token, `Authorization` header, or message body.
+- One store writer thread (`core/src/db_writer.c`) owns the only write connection to the profile store. Every mutation goes through `pav_db_write`. The one exception is `log.db` (from H-4): the log thread owns it on its own connection (H Lock). Reads borrow the read pool (`core/src/db_readpool.c`). A worker never holds `sqlite3 *`. Every thread Pavillion creates uses a 512 KB stack.
+- `pav_log(subsystem, level, num_args, fmt, ...)`. `num_args` must match the format string. Never log a password, token, `Authorization` header, or message body. Nothing writes around `pav_log`: no stray `fprintf(stderr, ...)`, `eprintln!`, or `console.error` (H Lock, from H-4).
 
 ## Security
 
@@ -78,13 +80,13 @@ The Font Awesome kit replaces `<i class="fa-...">` with `<svg>`. A grip or other
 
 No argument uses `~/.local/share/pavillion`. One argument is the working directory. A second argument is an error. `~` is expanded by the invoking shell, not by Pavillion.
 
-Version is `0.phase.build`. The phase stamp is `0.phase.0` in `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`. The count is the `PAVILLION_BUILD` file. `make dev`, `make build`, and `make mini` add one before they compile and dirty that file. Do not commit that bump unless the sitting means to. Accepting a phase moves the middle number and the release date in `src-tauri/build.rs`, and leaves the count. `PAVILLION_API_VERSION` bumps only for an incompatible C surface or command-contract change. Adding a command or an optional field does not bump it.
+Version is `0.phase.build`. The phase stamp is `0.phase.0` in `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, the pavillion entry in `src-tauri/Cargo.lock`, and `APP_PHASE` in `ui/src/version.js`: the stamp is the number of Done rows in the Implementation sequence; marking a row Done moves it. The count is the `PAVILLION_BUILD` file. `make dev`, `make build`, and `make mini` add one before they compile. That file is local and ignored by git; `make` creates it at 1 when it is missing. It also moves the release date in `src-tauri/build.rs`, and leaves the build count. `PAVILLION_API_VERSION` bumps only for an incompatible C surface or command-contract change. Adding a command or an optional field does not bump it.
 
 `make build` does not produce an AppImage, deb, or rpm (`bundle.active` is false). WebKit bytes stay out of the ELF. The one binary dynamically needs system WebKit. Dynamic link only for curl, SQLite, Jansson, and the other system libraries. Do not static-link them. Lua 5.5 and lexbor are the later vendored exceptions. Do not UPX `dist/pavillion`. CI is `.github/workflows/ci.yml`: Fedora runs `make test` and `make build`.
 
 ## Do not build
 
-Gmail or Microsoft OAuth, Exchange, POP3, multi-user, settings sync, telemetry, an in-app updater, a plugin gallery, RSS, chat, newsgroups, PGP/S/MIME, an MCP server. Generic OpenID Connect with PKCE is K-4, not now. There is no HTTP server in Pavillion. Python is not used. Do not add a field the owning Lock does not name.
+Gmail or Microsoft OAuth, Exchange, POP3, multi-user, settings sync, telemetry, an in-app updater, a plugin gallery, RSS, chat, newsgroups, PGP/S/MIME, an MCP server. Generic OpenID Connect with PKCE is K-4, not now. There is no HTTP server in Pavillion. No Python (see the rule under What it is). Do not add a field the owning Lock does not name.
 
 ## Where to look
 

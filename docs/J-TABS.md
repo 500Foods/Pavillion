@@ -1,6 +1,6 @@
 # J — TABS
 
-**Status:** J-9 complete (2026-10-18), step 124. Andrew accepted the window. The phase stamp is `0.45`. `PAVILLION_BUILD` stays 165. `make test` is 69 Unity tests and 134 Vitest tests. Do not start L-1. L-1 is next, step 42, in [L-STORE.md](L-STORE.md). V-5 is complete, step 116, in [V-CLI.md](V-CLI.md). J-8, J-6, J-3, J-2, J-1, and I-2 are complete.
+**Status:** J-9 complete (2026-10-18), step 124. Andrew accepted the window. The phase stamp is `0.45`. `PAVILLION_BUILD` stays 165. `make test` is 69 Unity tests and 134 Vitest tests. The index names the next phase. V-5 is complete, step 116, in [V-CLI.md](V-CLI.md). J-8, J-6, J-3, J-2, J-1, and I-2 are complete.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The tabbed workspace and the shared widgets every later screen uses: context menu, tooltip, toast with undo, and dialog. Andrew confirmed the feature set for the first round on 2026-10-16: pinned tabs, keyboard shortcuts, files dropped on the strip, a right-click menu (pin, duplicate, mute, close variants), muting, session restore, vertical tabs, floating tooltips, tab widths, and sandboxed browsing from a `+` tab.
@@ -33,7 +33,7 @@ Kind: **Easy** is one module and a test. **Medium** crosses one boundary. **Hard
 4. Do this phase only. Check a work item `[x]` only after its check has passed. Defer with `[~]`, one line, and the phase it moves to.
 5. Before marking complete, write Status, Accomplished, Lessons learned, and Handoff, update the Status column here and in the index, and append the Working log. Before that, update `ui/src/help/pages.js` for what this phase changed: augment, replace, fix, or extend the user page, or add a Developer section when the user page has nothing new. Then stop.
 6. A sitting that ends early sets Status to **in progress**, names the last finished work item, and leaves the rest unchecked.
-7. The app version is `0.phase.build`. The phase stamp is `0.phase.0` in `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`. The build count is the `PAVILLION_BUILD` file. `make dev`, `make build`, and `make mini` add one before they compile. `make test` does not. The shell and the page read the file. The window title is set from the composed version. Help lists it before Introduction. Accepting a phase moves the middle number and leaves the build count in place. The release date in `src-tauri/build.rs` moves when the middle number moves. `PAVILLION_API_VERSION` stays the breaking-change epoch.
+7. The app version is `0.phase.build`. The phase stamp is `0.phase.0` in `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`. The build count is the `PAVILLION_BUILD` file. `make dev`, `make build`, and `make mini` add one before they compile. `make test` does not. The shell and the page read the file. The window title is set from the composed version. Help lists it before Introduction. The middle number is the number of Done rows in the Implementation sequence; marking a row Done moves it and leaves the build count in place. The release date in `src-tauri/build.rs` moves when the middle number moves. `PAVILLION_API_VERSION` stays the breaking-change epoch.
 
 Leave Accomplished, Lessons learned, and Handoff off a phase that has not started. A UI exit gate is the window. Vitest covers modules that do not need a window.
 
@@ -323,7 +323,7 @@ V-7 adds the paste-ready Grok Bots note as a page in this corpus. It does not bu
 ## Open questions for Andrew
 
 - J-Q1. Resolved 2026-10-17. A restart brings back every open tab that can still be rebuilt, including sub-tabs. A tab whose context is gone is dropped.
-- J-Q2. Opening a message: does a plain click show it in the home tab's reading pane and only double-click or Enter-with-Ctrl open a sub-tab? (Assumed yes.)
+- J-Q2. Opening a message: does a plain click show it in the home tab's reading pane and only double-click or Enter-with-Ctrl open a sub-tab? (Assumed yes.) Needed before N-4, where selecting a message first shows it; N-6 opens message tabs.
 - J-Q3. Resolved 2026-10-17. Settings → Tabs has Max tabs, default 50, clamped from 1 to 200. Sub-tabs stop at that number. Home tabs still open. A restart keeps every home tab, then the active tab and pins, and leaves the rest closed.
 - J-Q4. Should section colors also tint the nav button, or only the tab?
 

@@ -382,6 +382,16 @@ Result: `{lines}`. `lines` is how many lines were written.
 
 Errors: `bad_args`, `too_large`, `internal`.
 
+### log.query
+
+State: planned (H-4)
+
+Reads older lines from the profile's `log.db` through the log thread ([H-LOGGING.md](H-LOGGING.md) Lock). `log.tail` stays the ring.
+
+Args: `{beforeSeq?, limit, levels?, subsystems?, text?, session?}`. The result is the newest matching lines with a `seq` below `beforeSeq`, oldest first. `session` is `current`, `previous`, `all` (default), or a session id. H-4 fixes the limits and error codes.
+
+Result: `{lines:[{seq, ts, level, subsystem, text}]}`, the `log.tail` row shape.
+
 ### log.tail
 
 State: real (H-1)

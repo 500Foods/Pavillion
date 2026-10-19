@@ -10,7 +10,7 @@ pidfile="$root/build/fixture.pid"
 case "${1:-}" in
   start)
     rm -f "$state" "$pidfile"
-    python3 "$root/tests/support/jmapfix.py" &
+    bash "$root/tests/support/jmapfix.sh" &
     echo $! > "$pidfile"
     for i in $(seq 1 100); do
       [ -f "$state" ] && break

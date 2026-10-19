@@ -71,13 +71,17 @@ $(TEST_BIN): $(LIB) $(TEST_SRC) $(PLATFORM_TEST_SRC) $(UNITY_DIR)/unity.c $(UNIT
 		$(if $(wildcard core/platform/stronghold/target/release/libpav_stronghold.a),core/platform/stronghold/target/release/libpav_stronghold.a -ldl -lm,)
 
 # dev, build, and mini add one to PAVILLION_BUILD before they compile.
-# test does not. The shell and the page read that file.
-dev: lib
+# test does not. The shell and the page read that file. The file is local and
+# ignored by git; a fresh clone gets 1 from the rule below.
+PAVILLION_BUILD:
+	printf '1\n' >$@
+
+dev: lib PAVILLION_BUILD
 	bash scripts/bump-build.sh
 	npm --prefix ui install
 	npm --prefix ui exec -- tauri dev $(if $(DEV_DIR),-- -- "$(DEV_DIR)",)
 
-build: lib
+build: lib PAVILLION_BUILD
 	bash scripts/bump-build.sh
 	npm --prefix ui install
 	npm --prefix ui exec -- tauri build
@@ -87,7 +91,7 @@ build: lib
 
 # Same program as make build, aimed at the smallest file. Uses build-mini/ and
 # target/mini/ so it does not rewrite build/ or dist/pavillion.
-mini:
+mini: PAVILLION_BUILD
 	@command -v upx >/dev/null 2>&1 || { printf '%s\n' "make mini needs upx" >&2; exit 1; }
 	@command -v strip >/dev/null 2>&1 || { printf '%s\n' "make mini needs strip" >&2; exit 1; }
 	@command -v magick >/dev/null 2>&1 || command -v convert >/dev/null 2>&1 || { printf '%s\n' "make mini needs ImageMagick" >&2; exit 1; }
@@ -112,7 +116,7 @@ mini:
 	@if [ -f $(DIST_DIR)/pavillion ]; then echo "make build    $$(stat -c%s $(DIST_DIR)/pavillion) bytes"; fi
 	@$(PRINT_ELAPSED)
 
-test: $(TEST_BIN)
+test: PAVILLION_BUILD $(TEST_BIN)
 	bash scripts/run-test.sh
 
 # Integration tests against the Stalwart container (PAVILLION_IT=1).
@@ -122,7 +126,7 @@ it-up:
 	docker compose -f tests/stalwart/compose.yaml up -d
 
 it-seed: it-up
-	PAV_STALWART_HOST=localhost PAV_STALWART_PORT=1443 python3 tests/stalwart/seed.py
+	PAV_STALWART_HOST=localhost PAV_STALWART_PORT=1443 bash tests/stalwart/seed.sh
 
 it-down:
 	docker compose -f tests/stalwart/compose.yaml down --remove-orphans || true

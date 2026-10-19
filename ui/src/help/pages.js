@@ -427,7 +427,7 @@ export const helpPages = [
         title: "How the window talks to the core",
         paragraphs: [
           "The API version is 3. A mismatch prints to stderr and exits before the window. Commands and events cross one forwarding call. The Rust shell does the Tauri work and does not grow new commands. WebKit stays the system library. It is not copied into the executable.",
-          "The app version is separate. It is 0.phase.build. The phase stamp is 0.phase.0 in Cargo.toml and tauri.conf.json. The build count is the PAVILLION_BUILD file, and the shell and the page read it. make dev, make build, and make mini add one before they compile. Accepting a phase moves the middle number and leaves the build count in place. make test does not add one.",
+          "The app version is separate. It is 0.phase.build. The phase stamp is 0.phase.0 in Cargo.toml and tauri.conf.json. The build count is the PAVILLION_BUILD file, and the shell and the page read it. make dev, make build, and make mini add one before they compile. The middle number is the number of Done rows in the plan; marking a row Done moves it and leaves the build count in place. make test does not add one.",
         ],
       },
       {
@@ -435,7 +435,7 @@ export const helpPages = [
         title: "Test infrastructure",
         paragraphs: [
           "make test runs Unity (build/core_test) then Vitest (npm --prefix ui test). The Unity test binary links the core library, jansson, SQLite, libsecret, and Stronghold. Vitest runs src/**/*.test.js in node.",
-          "The fixture server is tests/support/jmapfix.py, a Python stdlib HTTPS server that serves a JMAP Session at /jmap/session, a /.well-known/jmap redirect, and a JMAP API at /jmap/api. It generates a test CA into build/test-ca/ and writes build/fixture-state.txt (port, CA path). make test starts it, runs Unity with PAV_FIXTURE_URL and PAV_FIXTURE_CA, then stops it. The server is a ThreadingHTTPServer so concurrent slow-response tests do not serialize.",
+          "The fixture server is tests/support/jmapfix.sh, a Bash HTTPS server (socat for TLS, openssl for the test CA, jq for JSON) that serves a JMAP Session at /jmap/session, a /.well-known/jmap redirect, and a JMAP API at /jmap/api. It generates a test CA into build/test-ca/ and writes build/fixture-state.txt (port, CA path). make test starts it, runs Unity with PAV_FIXTURE_URL and PAV_FIXTURE_CA, then stops it. socat forks one handler per connection, so concurrent slow-response tests do not serialize.",
           "make it-up starts tests/stalwart/compose.yaml (Stalwart v0.16.26 pinned). make it-seed seeds accounts and mailboxes. make it-down removes the container. make test-it runs integration tests with PAVILLION_IT=1 and is skipped until M-2 (account.test) exists.",
         ],
       },

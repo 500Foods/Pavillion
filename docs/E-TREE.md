@@ -1,6 +1,6 @@
 # E — TREE
 
-**Status:** Complete (accepted 2026-10-19). The window was accepted; the tree renders placeholder nodes at both shell and nav-body zoom, with container-level animation on expand/collapse respecting reduced motion.
+**Status:** E-1, E-2, E-3, and E-4 complete (2026-10-19). Andrew accepted each window on 2026-10-19. E-5, E-6, and E-7 are not started. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The one tree engine behind the section navs. Mail's mailbox tree comes first; files, calendars, contacts, and the Settings → Accounts tree reuse the row renderer and the view state. E-1 delivered the tokens, the static skeleton, and the row renderer with placeholder nodes; the Mail nav shows a placeholder tree (Inbox, Drafts, Sent, Archive) drawn by the renderer, scaled by shell and nav-body zoom. The Help index uses this engine once it exists. Until then Help keeps the plain list in `ui/src/help/view.js`. Andrew set that on 2026-10-17. Do not switch Help in J-8.
@@ -277,8 +277,8 @@ Entry gates: E-1 needs J-6 and K-3. E-2 needs E-1. E-3 needs E-2 and J-1 (menus,
 | --- | --- | --- | --- |
 | E-1 | Tokens, the static markup skeleton, and the row regions | Easy | Complete |
 | E-2 | Tree model, view state, three collapse behaviors | Medium | Complete |
-| E-3 | Renderer: icons, labels, badges, hover metadata, states | Medium | Complete (2026-10-19) |
-| E-4 | Animation: interruptible transitions, reduced motion, the height test | Easy | Complete (2026-10-19) |
+| E-3 | Renderer: icons, labels, badges, hover metadata, states | Medium | Complete |
+| E-4 | Animation: interruptible transitions, reduced motion, the height test | Easy | Complete |
 | E-5 | Presets: named snapshots, switching, saving, the toolbar | Medium | Not started |
 | E-6 | Drag and drop: handle, indicator, auto-expand, auto-scroll, keyboard moves | Hard | Not started |
 | E-7 | Wiring to a backend, mail first, with incremental updates from events | Hard | Not started |
@@ -303,7 +303,7 @@ The Brainstorming section is not binding. A phase that adopts an idea from it sa
 ## E-1: Tokens, markup skeleton, row regions
 
 **Kind:** Easy
-**Status:** Complete (accepted 2026-10-19). The window was accepted; the tree renders placeholder nodes at both shell and nav-body zoom.
+**Status:** Complete (2026-10-19). Andrew accepted the window on 2026-10-19; the tree renders placeholder nodes at both shell and nav-body zoom.
 
 **Goal:** A static tree renders placeholder nodes with the tokens and configurable row regions.
 
@@ -351,12 +351,12 @@ The Brainstorming section is not binding. A phase that adopts an idea from it sa
 - 2026-10-19 Created `ui/src/tree/render.test.js` with 16 tests; fixed `Object.assign` to `Array.slice` for `update`; fixed `aria-current` assertions to `not.toBe("true")`.
 - 2026-10-19 Linked `tree.css` in `ui/index.html` and `ui/harness.html`; updated Mail help page in `ui/src/help/pages.js`.
 - 2026-10-19 All 161 Vitest tests pass; `make build` passes CSP check.
-- 2026-10-19 Phase complete. Updated E-TREE.md Status/Phases table to Complete; corrected renderRow attribute list in Accomplished (aria-setsize/aria-posinset/aria-current are not in renderRow; aria-current is set by shell.js click/keydown handler). Phase stamp moves 0.49 to 0.50 after this close. Awaiting Andrew acceptance of the window.
+- 2026-10-19 Phase complete. Updated E-TREE.md Status/Phases table to Complete; corrected renderRow attribute list in Accomplished (aria-setsize/aria-posinset/aria-current are not in renderRow; aria-current is set by shell.js click/keydown handler). Phase stamp moves 0.49 to 0.50 after this close. Andrew accepted the window on 2026-10-19.
 
 ## E-2: Model, view state, three collapse behaviors
 
 **Kind:** Medium
-**Status:** Complete (accepted 2026-10-19).
+**Status:** Complete (2026-10-19). Andrew accepted the window on 2026-10-19.
 
 **Goal:** The tree model and view state hold expansion independent of visibility, with the three collapse behaviors.
 
@@ -413,7 +413,7 @@ The Brainstorming section is not binding. A phase that adopts an idea from it sa
 ## E-3: Renderer states, badges, hover metadata, menus
 
 **Kind:** Medium
-**Status:** Complete (2026-10-19).
+**Status:** Complete (2026-10-19). Andrew accepted the window on 2026-10-19.
 
 **Goal:** Rows show counts, states, swatches, and hover metadata, and have context menus.
 
@@ -468,7 +468,7 @@ The Brainstorming section is not binding. A phase that adopts an idea from it sa
 ## E-4: Animation and the height test
 
 **Kind:** Easy
-**Status:** Complete (2026-10-19).
+**Status:** Complete (2026-10-19). Andrew accepted the window on 2026-10-19.
 
 **Goal:** Expansion animates at the container level, interruptibly, and respects reduced motion.
 
@@ -583,3 +583,4 @@ The Brainstorming section is not binding. A phase that adopts an idea from it sa
 - 2026-10-15 Brainstorming added: per-pane settings (background, zoom, density), always-visible vs hover-visible row regions, preset toolbar buttons, right-click context menus per node type, per-section expectations for mail/calendar/contacts/files, keyboard expectations, and delightful-but-not-required items. None are locked or in a phase.
 - 2026-10-16 Put in the sequence (E-1 to E-4 before mailbox sync, E-7 after M-3, E-5 and E-6 after the initial working copy). Phase sections with entry gates, work items, and exit gates written. Event names follow the G naming. Tokens take the `--pav-` prefix in E-1.
 - 2026-10-17 Andrew: the Help index stays the plain list in `ui/src/help/view.js` until this engine exists, then Help uses it. Nodes come from `ui/src/help/pages.js`. Do not build that switch in J-8. Do not start E from this note.
+- 2026-10-19 Andrew accepted the E-1, E-2, E-3, and E-4 windows. The phase stamp is `0.53.0`. `make test` is 120 Unity tests and 253 Vitest tests.

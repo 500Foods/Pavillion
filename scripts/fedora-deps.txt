@@ -35,3 +35,10 @@ rust
 cargo
 nodejs
 npm
+
+# W-2 JMAP fixture server (tests/support/jmapfix.sh) and Stalwart seed
+# (tests/stalwart/seed.sh): TLS listener, the openssl command for the test
+# CA, and JSON. curl is listed above.
+socat
+openssl
+jq

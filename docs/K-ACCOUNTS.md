@@ -1,6 +1,6 @@
 # K — ACCOUNTS
 
-**Status:** Not started (scoped 2026-10-16 from plan §3, §10, §11).
+**Status:** K-1 complete (2026-10-18). K-2 and K-3 complete (2026-10-19). K-4 is not started. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Accounts, credentials, and identities as the user manages them: the keyring, the account commands, account numbers, and the Settings → Accounts panel. The account JSON shape is the [B-CONFIG.md](B-CONFIG.md) Lock; this document adds `number` and OIDC to it. Talking to the server is [M-SYNC.md](M-SYNC.md).
@@ -11,7 +11,7 @@ One phase is one session. Do not start the next one in the same conversation.
 
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
-| K-1 | Secrets through the platform: Stronghold, snapshot password in libsecret, fake | Medium | Done |
+| K-1 | Secrets through the platform: Stronghold, snapshot password in libsecret, fake | Medium | Complete |
 | K-2 | Account model and commands: number, add, update, remove, set secret | Medium | Complete |
 | K-3 | Settings → Accounts panel: add with test, credentials, edit, remove | Medium | Complete |
 | K-4 | OpenID Connect sign-in (authorization code + PKCE) | Hard | Not started |
@@ -48,6 +48,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 - Account object (B Lock) gains `number` (string, three digits zero-padded, `"001"`). Numbers are assigned at add time as one more than the highest ever used, stored in the index as `next_account_number` so they are never reused, and never renumbered. The number appears in the mail tree, the CLI's `--account`, and the audit log.
 - `auth` is the auth-method field on every account (B Lock): `basic` in v1, `oidc` from K-4, `bearer` reserved. `oidc` adds `oidc_issuer` and `oidc_client_id`, and its tokens go in the keyring.
+- First accounts (K-Q1, resolved 2026-10-19): the K-3 exit gate and the M-3 entry gate use the W-2 Stalwart container (`tests/stalwart/`, `make it-up` and `make it-seed`), not a live server. Tenant A is `andrew@test-a.local` and `alice@test-a.local`. Tenant B is `bob@test-b.local`. The container serves JMAP on `https://localhost:1443` (compose maps 443 to 1443), so each account uses Override session URL `https://localhost:1443/.well-known/jmap`; `test-a.local` and `test-b.local` do not resolve. The passwords are the ones in `tests/stalwart/config.toml`. They are not copied into any other file.
 
 ### Authentication (decided 2026-10-16)
 
@@ -204,7 +205,7 @@ Andrew asked for this beside the usual URL, username, and password. It is not pa
 
 ## Open questions for Andrew
 
-- K-Q1. Which accounts to add first at K-3? Name two or three, ideally from two tenants, with their hostnames. (Still open, not blocking until K-3.)
+- K-Q1. Resolved 2026-10-19: the W-2 Stalwart container, with `andrew@test-a.local` and `alice@test-a.local` (tenant A) and `bob@test-b.local` (tenant B), at `https://localhost:1443/.well-known/jmap` (K Lock, Accounts).
 - K-Q2. Resolved 2026-10-16: username and password for every account (Basic or SASL PLAIN over TLS), stored in the keyring. OIDC comes later (K-4).
 - K-Q3. Resolved 2026-10-16: discovery uses `https://<email domain>/.well-known/jmap` with a manual override. Andrew gives the hostnames at K-3.
 - K-Q4. Resolved 2026-10-18: the OS keyring holds the Stronghold snapshot password. A session unlock opens the snapshot. No second prompt. Account secrets stay in Stronghold.
@@ -220,3 +221,4 @@ Andrew asked for this beside the usual URL, username, and password. It is not pa
 - 2026-10-18 K-1 complete, step 43. `libsecret-devel` is installed. The smoke script passed. `make test` is 85 Unity tests and 134 Vitest tests. The phase stamp is `0.47`. K-2 is next, step 44. Do not start it in this sitting.
 - 2026-10-19 K-2 complete, step 44. Implemented `account.add`, `account.list`, `account.update`, `account.remove`, `account.set_secret` in `core/src/account.c`, registered in `dispatch.c`. Added `core/include/pav_auth.h` and `core/src/auth_basic.c` with the `basic` auth method. `accounts.changed` event emitted after mutations. Index gained `next_account_number`, account object gained `number`. All 99 Unity tests pass (4 auth tests + 9 account tests). Fixed base64 encoder bug in `auth_basic.c` (missing 3rd char, extra padding). `PAVILLION_API_VERSION` stays 3. Phase stamp moves to `0.48.0`.
 - 2026-10-19 K-3 complete, step 48. Built the Settings → Accounts split panel in `ui/src/settings/accounts.js` with the account tree (plain nested list, not the tree engine), add form with Test gating Save, Credentials page, edit form, and remove with confirm + purgeLocal. Added the `[data-heading="accounts"]` button and `[data-settings="accounts"]` pane to `ui/src/shell/template.js`, wired `createAccountsView` and `bindSplit("accounts")` in `ui/src/shell.js`, added the `accounts` split config to `ui/src/prefs.js`, and the `.accounts-*` CSS to `ui/public/styles/theme.css`. Updated `ui/src/help/pages.js` with the Accounts help section and `ui/src/features.test.js` for the heading list. 10 Vitest tests pass. `make test` exits 0: 120 Unity (0 failures with fixture) and 144 Vitest. `PAVILLION_API_VERSION` stays 3. The phase stamp moves to `0.49`.
+- 2026-10-19 K-Q1 resolved: the first three accounts are the W-2 Stalwart container's `andrew@test-a.local`, `alice@test-a.local`, and `bob@test-b.local`, at `https://localhost:1443/.well-known/jmap`. M-3's entry gate runs the K-3 exit gate with them.

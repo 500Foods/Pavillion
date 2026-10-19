@@ -1,6 +1,6 @@
 # L — STORE
 
-**Status:** L-1 complete (2026-10-18), step 42. The phase stamp is `0.46`. `PAVILLION_BUILD` is dirty at 169 from `make dev`; do not commit that bump. `make test` is 81 Unity tests and 134 Vitest tests. Do not start K-1. K-1 is next, step 43, in [K-ACCOUNTS.md](K-ACCOUNTS.md).
+**Status:** L-1 complete (2026-10-18), step 42. The phase stamp at that close was `0.46`. `make test` was 81 Unity tests and 134 Vitest tests. L-2 and L-3 are not started. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The SQLite schema, migrations, the statement helpers, the blob and cache directories, and their eviction. The open and close are [C-CORE.md](C-CORE.md) C-4. Account configuration is the profile ([B-CONFIG.md](B-CONFIG.md)); this store holds what sync learns and what the user does with mail.
@@ -11,7 +11,7 @@ One phase is one session. Do not start the next one in the same conversation.
 
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
-| L-1 | Migration runner, statement helpers, schema v1 (accounts, mailboxes, identities, sync state) | Medium | Done |
+| L-1 | Migration runner, statement helpers, schema v1 (accounts, mailboxes, identities, sync state) | Medium | Complete |
 | L-2 | Schema v2: mail (email, threads, bodies, attachments, FTS, queue, outbox, drafts) and the blob store | Medium | Not started |
 | L-3 | PIM migration: contacts, calendars, files, tasks, notes, rules and script runs (CLI tables are V-2) | Medium | Not started |
 
@@ -34,7 +34,8 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - I-1 creates table `activity` in this file before `user_version` exists. The statement is in the I Lock. It does not set `user_version`. L-1's first migration repeats that `CREATE TABLE IF NOT EXISTS` and keeps the rows. From L-1 on, those writes go through `pav_db_write`, and I-1's direct use of the open connection stops.
 - **One writer.** A single **store writer thread** owns the only read-write connection. Every mutation goes through its serial write queue, whoever makes it: sync, rules, the dispatcher (UI commands), or the CLI (which arrives through the dispatcher).
   - A job is `pav_db_write(job_fn, ctx, on_done)`. The writer runs it in one transaction. Consecutive queued jobs are batched into one transaction, up to 50 jobs or 20 ms. A failed job rolls back its batch, and the batch is retried one job at a time, so one bad job fails alone. `on_done` posts to the core queue.
-  - Nothing else ever runs `INSERT`, `UPDATE`, `DELETE`, or DDL. `pav_db_prepare` on a read connection refuses a non-`SELECT` statement.
+  - Nothing else ever runs `INSERT`, `UPDATE`, `DELETE`, or DDL on the profile store. `pav_db_prepare` on a read connection refuses a non-`SELECT` statement.
+  - The one exception, scoped to `log.db` (from H-4, [H-LOGGING.md](H-LOGGING.md) Lock): the log thread owns its own read-write connection to the per-profile `log.db`, a separate SQLite file next to the profile store. The store writer never opens `log.db`, and the log thread never opens the profile store. `log.db` has its own migrations, `user_version`, and PRAGMAs (WAL); this Lock's PRAGMA list, migrations, and read pool do not cover it.
 - **Readers** use a small read pool: 2 read-only connections (`SQLITE_OPEN_READONLY`, WAL). Command reads (lists, gets, search) borrow a connection and return it before the command returns. A read transaction never spans a command, a rule, or a sync page.
   - WAL lets readers run alongside the single writer.
   - A `SQLITE_BUSY` on the writer means a reader is still inside a transaction during a checkpoint. The writer runs `PRAGMA wal_checkpoint(PASSIVE)` and retries that job once. A second `SQLITE_BUSY` is logged at `error` and the job fails. There is no retry loop beyond that one.
@@ -229,3 +230,4 @@ CREATE TABLE rule_run (id INTEGER PRIMARY KEY, rule_id TEXT, ra_id TEXT, email_i
 - 2026-10-18 GitHub has no tables. The sketch above was not extended. L-1 was not started.
 - 2026-10-18 Prep only. L-1 stays not started. The work items now name the build list, the attach order, and the activity deadlock. `pav_store_open` sets no PRAGMAs. New sources have to be listed in `core/CMakeLists.txt` and in the Makefile `$(LIB)` prerequisites. Migrate runs after open and before `pav_activity_attach`, and a failure does not attach. The queued-row `DELETE` stays an every-open write, not a line in `001_accounts.sql`. `persist_finished` runs while `g_mu` is held, from the core thread and from the demo thread, so a wait on the core queue for `on_done` deadlocks. The live profile was read again: `user_version` 0, journal mode `delete`, table `activity`, 4 rows. Tests must not write that file. The next real launch after L-1 sets WAL and `user_version` 1 and must keep the rows. No source was edited for L-1. J-9's window is still open.
 - 2026-10-18 L-1 complete, step 42. The store migrates on open to `user_version` 1. Andrew's `make dev` kept activity rows 1–4 and set WAL. `make test` is 81 Unity tests and 134 Vitest tests. The phase stamp is `0.46`. `PAVILLION_BUILD` is dirty at 169 from `make dev`; do not commit that bump. K-1 is next, step 43, in docs/K-ACCOUNTS.md. Do not start it in this sitting.
+- 2026-10-19 Lock change for H-4: `log.db` is the one exception to the one-writer rule. The log thread owns it on its own connection, and the store writer never opens it ([H-LOGGING.md](H-LOGGING.md) Lock).

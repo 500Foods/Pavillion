@@ -31,7 +31,7 @@ flowchart LR
     CT["Core thread<br/>profile, command queue,<br/>supervisors, op queue decisions"]
     SW["Store writer<br/>only write connection,<br/>serial batched write queue"]
     RP[("Read pool (2)<br/>read-only connections")]
-    LT["Log thread<br/>file, ring, log.lines events"]
+    LT["Log thread<br/>log.db (own connection), ring, log.lines events"]
     N1["Net thread: server A<br/>own curl multi"]
     N2["Net thread: server B<br/>own curl multi"]
     WP["Work pool (2)<br/>MIME, sanitize, FTS text"]
@@ -48,7 +48,7 @@ flowchart LR
   CT -->|borrow| RP
 ```
 
-- One store writer thread owns the only write connection. Every mutation (sync, rules, UI, CLI) is a job on its serial write queue, batched per transaction. Reads use a read pool of 2, so writes never see `SQLITE_BUSY` ([L-STORE.md](L-STORE.md)). Only the core thread writes the profile. The other threads talk to it through queues ([C-CORE.md](C-CORE.md), [M-SYNC.md](M-SYNC.md)).
+- One store writer thread owns the only write connection to the profile store. The one exception is the per-profile `log.db`, which the log thread owns on its own connection from H-4 ([H-LOGGING.md](H-LOGGING.md)). Every mutation (sync, rules, UI, CLI) is a job on its serial write queue, batched per transaction. Reads use a read pool of 2, so writes never see `SQLITE_BUSY` ([L-STORE.md](L-STORE.md)). Only the core thread writes the profile. The other threads talk to it through queues ([C-CORE.md](C-CORE.md), [M-SYNC.md](M-SYNC.md)).
 - Each server endpoint has its own net thread and curl multi handle, and the accounts on that server are multiplexed on it. A slow server stalls only itself. Caps: 6 requests in flight per server, 2 per account, plus an optional overall cap.
 - The script worker runs Lua with time and memory caps. It reads mail only through the `P` API and returns intents. The core applies the intents. The script thread never writes and never calls `pav_db_write` ([R-RULES.md](R-RULES.md)). The core thread never blocks on it.
 - Every thread Pavillion creates uses a 512 KB stack ([C-CORE.md](C-CORE.md)).

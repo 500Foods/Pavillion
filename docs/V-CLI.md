@@ -1,6 +1,6 @@
 # V — CLI
 
-**Status:** V-5 complete (2026-10-17), step 116. Andrew accepted the window. The rest of this file is not started. J-9 is complete. L-1 is next. Do not start L-1 from this file.
+**Status:** V-5 complete (2026-10-17), step 116. Andrew accepted the window. The rest of this file is not started. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 A command line for AI agents and scripts, as a thin client of the running app. Not MCP. MCP is a wrapper with its own protocol, process, and transport, and a Grok Bot reaches this machine only through its local-computer path, which does not suit that. A comprehensive CLI is the whole surface. `help --json` lists every command. JSON in and out is the fields that command needs, and no more.
@@ -15,7 +15,7 @@ One phase is one session. Do not start the next one in the same conversation. Th
 | V-2 | Bot keys, scopes, the pause switch, and the audit trail | Medium | Not started |
 | V-3 | Mail commands: `mail list/get/search`, `draft create`, `send` | Medium | Not started |
 | V-4 | `watch --json`, `config get/list/set`, contacts and calendar commands | Medium | Not started |
-| V-5 | Features toggles and the Grok Bots section shell | Medium | Done |
+| V-5 | Features toggles and the Grok Bots section shell | Medium | Complete |
 | V-6 | Webhook, hello, and request states | Medium | Not started |
 | V-7 | Bot transcript, prod, and the Help instruction | Medium | Not started |
 | V-8 | Contextual composer on the open item | Medium | Not started |

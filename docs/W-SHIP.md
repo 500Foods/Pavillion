@@ -1,6 +1,6 @@
 # W — SHIP
 
-**Status:** W-1 complete (2026-10-16). W-2, W-3, and W-4 are not started. The index names the next phase.
+**Status:** W-1 complete (2026-10-16). W-2 complete (2026-10-19). W-3 and W-4 are not started. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Continuous integration, the test fixtures every network phase depends on, the testing rules, and packaging. W-1 and W-2 come early. W-3 and W-4 come right after daily-driver mail (milestone 3), before calendars and files, so the Betterbird replacement is installable on its own.
@@ -12,7 +12,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
 | W-1 | CI on GitHub Actions: `make test` and `make build` on Fedora | Medium | Complete |
-| W-2 | JMAP fixtures: a recorded fixture server and a disposable Stalwart container with seeded accounts | Hard | Complete (2026-10-19) |
+| W-2 | JMAP fixtures: a recorded fixture server and a disposable Stalwart container with seeded accounts | Hard | Complete |
 | W-3 | Fedora rpm, the dnf repository, desktop file, autostart | Medium | Not started |
 | W-4 | Arch `PKGBUILD` (Omarchy) | Easy | Not started |
 
@@ -35,7 +35,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 - C unit tests use Unity, vendored under `tests/unity/framework` without Hydrogen's mock set. `make test` runs Unity, `cargo test` (from F-1), and Vitest (from G-3). It must pass at the end of every phase.
 - Unit coverage named across the docs: MIME parse and build round-trip, the sanitizer policy, the query parser, RRULE expansion including DST in America/Vancouver, identity selection, queue coalescing, retention selection, rule compilation, vCard mapping.
-- **Fixture server** (`tests/support/jmapfix.py`, Python 3 standard library only, started and stopped by `make test`): serves recorded JMAP responses from `tests/support/fixtures/*.json` keyed by method and arguments, and scripted cases: Session, Mailbox/Email/Thread get, changes, query, set, `cannotCalculateChanges`, `stateMismatch`, 401, 429 with `Retry-After`, 503, a slow response, an EventSource stream with drops, an upload, a download, and a proxy toggle that cuts the network. TLS with a test CA generated into `build/test-ca/` and passed as the account `ca_file`. Pavillion itself never ships an HTTP server.
+- **Fixture server** (`tests/support/jmapfix.sh`, Bash with socat for TLS, the openssl command for the test CA, and jq for JSON, started and stopped by `make test`): serves recorded JMAP responses from `tests/support/fixtures/*.json` keyed by method and arguments, and scripted cases: Session, Mailbox/Email/Thread get, changes, query, set, `cannotCalculateChanges`, `stateMismatch`, 401, 429 with `Retry-After`, 503, a slow response, an EventSource stream with drops, an upload, a download, and a proxy toggle that cuts the network. TLS with a test CA generated into `build/test-ca/` and passed as the account `ca_file`. Pavillion itself never ships an HTTP server.
 - **Stalwart container** (`tests/stalwart/`): `docker compose` running Stalwart **v0.16.26**. That's the latest release on GitHub `stalwartlabs/stalwart`, published 2026-10-11 10:33 PT and checked 2026-10-16. The tag is pinned in `tests/stalwart/VERSION` and is the image tag. Bump it on purpose, never with `latest`. Andrew's production is believed to be 0.16.x, so W-2 records the production version and flags a gap of more than one patch line, a config with two domains (`test-a.local`, `test-b.local`), five seeded accounts, seeded mailboxes and a message corpus (`tests/corpus/` including the hostile set), contacts, calendars, and files if supported. `make it-up`, `make it-seed`, `make it-down`. Integration tests run with `PAVILLION_IT=1 make test-it` and only against this container or Andrew's dedicated test mailbox.
 - Integration tests create and delete their own mailbox `pavillion-it-*` and never touch other folders.
 - Corpus `tests/corpus/`: plain, multipart/alternative, HTML newsletters, cid-image signatures (the pattern from Andrew's bot reports), huge attachments, malformed MIME, non-UTF-8 charsets, and the hostile HTML set. Assertion: nothing executes and no network request is made.
@@ -104,17 +104,18 @@ Revert green: [run 38962706169](https://github.com/500Foods/Pavillion/actions/ru
 
 **Work items:**
 
-- [x] `tests/support/jmapfix.py` with the Lock's cases and the test CA; `make test` starts it on a free port and passes the URL and CA to the Unity runner through environment variables.
-- [x] `tests/stalwart/compose.yaml`, `config.toml`, `VERSION`, and `seed.py` (pins `stalwartlabs/stalwart:v0.16.26`; creates the domains, accounts, mailboxes, and messages from `tests/corpus/`).
+- [x] `tests/support/jmapfix.sh` with the Lock's cases and the test CA; `make test` starts it on a free port and passes the URL and CA to the Unity runner through environment variables.
+- [x] `tests/stalwart/compose.yaml`, `config.toml`, `VERSION`, and `seed.sh` (pins `stalwartlabs/stalwart:v0.16.26`). `seed.sh` posts one `Capability/get` as `andrew@test-a.local` and prints the status and reply; the two domains and five accounts come from `config.toml`.
 - [x] `make it-up`, `make it-seed`, `make it-down`, `make test-it`.
-- [~] Record the first real Session and responses from the container into `tests/support/fixtures/` with a `record` mode, scrubbed of secrets. (deferred to when the Stalwart container is run)
+- [~] Record the first real Session and responses from the container into `tests/support/fixtures/` with a `record` mode, scrubbed of secrets. Deferred to M-3, which first runs the container (M-3 work items).
+- [~] Seed mailboxes and the `tests/corpus/` messages into the container. `seed.sh` does not do this yet. Deferred to M-3 (M-3 work items).
 - [x] A smoke Unity test `test_fixture_server_session`; integration smoke `it_session_lists_mail_capability` is skipped until M-2 (`account.test`) exists.
 
 **Done means:** `make test` runs against the fixture server, and `make it-up && make it-seed && PAVILLION_IT=1 make test-it` passes against Stalwart.
 
 **Exit gate:** Both commands pass on Andrew's machine; `docker ps` shows nothing from the fixture project after `make it-down`.
 
-**Accomplished:** `tests/support/jmapfix.py` is a Python stdlib HTTPS fixture server serving a JMAP Session at `/jmap/session`, a `/.well-known/jmap` redirect, a JMAP API at `/jmap/api`, and an EventSource stream at `/jmap/events`. Scripted cases: `error=401`, `error=429` (with Retry-After), `error=503`, `error=cannotCalculateChanges`, `error=stateMismatch`, `slow=1`, `proxy=cut`/`proxy=restore`, plus `/jmap/upload` and `/jmap/download/<id>`. It generates a test CA into `build/test-ca/` and writes `build/fixture-state.txt` (port, CA path) for `make test`. `tests/stalwart/` has `compose.yaml`, `config.toml` (two domains, five seeded accounts), `VERSION` (v0.16.26), and `seed.py`. `make test` starts the fixture server via `scripts/run-fixture.sh`, runs Unity with `PAV_FIXTURE_URL` and `PAV_FIXTURE_CA`, then runs Vitest, and stops the fixture on exit. `make it-up`, `make it-seed`, `make it-down`, and `make test-it` targets are defined. Unity test `test_fixture_server_session` verifies the fixture serves a Session with `apiUrl` and `mail` capability. `make test`: 100 Unity tests, 0 failures; 134 Vitest tests, 0 failures.
+**Accomplished:** `tests/support/jmapfix.sh` is a Bash HTTPS fixture server (socat, openssl, jq) serving a JMAP Session at `/jmap/session`, a `/.well-known/jmap` redirect, a JMAP API at `/jmap/api`, and an EventSource stream at `/jmap/events`. Scripted cases: `error=401`, `error=429` (with Retry-After), `error=503`, `error=cannotCalculateChanges`, `error=stateMismatch`, `slow=1`, `proxy=cut`/`proxy=restore`, plus `/jmap/upload` and `/jmap/download/<id>`. It generates a test CA into `build/test-ca/` and writes `build/fixture-state.txt` (port, CA path) for `make test`. `tests/stalwart/` has `compose.yaml`, `config.toml` (two domains, five seeded accounts), `VERSION` (v0.16.26), and `seed.sh`. `make test` starts the fixture server via `scripts/run-fixture.sh`, runs Unity with `PAV_FIXTURE_URL` and `PAV_FIXTURE_CA`, then runs Vitest, and stops the fixture on exit. `make it-up`, `make it-seed`, `make it-down`, and `make test-it` targets are defined. Unity test `test_fixture_server_session` verifies the fixture serves a Session with `apiUrl` and `mail` capability. `make test`: 100 Unity tests, 0 failures; 134 Vitest tests, 0 failures.
 
 **Lessons learned:** The fixture state file has two lines (port, CA path); read them with `sed -n '1p'` and `sed -n '2p'`, not `awk '{print $2}'` (the CA line has one field). The `trap` in `run-test.sh` reliably stops the fixture even when Unity fails. Python 3.14 removed `ssl.wrap_socket`; use `SSLContext.wrap_socket` instead.
 
@@ -175,3 +176,5 @@ Revert green: [run 38962706169](https://github.com/500Foods/Pavillion/actions/ru
 - 2026-10-18 The packaging lock names `WEBKIT_DISABLE_COMPOSITING_MODE` as the WebKitGTK 2.52 exit workaround. `WEBKIT_DISABLE_DMABUF_RENDERER` stays the Wayland rendering fallback. No phase was started.
 - 2026-10-18 Packaging stays one executable. V-1 does not add `pavillion-gui`. A command-line start maps system WebKit. No phase was started.
 - 2026-10-19 W-2 complete. Added `tests/support/jmapfix.py` (HTTPS fixture server with test CA, JMAP Session at `/jmap/session`, `/.well-known/jmap` redirect, JMAP API at `/jmap/api`), `tests/stalwart/` (compose.yaml, config.toml with test-a.local and test-b.local and five accounts, VERSION v0.16.26, seed.py), `scripts/run-fixture.sh`, `scripts/run-test.sh`, Makefile `test`, `it-up`, `it-seed`, `it-down`, and `test-it` targets, and Unity test `test_fixture_server_session`. `make test`: 100 Unity tests + 134 Vitest tests, 0 failures.
+- 2026-10-19 Fixtures moved to the AGENTS.md Bash toolset. `tests/support/jmapfix.py` is now `tests/support/jmapfix.sh` (socat `OPENSSL-LISTEN` forks one Bash handler per connection; openssl makes the test CA; jq builds the JSON; cut, event count, and blobs live in `build/fixture-run/`), and `tests/stalwart/seed.py` is now `tests/stalwart/seed.sh` (curl and jq). `scripts/run-fixture.sh`, `make it-seed`, the macOS CI brew line, and `scripts/fedora-deps.txt` (socat, openssl, jq) follow. Same routes, status codes, headers, and bodies. `POST /jmap/proxy?restore=1` now works while cut, and `proxy=cut`/`proxy=restore` and `error=cannotCalculateChanges`/`error=stateMismatch` on the URL now do what this Lock says.
+- 2026-10-19 W-2's seed line corrected: `seed.sh` only sends `Capability/get`. Seeding mailboxes and the `tests/corpus/` messages is deferred to M-3.

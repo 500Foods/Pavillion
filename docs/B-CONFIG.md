@@ -50,6 +50,8 @@ This lock is the contract for every phase below. A phase that needs a field adde
     default/
 ```
 
+From H-4 ([H-LOGGING.md](H-LOGGING.md) Lock, written 2026-10-19): there is no `logs/` directory and no log file. Each profile's log is a SQLite database next to its store, named `<profile id>.log.db` (`default.log.db` beside `default.sqlite`), mode `0600`. H-4 imports and deletes the old `logs/` files once. The `logs` key names that path (Andrew, 2026-10-19): from H-4 it is `<profile id>.log.db`, and an old profile whose `logs` names a `.log` file is rewritten once on load, schema still 1. Until H-4 the `logs` key below is unchanged. H-4 also adds `preferences.log_levels`, an object of subsystem name to `error`, `warn`, `info`, or `debug`, over the index `log_level` (H-Q2).
+
 `Pavillion.json` is the index. It is never a profile. The scan looks in `profile_dir`, default `profiles` under the working directory. A relative `profile_dir` resolves against the working directory. An absolute one is used as given.
 
 A file is a profile when it ends in `.json`, is not the index, and contains `"kind": "pavillion-profile"`. Anything else is ignored and logged at `warn`. The `id` must match the filename without `.json`. A mismatch is logged and that file is skipped.
@@ -313,3 +315,5 @@ The core is the only writer. Hand-edits are allowed while the process is stopped
 - 2026-10-18 X will add `sync_tasks`. Y uses the files flag of one account and `preferences.ui.notes.accountId`. The sample JSON above stays as B wrote it.
 - 2026-10-18 GitHub does not add a sync flag. The sample JSON stays as B wrote it.
 - 2026-10-18 K-2: Added `next_account_number` to the index and `number` to the account object in the Lock.
+- 2026-10-19 H-4 Lock note: `logs/` and the log file go away and each profile gets a log database beside its store (name proposed `<profile id>.log.db`), plus `preferences.log_levels` (H-Q2). The key for the log path is asked at H-4. The `logs` key is unchanged until then.
+- 2026-10-19 Andrew approved `<profile id>.log.db` and `preferences.log_levels`. The `logs` key names the log database from H-4; the key question is closed.
