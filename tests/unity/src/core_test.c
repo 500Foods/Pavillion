@@ -274,7 +274,7 @@ void test_start_reports_ready_and_stop_is_repeatable(void) {
 
     rc = pavillion_status(&status);
     TEST_ASSERT_EQUAL_INT(0, rc);
-    TEST_ASSERT_EQUAL_STRING("ready", status.state);
+    TEST_ASSERT_EQUAL_STRING_MESSAGE("ready", status.state, status.error);
     TEST_ASSERT_EQUAL_STRING("Default", status.profile_name);
     TEST_ASSERT_EQUAL_STRING("default", status.profile_id);
 
@@ -1208,7 +1208,7 @@ void test_sqlite_open_exec_and_reopen(void) {
     TEST_ASSERT_NOT_NULL(strstr(err, "db2"));
     TEST_ASSERT_TRUE(access(path, F_OK) != 0);
 
-    TEST_ASSERT_EQUAL_INT(0, pav_store_open(&store, "sqlite", path, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_open(&store, "sqlite", path, err, sizeof(err)), err);
     TEST_ASSERT_NOT_NULL(store);
     TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
     TEST_ASSERT_TRUE(S_ISREG(st.st_mode));
@@ -1224,7 +1224,7 @@ void test_sqlite_open_exec_and_reopen(void) {
     ASSERT_MODE(0600, st);
     TEST_ASSERT_EQUAL_INT(0, user_table_count(path));
 
-    TEST_ASSERT_EQUAL_INT(0, pav_store_open(&store, "sqlite", path, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_open(&store, "sqlite", path, err, sizeof(err)), err);
     TEST_ASSERT_EQUAL_INT(0, pav_store_exec(store, "SELECT 1", err, sizeof(err)));
     pav_store_close(store);
 }
@@ -3777,10 +3777,10 @@ static PavStore *open_v1(const char *path) {
     PavStore *store = NULL;
 
     err[0] = '\0';
-    TEST_ASSERT_EQUAL_INT(0, pav_store_open(&store, "sqlite", path, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_open(&store, "sqlite", path, err, sizeof(err)), err);
     g_test_store = store;
     err[0] = '\0';
-    TEST_ASSERT_EQUAL_INT(0, pav_store_migrate(store, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_migrate(store, err, sizeof(err)), err);
     return store;
 }
 
@@ -4093,7 +4093,12 @@ void test_store_writer_stack_is_512kb(void) {
     snprintf(path, sizeof(path), "%s/mail.sqlite", g_cfg_dir);
     open_v1(path);
     TEST_ASSERT_EQUAL_INT(0, pav_db_writer_stack(&stack));
+#if defined(__APPLE__)
+    /* pthread_get_stacksize_np counts the guard page; the request is still 512 KiB. */
+    TEST_ASSERT_TRUE(stack >= 512u * 1024u && stack < 512u * 1024u + 64u * 1024u);
+#else
     TEST_ASSERT_EQUAL_INT(512 * 1024, (int)stack);
+#endif
     close_test_store();
 }
 
@@ -4145,14 +4150,14 @@ void test_migrate_is_idempotent(void) {
     sqlite3_close(raw);
     raw = NULL;
     err[0] = '\0';
-    TEST_ASSERT_EQUAL_INT(0, pav_store_open(&store, "sqlite", path, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_open(&store, "sqlite", path, err, sizeof(err)), err);
     g_test_store = store;
     err[0] = '\0';
-    TEST_ASSERT_EQUAL_INT(0, pav_store_migrate(store, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_migrate(store, err, sizeof(err)), err);
     TEST_ASSERT_EQUAL_INT(1, user_version(path));
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM activity WHERE id=7 AND title='kept'"));
     err[0] = '\0';
-    TEST_ASSERT_EQUAL_INT(0, pav_store_migrate(store, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_migrate(store, err, sizeof(err)), err);
     TEST_ASSERT_EQUAL_INT(1, user_version(path));
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM activity WHERE id=7 AND title='kept'"));
     TEST_ASSERT_EQUAL_INT(7, user_table_count(path));
@@ -4171,7 +4176,7 @@ void test_newer_db_is_error(void) {
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(raw, "PRAGMA user_version = 9", NULL, NULL, NULL));
     sqlite3_close(raw);
     err[0] = '\0';
-    TEST_ASSERT_EQUAL_INT(0, pav_store_open(&store, "sqlite", path, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_open(&store, "sqlite", path, err, sizeof(err)), err);
     g_test_store = store;
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT(-1, pav_store_migrate(store, err, sizeof(err)));
@@ -4808,7 +4813,11 @@ void test_net_post_with_body(void) {
     req.user = &done;
     TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
 
-    TEST_ASSERT_TRUE(net_wait_done(&done, 5));
+    if (!net_wait_done(&done, 5)) {
+        /* Stop the net thread first so it cannot call back into this frame. */
+        pav_net_stop();
+        TEST_FAIL_MESSAGE("POST did not complete within 5 s");
+    }
     TEST_ASSERT_EQUAL_INT(1, done.hit);
     TEST_ASSERT_EQUAL_INT(200, req.status_code);
     TEST_ASSERT_NOT_NULL(req.body_out);
@@ -5275,7 +5284,8 @@ void test_fixture_server_session(void) {
     fclose(caf);
     /* Fetch the session endpoint and verify it is a JMAP session. */
     char cmd[512];
-    snprintf(cmd, sizeof(cmd), "curl -sk '%s/jmap/session'", url);
+    /* Double quotes: popen runs cmd.exe on Windows, which keeps single quotes. */
+    snprintf(cmd, sizeof(cmd), "curl -sk \"%s/jmap/session\"", url);
     FILE *f = popen(cmd, "r");
     TEST_ASSERT_NOT_NULL_MESSAGE(f, "cannot run curl");
     char buf[4096];
@@ -5563,6 +5573,7 @@ void test_remote_accounts_from_session(void) {
 }
 
 int main(void) {
+    setvbuf(stdout, NULL, _IONBF, 0); /* keep results visible if a test crashes */
     pav_platform_install(pav_platform_fake());
     UNITY_BEGIN();
     RUN_TEST(test_start_reports_ready_and_stop_is_repeatable);

@@ -248,8 +248,9 @@ int pav_profile_write_ui(PavProfile *profile, const char *json, char *err, size_
         return -1;
     }
     if (config_forbidden_key(root, &forbidden)) {
-        json_decref(root);
+        /* forbidden points into root: format the message before freeing it. */
         cfg_err(err, err_len, "forbidden key %s", forbidden);
+        json_decref(root);
         return -1;
     }
     compact = json_dumps(root, JSON_COMPACT | JSON_PRESERVE_ORDER);

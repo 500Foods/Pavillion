@@ -95,8 +95,9 @@ static json_t *load_object(const char *text, char *err, size_t err_len) {
         return NULL;
     }
     if (config_forbidden_key(root, &forbidden)) {
-        json_decref(root);
+        /* forbidden points into root: format the message before freeing it. */
         cfg_err(err, err_len, "forbidden key %s", forbidden);
+        json_decref(root);
         return NULL;
     }
     return root;

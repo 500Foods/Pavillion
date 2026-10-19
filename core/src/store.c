@@ -10,6 +10,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <string.h>
 
 static void set_err(char *err, size_t err_len, const char *fmt, ...) {
@@ -46,7 +47,7 @@ static int sqlite_open(PavStore *store, const char *path, char *err, size_t err_
         return -1;
     }
     if (pav_file_private(path) != 0) {
-        set_err(err, err_len, "cannot create %s", path);
+        set_err(err, err_len, "cannot create %s: %s", path, strerror(errno));
         sqlite3_close(db);
         if (!existed) {
             remove(path);
