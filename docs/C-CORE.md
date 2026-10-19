@@ -78,13 +78,13 @@ void pav_log(const char *subsystem, int level, int num_args, const char *fmt, ..
 
 `num_args` is the number of format specifiers in `fmt`, counted the way Hydrogen counts them: `%%` is literal, and a `*` width is not an extra argument. A mismatch logs an error and returns without formatting `fmt`.
 
-Levels: `PAV_ERROR`, `PAV_WARN`, `PAV_INFO`, `PAV_DEBUG`. A line below the index `log_level` is discarded. Any thread may call it. The line format is millisecond UTC:
+Levels: `PAV_ERROR`, `PAV_WARN`, `PAV_INFO`, `PAV_DEBUG`, `PAV_TRACE` (0 to 4). Every level is captured; nothing is discarded by level. The index `log_level` is only the Log view's default level filter. The ring and `log.lines` carry every level ([H-LOGGING.md](H-LOGGING.md) Lock, Levels). Any thread may call it. The line format is millisecond UTC:
 
 ```
 2026-10-14T17:04:01.123Z INFO  core  core ready
 ```
 
-The clock is `CLOCK_REALTIME`. Three digits, zero-padded. The Activity view may show the same instant in local time as `HH:mm:ss.mmm`. Exports and the one-time import use this line. From H-4 (this Lock written 2026-10-19; until then the code writes `logs/`), there are no log files: `log.db` stores the line's fields and is the record ([H-LOGGING.md](H-LOGGING.md) Lock). A line logged before any workdir exists goes to stderr at every level, because stderr is the only record. From then on, `warn` and `error` go to stderr at all times, before and after attach; `info` and `debug` do not. Before the profile attaches, lines wait in the ring; after attach, `log.db` and the ring hold every line.
+The clock is `CLOCK_REALTIME`. Three digits, zero-padded. The Activity view may show the same instant in local time as `HH:mm:ss.mmm`. Exports use this line. From H-4 (this Lock written 2026-10-19; until then the code writes `logs/`), there are no log files: `log.db` stores the line's fields and is the record ([H-LOGGING.md](H-LOGGING.md) Lock). A line logged before any workdir exists goes to stderr at every level, because stderr is the only record. From then on, `warn` and `error` go to stderr at all times, before and after attach; `info`, `debug`, and `trace` do not. Before the profile attaches, lines wait in the ring; after attach, `log.db` and the ring hold every line.
 
 When the log thread is running, `pav_log` queues the formatted line and returns. `pav_log_thread_shutdown` drains that queue and joins. A line logged while the thread is not running is written by the caller. From H-4, `pavillion_start` opens no log file; the log thread opens `log.db` when the profile attaches. From H-4, `pav_log` at `error` waits for that line's commit for about 250 ms at most, then returns anyway.
 
@@ -273,3 +273,4 @@ SQLite is the only driver in this document. `open` takes a filesystem path and c
 - 2026-10-14 C-6: Start loads the profile on the core thread, opens SQLite, and logs `core ready`. A broken profile or `db2` sets state `error` and leaves the thread alive.
 - 2026-10-19 Lock change for H-4 (logging redesign, written before code): the Log thread owns the profile's `log.db`, and from H-4 there are no log files. The line format is unchanged and is what exports and the one-time import use. Before any workdir, stderr only. Before attach, stderr and the ring. After attach, `warn` and `error` copy to a terminal. See [H-LOGGING.md](H-LOGGING.md) Lock.
 - 2026-10-19 Andrew approved the H-4 recommendations. stderr: every level before any workdir exists, then `warn` and `error` only, at all times. An `error` line waits for its `log.db` commit for about 250 ms at most. See [H-LOGGING.md](H-LOGGING.md) Lock.
+- 2026-10-19 Logging: `PAV_TRACE` added; every level is captured and `log_level` is only the view default (H-4 Lock).

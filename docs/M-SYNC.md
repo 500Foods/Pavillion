@@ -209,6 +209,8 @@ M-1's net layer is complete and tested. M-2 adds `account.test`, JMAP session pa
 
 **Entry gate:** K-3 and E-4 complete, and K-3's exit gate verified against the W-2 Stalwart container (`make it-up`, `make it-seed`): in `make build`, add `andrew@test-a.local` and `alice@test-a.local` (tenant A) and `bob@test-b.local` (tenant B) with Override session URL `https://localhost:1443/.well-known/jmap`; each Test shows capabilities, all three are listed with numbers 001–003 after a restart, a wrong password on Test shows one error and no loop, and `rg -a` over the workdir finds none of the test passwords (`pavtest-pw`, set by `tests/stalwart/seed.sh`; Stalwart requires at least 8 characters) ([K-ACCOUNTS.md](K-ACCOUNTS.md) K-3 and K Lock, Accounts).
 
+The UI half of this gate (the `make build` steps above) is Andrew's to run before M-3a starts. The server half (`make it-up`, each account's Session with `apiUrl` on 1443, 401 on a wrong password) passed on 2026-10-19.
+
 **Work items:**
 
 - [ ] `core/src/sync.c`: one `PavSup` per enabled account, started after `core ready`, stopped on remove or disable; account states and `sync.state` events; `sync.now {accountId?}`.
@@ -218,12 +220,50 @@ M-1's net layer is complete and tested. M-2 adds `account.test`, JMAP session pa
 - [ ] Activity `sync.mail` per account with detail per step.
 - [ ] 401 path per the K Lock; keyring locked path.
 - [ ] Unity on fixtures: `test_sync_mailboxes_initial`, `test_sync_mailboxes_delta_rename`, `test_sync_401_stops_account`, `test_mailbox_list_tree_shape`.
-- [ ] Moved from W-2: add a `record` mode to the fixture server in `tests/support/` and record the first real Session and responses from the W-2 Stalwart container into `tests/support/fixtures/`, scrubbed of secrets. This is what makes the W Lock's "serves recorded JMAP responses from `tests/support/fixtures/*.json`" true: it is not implemented yet. The directory is empty and `jmapfix.sh` builds every reply with jq ([W-SHIP.md](W-SHIP.md) Lock, Fixture server).
-- [ ] Moved from W-2: make `tests/stalwart/seed.sh` create mailboxes and the `tests/corpus/` messages in the container. Today it only creates the domains and accounts through the admin API.
+- [ ] Moved from W-2: add `tests/support/record.sh` (curl and jq) and record the first real Session and responses from the W-2 Stalwart container into `tests/support/fixtures/`, scrubbed of secrets. This is what makes the W Lock's "serves recorded JMAP responses from `tests/support/fixtures/*.json`" true: it is not implemented yet. The directory is empty and `jmapfix.sh` builds every reply with jq ([W-SHIP.md](W-SHIP.md) Lock, Fixture server).
+- [ ] Moved from W-2: make `tests/stalwart/seed.sh` create mailboxes in the container (idempotent). Today it only creates the domains and accounts through the admin API. Seeding the `tests/corpus/` messages moved to M-4.
 
 **Done means:** Mailboxes and unread counts for the accounts in Settings are in the store and update on change.
 
 **Exit gate:** `make test` exits 0. Against the container: create a mailbox from another client (or the container's admin API), and within one poll `mail.mailboxes_changed` fires and `mailbox.list` shows it.
+
+### Decisions (2026-10-19)
+
+- Row 53 stays one phase. M-3a, M-3b, and M-3c are sittings inside it, each ending with `make test` green and a review commit; a sitting that ends early marks M-3 in progress and names the last finished sub-phase.
+- Every remote account in the Session with the `mail` capability is synced, not only the personal one.
+- `ra_id` is the composite string `<accountId>/<jmapAccountId>`.
+- `mailbox.list` returns one root node per account (`kind: "account"`, `swatch` from the account color) with that account's mailboxes under it. Mailbox node ids are `mbx:<ra_id>:<mailboxId>`.
+- Sibling order: the server's `sortOrder`, then role (inbox, drafts, sent, archive, junk, trash, then none), then name.
+- The poll timer runs on the core thread (timed wait in the core queue loop), since sync decisions are the core's (Lock, threads). Net threads only carry transfers.
+- A locked keyring is retried on `sync.now` and on the next poll. Watching libsecret's `locked` property is deferred.
+- `curl_multi_wakeup` stays deferred; 2-minute polling does not need it.
+- Recording uses a separate `tests/support/record.sh` (curl and jq, secrets scrubbed), not a proxy mode in `jmapfix.sh` ([W-SHIP.md](W-SHIP.md) Lock, Fixture server).
+- Seeding the `tests/corpus/` messages moved to M-4, the first phase that syncs email. M-3 seeds mailboxes only.
+- The exit gate's new mailbox is created with `Mailbox/set` by curl as `andrew@test-a.local` against `https://localhost:1443/jmap/`.
+
+### M-3a: Supervisor, Session, and account states
+
+**Scope:** `core/src/sync.c` with `PavSup` and the JMAP backend's `connect`; start after `core ready`, stop on disable or remove; store the Session in `account_state.session_json`, upsert `remote_account` rows, refresh on Session `state` change; `ca_file` from `caFile`; states `idle`, `syncing`, `offline`, `locked`, `error:auth`, `error:server`; `sync.state` events, `sync.now`, activity `sync.mail`; the 401 and locked-keyring paths.
+
+**Tests:** `test_sync_401_stops_account`, plus Unity tests that the Session and `remote_account` rows are stored and that a locked keyring gives `locked` with no retry loop.
+
+**Acceptance:** `make test` exits 0. Against the container, `sync.now` leaves all three gate accounts `idle` with `remote_account` rows and `session_json` stored.
+
+### M-3b: Identity and Mailbox sync, `mailbox.list`, `identity.list`
+
+**Scope:** `jmapfix.sh` serves `Identity/get`, `Identity/changes`, `Mailbox/get`, and `Mailbox/changes` with a mutable state; initial and delta reducers on the net thread; `sync_state` per type; the 2-minute poll; `cannotCalculateChanges` reruns the initial sync for that type; commands `mailbox.list` and `identity.list`; event `mail.mailboxes_changed`.
+
+**Tests:** `test_sync_mailboxes_initial`, `test_sync_mailboxes_delta_rename`, `test_mailbox_list_tree_shape`.
+
+**Acceptance:** the M-3 exit gate.
+
+### M-3c: Recorded fixtures and seeded mailboxes
+
+**Scope:** `tests/stalwart/seed.sh` creates mailboxes (idempotent); `tests/support/record.sh` records the first real Session and responses from the container into `tests/support/fixtures/`, scrubbed of secrets; `jmapfix.sh` serves them.
+
+**Tests:** a Unity test that replays a recorded Stalwart `Mailbox/get`.
+
+**Acceptance:** `make test` exits 0, a reseed is idempotent, and `rg` finds no secrets in `tests/support/fixtures/`.
 
 ## M-4: Email initial sync
 
@@ -240,6 +280,7 @@ M-1's net layer is complete and tested. M-2 adds `account.test`, JMAP session pa
 - [ ] Write `email`, `email_mailbox`, `thread` rows as one `pav_db_write` job per page (L Lock write queue). Insert header-only FTS rows (Q-1 owns the index; this phase calls `pav_fts_index_headers` as a stub that Q-1 fills, or inserts directly if Q-1 already landed).
 - [ ] `Thread/get` for thread membership as needed.
 - [ ] Events `mail.messages_changed` per page; activity progress `done/total` from the query's `total`.
+- [ ] Moved from M-3: make `tests/stalwart/seed.sh` import the `tests/corpus/` messages into the container's mailboxes (idempotent), so the exit gate has a seeded mailbox.
 - [ ] Unity on fixtures: `test_email_initial_first_page`, `test_email_backfill_pages`, `test_email_batches_respect_max_objects`, `test_email_sync_cancel_resumes`.
 
 **Done means:** A fixture account with 2,000 messages lands in four pages, first page first.
@@ -347,3 +388,4 @@ M-1's net layer is complete and tested. M-2 adds `account.test`, JMAP session pa
 - 2026-10-19 Seeding mailboxes and corpus messages moved from W-2 to M-3. The record-mode item now notes that the W Lock's recorded `tests/support/fixtures/*.json` responses are not implemented yet.
 - 2026-10-19 Pre-M-3 fix: per-account `caFile` (pinned CA path) in the account object, `account.add`/`update`/`test`, and the Accounts form's Advanced field; Stalwart test certs generated by `make it-up` into `build/stalwart-tls/` and mounted read-only.
 - 2026-10-19 M-3 gate: the Stalwart accounts are seeded by `tests/stalwart/seed.sh` with test password `pavtest-pw` (8-character minimum), not `config.toml`.
+- 2026-10-19 M-3 split into sittings M-3a, M-3b, M-3c (row 53 stays one phase); decisions recorded (mail-capable remote accounts, composite `ra_id`, account-root tree and `mbx:` ids, sort order, core-thread poll, keyring retry, `curl_multi_wakeup` deferred, `record.sh`, corpus to M-4, exit-gate `Mailbox/set`); entry gate UI half is Andrew's.

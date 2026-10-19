@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { fileLine } from "./format.js";
-import { lineVisible, normalizeFilter, textMatches } from "./filter.js";
+import { LOG_LEVELS, levelsAtOrAbove, lineVisible, normalizeFilter, textMatches } from "./filter.js";
 
 const warn = {
   ts: "2026-10-14T17:04:01.123Z",
@@ -37,9 +37,9 @@ test("level, subsystem, and text narrow the loaded lines", () => {
   expect(lineVisible(warn, { ...filter, text: "missing" })).toBe(false);
 });
 
-test("a cleared filter restores every loaded line", () => {
+test("a cleared filter starts at the info default", () => {
   const open = normalizeFilter({});
-  expect(open.levels).toEqual(["ERROR", "WARN", "INFO", "DEBUG"]);
+  expect(open.levels).toEqual(["ERROR", "WARN", "INFO"]);
   expect(open.subsystems).toBeNull();
   expect(open.text).toBe("");
   expect(open.follow).toBe(true);
@@ -62,4 +62,15 @@ test("text is a literal case-insensitive substring of the UTC line", () => {
   expect(textMatches(line, "A.B")).toBe(asciiIncludes(line, "A.B"));
   expect(textMatches(line, "saved")).toBe(asciiIncludes(line, "saved"));
   expect(textMatches(fileLine(warn), "CONFIG")).toBe(true);
+});
+
+test("a TRACE line is accepted and hidden at the info default", () => {
+  const trace = { ts: "2026-10-14T17:04:04.123Z", level: "TRACE", subsystem: "http", text: "GET /jmap/ 200" };
+  expect(LOG_LEVELS).toContain("TRACE");
+  expect(normalizeFilter({ levels: ["TRACE"] }).levels).toEqual(["TRACE"]);
+  expect(lineVisible(trace, normalizeFilter({}))).toBe(false);
+  expect(lineVisible(trace, { levels: levelsAtOrAbove("info"), subsystems: null, text: "" })).toBe(false);
+  expect(lineVisible(trace, { levels: levelsAtOrAbove("trace"), subsystems: null, text: "" })).toBe(true);
+  expect(levelsAtOrAbove("debug")).toEqual(["ERROR", "WARN", "INFO", "DEBUG"]);
+  expect(levelsAtOrAbove("nope")).toEqual(["ERROR", "WARN", "INFO"]);
 });

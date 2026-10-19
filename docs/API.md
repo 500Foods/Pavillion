@@ -364,7 +364,7 @@ State: real (G-2)
 
 Replaces `pav_ui_log` for hosts that speak JSON.
 
-Args: `{subsystem, level, message}`. `subsystem` matches `^[a-z][a-z0-9_]{0,15}$`. `level` is `error`, `warn`, `info`, or `debug`. `message` is a string of at most 2000 bytes. CR, LF, and CRLF become U+23CE. The formatted line keeps that message.
+Args: `{subsystem, level, message}`. `subsystem` matches `^[a-z][a-z0-9_]{0,15}$`. `level` is `error`, `warn`, `info`, `debug`, or `trace`. `message` is a string of at most 2000 bytes. CR, LF, and CRLF become U+23CE. The formatted line keeps that message.
 
 Result: `{}`.
 
@@ -376,7 +376,7 @@ State: real (H-3)
 
 Writes the ring lines that match a filter. The bytes are the file lines, including each trailing newline. The ring is not changed. The view uses this same predicate for the lines it shows. Copy uses those UTC lines. Print draws the on-screen line instead.
 
-Args: `{path, filter}`. `path` is an absolute file path whose parent directory exists. `filter.levels` is an array of `ERROR`, `WARN`, `INFO`, and `DEBUG`. A line is kept only when its level is in that array. An empty array keeps nothing. `filter.subsystems` is an array of subsystem names, or null. Null and omitted both keep every subsystem. An empty array keeps nothing. `filter.text` is a string of at most 2000 bytes. Omitted or empty, it keeps every line. Otherwise the line is kept when the file line, without its trailing newline, contains that text. The match is literal and ASCII case-insensitive.
+Args: `{path, filter}`. `path` is an absolute file path whose parent directory exists. `filter.levels` is an array of `ERROR`, `WARN`, `INFO`, `DEBUG`, and `TRACE`. A line is kept only when its level is in that array. An empty array keeps nothing. `filter.subsystems` is an array of subsystem names, or null. Null and omitted both keep every subsystem. An empty array keeps nothing. `filter.text` is a string of at most 2000 bytes. Omitted or empty, it keeps every line. Otherwise the line is kept when the file line, without its trailing newline, contains that text. The match is literal and ASCII case-insensitive.
 
 Result: `{lines}`. `lines` is how many lines were written.
 
@@ -388,9 +388,17 @@ State: planned (H-4)
 
 Reads older lines from the profile's `log.db` through the log thread ([H-LOGGING.md](H-LOGGING.md) Lock). `log.tail` stays the ring.
 
-Args: `{beforeSeq?, limit, levels?, subsystems?, text?, session?}`. The result is the newest matching lines with a `seq` below `beforeSeq`, oldest first. `session` is `current`, `previous`, `all` (default), or a session id. H-4 fixes the limits and error codes.
+Args: `{beforeSeq?, since?, until?, limit, levels?, subsystems?, text?, session?}`. `since` and `until` are UTC milliseconds (`since <= ts < until`; either omitted is open), read through the `ts` index; the Log view passes its time range (default the last 12 hours) when the user widens it. The result is the newest matching lines with a `seq` below `beforeSeq`, oldest first. `session` is `current`, `previous`, `all` (default), or a session id. H-4 fixes the limits and error codes.
 
 Result: `{lines:[{seq, ts, level, subsystem, text}]}`, the `log.tail` row shape.
+
+### log.stats
+
+State: planned (H-4)
+
+Reads the size of the profile's `log.db` through the log thread ([H-LOGGING.md](H-LOGGING.md) Lock, Retention).
+
+Args: `{}`. Returns `{bytes, records, oldestSeq, oldestTs, capMb}`. `bytes` is `(page_count - freelist_count) * page_size`. `oldestTs` is UTC milliseconds or null when empty. `capMb` is `preferences.log_max_mb`.
 
 ### log.tail
 
@@ -398,13 +406,27 @@ State: real (H-1)
 
 Reads the in-memory ring, not the file. The ring keeps the last 10,000 lines, the same bytes the log thread wrote.
 
-Args: `{sinceSeq?, limit?, minLevel?, subsystems?}`. `sinceSeq` is an integer; the result is lines with a greater `seq`. Omitted, it is 0. `limit` is an integer from 1 to 10000 and defaults to 10000. The result is the newest matching lines, oldest first. `minLevel` is `error`, `warn`, `info`, or `debug` and defaults to `debug`; a line numerically above it is left out (`error` is the most severe). `subsystems` is an array of subsystem names as they appear in the file (`core`, `ui`, `config`). Omitted, every subsystem is kept.
+Args: `{sinceSeq?, limit?, minLevel?, subsystems?}`. `sinceSeq` is an integer; the result is lines with a greater `seq`. Omitted, it is 0. `limit` is an integer from 1 to 10000 and defaults to 10000. The result is the newest matching lines, oldest first. `minLevel` is `error`, `warn`, `info`, `debug`, or `trace` and defaults to `debug`; a line numerically above it is left out (`error` is the most severe). `subsystems` is an array of subsystem names as they appear in the file (`core`, `ui`, `config`). Omitted, every subsystem is kept.
 
 Result: `{lines:[{seq, ts, level, subsystem, text}]}`. `seq` counts from 1 for the life of the process. `ts` is the file's UTC stamp. `level` is `ERROR`, `WARN`, `INFO`, or `DEBUG`. `text` is the message without the trailing newline. The file line is the stamp, a space, the level padded to five characters, a space, the subsystem, two spaces, and the message.
 
 The log thread also posts `log.lines` with that same object, at most one batch per 100 ms. There is no `log.line` event. A batch waits so a burst is one event; shutdown posts whatever is still waiting.
 
 Errors: `bad_args`, `not_ready`, `internal`.
+
+### log.trim
+
+State: planned (H-4)
+
+Trims `log.db` oldest first until it fits the cap, then runs `incremental_vacuum`, on the same path as shutdown.
+
+Args: `{mb?}`. With `mb` (integer 1 to 100) it writes `preferences.log_max_mb` and trims to it (Settings Apply). Without `mb` it trims to the saved cap and writes nothing (Settings Trim Now). Returns the `log.stats` result after the trim. Other values are `bad_args`.
+
+### log.trim_preview
+
+State: planned (H-4)
+
+Deletes nothing. Args: `{mb}` (integer 1 to 100). Returns `{bytes, records, oldestTs}` estimated for a trim to `mb`, from per-row size estimates scaled to the measured size (about 10 % accuracy). The Settings slider calls it while moving.
 
 ### mailbox.create
 
@@ -523,7 +545,7 @@ Result:
 }
 ```
 
-`windowX` and `windowY` are null when the position is unset. `chrome` is `system` or `hidden`. `logLevel` is the index `log_level`: `error`, `warn`, `info`, or `debug`.
+`windowX` and `windowY` are null when the position is unset. `chrome` is `system` or `hidden`. `logLevel` is the index `log_level`: `error`, `warn`, `info`, `debug`, or `trace`. From H-4 it is the Log view's default level filter only; every level is captured.
 
 Errors: `bad_args`, `not_ready`, `internal`.
 
@@ -531,7 +553,7 @@ Errors: `bad_args`, `not_ready`, `internal`.
 
 State: real (G-2)
 
-Writes the same fields. Keys that are absent stay as stored. `{}` is `bad_args`. An unknown key is `bad_args`. Profile fields are written once. `logLevel` is written on the index and applied to the running process. A request that only sets `logLevel` does not write the profile.
+Writes the same fields. Keys that are absent stay as stored. `{}` is `bad_args`. An unknown key is `bad_args`. Profile fields are written once. `logLevel` is written on the index and applied to the running process as the view default; it does not change what is captured. A request that only sets `logLevel` does not write the profile.
 
 Args: any subset of the `prefs.get` result. Booleans are JSON booleans. Width, height, and coordinates are integers. `windowX` or `windowY` set to null clears that coordinate. Strings must be non-empty and fit the profile field (`timezone` 63 bytes, `weekStart` 15, `timeFormat` 7, `theme` 15, `density` 15, `chrome` 15). Width and height are 200 to 10000. A set coordinate is -32000 to 32000. `chrome` is `system` or `hidden`. `logLevel` is `error`, `warn`, `info`, or `debug`.
 

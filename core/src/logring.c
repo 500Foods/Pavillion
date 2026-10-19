@@ -73,6 +73,9 @@ static int level_rank(const char *name) {
     if (strcmp(name, "DEBUG") == 0) {
         return PAV_DEBUG;
     }
+    if (strcmp(name, "TRACE") == 0) {
+        return PAV_TRACE;
+    }
     return -1;
 }
 
@@ -235,8 +238,8 @@ int pav_logring_read(uint64_t since_seq, int limit, int min_level, const json_t 
     if (min_level < PAV_ERROR) {
         min_level = PAV_ERROR;
     }
-    if (min_level > PAV_DEBUG) {
-        min_level = PAV_DEBUG;
+    if (min_level > PAV_TRACE) {
+        min_level = PAV_TRACE;
     }
 
     pthread_mutex_lock(&g_ring_mu);

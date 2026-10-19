@@ -1,9 +1,9 @@
 import { Compartment, EditorState, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType } from "@codemirror/view";
-import { countMatches, lineVisible, normalizeFilter } from "./filter.js";
+import { LOG_LEVELS, VIEW_LEVEL_NAMES, countMatches, levelsAtOrAbove, lineVisible, normalizeFilter } from "./filter.js";
 import { fileLine, parseFileLine, screenLine } from "./format.js";
 
-const LEVELS = new Set(["ERROR", "WARN", "INFO", "DEBUG"]);
+const LEVELS = new Set(LOG_LEVELS);
 const zoneEffect = StateEffect.define();
 
 class LocalTimeWidget extends WidgetType {
@@ -157,16 +157,16 @@ export function createLogView(parent, api, options = {}) {
   const severity = addMenu();
   severity.button.setAttribute("aria-label", "Severity");
   const severityAll = checkRow("All", (box) => {
-    filter.levels = box.checked ? ["ERROR", "WARN", "INFO", "DEBUG"] : [];
+    filter.levels = box.checked ? LOG_LEVELS.slice() : [];
     commit(true);
   });
   const severityNone = checkRow("None", (box) => {
-    filter.levels = box.checked ? [] : ["ERROR", "WARN", "INFO", "DEBUG"];
+    filter.levels = box.checked ? [] : LOG_LEVELS.slice();
     commit(true);
   });
   const severityBoxes = [];
   const severityItems = document.createElement("div");
-  for (const name of ["ERROR", "WARN", "INFO", "DEBUG"]) {
+  for (const name of LOG_LEVELS) {
     const row = checkRow(name, () => {
       filter.levels = severityBoxes.filter((item) => item.checked).map((item) => item.value);
       commit(true);
@@ -225,17 +225,20 @@ export function createLogView(parent, api, options = {}) {
   wrapBox.checked = filter.wrap;
   const levelField = document.createElement("label");
   levelField.className = "log-field";
-  levelField.append(document.createTextNode("Session log level"));
+  levelField.append(document.createTextNode("Default level"));
   const levelSelect = document.createElement("select");
-  levelSelect.setAttribute("aria-label", "Session log level");
-  for (const name of ["error", "warn", "info", "debug"]) {
+  levelSelect.setAttribute("aria-label", "Default level");
+  for (const name of VIEW_LEVEL_NAMES) {
     const option = document.createElement("option");
     option.value = name;
     option.textContent = name;
     levelSelect.append(option);
   }
-  levelSelect.value = ["error", "warn", "info", "debug"].includes(options.logLevel) ? options.logLevel : "info";
+  levelSelect.value = VIEW_LEVEL_NAMES.includes(options.logLevel) ? options.logLevel : "info";
   levelSelect.addEventListener("change", () => {
+    /* The default level checks that level and the more severe ones. */
+    filter.levels = levelsAtOrAbove(levelSelect.value);
+    commit(true);
     if (typeof options.onLogLevel === "function") {
       Promise.resolve(options.onLogLevel(levelSelect.value)).catch((err) => report(err));
     }

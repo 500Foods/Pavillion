@@ -162,7 +162,7 @@ test("log zoom snaps and the activity view defaults to log", () => {
   expect(clampUi({ activity: { history: true } }).activity.history).toBe(true);
   expect(clampUi({ activity: { history: "yes" } }).activity.history).toBe(false);
   expect(blank.log).toEqual({
-    levels: ["ERROR", "WARN", "INFO", "DEBUG"],
+    levels: ["ERROR", "WARN", "INFO"],
     subsystems: null,
     text: "",
     follow: true,

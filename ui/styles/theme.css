@@ -526,6 +526,7 @@ input:focus-visible {
 .pav-log .cm-line.pav-log-level-WARN { color: var(--pav-log-warn); }
 .pav-log .cm-line.pav-log-level-INFO { color: var(--pav-log-info); }
 .pav-log .cm-line.pav-log-level-DEBUG { color: var(--pav-log-debug); }
+.pav-log .cm-line.pav-log-level-TRACE { color: var(--pav-log-debug); }
 
 .pav-log-fields {
   white-space: pre;

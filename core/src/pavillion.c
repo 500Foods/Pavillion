@@ -129,7 +129,6 @@ static void core_publish_unlocked(const char *state, const char *name, const cha
 
 static void set_start_err(char *err, size_t err_len, const char *msg);
 static int log_thread_running(void);
-static void apply_index_log_level(const char *name);
 static int core_prepare_prefs(char *err, size_t err_len);
 static int core_apply_prefs(char *err, size_t err_len);
 static int core_apply_icons(char *err, size_t err_len);
@@ -175,7 +174,6 @@ static void core_boot(void) {
         publish_boot("error", NULL, NULL, err[0] != '\0' ? err : "missing index");
         return;
     }
-    apply_index_log_level(g_load->log_level);
     if (strcmp(g_load->state, "ready") != 0) {
         publish_boot("error", NULL, NULL, g_load->error);
         return;
@@ -706,7 +704,6 @@ void pavillion_stop(void) {
         pthread_mutex_unlock(&g_core_mu);
         pav_event_thread_stop();
         pav_log_thread_shutdown();
-        apply_index_log_level(NULL);
         return;
     }
     g_core_stop = 1;
@@ -722,7 +719,6 @@ void pavillion_stop(void) {
     /* After the core thread has finished. A second stop joins nothing. */
     pav_event_thread_stop();
     pav_log_thread_shutdown();
-    apply_index_log_level(NULL);
 }
 
 int pavillion_status(PavillionStatus *out) {
@@ -1211,7 +1207,7 @@ static char *read_capped(const char *path, size_t cap) {
 
 static int log_level_name_ok(const char *name) {
     return name != NULL && (strcmp(name, "error") == 0 || strcmp(name, "warn") == 0 || strcmp(name, "info") == 0 ||
-                            strcmp(name, "debug") == 0);
+                            strcmp(name, "debug") == 0 || strcmp(name, "trace") == 0);
 }
 
 /* Writes the index log_level and applies it. Does not touch the profile. */
@@ -1227,7 +1223,7 @@ static int store_index_log_level(const char *level, char *err, size_t err_len) {
         return -1;
     }
     if (!log_level_name_ok(level)) {
-        cfg_err(err, err_len, "logLevel must be error, warn, info, or debug");
+        cfg_err(err, err_len, "logLevel must be error, warn, info, debug, or trace");
         return -1;
     }
     if (pav_path_join(path, sizeof(path), g_core_workdir, "Pavillion.json") != 0) {
@@ -1264,7 +1260,6 @@ static int store_index_log_level(const char *level, char *err, size_t err_len) {
     free(rewritten);
     memset(g_load->log_level, 0, sizeof(g_load->log_level));
     memcpy(g_load->log_level, level, strlen(level));
-    apply_index_log_level(level);
     return 0;
 }
 
@@ -1475,7 +1470,7 @@ int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
             window_touched = 1;
         } else if (strcmp(key, "logLevel") == 0) {
             if (!json_is_string(value) || !log_level_name_ok(json_string_value(value))) {
-                pav_error_set(err, "bad_args", "logLevel must be error, warn, info, or debug", 0);
+                pav_error_set(err, "bad_args", "logLevel must be error, warn, info, debug, or trace", 0);
                 return -1;
             }
             log_level = json_string_value(value);
@@ -1621,23 +1616,7 @@ static int64_t g_batch_started_ms;
 static char g_log_switch_path[4096];
 static int g_log_own;
 static int g_log_dest;
-static int g_log_level = PAV_INFO;
 
-/* NULL and any name other than error, warn, or debug keep info. */
-static void apply_index_log_level(const char *name) {
-    int level = PAV_INFO;
-
-    if (name != NULL && strcmp(name, "error") == 0) {
-        level = PAV_ERROR;
-    } else if (name != NULL && strcmp(name, "warn") == 0) {
-        level = PAV_WARN;
-    } else if (name != NULL && strcmp(name, "debug") == 0) {
-        level = PAV_DEBUG;
-    }
-    pthread_mutex_lock(&g_log_mu);
-    g_log_level = level;
-    pthread_mutex_unlock(&g_log_mu);
-}
 static int g_log_alive;
 static int g_log_shutdown;
 static int g_log_flush_req;
@@ -1694,11 +1673,10 @@ static size_t count_format_specifiers(const char *format) {
     return count;
 }
 
+/* Every level is captured (H-4 Lock, Levels). The index log_level is only
+   the Log view's default filter. */
 static int level_kept(int level) {
-    if (level < PAV_ERROR || level > PAV_DEBUG) {
-        return 0;
-    }
-    return level <= g_log_level;
+    return level >= PAV_ERROR && level <= PAV_TRACE;
 }
 
 static const char *level_name(int level) {
@@ -1711,6 +1689,8 @@ static const char *level_name(int level) {
         return "INFO";
     case PAV_DEBUG:
         return "DEBUG";
+    case PAV_TRACE:
+        return "TRACE";
     default:
         return "?????";
     }

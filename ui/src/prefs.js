@@ -57,7 +57,7 @@ export const DEFAULT_UI = {
   activity: { view: "log", history: false },
   session: { tabs: null, restore: true, shutdown: "open", maxTabs: 50 },
   log: {
-    levels: ["ERROR", "WARN", "INFO", "DEBUG"],
+    levels: ["ERROR", "WARN", "INFO"],
     subsystems: null,
     text: "",
     follow: true,

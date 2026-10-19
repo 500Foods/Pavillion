@@ -1,4 +1,4 @@
-const LEVEL_NAMES = ["error", "warn", "info", "debug"];
+const LEVEL_NAMES = ["error", "warn", "info", "debug", "trace"];
 
 function levelName(level) {
   if (typeof level === "number") {

@@ -8,7 +8,16 @@ import { fileLine } from "./format.js";
    substring of the UTC file line. CodeMirror search is that substring:
    regexp is off, and literal is on so backslash sequences stay characters. */
 
-export const LOG_LEVELS = ["ERROR", "WARN", "INFO", "DEBUG"];
+export const LOG_LEVELS = ["ERROR", "WARN", "INFO", "DEBUG", "TRACE"];
+
+/* The index log_level is the view's default: that level and the more severe
+   ones are checked. Every level is captured (H-4 Lock, Levels). */
+export const VIEW_LEVEL_NAMES = ["error", "warn", "info", "debug", "trace"];
+
+export function levelsAtOrAbove(name) {
+  const index = VIEW_LEVEL_NAMES.indexOf(name);
+  return LOG_LEVELS.slice(0, (index < 0 ? 2 : index) + 1);
+}
 const LEVEL_SET = new Set(LOG_LEVELS);
 const OWN = ["levels", "subsystems", "text", "follow", "wrap"];
 
@@ -32,7 +41,7 @@ export function normalizeFilter(raw) {
   if (Array.isArray(src.levels)) {
     levels = LOG_LEVELS.filter((level) => src.levels.includes(level));
   } else {
-    levels = LOG_LEVELS.slice();
+    levels = levelsAtOrAbove("info");
   }
   let subsystems = null;
   if (Array.isArray(src.subsystems)) {

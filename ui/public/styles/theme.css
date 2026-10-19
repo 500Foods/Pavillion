@@ -1216,6 +1216,7 @@
 .pav-root .pav-log .cm-line.pav-log-level-WARN { color: var(--pav-log-warn); }
 .pav-root .pav-log .cm-line.pav-log-level-INFO { color: var(--pav-log-info); }
 .pav-root .pav-log .cm-line.pav-log-level-DEBUG { color: var(--pav-log-debug); }
+.pav-root .pav-log .cm-line.pav-log-level-TRACE { color: var(--pav-log-debug); }
 
 .pav-root .pav-log-fields {
   white-space: pre;

@@ -358,13 +358,43 @@ void test_log_line_format_and_level_filter(void) {
     char *text;
 
     open_log();
-    pav_log("core", PAV_DEBUG, 0, "debug-should-not-appear");
+    pav_log("core", PAV_DEBUG, 0, "debug-is-captured");
     pav_log("core", PAV_INFO, 0, "core ready");
     text = read_log();
 
+    /* Every level is captured; the index log_level only filters the view. */
     TEST_ASSERT_NULL(strstr(text, secret));
-    TEST_ASSERT_NULL(strstr(text, "debug-should-not-appear"));
-    assert_one_line(text, " INFO  core  core ready");
+    TEST_ASSERT_NOT_NULL(strstr(text, " DEBUG core  debug-is-captured\n"));
+    assert_one_line(strchr(text, '\n') + 1, " INFO  core  core ready");
+    free(text);
+}
+
+void test_log_trace_captured_like_other_levels(void) {
+    json_t *root = NULL;
+    json_t *lines;
+    char *text;
+
+    pav_logring_reset();
+    open_log();
+    pav_log("core", PAV_TRACE, 0, "trace-line");
+    pav_log("core", PAV_DEBUG, 0, "debug-line");
+    pav_log_flush();
+    TEST_ASSERT_EQUAL_INT(0, pav_logring_read(0, PAV_LOGRING_CAP, PAV_TRACE, NULL, &root));
+    TEST_ASSERT_NOT_NULL(root);
+    lines = json_object_get(root, "lines");
+    TEST_ASSERT_TRUE(json_is_array(lines));
+    TEST_ASSERT_EQUAL_INT(2, (int)json_array_size(lines));
+    TEST_ASSERT_EQUAL_STRING("TRACE", json_string_value(json_object_get(json_array_get(lines, 0), "level")));
+    TEST_ASSERT_EQUAL_STRING("trace-line", json_string_value(json_object_get(json_array_get(lines, 0), "text")));
+    TEST_ASSERT_EQUAL_STRING("debug-line", json_string_value(json_object_get(json_array_get(lines, 1), "text")));
+    json_decref(root);
+    root = NULL;
+    /* minLevel debug leaves TRACE out, as any level above the minimum. */
+    TEST_ASSERT_EQUAL_INT(0, pav_logring_read(0, PAV_LOGRING_CAP, PAV_DEBUG, NULL, &root));
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(json_object_get(root, "lines")));
+    json_decref(root);
+    text = read_log();
+    TEST_ASSERT_NOT_NULL(strstr(text, " TRACE core  trace-line\n"));
     free(text);
 }
 
@@ -3244,16 +3274,22 @@ void test_prefs_set_log_level(void) {
     TEST_ASSERT_NOT_NULL(strstr(text, "\"log_level\": \"warn\""));
     free(text);
 
-    pav_log("core", PAV_INFO, 0, "h3-level-hidden");
+    /* logLevel is the view default only: an INFO line is still captured. */
+    pav_log("core", PAV_INFO, 0, "h3-level-captured");
     pav_log("core", PAV_WARN, 0, "h3-level-kept");
     pav_log_flush();
     text = slurp(g_log_path);
-    TEST_ASSERT_NULL(strstr(text, "h3-level-hidden"));
+    TEST_ASSERT_NOT_NULL(strstr(text, "h3-level-captured"));
     TEST_ASSERT_NOT_NULL(strstr(text, "h3-level-kept"));
     free(text);
 
     root = call_reply("prefs.set", "{\"logLevel\":\"loud\"}");
     assert_call_error(root, "bad_args", "logLevel");
+    json_decref(root);
+
+    root = call_reply("prefs.set", "{\"logLevel\":\"trace\"}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    TEST_ASSERT_EQUAL_STRING("trace", json_string_value(json_object_get(json_object_get(root, "data"), "logLevel")));
     json_decref(root);
 }
 
@@ -3271,8 +3307,9 @@ void test_index_log_level_and_prefs_saved(void) {
     json_decref(root);
     pav_log_flush();
     text = slurp(g_log_path);
-    TEST_ASSERT_NULL(strstr(text, "debug-hidden-h2"));
-    TEST_ASSERT_NULL(strstr(text, "prefs saved"));
+    /* log_level info no longer filters capture (H-4 Lock, Levels). */
+    TEST_ASSERT_NOT_NULL(strstr(text, "debug-hidden-h2"));
+    TEST_ASSERT_NOT_NULL(strstr(text, " DEBUG config  prefs saved"));
     free(text);
 
     pavillion_stop();
@@ -5586,6 +5623,7 @@ int main(void) {
     RUN_TEST(test_core_thread_ready_after_start_and_joined_on_stop);
     RUN_TEST(test_stop_joins_restarts_and_refuses_double_start);
     RUN_TEST(test_log_line_format_and_level_filter);
+    RUN_TEST(test_log_trace_captured_like_other_levels);
     RUN_TEST(test_log_formats_args_and_literal_percent);
     RUN_TEST(test_log_two_threads_keep_call_order);
     RUN_TEST(test_log_num_args_mismatch_logs_error);

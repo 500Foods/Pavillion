@@ -35,6 +35,7 @@ int pav_core_thread_alive(void);
 #define PAV_WARN  1
 #define PAV_INFO  2
 #define PAV_DEBUG 3
+#define PAV_TRACE 4
 
 /* num_args is the number of format specifiers in fmt. A mismatch is logged
    at error and fmt is not formatted. */

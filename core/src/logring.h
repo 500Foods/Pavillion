@@ -12,7 +12,7 @@
 int pav_logring_push(uint64_t seq, const char *line);
 
 /* *out is {"lines":[{seq, ts, level, subsystem, text}, ...]}.
-   Lines with seq <= since_seq are skipped. min_level is PAV_ERROR..PAV_DEBUG
+   Lines with seq <= since_seq are skipped. min_level is PAV_ERROR..PAV_TRACE
    and keeps lines at that severity or worse. subsystems NULL keeps every
    subsystem; an array keeps only those names. limit is clamped to 1..CAP
    and keeps the newest matches, oldest first. Returns 0, or -1. */
@@ -25,7 +25,7 @@ json_t *pav_logring_line_json(uint64_t seq, const char *line);
 void pav_logring_reset(void);
 
 /* Copies matching file lines, including each trailing newline, into *out.
-   levels is ERROR|WARN|INFO|DEBUG; an empty array keeps nothing.
+   levels is ERROR|WARN|INFO|DEBUG|TRACE; an empty array keeps nothing.
    subsystems NULL keeps every subsystem; an empty array keeps nothing.
    text NULL or "" keeps every line. Otherwise the line is kept when the
    file line, without its trailing newline, contains text. The match is

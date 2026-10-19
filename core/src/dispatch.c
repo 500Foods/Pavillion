@@ -292,6 +292,8 @@ static int level_from_name(const char *name, int *out) {
         *out = PAV_INFO;
     } else if (strcmp(name, "debug") == 0) {
         *out = PAV_DEBUG;
+    } else if (strcmp(name, "trace") == 0) {
+        *out = PAV_TRACE;
     } else {
         return -1;
     }
@@ -343,7 +345,7 @@ static int cmd_log_client(json_t *args, json_t **data, PavError *err) {
             subsystem = json_string_value(value);
         } else if (strcmp(key, "level") == 0) {
             if (!json_is_string(value)) {
-                pav_error_set(err, "bad_args", "level must be error, warn, info, or debug", 0);
+                pav_error_set(err, "bad_args", "level must be error, warn, info, debug, or trace", 0);
                 return -1;
             }
             level_name = json_string_value(value);
@@ -368,7 +370,7 @@ static int cmd_log_client(json_t *args, json_t **data, PavError *err) {
         return -1;
     }
     if (level_from_name(level_name, &level) != 0) {
-        pav_error_set(err, "bad_args", "level must be error, warn, info, or debug", 0);
+        pav_error_set(err, "bad_args", "level must be error, warn, info, debug, or trace", 0);
         return -1;
     }
     if (strlen(message) > LOG_CLIENT_MAX) {
@@ -392,7 +394,7 @@ static int cmd_log_client(json_t *args, json_t **data, PavError *err) {
 
 static int export_level_name(const char *name) {
     return strcmp(name, "ERROR") == 0 || strcmp(name, "WARN") == 0 || strcmp(name, "INFO") == 0 ||
-           strcmp(name, "DEBUG") == 0;
+           strcmp(name, "DEBUG") == 0 || strcmp(name, "TRACE") == 0;
 }
 
 static int cmd_log_export(json_t *args, json_t **data, PavError *err) {
@@ -562,7 +564,7 @@ static int cmd_log_tail(json_t *args, json_t **data, PavError *err) {
             limit = (int)n;
         } else if (strcmp(key, "minLevel") == 0) {
             if (!json_is_string(value) || level_from_name(json_string_value(value), &min_level) != 0) {
-                pav_error_set(err, "bad_args", "minLevel must be error, warn, info, or debug", 0);
+                pav_error_set(err, "bad_args", "minLevel must be error, warn, info, debug, or trace", 0);
                 return -1;
             }
         } else if (strcmp(key, "subsystems") == 0) {

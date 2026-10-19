@@ -279,7 +279,7 @@ Resolved 2026-10-16 by Andrew (each written into its Lock):
 - I-Q1: finished activities persist in the profile SQLite table `activity`. The log (`log.db` from H-4) stays the human record, and running work is not resumed after a restart (I Lock).
 - K-Q4 (2026-10-18): the OS keyring (libsecret) holds only the Stronghold snapshot password. Account secrets are Stronghold records (K Lock, Secrets). 1Password service accounts (token, cached vault list, cached username and password, one refresh, then the Activity control) are recorded in [docs/K-ACCOUNTS.md](docs/K-ACCOUNTS.md).
 - K-Q1 (2026-10-19): the first accounts are the W-2 Stalwart container's `andrew@test-a.local` and `alice@test-a.local` (tenant A) and `bob@test-b.local` (tenant B), at `https://localhost:1443/.well-known/jmap` (K Lock, Accounts).
-- H-Q2 (2026-10-19): folded into H-4. A per-subsystem minimum level is stored in the profile (`preferences.log_levels`) over the index `log_level`, edited from the Log view gear and Settings (H Lock).
+- H-Q2 (2026-10-19): folded into H-4, then dropped the same day: every level is captured and the Log view filters, so there is no `preferences.log_levels`. Retention is one size cap, `preferences.log_max_mb` (H Lock).
 
 Still open, owned by the named document:
 

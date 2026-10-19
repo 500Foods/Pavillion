@@ -72,7 +72,7 @@ test("the activity page uses action and account menus instead of the log filters
   const account = root.querySelector('[aria-label="Account"]');
   const options = root.querySelector('[aria-label="Activity options"]');
   expect(severity.closest(".log-menu").hidden).toBe(false);
-  expect(severity.textContent).toBe("All severities");
+  expect(severity.textContent).toBe("3 severities");
   expect(action.closest(".log-menu").hidden).toBe(true);
   expect(root.querySelector(".log-topbar").getAttribute("aria-label")).toBe("Log tools");
 
