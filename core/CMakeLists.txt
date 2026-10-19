@@ -41,6 +41,7 @@ add_library(pavillion_core STATIC
     src/secret.c
     src/auth_basic.c
     src/account.c
+    src/net.c
     platform/posix/posix.c)
 target_include_directories(pavillion_core PUBLIC include)
 target_include_directories(pavillion_core PRIVATE platform src ${CMAKE_CURRENT_BINARY_DIR})
@@ -50,6 +51,11 @@ target_link_libraries(pavillion_core PUBLIC pthread)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_sources(pavillion_core PRIVATE platform/linux/linux.c)
     find_package(PkgConfig REQUIRED)
+    pkg_check_modules(LIBCURL libcurl)
+    if(LIBCURL_FOUND)
+        target_link_libraries(pavillion_core PUBLIC ${LIBCURL_LIBRARIES})
+        target_include_directories(pavillion_core PRIVATE ${LIBCURL_INCLUDE_DIRS})
+    endif()
     pkg_check_modules(LIBSECRET libsecret-1)
     if(LIBSECRET_FOUND)
         target_sources(pavillion_core PRIVATE platform/linux/secrets.c)

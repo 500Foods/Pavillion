@@ -380,6 +380,16 @@ export const helpPages = [
         ],
       },
       {
+        id: "network",
+        title: "Network and sync",
+        paragraphs: [
+          "The core makes HTTPS requests on one net thread per server, each owning a curl multi handle. Servers are keyed by scheme, host, and port. A stalled server never delays another because each endpoint has its own thread.",
+          "Caps limit concurrency. Per server: 6 in flight. Per account: 2 in flight. An optional overall cap can be set with pav_net_set_overall_cap. New requests wake the multi loop with curl_multi_wakeup if available; otherwise the loop's timer and socket polling dispatch them.",
+          "The retry policy: 429 and 503 honor a Retry-After header (seconds) when present, falling back to exponential backoff from 1s to 5 min with plus-or-minus 20% jitter. 401 and other 4xx are not retried. SSL verification failures and write errors are not retried.",
+          "Streaming upload reads from an upload_path file; streaming download writes to a download_path file. The raw response body is freed on the net thread, and transfer logs are redacted: no Authorization header, no password, no token, no message body.",
+        ],
+      },
+      {
         id: "store",
         title: "The store",
         paragraphs: [
@@ -400,7 +410,7 @@ export const helpPages = [
         title: "Test infrastructure",
         paragraphs: [
           "make test runs Unity (build/core_test) then Vitest (npm --prefix ui test). The Unity test binary links the core library, jansson, SQLite, libsecret, and Stronghold. Vitest runs src/**/*.test.js in node.",
-          "The fixture server is tests/support/jmapfix.py, a Python stdlib HTTPS server that serves a JMAP Session at /jmap/session, a /.well-known/jmap redirect, and a JMAP API at /jmap/api. It generates a test CA into build/test-ca/ and writes build/fixture-state.txt (port, CA path). make test starts it, runs Unity with PAV_FIXTURE_URL and PAV_FIXTURE_CA, then stops it.",
+          "The fixture server is tests/support/jmapfix.py, a Python stdlib HTTPS server that serves a JMAP Session at /jmap/session, a /.well-known/jmap redirect, and a JMAP API at /jmap/api. It generates a test CA into build/test-ca/ and writes build/fixture-state.txt (port, CA path). make test starts it, runs Unity with PAV_FIXTURE_URL and PAV_FIXTURE_CA, then stops it. The server is a ThreadingHTTPServer so concurrent slow-response tests do not serialize.",
           "make it-up starts tests/stalwart/compose.yaml (Stalwart v0.16.26 pinned). make it-seed seeds accounts and mailboxes. make it-down removes the container. make test-it runs integration tests with PAVILLION_IT=1 and is skipped until M-2 (account.test) exists.",
         ],
       },

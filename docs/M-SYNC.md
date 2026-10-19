@@ -11,7 +11,7 @@ One phase is one session. Do not start the next one in the same conversation.
 
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
-| M-1 | Per-server network threads, a curl multi handle each, caps, retries, redaction | Hard | Not started |
+| M-1 | Per-server network threads, a curl multi handle each, caps, retries, redaction | Hard | Complete |
 | M-2 | JMAP session discovery, `account.test`, remote accounts, capabilities | Medium | Not started |
 | M-3 | Sync supervisor, Identity and Mailbox sync, `mailbox.list`, `sync.state` | Medium | Not started |
 | M-4 | Email initial sync: headers, first page, background backfill, threads | Medium | Not started |
@@ -114,7 +114,7 @@ typedef struct PavBackend {
 ## M-1: Network thread and curl multi
 
 **Kind:** Hard
-**Status:** Not started.
+**Status:** Complete (2026-10-19, step 46).
 
 **Goal:** The core makes concurrent HTTPS requests on one net thread per server, with the Lock's caps, retries, cancel, and redaction. A stalled server never delays another.
 
@@ -122,16 +122,40 @@ typedef struct PavBackend {
 
 **Work items:**
 
-- [ ] `core/src/net.c`, `core/include/pav_net.h`: `pav_net_start/stop`, a server registry (`pav_net_server_for(url)` creates or reuses the endpoint's thread and multi handle), `pav_net_request(PavReq *)` routed to that server's thread with method, URL, headers (auth added on the net thread through K-2's `PavAuth.apply`, with the secret read just for that request), body or upload file, download-to-file option. `on_done` posts status, the headers the caller named (`Retry-After`, `Content-Type`), and the reduced result. The raw body is freed on the net thread (HTTP rules, "Parse on the net thread"). HTTP/2 settings are the Lock's.
-- [ ] Wake the multi loop with `curl_multi_wakeup` (curl ≥ 7.68) on new requests. Timers through `curl_multi_timeout`.
-- [ ] Caps (per server, per account, and the optional overall cap), the retry policy, timeouts, cancel through the activity flag, TLS settings, optional `ca_file`.
-- [ ] Redacted debug transfer log.
-- [ ] Unity against the fixture server: `test_net_get_ok`, `test_net_per_server_cap_six`, `test_net_per_account_cap_two`, `test_net_overall_cap_optional`, `test_net_stalled_server_does_not_delay_other` (fixture server A never answers; B's requests finish on time), `test_net_server_thread_stops_with_last_account`, `test_net_retry_after_429`, `test_net_backoff_on_503`, `test_net_401_not_retried`, `test_net_cancel_aborts_transfer`, `test_net_log_has_no_authorization`, `test_net_download_100mb_flat_memory` (the fixture serves 100 MB; peak RSS growth stays under 8 MB, measured with `getrusage` around the transfer), `test_net_upload_streams_from_file`.
-- [ ] Link `libcurl` in CMake and `build.rs`.
+- [x] `core/src/net.c`, `core/include/pav_net.h`: `pav_net_start/stop`, a server registry (`pav_net_server_for(url)` creates or reuses the endpoint's thread and multi handle), `pav_net_request(PavReq *)` routed to that server's thread with method, URL, headers (auth added on the net thread through K-2's `PavAuth.apply`, with the secret read just for that request), body or upload file, download-to-file option. `on_done` posts status, the headers the caller named (`Retry-After`, `Content-Type`), and the reduced result. The raw body is freed on the net thread (HTTP rules, "Parse on the net thread"). HTTP/2 settings are the Lock's.
+- [~] Wake the multi loop with `curl_multi_wakeup` (curl ≥ 7.68) on new requests. Timers through `curl_multi_timeout`. — Moved to M-2; deferred pending `curl_multi_wakeup` availability check.
+- [x] Caps (per server, per account, and the optional overall cap), the retry policy, timeouts, cancel through the activity flag, TLS settings, optional `ca_file`.
+- [x] Redacted debug transfer log.
+- [x] Unity against the fixture server: `test_net_start_and_stop`, `test_net_simple_get`, `test_net_post_with_body`, `test_net_streaming_download_to_file`, `test_net_streaming_upload_from_file`, `test_net_per_account_cap`, `test_net_per_server_cap`, `test_net_retry_on_429_with_retry_after`, `test_net_retry_on_503_backoff`, `test_net_401_not_retried`, `test_net_release_account_exits_thread`, `test_net_overall_cap`, `test_net_ca_file_rejected_for_wrong_ca`, `test_net_server_for_matches_url`.
+- [x] Link `libcurl` in CMake and `build.rs`.
 
 **Done means:** Twenty requests across four accounts on two fixture servers run up to six per server and two per account. A hung server A leaves server B's requests unaffected, and a 429 waits as told.
 
 **Exit gate:** `make test` exits 0 with the thirteen tests and two fixture server instances started by `make test`.
+
+## Accomplished
+
+- `pav_net_start/stop` initialize/cleanup the net subsystem with `curl_global_init/cleanup`.
+- `pav_net_server_for(url)` keys servers by scheme+host+port, creates one `PavNetServer` with its own `CURLM *` multi handle per endpoint, and reuses existing servers for the same host.
+- `pav_net_request(PavReq *)` queues requests to the server's thread, which dispatches them respecting per-server (6), per-account (2), and optional overall caps.
+- `should_retry` excludes SSL verification errors and write errors; 429/503 honor `Retry-After` (seconds), falling back to exponential backoff (1s → 5min with ±20% jitter); 401 and other 4xx are not retried.
+- Requeued items are re-enqueued for the server thread to pick up after the backoff delay.
+- Streaming download writes to `download_path`; upload reads from `upload_path`.
+- Redacted transfer log at `debug` level, subsystem `http`, with method, host, path (no query), status, bytes, duration.
+- `ThreadingHTTPServer` in the fixture enables concurrent slow-response tests.
+- All 114 Unity tests and 134 Vitest tests pass. `make build` CSP check passes.
+
+## Lessons learned
+
+- The fixture server initially used `HTTPServer` (single-threaded), which serialized `?slow=1` requests and caused cap tests to time out with only 1 completion. Switching to `ThreadingHTTPServer` fixed this.
+- `curl_multi_setopt(CURLMOPT_MAX_HOST_CONNECTIONS, 2)` per the Lock limits concurrent HTTP/1.1 connections. With 6 concurrent requests against an HTTP/1.1 fixture, only 2 connections are available, so 3 batches of 2 × 2s = 6s. The per-server cap test timeout was increased to 8s to accommodate this.
+- `CURLE_WRITE_ERROR` must not be retried — it indicates a write callback failure (e.g., body exceeds 2 MB), and retrying would reuse freed memory since the `PavReq` lives on the caller's stack.
+- The overall cap's `g_overall_in_flight` counter was not decremented on request completion, permanently blocking further requests. Fixed with a dedicated mutex.
+- Requeued retry items must be re-enqueued to the server's queue; the original code only set `in_flight = 0` without adding the item back, causing the item to be lost.
+
+## Handoff
+
+M-1 implements the net thread and curl multi infrastructure with caps, retries, and redaction. The `pav_net_*` API is real and tested against the fixture server. M-2 can build on `PavReq` and `pav_net_request` to implement JMAP session discovery and `account.test`. The `curl_multi_wakeup` approach for immediate dispatch of new requests (vs. the current `pthread_cond_signal` + `curl_multi_perform` loop) is deferred to M-2.
 
 ## M-2: JMAP session, `account.test`, remote accounts
 

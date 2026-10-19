@@ -190,10 +190,27 @@ fn main() {
                 }
             }
         }
+        if let Ok(libs) = std::process::Command::new("pkg-config")
+            .args(["--libs", "libcurl"])
+            .output()
+        {
+            if libs.status.success() {
+                let text = String::from_utf8_lossy(&libs.stdout);
+                for flag in text.split_whitespace() {
+                    if let Some(lib) = flag.strip_prefix("-l") {
+                        println!("cargo:rustc-link-lib={lib}");
+                    } else if let Some(path) = flag.strip_prefix("-L") {
+                        println!("cargo:rustc-link-search=native={path}");
+                    }
+                }
+            }
+        }
     }
     println!("cargo:rerun-if-changed=../core/CMakeLists.txt");
     println!("cargo:rerun-if-changed=../core/include/pavillion.h");
+    println!("cargo:rerun-if-changed=../core/include/pav_net.h");
     println!("cargo:rerun-if-changed=../core/src/pavillion.c");
+    println!("cargo:rerun-if-changed=../core/src/net.c");
     println!("cargo:rerun-if-changed=../core/src/config.c");
     println!("cargo:rerun-if-changed=../core/src/config_prefs.c");
     println!("cargo:rerun-if-changed=../core/src/config_fs.c");

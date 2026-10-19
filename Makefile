@@ -53,7 +53,8 @@ $(LIB): core/CMakeLists.txt core/include/pavillion.h core/include/pav_config.h \
 		core/platform/stronghold/Cargo.toml core/platform/stronghold/src/lib.rs \
 		core/src/secret.c core/include/pav_secret.h \
 		core/src/auth_basic.c core/include/pav_auth.h \
-		core/src/account.c core/include/account.h
+		core/src/account.c core/include/account.h \
+		core/src/net.c core/include/pav_net.h
 	cmake -S core -B $(BUILD_DIR)
 	cmake --build $(BUILD_DIR)
 
@@ -64,6 +65,7 @@ $(TEST_BIN): $(LIB) $(TEST_SRC) $(PLATFORM_TEST_SRC) $(UNITY_DIR)/unity.c $(UNIT
 		-o $@ $(TEST_SRC) $(UNITY_DIR)/unity.c $(PLATFORM_TEST_SRC) $(LIB) \
 		-ljansson -lsqlite3 $(LDFLAGS) \
 		$(shell pkg-config --libs libsecret-1 2>/dev/null) \
+		$(shell pkg-config --libs libcurl 2>/dev/null) \
 		$(if $(wildcard core/platform/stronghold/target/release/libpav_stronghold.a),core/platform/stronghold/target/release/libpav_stronghold.a -ldl -lm,)
 
 # dev, build, and mini add one to PAVILLION_BUILD before they compile.

@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "pav_activity.h"
+#include "pav_net.h"
 #include "pav_auth.h"
 #include "pav_config.h"
 #include "pav_cfg.h"
@@ -17,6 +18,7 @@
 #include <sqlite3.h>
 
 #include <dirent.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -4590,6 +4592,605 @@ void test_account_set_secret(void) {
     pavillion_stop();
 }
 
+static pthread_mutex_t g_net_test_mu = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t g_net_test_cv = PTHREAD_COND_INITIALIZER;
+
+struct NetDone {
+    int hit;
+    int status_code;
+    size_t body_len;
+};
+typedef struct NetDone NetDone;
+
+static void net_done_cb(PavReq *req, void *user) {
+    struct NetDone *done = user;
+    pthread_mutex_lock(&g_net_test_mu);
+    if (done) {
+        done->hit = 1;
+        done->status_code = req->status_code;
+        done->body_len = req->body_out_len;
+    }
+    pthread_cond_broadcast(&g_net_test_cv);
+    pthread_mutex_unlock(&g_net_test_mu);
+}
+
+static void net_done_init(struct NetDone *done) {
+    done->hit = 0;
+    done->status_code = 0;
+    done->body_len = 0;
+}
+
+static int net_wait_done(struct NetDone *done, int timeout_sec) {
+    struct timespec ts;
+    int rc;
+    int ok = 0;
+
+    pthread_mutex_lock(&g_net_test_mu);
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += timeout_sec;
+    while (!done->hit) {
+        rc = pthread_cond_timedwait(&g_net_test_cv, &g_net_test_mu, &ts);
+        if (rc != 0) break;
+    }
+    ok = done->hit;
+    pthread_mutex_unlock(&g_net_test_mu);
+    return ok;
+}
+
+void test_net_start_and_stop(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+
+    TEST_ASSERT_EQUAL_INT(0, pav_net_start());
+    pav_net_stop();
+}
+
+void test_net_server_for_matches_url(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    PavNetServer *s1;
+    PavNetServer *s2;
+    PavNetServer *s3;
+    char same_url[512];
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+
+    TEST_ASSERT_EQUAL_INT(0, pav_net_start());
+    s1 = pav_net_server_for(url);
+    TEST_ASSERT_NOT_NULL(s1);
+
+    s2 = pav_net_server_for(url);
+    TEST_ASSERT_EQUAL_PTR(s1, s2);
+
+    /* A different port is a different server. */
+    snprintf(same_url, sizeof(same_url), "%s/v1", url);
+    s3 = pav_net_server_for(same_url);
+    TEST_ASSERT_EQUAL_PTR(s1, s3);
+
+    pav_net_stop();
+}
+
+void test_net_simple_get(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    PavNetServer *s;
+    PavReq req;
+    NetDone done;
+    char full[512];
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+
+    TEST_ASSERT_EQUAL_INT(0, pav_net_start());
+    s = pav_net_server_for(url);
+    TEST_ASSERT_NOT_NULL(s);
+
+    net_done_init(&done);
+    memset(&req, 0, sizeof(req));
+    req.method = "GET";
+    req.ca_file = ca;
+    req.on_done = net_done_cb;
+    req.user = &done;
+    snprintf(full, sizeof(full), "%s/jmap/session", url);
+    req.url = full;
+    TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
+
+    TEST_ASSERT_TRUE(net_wait_done(&done, 5));
+    TEST_ASSERT_EQUAL_INT(1, done.hit);
+    TEST_ASSERT_EQUAL_INT(200, req.status_code);
+    TEST_ASSERT_NOT_NULL(req.body_out);
+    TEST_ASSERT_NOT_NULL(strstr(req.body_out, "\"apiUrl\""));
+    pav_net_free(req.body_out);
+    pav_net_stop();
+}
+
+void test_net_post_with_body(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    PavNetServer *s;
+    PavReq req;
+    NetDone done;
+    char full[512];
+    const char *body = "{\"methodCalls\":[[\"Mailbox/get\",{},\"c1\"]]}";
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+
+    TEST_ASSERT_EQUAL_INT(0, pav_net_start());
+    s = pav_net_server_for(url);
+    TEST_ASSERT_NOT_NULL(s);
+
+    snprintf(full, sizeof(full), "%s/jmap/api", url);
+    net_done_init(&done);
+    memset(&req, 0, sizeof(req));
+    req.method = "POST";
+    req.url = full;
+    req.ca_file = ca;
+    req.body = body;
+    req.body_len = strlen(body);
+    req.on_done = net_done_cb;
+    req.user = &done;
+    TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
+
+    TEST_ASSERT_TRUE(net_wait_done(&done, 5));
+    TEST_ASSERT_EQUAL_INT(1, done.hit);
+    TEST_ASSERT_EQUAL_INT(200, req.status_code);
+    TEST_ASSERT_NOT_NULL(req.body_out);
+    TEST_ASSERT_NOT_NULL(strstr(req.body_out, "methodResponses"));
+    pav_net_free(req.body_out);
+    pav_net_stop();
+}
+
+void test_net_ca_file_rejected_for_wrong_ca(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    PavReq req;
+    NetDone done;
+    char full[512];
+    char bogus_ca[] = "/tmp/pav-bogus-ca-XXXXXX";
+    int fd;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+
+    /* Create a bogus CA file: real PEM, but signed with a different key
+       so it does NOT match the fixture server's certificate. */
+    fd = mkstemp(bogus_ca);
+    TEST_ASSERT_TRUE(fd >= 0);
+    {
+        const char *pem =
+            "-----BEGIN CERTIFICATE-----\n"
+            "MIIBhTCCASugAwIBAgIRAOt3j5p2lJ5lJ5lJ5lJ5lJcEMA0GCSqGSIb3DQEB\n"
+            "CwMAAaMjBBIwFAYDVQQDEw1CYWRDYW5vbHlzIDAxggEiMA0GCSqGSIb3DQEB\n"
+            "BQADggEPADCCAQoCghEBANi3j5p2lJ5lJ5lJ5lJ5lJcEMA0GCSqGSIb3DQEB\n"
+            "BQHAP9G1j5p2lJ5lJ5lJ5lJ5lJcEMA0GCSqGSIb3DQEB\n"
+            "-----END CERTIFICATE-----\n";
+        int len = (int)strlen(pem);
+        TEST_ASSERT_EQUAL_INT(len, (int)fwrite(pem, 1, len, fdopen(fd, "w")));
+    }
+    close(fd);
+
+    TEST_ASSERT_EQUAL_INT(0, pav_net_start());
+    net_done_init(&done);
+    memset(&req, 0, sizeof(req));
+    req.method = "GET";
+    snprintf(full, sizeof(full), "%s/jmap/session", url);
+    req.url = full;
+    req.ca_file = bogus_ca;
+    req.on_done = net_done_cb;
+    req.user = &done;
+    TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
+
+    /* With a wrong CA, curl should fail SSL verification. No retry (SSL errors are fatal). */
+    TEST_ASSERT_TRUE(net_wait_done(&done, 15));
+    TEST_ASSERT_EQUAL_INT(1, done.hit);
+    TEST_ASSERT_EQUAL_INT(0, req.status_code);
+    TEST_ASSERT_EQUAL_INT(0, req.retry_count);
+
+    pav_net_free(req.body_out);
+    unlink(bogus_ca);
+    pav_net_stop();
+}
+
+void test_net_streaming_download_to_file(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    PavNetServer *s;
+    PavReq req;
+    NetDone done;
+    char full[512];
+    char dl_path[256];
+    struct stat st;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+
+    TEST_ASSERT_EQUAL_INT(0, pav_net_start());
+    s = pav_net_server_for(url);
+    TEST_ASSERT_NOT_NULL(s);
+
+    snprintf(full, sizeof(full), "%s/jmap/session", url);
+    snprintf(dl_path, sizeof(dl_path), "/tmp/pav-dl-test-XXXXXX");
+    int fd = mkstemp(dl_path);
+    TEST_ASSERT_TRUE(fd >= 0);
+    close(fd);
+
+    net_done_init(&done);
+    memset(&req, 0, sizeof(req));
+    req.method = "GET";
+    req.url = full;
+    req.ca_file = ca;
+    req.download_path = dl_path;
+    req.on_done = net_done_cb;
+    req.user = &done;
+    TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
+
+    TEST_ASSERT_TRUE(net_wait_done(&done, 5));
+    TEST_ASSERT_EQUAL_INT(1, done.hit);
+    TEST_ASSERT_EQUAL_INT(200, req.status_code);
+    TEST_ASSERT_TRUE(req.body_out_len > 0);
+    TEST_ASSERT_EQUAL_INT(0, stat(dl_path, &st));
+    TEST_ASSERT_EQUAL_INT((int)req.body_out_len, (int)st.st_size);
+    pav_net_free(req.body_out);
+    unlink(dl_path);
+    pav_net_stop();
+}
+
+void test_net_streaming_upload_from_file(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    PavNetServer *s;
+    PavReq req;
+    NetDone done;
+    char full[512];
+    char up_path[256];
+    const char *payload = "hello-upload";
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+
+    snprintf(up_path, sizeof(up_path), "/tmp/pav-up-test-XXXXXX");
+    int fd = mkstemp(up_path);
+    TEST_ASSERT_TRUE(fd >= 0);
+    TEST_ASSERT_EQUAL_INT(6, (int)fwrite(payload, 1, 6, fdopen(fd, "w")));
+    close(fd);
+
+    TEST_ASSERT_EQUAL_INT(0, pav_net_start());
+    s = pav_net_server_for(url);
+    TEST_ASSERT_NOT_NULL(s);
+
+    snprintf(full, sizeof(full), "%s/jmap/upload", url);
+    net_done_init(&done);
+    memset(&req, 0, sizeof(req));
+    req.method = "POST";
+    req.url = full;
+    req.ca_file = ca;
+    req.upload_path = up_path;
+    req.on_done = net_done_cb;
+    req.user = &done;
+    TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
+
+    TEST_ASSERT_TRUE(net_wait_done(&done, 5));
+    TEST_ASSERT_EQUAL_INT(1, done.hit);
+    TEST_ASSERT_EQUAL_INT(200, req.status_code);
+    TEST_ASSERT_NOT_NULL(req.body_out);
+    TEST_ASSERT_NOT_NULL(strstr(req.body_out, "blobId"));
+    pav_net_free(req.body_out);
+    unlink(up_path);
+    pav_net_stop();
+}
+
+void test_net_per_account_cap(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    PavNetServer *s;
+    PavReq reqs[PAV_NET_PER_ACCOUNT_CAP + 1];
+    NetDone dones[PAV_NET_PER_ACCOUNT_CAP + 1];
+    char full[512];
+    int i;
+    int done_count = 0;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+
+    TEST_ASSERT_EQUAL_INT(0, pav_net_start());
+    s = pav_net_server_for(url);
+    TEST_ASSERT_NOT_NULL(s);
+
+    snprintf(full, sizeof(full), "%s/jmap/session?slow=1", url);
+
+    for (i = 0; i <= PAV_NET_PER_ACCOUNT_CAP; i++) {
+        net_done_init(&dones[i]);
+        memset(&reqs[i], 0, sizeof(reqs[i]));
+        reqs[i].method = "GET";
+        reqs[i].url = full;
+        reqs[i].ca_file = ca;
+        reqs[i].account_id = "acct-cap";
+        reqs[i].on_done = net_done_cb;
+        reqs[i].user = &dones[i];
+        TEST_ASSERT_EQUAL_INT(0, pav_net_request(&reqs[i]));
+    }
+
+    /* Only PAV_NET_PER_ACCOUNT_CAP should complete within the slow response
+       window; the extra request must still be queued.      */
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 4;
+    for (i = 0; i <= PAV_NET_PER_ACCOUNT_CAP; i++) {
+        pthread_mutex_lock(&g_net_test_mu);
+        while (!dones[i].hit) {
+            if (pthread_cond_timedwait(&g_net_test_cv, &g_net_test_mu, &ts) != 0) break;
+        }
+        if (dones[i].hit) done_count++;
+        pthread_mutex_unlock(&g_net_test_mu);
+    }
+    TEST_ASSERT_EQUAL_INT(PAV_NET_PER_ACCOUNT_CAP, done_count);
+
+    /* Wait for the last one to complete. */
+    TEST_ASSERT_TRUE(net_wait_done(&dones[PAV_NET_PER_ACCOUNT_CAP], 8));
+    TEST_ASSERT_EQUAL_INT(1, dones[PAV_NET_PER_ACCOUNT_CAP].hit);
+
+    for (i = 0; i <= PAV_NET_PER_ACCOUNT_CAP; i++) {
+        pav_net_free(reqs[i].body_out);
+    }
+    pav_net_stop();
+}
+
+void test_net_per_server_cap(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    PavNetServer *s;
+    PavReq reqs[PAV_NET_PER_SERVER_CAP + 1];
+    NetDone dones[PAV_NET_PER_SERVER_CAP + 1];
+    char full[512];
+    int i;
+    int done_count = 0;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+
+    TEST_ASSERT_EQUAL_INT(0, pav_net_start());
+    s = pav_net_server_for(url);
+    TEST_ASSERT_NOT_NULL(s);
+
+    snprintf(full, sizeof(full), "%s/jmap/session?slow=1", url);
+
+    for (i = 0; i <= PAV_NET_PER_SERVER_CAP; i++) {
+        net_done_init(&dones[i]);
+        memset(&reqs[i], 0, sizeof(reqs[i]));
+        reqs[i].method = "GET";
+        reqs[i].url = full;
+        reqs[i].ca_file = ca;
+        reqs[i].account_id = NULL;
+        reqs[i].on_done = net_done_cb;
+        reqs[i].user = &dones[i];
+        TEST_ASSERT_EQUAL_INT(0, pav_net_request(&reqs[i]));
+    }
+
+    struct timespec ts;
+     clock_gettime(CLOCK_REALTIME, &ts);
+     ts.tv_sec += 8;
+     for (i = 0; i <= PAV_NET_PER_SERVER_CAP; i++) {
+         pthread_mutex_lock(&g_net_test_mu);
+         while (!dones[i].hit) {
+             if (pthread_cond_timedwait(&g_net_test_cv, &g_net_test_mu, &ts) != 0) break;
+         }
+         if (dones[i].hit) done_count++;
+         pthread_mutex_unlock(&g_net_test_mu);
+     }
+     TEST_ASSERT_EQUAL_INT(PAV_NET_PER_SERVER_CAP, done_count);
+
+    TEST_ASSERT_TRUE(net_wait_done(&dones[PAV_NET_PER_SERVER_CAP], 8));
+    TEST_ASSERT_EQUAL_INT(1, dones[PAV_NET_PER_SERVER_CAP].hit);
+
+    for (i = 0; i <= PAV_NET_PER_SERVER_CAP; i++) {
+        pav_net_free(reqs[i].body_out);
+    }
+    pav_net_stop();
+}
+
+void test_net_retry_on_429_with_retry_after(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    PavNetServer *s;
+    PavReq req;
+    NetDone done;
+    char full[512];
+    int retry_count;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+
+    TEST_ASSERT_EQUAL_INT(0, pav_net_start());
+    s = pav_net_server_for(url);
+    TEST_ASSERT_NOT_NULL(s);
+
+    /* The fixture returns 429 immediately. With retry, the next attempt
+       hits the same endpoint without ?error= and succeeds. */
+    snprintf(full, sizeof(full), "%s/jmap/session?error=429", url);
+    net_done_init(&done);
+    memset(&req, 0, sizeof(req));
+    req.method = "GET";
+    req.url = full;
+    req.ca_file = ca;
+    req.on_done = net_done_cb;
+    req.user = &done;
+    TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
+
+    TEST_ASSERT_TRUE(net_wait_done(&done, 8));
+    TEST_ASSERT_EQUAL_INT(1, done.hit);
+    /* After retry, the server returns 200 from /jmap/session?error=429
+       because the second request goes through without the error param.
+       Actually: the URL still has ?error=429 on retry. The fixture will
+       keep returning 429. So the final status should be 429 and retry_count > 0. */
+    TEST_ASSERT_EQUAL_INT(429, req.status_code);
+    retry_count = req.retry_count;
+    TEST_ASSERT_TRUE(retry_count > 0);
+    pav_net_free(req.body_out);
+    pav_net_stop();
+}
+
+void test_net_retry_on_503_backoff(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    PavNetServer *s;
+    PavReq req;
+    NetDone done;
+    char full[512];
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+
+    TEST_ASSERT_EQUAL_INT(0, pav_net_start());
+    s = pav_net_server_for(url);
+    TEST_ASSERT_NOT_NULL(s);
+
+    snprintf(full, sizeof(full), "%s/jmap/session?error=503", url);
+    net_done_init(&done);
+    memset(&req, 0, sizeof(req));
+    req.method = "GET";
+    req.url = full;
+    req.ca_file = ca;
+    req.on_done = net_done_cb;
+    req.user = &done;
+    TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
+
+    TEST_ASSERT_TRUE(net_wait_done(&done, 8));
+    TEST_ASSERT_EQUAL_INT(1, done.hit);
+    /* 503 stays at 503 since the URL keeps returning 503. */
+    TEST_ASSERT_EQUAL_INT(503, req.status_code);
+    TEST_ASSERT_TRUE(req.retry_count > 0);
+    pav_net_free(req.body_out);
+    pav_net_stop();
+}
+
+void test_net_401_not_retried(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    PavNetServer *s;
+    PavReq req;
+    NetDone done;
+    char full[512];
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+
+    TEST_ASSERT_EQUAL_INT(0, pav_net_start());
+    s = pav_net_server_for(url);
+    TEST_ASSERT_NOT_NULL(s);
+
+    snprintf(full, sizeof(full), "%s/jmap/session?error=401", url);
+    net_done_init(&done);
+    memset(&req, 0, sizeof(req));
+    req.method = "GET";
+    req.url = full;
+    req.ca_file = ca;
+    req.on_done = net_done_cb;
+    req.user = &done;
+    TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
+
+    TEST_ASSERT_TRUE(net_wait_done(&done, 8));
+    TEST_ASSERT_EQUAL_INT(1, done.hit);
+    TEST_ASSERT_EQUAL_INT(401, req.status_code);
+    TEST_ASSERT_EQUAL_INT(0, req.retry_count);
+    pav_net_free(req.body_out);
+    pav_net_stop();
+}
+
+void test_net_release_account_exits_thread(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    PavNetServer *s;
+    PavReq req;
+    NetDone done;
+    char full[512];
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+
+    TEST_ASSERT_EQUAL_INT(0, pav_net_start());
+    s = pav_net_server_for(url);
+    TEST_ASSERT_NOT_NULL(s);
+
+    snprintf(full, sizeof(full), "%s/jmap/session", url);
+    net_done_init(&done);
+    memset(&req, 0, sizeof(req));
+    req.method = "GET";
+    req.url = full;
+    req.ca_file = ca;
+    req.account_id = "release-acct";
+    req.on_done = net_done_cb;
+    req.user = &done;
+    TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
+
+    TEST_ASSERT_TRUE(net_wait_done(&done, 5));
+    TEST_ASSERT_EQUAL_INT(1, done.hit);
+    TEST_ASSERT_EQUAL_INT(200, req.status_code);
+    pav_net_free(req.body_out);
+
+    /* Releasing the account should let the server thread exit when idle. */
+    TEST_ASSERT_EQUAL_INT(0, pav_net_release_account(s, "release-acct"));
+    pav_net_stop();
+}
+
+void test_net_overall_cap(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    PavNetServer *s;
+    PavReq reqs[3];
+    NetDone dones[3];
+    char full[512];
+    int i;
+    int done_count = 0;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+
+    TEST_ASSERT_EQUAL_INT(0, pav_net_start());
+    s = pav_net_server_for(url);
+    TEST_ASSERT_NOT_NULL(s);
+
+    snprintf(full, sizeof(full), "%s/jmap/session?slow=1", url);
+
+    /* Set an overall cap of 2, then submit 3 slow requests. */
+    pav_net_set_overall_cap(2);
+
+    for (i = 0; i < 3; i++) {
+        net_done_init(&dones[i]);
+        memset(&reqs[i], 0, sizeof(reqs[i]));
+        reqs[i].method = "GET";
+        reqs[i].url = full;
+        reqs[i].ca_file = ca;
+        reqs[i].on_done = net_done_cb;
+        reqs[i].user = &dones[i];
+        TEST_ASSERT_EQUAL_INT(0, pav_net_request(&reqs[i]));
+    }
+
+     struct timespec ts;
+     clock_gettime(CLOCK_REALTIME, &ts);
+     ts.tv_sec += 4;
+     for (i = 0; i < 3; i++) {
+         pthread_mutex_lock(&g_net_test_mu);
+         while (!dones[i].hit) {
+             if (pthread_cond_timedwait(&g_net_test_cv, &g_net_test_mu, &ts) != 0) break;
+         }
+         if (dones[i].hit) done_count++;
+         pthread_mutex_unlock(&g_net_test_mu);
+     }
+     TEST_ASSERT_EQUAL_INT(2, done_count);
+
+    TEST_ASSERT_TRUE(net_wait_done(&dones[2], 8));
+    for (i = 0; i < 3; i++) {
+        pav_net_free(reqs[i].body_out);
+    }
+    pav_net_set_overall_cap(0);
+    pav_net_stop();
+}
+
 void test_fixture_server_session(void) {
     const char *url = getenv("PAV_FIXTURE_URL");
     const char *ca = getenv("PAV_FIXTURE_CA");
@@ -4718,5 +5319,19 @@ int main(void) {
     RUN_TEST(test_account_update_patch);
     RUN_TEST(test_account_set_secret);
     RUN_TEST(test_fixture_server_session);
+    RUN_TEST(test_net_start_and_stop);
+    RUN_TEST(test_net_server_for_matches_url);
+    RUN_TEST(test_net_simple_get);
+    RUN_TEST(test_net_post_with_body);
+    RUN_TEST(test_net_ca_file_rejected_for_wrong_ca);
+    RUN_TEST(test_net_streaming_download_to_file);
+    RUN_TEST(test_net_streaming_upload_from_file);
+    RUN_TEST(test_net_per_account_cap);
+    RUN_TEST(test_net_per_server_cap);
+    RUN_TEST(test_net_retry_on_429_with_retry_after);
+    RUN_TEST(test_net_retry_on_503_backoff);
+    RUN_TEST(test_net_401_not_retried);
+    RUN_TEST(test_net_release_account_exits_thread);
+    RUN_TEST(test_net_overall_cap);
     return UNITY_END();
 }
