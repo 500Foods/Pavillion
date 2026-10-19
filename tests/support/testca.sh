@@ -23,9 +23,14 @@ if [ -f "$key" ] && [ -f "$crt" ] &&
   exit 0
 fi
 
-openssl req -x509 -newkey rsa:2048 -keyout "$key" -out "$crt" \
-  -days 365 -nodes -subj "/CN=pavillion-test-ca" \
-  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1,DNS:test-a.local,DNS:test-b.local" \
-  >/dev/null 2>&1 || { echo "testca: openssl could not create the test CA" >&2; exit 1; }
+# MSYS2 rewrites "/..." args for a native openssl.exe; keep the -subj value as is
+# (the key and cert paths still need converting). No effect off Windows.
+if ! out=$(MSYS2_ARG_CONV_EXCL='/CN=' openssl req -x509 -newkey rsa:2048 -keyout "$key" -out "$crt" \
+    -days 365 -nodes -subj "/CN=pavillion-test-ca" \
+    -addext "subjectAltName=DNS:localhost,IP:127.0.0.1,DNS:test-a.local,DNS:test-b.local" 2>&1); then
+  echo "testca: openssl could not create the test CA" >&2
+  printf '%s\n' "$out" >&2
+  exit 1
+fi
 # The Stalwart container reads the key as its own user; it is test-only.
 chmod 0644 "$key" "$crt"
