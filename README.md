@@ -114,15 +114,15 @@ The license is [MIT](LICENSE.md).
 [![Count Lines of Code](https://github.com/500Foods/Pavillion/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/main.yml)
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-19 11:02:02 UTC
+Last updated at 2026-10-19 12:39:04 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
 C                               31           2068            252          18870
-JavaScript                      65            830            172          13215
-Markdown                        33           2450              2           4977
+JavaScript                      69            952            188          14535
+Markdown                        33           2461              2           5019
 JSON                             8              0              0           2653
-CSS                              6            352              3           2181
+CSS                              7            403              3           2472
 C/C++ Header                    21            400            435           2011
 Rust                             4             44             30            836
 Python                           2             73             37            390
@@ -130,12 +130,12 @@ Bourne Shell                     5             20             12            156
 CMake                            2              9              1            133
 YAML                             4             21             19            112
 make                             1             16             13            106
-HTML                             3              4              0             82
+HTML                             3              4              0             84
 TOML                             3             16              8             78
 SQL                              1              0              0             74
 Text                             2              7              0             51
 -------------------------------------------------------------------------------
-SUM:                           191           6310            984          45925
+SUM:                           196           6494           1000          47580
 -------------------------------------------------------------------------------
 28 Files were skipped (duplicate, binary, or without source code):
   png: 17
