@@ -29,7 +29,7 @@ PLATFORM_TEST_SRC :=
 PLATFORM_TEST_INC :=
 endif
 
-.PHONY: all lib dev build test clean mini it-up it-seed it-down test-it
+.PHONY: all lib dev build test clean mini it-up it-seed it-down it-reset test-it
 
 all: lib
 
@@ -122,15 +122,27 @@ test: PAVILLION_BUILD $(TEST_BIN)
 # Integration tests against the Stalwart container (PAVILLION_IT=1).
 # Skipped until M-2 (account.test) exists; for now it only checks the
 # container is reachable.
+# Stalwart test container (tests/stalwart/). The admin password is test-only;
+# PAV_STALWART_ADMIN_PW overrides it. The container runs as the invoking user
+# so build/stalwart-data stays owned by them.
+PAV_STALWART_ADMIN_PW ?= pavtest-admin
+STALWART_ENV = PAV_UID=$(shell id -u) PAV_GID=$(shell id -g) PAV_STALWART_ADMIN_PW='$(PAV_STALWART_ADMIN_PW)'
+STALWART_COMPOSE = docker compose -f tests/stalwart/compose.yaml
+
 it-up:
 	bash tests/support/testca.sh build/stalwart-tls
-	docker compose -f tests/stalwart/compose.yaml up -d
+	mkdir -p build/stalwart-data
+	$(STALWART_ENV) $(STALWART_COMPOSE) up -d
+	$(MAKE) it-seed
 
-it-seed: it-up
-	PAV_STALWART_HOST=localhost PAV_STALWART_PORT=1443 bash tests/stalwart/seed.sh
+it-seed:
+	$(STALWART_ENV) PAV_STALWART_HOST=localhost PAV_STALWART_PORT=1443 bash tests/stalwart/seed.sh
 
 it-down:
-	docker compose -f tests/stalwart/compose.yaml down --remove-orphans || true
+	$(STALWART_ENV) $(STALWART_COMPOSE) down --remove-orphans || true
+
+it-reset: it-down
+	rm -rf build/stalwart-data
 
 test-it:
 	@if [ "${PAVILLION_IT}" != "1" ]; then \t	echo "set PAVILLION_IT=1 to run integration tests" >&2; \t	exit 0; \tfi
