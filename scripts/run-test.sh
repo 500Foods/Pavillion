@@ -15,5 +15,5 @@ PAV_FIXTURE_URL="https://127.0.0.1:$port" \
 PAV_FIXTURE_CA="$ca" \
 "$root/build/core_test"
 
-npm --prefix ui install
-npm --prefix ui test
+# cd rather than --prefix: Windows npm ignores --prefix for install.
+(cd "$root/ui" && npm install && npm test)
