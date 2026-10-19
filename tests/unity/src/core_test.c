@@ -4714,6 +4714,16 @@ static int net_wait_done(struct NetDone *done, int timeout_sec) {
     return ok;
 }
 
+/* A failed wait leaves the request in flight, and its callback would write into
+   this test's stack after Unity unwinds it. Stop the net thread first. */
+#define NET_CHECK(cond) \
+    do { \
+        if (!(cond)) { \
+            pav_net_stop(); \
+            TEST_FAIL_MESSAGE("net check failed: " #cond); \
+        } \
+    } while (0)
+
 void test_net_start_and_stop(void) {
     const char *url = getenv("PAV_FIXTURE_URL");
     const char *ca = getenv("PAV_FIXTURE_CA");
@@ -4776,7 +4786,7 @@ void test_net_simple_get(void) {
     req.url = full;
     TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
 
-    TEST_ASSERT_TRUE(net_wait_done(&done, 5));
+    NET_CHECK(net_wait_done(&done, 5));
     TEST_ASSERT_EQUAL_INT(1, done.hit);
     TEST_ASSERT_EQUAL_INT(200, req.status_code);
     TEST_ASSERT_NOT_NULL(req.body_out);
@@ -4813,11 +4823,7 @@ void test_net_post_with_body(void) {
     req.user = &done;
     TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
 
-    if (!net_wait_done(&done, 5)) {
-        /* Stop the net thread first so it cannot call back into this frame. */
-        pav_net_stop();
-        TEST_FAIL_MESSAGE("POST did not complete within 5 s");
-    }
+    NET_CHECK(net_wait_done(&done, 5));
     TEST_ASSERT_EQUAL_INT(1, done.hit);
     TEST_ASSERT_EQUAL_INT(200, req.status_code);
     TEST_ASSERT_NOT_NULL(req.body_out);
@@ -4867,7 +4873,7 @@ void test_net_ca_file_rejected_for_wrong_ca(void) {
     TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
 
     /* With a wrong CA, curl should fail SSL verification. No retry (SSL errors are fatal). */
-    TEST_ASSERT_TRUE(net_wait_done(&done, 15));
+    NET_CHECK(net_wait_done(&done, 15));
     TEST_ASSERT_EQUAL_INT(1, done.hit);
     TEST_ASSERT_EQUAL_INT(0, req.status_code);
     TEST_ASSERT_EQUAL_INT(0, req.retry_count);
@@ -4910,7 +4916,7 @@ void test_net_streaming_download_to_file(void) {
     req.user = &done;
     TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
 
-    TEST_ASSERT_TRUE(net_wait_done(&done, 5));
+    NET_CHECK(net_wait_done(&done, 5));
     TEST_ASSERT_EQUAL_INT(1, done.hit);
     TEST_ASSERT_EQUAL_INT(200, req.status_code);
     TEST_ASSERT_TRUE(req.body_out_len > 0);
@@ -4955,7 +4961,7 @@ void test_net_streaming_upload_from_file(void) {
     req.user = &done;
     TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
 
-    TEST_ASSERT_TRUE(net_wait_done(&done, 5));
+    NET_CHECK(net_wait_done(&done, 5));
     TEST_ASSERT_EQUAL_INT(1, done.hit);
     TEST_ASSERT_EQUAL_INT(200, req.status_code);
     TEST_ASSERT_NOT_NULL(req.body_out);
@@ -5009,10 +5015,10 @@ void test_net_per_account_cap(void) {
         if (dones[i].hit) done_count++;
         pthread_mutex_unlock(&g_net_test_mu);
     }
-    TEST_ASSERT_EQUAL_INT(PAV_NET_PER_ACCOUNT_CAP, done_count);
+    NET_CHECK(done_count == PAV_NET_PER_ACCOUNT_CAP);
 
     /* Wait for the last one to complete. */
-    TEST_ASSERT_TRUE(net_wait_done(&dones[PAV_NET_PER_ACCOUNT_CAP], 8));
+    NET_CHECK(net_wait_done(&dones[PAV_NET_PER_ACCOUNT_CAP], 8));
     TEST_ASSERT_EQUAL_INT(1, dones[PAV_NET_PER_ACCOUNT_CAP].hit);
 
     for (i = 0; i <= PAV_NET_PER_ACCOUNT_CAP; i++) {
@@ -5063,9 +5069,9 @@ void test_net_per_server_cap(void) {
          if (dones[i].hit) done_count++;
          pthread_mutex_unlock(&g_net_test_mu);
      }
-     TEST_ASSERT_EQUAL_INT(PAV_NET_PER_SERVER_CAP, done_count);
+     NET_CHECK(done_count == PAV_NET_PER_SERVER_CAP);
 
-    TEST_ASSERT_TRUE(net_wait_done(&dones[PAV_NET_PER_SERVER_CAP], 8));
+    NET_CHECK(net_wait_done(&dones[PAV_NET_PER_SERVER_CAP], 8));
     TEST_ASSERT_EQUAL_INT(1, dones[PAV_NET_PER_SERVER_CAP].hit);
 
     for (i = 0; i <= PAV_NET_PER_SERVER_CAP; i++) {
@@ -5102,7 +5108,7 @@ void test_net_retry_on_429_with_retry_after(void) {
     req.user = &done;
     TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
 
-    TEST_ASSERT_TRUE(net_wait_done(&done, 8));
+    NET_CHECK(net_wait_done(&done, 8));
     TEST_ASSERT_EQUAL_INT(1, done.hit);
     /* After retry, the server returns 200 from /jmap/session?error=429
        because the second request goes through without the error param.
@@ -5140,7 +5146,7 @@ void test_net_retry_on_503_backoff(void) {
     req.user = &done;
     TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
 
-    TEST_ASSERT_TRUE(net_wait_done(&done, 8));
+    NET_CHECK(net_wait_done(&done, 8));
     TEST_ASSERT_EQUAL_INT(1, done.hit);
     /* 503 stays at 503 since the URL keeps returning 503. */
     TEST_ASSERT_EQUAL_INT(503, req.status_code);
@@ -5174,7 +5180,7 @@ void test_net_401_not_retried(void) {
     req.user = &done;
     TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
 
-    TEST_ASSERT_TRUE(net_wait_done(&done, 8));
+    NET_CHECK(net_wait_done(&done, 8));
     TEST_ASSERT_EQUAL_INT(1, done.hit);
     TEST_ASSERT_EQUAL_INT(401, req.status_code);
     TEST_ASSERT_EQUAL_INT(0, req.retry_count);
@@ -5208,7 +5214,7 @@ void test_net_release_account_exits_thread(void) {
     req.user = &done;
     TEST_ASSERT_EQUAL_INT(0, pav_net_request(&req));
 
-    TEST_ASSERT_TRUE(net_wait_done(&done, 5));
+    NET_CHECK(net_wait_done(&done, 5));
     TEST_ASSERT_EQUAL_INT(1, done.hit);
     TEST_ASSERT_EQUAL_INT(200, req.status_code);
     pav_net_free(req.body_out);
@@ -5262,9 +5268,9 @@ void test_net_overall_cap(void) {
          if (dones[i].hit) done_count++;
          pthread_mutex_unlock(&g_net_test_mu);
      }
-     TEST_ASSERT_EQUAL_INT(2, done_count);
+     NET_CHECK(done_count == 2);
 
-    TEST_ASSERT_TRUE(net_wait_done(&dones[2], 8));
+    NET_CHECK(net_wait_done(&dones[2], 8));
     for (i = 0; i < 3; i++) {
         pav_net_free(reqs[i].body_out);
     }

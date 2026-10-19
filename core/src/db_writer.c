@@ -216,9 +216,10 @@ static void collect(DbJob **batch, int *n) {
         if (mono_ms() - t0 >= BATCH_MS) {
             return;
         }
-#if defined(__APPLE__)
-        /* macOS has no pthread_condattr_setclock; g_cv uses the default clock,
-           so wait for the remaining monotonic budget as a relative interval. */
+#if defined(__APPLE__) || defined(_WIN32)
+        /* macOS lacks pthread_condattr_setclock and winpthreads accepts only
+           CLOCK_REALTIME, so g_cv uses the default clock there; wait for the
+           remaining monotonic budget as a relative interval. */
         {
             int64_t left = t0 + BATCH_MS - mono_ms();
 
@@ -281,7 +282,7 @@ static int ensure_cv(void) {
     if (pthread_condattr_init(&attr) != 0) {
         return -1;
     }
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(_WIN32)
     if (pthread_cond_init(&g_cv, &attr) != 0) {
 #else
     if (pthread_condattr_setclock(&attr, CLOCK_MONOTONIC) != 0 || pthread_cond_init(&g_cv, &attr) != 0) {
