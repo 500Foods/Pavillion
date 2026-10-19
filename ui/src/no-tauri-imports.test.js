@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 
@@ -21,5 +21,5 @@ function sourceFiles(dir) {
 
 test("only transport/tauri.js imports the Tauri package", () => {
   const hits = sourceFiles(src).filter((path) => readFileSync(path, "utf8").includes(needle));
-  expect(hits.map((path) => relative(src, path))).toEqual(["transport/tauri.js"]);
+  expect(hits.map((path) => relative(src, path).split(sep).join("/"))).toEqual(["transport/tauri.js"]);
 });
