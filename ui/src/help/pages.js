@@ -50,7 +50,7 @@ export const helpPages = [
         id: "layout",
         title: "The mail window",
         paragraphs: [
-          "Mail will be the message list beside the open message. Nothing is connected yet, so the list is empty. Ctrl+1 opens Mail and shows its nav, unless Features gave that number to another button.",
+          "Mail opens as the nav beside an empty workspace. The nav shows a tree of mailboxes when Mail is on. The placeholders are Inbox, Drafts, Sent, and Archive. Clicking one opens Mail with that mailbox as the context. A selected row is marked. The unread count on Inbox and Archive is shown as a badge. The tree rows are buttons so the keyboard works like other nav.",
           "When mail arrives, an HTML message is drawn in a sandboxed frame. Remote images stay off until you allow them for that message.",
         ],
       },
@@ -187,6 +187,15 @@ export const helpPages = [
         title: "Version",
         paragraphs: [
           "The window title is the app version. Help lists that number before Introduction. The middle number is how many plan steps are complete, and it moves when a phase is accepted. The last number counts builds, and a phase acceptance leaves it in place. make dev, make build, and make mini add one before they compile.",
+        ],
+      },
+      {
+        id: "accounts",
+        title: "Accounts",
+        paragraphs: [
+          "Settings → Accounts is a split panel. The account tree is on the left, the selected account's form on the right. Adding an account takes a name, a JMAP session URL (https only), a username, a password, and a color. The session URL can be discovered from the email domain, or overridden by hand.",
+          "The Test button checks the credentials against the server before Save is enabled. A wrong password shows one error and does not retry. The Password field is cleared after submit, and the secret is never shown once stored in the keyring. The Credentials area shows whether a password is stored, not what it is.",
+          "Each account gets a three-digit number (001 and up) that never changes and is never reused after removal. The auth method is Basic in v1; OpenID Connect comes later.",
         ],
       },
     ],

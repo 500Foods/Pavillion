@@ -27,12 +27,7 @@ export const shellMarkup = `<div class="shell">
         </div>
         <div class="nav-body">
           <div data-nav="mail">
-            <ul class="tree">
-              <li><button type="button" data-mailbox="inbox" aria-current="true">Inbox</button></li>
-              <li><button type="button" data-mailbox="drafts">Drafts</button></li>
-              <li><button type="button" data-mailbox="sent">Sent</button></li>
-              <li><button type="button" data-mailbox="archive">Archive</button></li>
-            </ul>
+            <div id="mail-tree" class="tree-root"></div>
           </div>
           <div data-nav="contacts" hidden>
             <div class="letters" id="letters-nav"></div>
@@ -67,6 +62,7 @@ export const shellMarkup = `<div class="shell">
               <button type="button" data-heading="icons">Icons</button>
               <button type="button" data-heading="fonts">Fonts</button>
               <button type="button" data-heading="tabs">Tabs</button>
+              <button type="button" data-heading="accounts">Accounts</button>
               <button type="button" data-heading="zoom">Zooms</button>
             </div>
           </div>
@@ -389,6 +385,96 @@ export const shellMarkup = `<div class="shell">
               <input id="session-max" type="number" min="1" max="200" step="1" value="50" />
             </label>
             <p class="muted">The strip stops at this many tabs. Home tabs still open, so Settings stays reachable. A restart keeps every home tab, then the active tab and the pins, and leaves the rest closed. The default is 50.</p>
+             </div>
+           </div>
+          <div data-settings="accounts" hidden>
+            <div class="button-bar settings-bar" role="toolbar" aria-label="Accounts">
+              <span class="settings-bar-title">Accounts</span>
+              <span class="log-bar-spacer"></span>
+              <button type="button" class="help-jump" data-help-page="settings" data-help-section="accounts" aria-label="Help for Accounts">
+                <i class="icon fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="settings-body">
+              <div class="accounts-split">
+                <div class="accounts-tree-pane">
+                  <div id="accounts-tree" class="accounts-tree"></div>
+                </div>
+                <button type="button" class="split-resize" data-split="accounts" aria-label="Resize accounts panes"></button>
+                <div class="accounts-form-pane">
+                  <div id="accounts-form" class="accounts-form">
+                    <div class="accounts-form-header" id="accounts-form-header">
+                      <h2 class="accounts-form-title" id="account-form-title">Accounts</h2>
+                      <span class="accounts-form-number" id="account-form-number"></span>
+                    </div>
+                    <form id="account-form" autocomplete="off">
+                      <div class="accounts-field-row">
+                        <label class="accounts-field">Name
+                          <input id="account-name-input" type="text" spellcheck="true" autocomplete="off" />
+                        </label>
+                        <label class="accounts-field">Color
+                          <input id="account-color-input" type="color" value="#2a7" />
+                        </label>
+                      </div>
+                      <div class="accounts-field">
+                        <label>Kind
+                          <select id="account-kind">
+                            <option value="jmap">JMAP</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div class="accounts-field">
+                        <label>Session URL
+                          <input id="account-session-url-input" type="url" spellcheck="false" autocomplete="off" placeholder="https://example.com/.well-known/jmap" />
+                        </label>
+                      </div>
+                      <div class="accounts-field-row">
+                        <label class="accounts-field">Username
+                          <input id="account-username-input" type="text" spellcheck="false" autocomplete="off" />
+                        </label>
+                        <label class="accounts-field">Auth method
+                          <span id="account-auth">basic</span>
+                        </label>
+                      </div>
+                      <div class="accounts-field">
+                        <label>Password
+                          <input id="account-secret-input" type="password" autocomplete="new-password" />
+                        </label>
+                      </div>
+                      <div class="accounts-field-row">
+                        <label class="accounts-field"><input id="account-sync-mail" type="checkbox" checked /> Sync mail</label>
+                        <label class="accounts-field"><input id="account-sync-contacts" type="checkbox" checked /> Sync contacts</label>
+                        <label class="accounts-field"><input id="account-sync-calendars" type="checkbox" checked /> Sync calendars</label>
+                      </div>
+                      <div class="accounts-field-row">
+                        <label class="accounts-field">Fetch bodies
+                          <select id="account-fetch-bodies">
+                            <option value="recent">Recent</option>
+                            <option value="all">All</option>
+                            <option value="none">None</option>
+                          </select>
+                        </label>
+                        <label class="accounts-field"><input id="account-enabled" type="checkbox" checked /> Enabled</label>
+                      </div>
+                      <div class="accounts-test-row">
+                        <button type="button" id="account-test" disabled>Test</button>
+                        <span id="account-test-status" class="accounts-test-status"></span>
+                      </div>
+                      <p id="account-test-error" class="accounts-error"></p>
+                      <p id="account-test-capabilities" class="accounts-capabilities"></p>
+                      <div class="accounts-form-actions">
+                        <button type="button" id="account-add">Add</button>
+                        <button type="button" id="account-save" disabled>Save</button>
+                        <button type="button" id="account-remove" disabled>Remove</button>
+                      </div>
+                    </form>
+                    <div class="accounts-credentials">
+                      <h3>Credentials</h3>
+                      <p id="account-credentials-status">Stored in keyring</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

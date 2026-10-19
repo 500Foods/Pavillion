@@ -20,7 +20,7 @@ Close-out, in the owning document, before stopping: Status, Accomplished, Lesson
 
 ## Where the work stands
 
-K-2 (step 44) is complete. Account commands and the auth interface are real. The phase stamp is `0.48`. `PAVILLION_BUILD` is dirty at 169 from `make dev`; do not commit that bump. `PAVILLION_API_VERSION` stays 3.
+K-3 (step 48) is complete. The Settings → Accounts panel with add/test/save/remove is real, backed by mock transport and 10 Vitest tests. M-2 (account.test) is complete. E-1 (step 49) is complete: tree tokens, skeleton, and row regions render a placeholder Mail tree scaled by shell and nav-body zoom, with 16 Vitest tests. The phase stamp is `0.50`. `PAVILLION_BUILD` is dirty at 180 from `make dev`; do not commit that bump. `PAVILLION_API_VERSION` stays 3. E-2 (step 50) is next.
 
 Tasks, Notes, and Argent are icons and empty homes. GitHub is an icon. Do not build those screens, tables, event pulls, or a ledger. Do not add a Projects field or a contact link for GitHub. CalDAV and CardDAV are later and write the same tables JMAP will write. They are not a second PIM.
 

@@ -1530,3 +1530,169 @@
 .pav-root #link-confirm form {
   margin: 0;
 }
+
+.pav-root .accounts-split {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.pav-root .accounts-tree-pane {
+  flex: 0 0 35%;
+  min-width: 18rem;
+  max-width: 40%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.pav-root .accounts-form-pane {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.pav-root .accounts-tree {
+  padding: 0.75rem;
+}
+
+.pav-root .accounts-tree-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pav-root .accounts-tree-list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 0.45rem 0.5rem;
+}
+
+.pav-root .accounts-tree-list button[aria-current="true"] {
+  background: var(--pav-surface-button-active);
+}
+
+.pav-root .accounts-tree-label,
+.pav-root .accounts-tree-number {
+  display: inline-block;
+}
+
+.pav-root .accounts-tree-number {
+  margin-left: 0.5rem;
+  color: var(--pav-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pav-root .accounts-empty {
+  padding: 1rem 0.75rem;
+  color: var(--pav-text-muted);
+}
+
+.pav-root .accounts-form {
+  padding: 1rem 1.25rem;
+}
+
+.pav-root .accounts-form-header {
+  margin-bottom: 1rem;
+}
+
+.pav-root .accounts-form-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.pav-root .accounts-form-number {
+  color: var(--pav-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pav-root .accounts-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.pav-root .accounts-field-row {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.pav-root .accounts-field-row .accounts-field {
+  flex: 1;
+}
+
+.pav-root .accounts-field label {
+  font-size: 0.8rem;
+  color: var(--pav-text-muted);
+}
+
+.pav-root .accounts-field input[type="text"],
+.pav-root .accounts-field input[type="url"],
+.pav-root .accounts-field input[type="color"],
+.pav-root .accounts-field select {
+  padding: 0.3rem 0.45rem;
+  border: 1px solid var(--pav-border);
+  background: var(--pav-surface-button);
+  color: var(--pav-text);
+  font: inherit;
+}
+
+.pav-root .accounts-field input[type="color"] {
+  width: 2.5rem;
+  height: 1.5rem;
+  padding: 0;
+  background: transparent;
+  border-color: var(--pav-border);
+  cursor: pointer;
+}
+
+.pav-root .accounts-field select {
+  font-size: 0.85rem;
+}
+
+.pav-root .accounts-test-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.pav-root .accounts-test-status {
+  color: var(--pav-text-muted);
+  font-size: 0.85rem;
+}
+
+.pav-root .accounts-error {
+  margin: 0.5rem 0;
+  color: var(--pav-status-failed);
+  font-size: 0.85rem;
+}
+
+.pav-root .accounts-capabilities {
+  margin: 0.5rem 0;
+  color: var(--pav-text);
+  font-size: 0.85rem;
+}
+
+.pav-root .accounts-form-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.pav-root .accounts-credentials {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--pav-border);
+}
+
+.pav-root .accounts-credentials h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}

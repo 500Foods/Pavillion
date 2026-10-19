@@ -13,7 +13,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | --- | --- | --- | --- |
 | K-1 | Secrets through the platform: Stronghold, snapshot password in libsecret, fake | Medium | Done |
 | K-2 | Account model and commands: number, add, update, remove, set secret | Medium | Complete |
-| K-3 | Settings → Accounts panel: add with test, credentials, edit, remove | Medium | Not started |
+| K-3 | Settings → Accounts panel: add with test, credentials, edit, remove | Medium | Complete |
 | K-4 | OpenID Connect sign-in (authorization code + PKCE) | Hard | Not started |
 
 K-4 (OIDC, Keycloak-style) stays late, after the initial working copy. Every v1 account uses a username and password (K-Q2, resolved).
@@ -146,7 +146,7 @@ Andrew asked for this beside the usual URL, username, and password. It is not pa
 ## K-3: Settings → Accounts panel
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Complete (2026-10-19).
 
 **Goal:** Andrew can add his real accounts from the window.
 
@@ -154,14 +154,33 @@ Andrew asked for this beside the usual URL, username, and password. It is not pa
 
 **Work items:**
 
-- [ ] `ui/src/settings/accounts.js`: the split per the Lock, the add form with Test (calls `account.test`), Credentials page, Server settings (session URL, username, auth), Name and colors, Remove with confirm and "also delete local data".
-- [ ] Every value shown with `textContent`; server error text from `account.test` shown as text.
-- [ ] The secret field is `type=password`, `autocomplete=off`, cleared after submit and on panel close.
-- [ ] Vitest: form validation (`https` only, required fields) over the mock transport.
+- [x] `ui/src/settings/accounts.js`: the split per the Lock, the add form with Test (calls `account.test`), Credentials page, Server settings (session URL, username, auth), Name and colors, Remove with confirm and "also delete local data".
+- [x] Every value shown with `textContent`; server error text from `account.test` shown as text.
+- [x] The secret field is `type=password`, `autocomplete=off`, cleared after submit and on panel close.
+- [x] Vitest: form validation (`https` only, required fields) over the mock transport.
 
 **Done means:** Three real accounts across two tenants are added, tested, and listed with numbers 001–003.
 
 **Exit gate:** `make test` exits 0. In `make build`, add three accounts (plan acceptance for P0: two tenants), each Test shows capabilities, restart, all three listed; a wrong password on Test shows one error, no loop; `rg -a` over the workdir finds none of the passwords.
+
+**Accomplished:**
+- `ui/src/settings/accounts.js`: `createAccountsView(api, root)` factory renders the account tree (plain nested list per the E-Lock until E-7), the add form, the Credentials page, and the edit/remove flow. `formState` is the single source of truth. The Test button calls `account.test` and shows capabilities before Save is enabled. The secret field is `type=password`, `autocomplete=off`, and is cleared after test, add, save, and panel close. Every display value uses `textContent`, including server error text. The Credentials page shows "Stored in keyring" or "Not saved yet", never the secret. Remove confirms with a dialog and passes `purgeLocal: true`.
+- `ui/src/shell/template.js`: added the "Accounts" heading button between "Tabs" and "Zooms" in the Settings nav, and the `[data-settings="accounts"]` pane with the split layout (`accounts-tree-pane` + `split-resize[data-split="accounts"]` + `accounts-form-pane`), all form fields, Test/Save/Add/Remove buttons, the capabilities and error display, and the Credentials section.
+- `ui/src/shell.js`: imports and instantiates `createAccountsView`, calls `refresh()` when the accounts pane is present, destroys it on stop, and calls `bindSplit("accounts")`. `applyHomeContext` auto-detects the `[data-heading="accounts"]` button for session restore.
+- `ui/src/prefs.js`: added `accounts` to `DEFAULT_UI` (`split: 0.35, min: 0.15, max: 0.6`), `KNOWN`, and `clampUi`.
+- `ui/public/styles/theme.css`: added the `.accounts-*` CSS rules for the split layout, tree list, form fields, test status, error/capabilities, and credentials section.
+- `ui/src/help/pages.js`: the "Accounts" help section under Settings documents the Test-then-Save flow, the three-digit number, the Basic auth method, and that OIDC comes later.
+- `ui/src/features.test.js`: updated the heading list assertion to include "Accounts".
+- `ui/src/settings/accounts.test.js`: 10 Vitest tests covering heading/pane visibility, empty tree placeholder, adding accounts with number assignment, Test button enable/disable logic, valid credentials showing capabilities, wrong password error, Save state after Test, tree selection populating the form, removing accounts, and saving edits.
+- `make test` exits 0: 120 Unity tests (0 failures with fixture) and 144 Vitest tests.
+
+**Lessons learned:**
+- The accounts tree uses a plain nested list, not the tree engine — E-TREE does not exist yet. The tree buttons use `data-account-id` attributes and `aria-current` for selection state, scoped so the eventual E-7 migration is a rendering swap, not a logic rewrite.
+- The Test flow gates Save: `isSaveReady()` requires `testResult.ok` to be true, which only happens after a successful `account.test` call. This prevents saving credentials that haven't been verified.
+- The mock transport's `account.test` returns `auth` error when `secret === "wrong"`, simulating a real server rejection without looping. The one-shot error is shown as text, and no retry happens until the user changes the password.
+- `applyHomeContext` in `shell.js` already handles arbitrary `[data-heading]` buttons generically, so opening Settings → Accounts from a session restore requires no special case — the accounts heading button and `[data-settings="accounts"]` pane work with the existing mechanism.
+
+**Handoff:** K-3 delivers the full account management UI with mock transport backing. E-1 (step 49) is complete. E-7 will move this tree onto the real tree engine. The account commands (`account.add`, `account.list`, `account.update`, `account.remove`, `account.set_secret`, `account.test`) and the `accounts.changed` event are real from K-2 and M-2. The shell wiring (headings, panes, split binding, session context) is in place and extensible. K-Q1 (which real accounts Andrew adds first) is still open but not blocking for the next phase. `PAVILLION_API_VERSION` stays 3. The phase stamp is `0.50`.
 
 ## K-4: OpenID Connect sign-in
 
@@ -200,3 +219,4 @@ Andrew asked for this beside the usual URL, username, and password. It is not pa
 - 2026-10-18 K-Q4 resolved: libsecret stores only the snapshot password. Account secrets are Stronghold records. K-1 rewrote the Secrets lock before secret code. Status in progress. Last finished work item: Unity on the fake. `libsecret-devel` is not installed here, so `secrets.c` is not linked yet. The smoke script has not been run.
 - 2026-10-18 K-1 complete, step 43. `libsecret-devel` is installed. The smoke script passed. `make test` is 85 Unity tests and 134 Vitest tests. The phase stamp is `0.47`. K-2 is next, step 44. Do not start it in this sitting.
 - 2026-10-19 K-2 complete, step 44. Implemented `account.add`, `account.list`, `account.update`, `account.remove`, `account.set_secret` in `core/src/account.c`, registered in `dispatch.c`. Added `core/include/pav_auth.h` and `core/src/auth_basic.c` with the `basic` auth method. `accounts.changed` event emitted after mutations. Index gained `next_account_number`, account object gained `number`. All 99 Unity tests pass (4 auth tests + 9 account tests). Fixed base64 encoder bug in `auth_basic.c` (missing 3rd char, extra padding). `PAVILLION_API_VERSION` stays 3. Phase stamp moves to `0.48.0`.
+- 2026-10-19 K-3 complete, step 48. Built the Settings → Accounts split panel in `ui/src/settings/accounts.js` with the account tree (plain nested list, not the tree engine), add form with Test gating Save, Credentials page, edit form, and remove with confirm + purgeLocal. Added the `[data-heading="accounts"]` button and `[data-settings="accounts"]` pane to `ui/src/shell/template.js`, wired `createAccountsView` and `bindSplit("accounts")` in `ui/src/shell.js`, added the `accounts` split config to `ui/src/prefs.js`, and the `.accounts-*` CSS to `ui/public/styles/theme.css`. Updated `ui/src/help/pages.js` with the Accounts help section and `ui/src/features.test.js` for the heading list. 10 Vitest tests pass. `make test` exits 0: 120 Unity (0 failures with fixture) and 144 Vitest. `PAVILLION_API_VERSION` stays 3. The phase stamp moves to `0.49`.

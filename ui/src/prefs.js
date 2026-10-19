@@ -42,6 +42,7 @@ export const DEFAULT_UI = {
   contacts: { split: 0.5, min: 0.25, max: 0.75 },
   files: { split: 0.5, min: 0.25, max: 0.75 },
   help: { split: 0.25, min: 0.15, max: 0.6 },
+  accounts: { split: 0.35, min: 0.15, max: 0.6 },
   zoom: {
     shell: 1,
     navButtons: 1,
@@ -87,6 +88,7 @@ const KNOWN = new Set([
   "contacts",
   "files",
   "help",
+  "accounts",
   "zoom",
   "icons",
   "fontawesome_kit",
@@ -320,6 +322,7 @@ export function clampUi(raw) {
     contacts: paneSplit(src.contacts, DEFAULT_UI.contacts),
     files: paneSplit(src.files, DEFAULT_UI.files),
     help: paneSplit(src.help, DEFAULT_UI.help),
+    accounts: paneSplit(src.accounts, DEFAULT_UI.accounts),
     zoom,
     icons: isObject(src.icons) ? { ...src.icons } : {},
     fontawesome_kit: typeof src.fontawesome_kit === "string" ? src.fontawesome_kit : DEFAULT_UI.fontawesome_kit,

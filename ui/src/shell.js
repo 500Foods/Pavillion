@@ -9,8 +9,10 @@ import { createTabs, KIND_ICONS } from "./shell/tabs.js";
 import { createFeatureEditor } from "./shell/features.js";
 import { createRailDrag } from "./shell/rail-drag.js";
 import { createActivityView } from "./activity/view.js";
+import { createAccountsView } from "./settings/accounts.js";
 import { createHelpView } from "./help/view.js";
 import { createLogView } from "./log/view.js";
+import { createTree, renderRow } from "./tree/render.js";
 import { DEFAULT_UI, FEATURE_KEYS, RAIL_KEYS, chordsOf, clampUi, railOf, snapZoom } from "./prefs.js";
 import {
   THEME_TEMPLATES,
@@ -1170,6 +1172,8 @@ let navSection = "mail";
 let logView = null;
 let activityView = null;
 let helpView = null;
+let accountsView = null;
+let mailTree = null;
 let syncing = 0;
 let motionQuery = null;
 let onMotion = null;
@@ -1428,8 +1432,8 @@ function applyHomeContext(entry) {
     }
   }
   if (entry.section === "mail" && ctx && typeof ctx.mailboxId === "string") {
-    for (const button of mountRoot.querySelectorAll('[data-nav="mail"] .tree button')) {
-      if (button.dataset.mailbox === ctx.mailboxId) {
+    for (const button of mountRoot.querySelectorAll('[data-nav="mail"] .tree [role="treeitem"]')) {
+      if (button.dataset.nodeId === ctx.mailboxId) {
         button.setAttribute("aria-current", "true");
       } else {
         button.removeAttribute("aria-current");
@@ -2124,6 +2128,14 @@ export function stopShell() {
     helpView.destroy();
     helpView = null;
   }
+  if (accountsView) {
+    accountsView.destroy();
+    accountsView = null;
+  }
+  if (mailTree) {
+    mailTree.destroy();
+    mailTree = null;
+  }
   if (activityView) {
     activityView.destroy();
     activityView = null;
@@ -2362,6 +2374,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
   bindSplit("contacts");
   bindSplit("files");
   bindSplit("help");
+  bindSplit("accounts");
   bindSettings();
   bindUpdate();
   bindDemo(result.debug === true);
@@ -2380,20 +2393,77 @@ export async function startShell(surface, nextApi, nextHost, result) {
       return widgets.dialogs.confirm(spec);
     },
   });
-  for (const button of mountRoot.querySelectorAll(".nav-body .tree button")) {
-    button.addEventListener("click", () => {
-      for (const other of mountRoot.querySelectorAll(".nav-body .tree button")) {
+
+  const PLACEHOLDER_MAIL_NODES = [
+    { id: "inbox", parentId: null, kind: "mailbox", label: "Inbox", role: "inbox", unread: 3, selected: true, hasChildren: false },
+    { id: "drafts", parentId: null, kind: "mailbox", label: "Drafts", role: "drafts", unread: 0, selected: false, hasChildren: false },
+    { id: "sent", parentId: null, kind: "mailbox", label: "Sent", role: "sent", unread: 0, selected: false, hasChildren: false },
+    { id: "archive", parentId: null, kind: "mailbox", label: "Archive", role: "archive", unread: 12, selected: false, hasChildren: false },
+  ];
+
+  const mailNav = mountRoot.querySelector('[data-nav="mail"]');
+  if (mailNav) {
+    const mailTreeContainer = mailNav.querySelector("#mail-tree");
+    if (mailTreeContainer) {
+      mailTree = createTree(mailTreeContainer, PLACEHOLDER_MAIL_NODES, {
+        label: "Mail",
+        regions: ["leading", "label", "count"],
+      });
+    }
+  }
+
+  function bindMailTree() {
+    if (!mailTree || !mountRoot) {
+      return;
+    }
+    const treeEl = mailTree.container;
+    treeEl.addEventListener("click", (event) => {
+      const button = event.target instanceof Element ? event.target.closest('[role="treeitem"]') : null;
+      if (!button || !treeEl.contains(button)) {
+        return;
+      }
+      for (const other of treeEl.querySelectorAll('[role="treeitem"]')) {
         other.removeAttribute("aria-current");
       }
       button.setAttribute("aria-current", "true");
-      if (button.dataset.mailbox) {
+      const nodeId = button.dataset.nodeId;
+      if (nodeId) {
         showNav("mail");
-        openHome("mail", { mailboxId: button.dataset.mailbox });
+        openHome("mail", { mailboxId: nodeId });
+      }
+    });
+    treeEl.addEventListener("keydown", (event) => {
+      if (event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+      const button = event.target instanceof Element ? event.target.closest('[role="treeitem"]') : null;
+      if (!button || !treeEl.contains(button)) {
+        return;
+      }
+      if (event.key === "Enter" || event.key === " " || event.key === "ArrowRight") {
+        event.preventDefault();
+        button.setAttribute("aria-current", "true");
+        for (const other of treeEl.querySelectorAll('[role="treeitem"]')) {
+          if (other !== button) {
+            other.removeAttribute("aria-current");
+          }
+        }
+        const nodeId = button.dataset.nodeId;
+        if (nodeId) {
+          showNav("mail");
+          openHome("mail", { mailboxId: nodeId });
+        }
       }
     });
   }
+
+  bindMailTree();
   helpView = createHelpView(mountRoot);
   mountRoot.addEventListener("click", onHelpJump);
+  accountsView = createAccountsView(api, mountRoot);
+  if (mountRoot.querySelector("[data-settings='accounts']")) {
+    accountsView.refresh();
+  }
   await openInitialTabs();
   if (activityView) {
     await activityView.ready();

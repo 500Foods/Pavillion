@@ -327,7 +327,7 @@ test("debug Help opens test tabs and a nav click returns home", async () => {
   root.querySelector('.nav-buttons [data-section="mail"]').click();
   expect(root.querySelector('#tablist [data-tab-id="mail:home"]').getAttribute("aria-selected")).toBe("true");
 
-  root.querySelector('[data-mailbox="drafts"]').click();
+  root.querySelector('[data-nav="mail"] [role="treeitem"][data-node-id="drafts"]').click();
   expect(root.querySelector("#panel-mail").hidden).toBe(false);
   expect(root.querySelector("#panel-mail").dataset.tabContext).toBe(JSON.stringify({ mailboxId: "drafts" }));
   expect(root.querySelector('#tablist [data-tab-id="mail:home"]').getAttribute("aria-selected")).toBe("true");

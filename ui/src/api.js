@@ -56,10 +56,27 @@ export function createApi(transport) {
       cancel(id) {
         return call("activity.cancel", { id });
       },
-      dismiss(id) {
-        return call("activity.dismiss", { id });
-      },
-    },
+       dismiss(id) {
+         return call("activity.dismiss", { id });
+       },
+     },
+     account: {
+       list() {
+         return call("account.list", {});
+       },
+       add(body) {
+         return call("account.add", body ?? {});
+       },
+       update(id, patch) {
+         return call("account.update", { id, patch });
+       },
+       remove(id, purgeLocal) {
+         return call("account.remove", { id, purgeLocal });
+       },
+       test(body) {
+         return call("account.test", body ?? {});
+       },
+     },
     sync: {
       now(body) {
         return call("sync.now", body ?? {});

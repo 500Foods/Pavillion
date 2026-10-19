@@ -1,0 +1,176 @@
+.pav-root .tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  --pav-tree-row-height: 1.875rem;
+  --pav-tree-indent: 1rem;
+  --pav-tree-icon-size: 1rem;
+  --pav-tree-font-size: 0.8125rem;
+  --pav-tree-row-radius: 0.25rem;
+  --pav-tree-transition-duration: 160ms;
+  --pav-tree-bg: transparent;
+  --pav-tree-bg-hover: var(--pav-surface-button);
+  --pav-tree-bg-selected: var(--pav-surface-button-active);
+  --pav-tree-text: var(--pav-text);
+  --pav-tree-text-muted: var(--pav-text-muted);
+}
+
+.pav-root .tree ul {
+  list-style: none;
+  margin: 0;
+  padding-left: var(--pav-tree-indent);
+}
+
+.pav-root .tree li {
+  margin: 0;
+  padding: 0;
+}
+
+.pav-root .tree button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 0.35rem;
+  text-align: left;
+  border: 0;
+  border-radius: var(--pav-tree-row-radius);
+  background: var(--pav-tree-bg);
+  padding: 0.2rem 0.5rem;
+  font-size: var(--pav-tree-font-size);
+  color: var(--pav-tree-text);
+  cursor: pointer;
+  min-height: var(--pav-tree-row-height);
+  box-sizing: border-box;
+}
+
+.pav-root .tree button:focus-visible {
+  outline: 2px solid var(--pav-accent);
+  outline-offset: -2px;
+}
+
+.pav-root .tree button[aria-selected="true"] {
+  background: var(--pav-tree-bg-selected);
+  font-weight: 500;
+}
+
+.pav-root .tree button[aria-selected="true"]:hover {
+  background: var(--pav-tree-bg-selected);
+}
+
+.pav-root .tree button:hover {
+  background: var(--pav-tree-bg-hover);
+}
+
+.pav-root .tree button[aria-busy="true"] .tree-row-status .icon {
+  animation: pav-tree-spin 0.8s linear infinite;
+}
+
+.pav-root .tree button[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.pav-root .tree-row-leading {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--pav-tree-icon-size);
+  height: var(--pav-tree-icon-size);
+  color: var(--pav-tree-text-muted);
+  font-size: var(--pav-tree-icon-size);
+  line-height: 1;
+}
+
+.pav-root .tree-row-leading .icon {
+  width: var(--pav-tree-icon-size);
+  height: var(--pav-tree-icon-size);
+  font-size: var(--pav-tree-icon-size);
+}
+
+.pav-root .tree-row-label {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pav-root .tree-row-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.pav-root .tree-row-status {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--pav-tree-icon-size);
+  height: var(--pav-tree-icon-size);
+  color: var(--pav-tree-text-muted);
+  font-size: var(--pav-tree-icon-size);
+}
+
+.pav-root .tree-row-status .icon {
+  width: var(--pav-tree-icon-size);
+  height: var(--pav-tree-icon-size);
+  font-size: var(--pav-tree-icon-size);
+}
+
+.pav-root .tree-row-unread .tree-row-status {
+  color: var(--pav-swatch-2);
+}
+
+.pav-root .tree-row-count {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+
+.pav-root .tree-row-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.1rem;
+  height: 1rem;
+  padding: 0 0.25rem;
+  border-radius: var(--pav-tree-row-radius);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.pav-root .tree-row-badge-unread {
+  background: var(--pav-swatch-2);
+  color: var(--pav-surface-canvas);
+}
+
+.pav-root .tree-row-trailing {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--pav-tree-text-muted);
+}
+
+.pav-root .tree-row-trailing .icon {
+  width: 0.85rem;
+  height: 0.85rem;
+  font-size: 0.85rem;
+  pointer-events: none;
+}
+
+@keyframes pav-tree-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pav-root .tree button[aria-busy="true"] .tree-row-status .icon {
+    animation: none;
+  }
+}

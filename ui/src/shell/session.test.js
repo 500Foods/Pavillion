@@ -355,7 +355,8 @@ test("restore off opens nothing, and a clean empty save stays empty", async () =
   });
   expect(ids()).toEqual([]);
   expect(document.querySelector("#panel-mail").hidden).toBe(true);
-  expect(document.querySelector('[data-mailbox="drafts"]').hasAttribute("aria-current")).toBe(false);
+  const draftsRow = document.querySelector('[data-nav="mail"] [role="treeitem"][data-node-id="drafts"]');
+  expect(draftsRow.getAttribute("aria-current")).not.toBe("true");
   expect(document.querySelector(".pav-toast")).toBeNull();
   document.querySelector('.nav-buttons [data-section="settings"]').click();
   expect(ids()).toEqual(["settings:home"]);
@@ -554,7 +555,7 @@ test("quitting saves the open tabs, and the switch turns restore off", async () 
 test("a tab change is written on the session interval", async () => {
   vi.useFakeTimers();
   const { api } = await boot();
-  document.querySelector('[data-mailbox="sent"]').click();
+  document.querySelector('[data-nav="mail"] [role="treeitem"][data-node-id="sent"]').click();
   await vi.advanceTimersByTimeAsync(SESSION_MS);
   const saved = await api.prefs.ui.get();
   expect(saved.session.tabs[0].context).toEqual({ mailboxId: "sent" });

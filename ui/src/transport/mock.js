@@ -59,6 +59,9 @@ export function mockTransport() {
   const themeFiles = new Map();
   const themeFallback = "/pavillion";
   let themeFolder = "";
+  let accounts = [];
+  let nextNumber = 1;
+  let accountTestState = "idle";
 
   async function call(cmd, args) {
     const input = args ?? {};
@@ -149,13 +152,120 @@ export function mockTransport() {
       }
       throw fail("not_found", "unknown activity");
     }
-    if (cmd === "sync.now") {
-      if (input.accountId !== undefined && (typeof input.accountId !== "string" || input.accountId === "")) {
-        throw fail("bad_args", "accountId must be a non-empty string");
-      }
-      return {};
-    }
-    if (cmd === "debug.activity_demo") {
+     if (cmd === "sync.now") {
+       if (input.accountId !== undefined && (typeof input.accountId !== "string" || input.accountId === "")) {
+         throw fail("bad_args", "accountId must be a non-empty string");
+       }
+       return {};
+     }
+     if (cmd === "account.list") {
+       return { accounts: structuredClone(accounts) };
+     }
+     if (cmd === "account.add") {
+       if (typeof input.name !== "string" || input.name.trim() === "") {
+         throw fail("bad_args", "name is required");
+       }
+       if (input.kind !== "jmap") {
+         throw fail("bad_args", "only jmap is supported");
+       }
+       if (typeof input.sessionUrl !== "string" || !input.sessionUrl.startsWith("https://")) {
+         throw fail("bad_args", "sessionUrl must be https://");
+       }
+       if (typeof input.username !== "string" || input.username.trim() === "") {
+         throw fail("bad_args", "username is required");
+       }
+       if (typeof input.secret !== "string" || input.secret === "") {
+         throw fail("bad_args", "secret is required");
+       }
+       const id = input.id || input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+       const number = String(nextNumber).padStart(3, "0");
+       nextNumber += 1;
+       const account = {
+         id,
+         number,
+         name: input.name,
+         kind: "jmap",
+         sessionUrl: input.sessionUrl,
+         username: input.username,
+         auth: "basic",
+         color: input.color || "#2a7",
+         enabled: input.enabled !== false,
+         syncMail: input.syncMail !== false,
+         syncContacts: input.syncContacts !== false,
+         syncCalendars: input.syncCalendars !== false,
+         fetchBodies: input.fetchBodies || "recent",
+       };
+       accounts = [...accounts, account];
+       accountTestState = { accountId: id, capabilities: ["mail", "submission", "contacts", "calendars"] };
+       return structuredClone(account);
+     }
+     if (cmd === "account.update") {
+       const account = accounts.find((a) => a.id === input.id);
+       if (!account) {
+         throw fail("not_found", "account not found");
+       }
+       const updated = { ...account };
+       if (input.patch.name !== undefined) {
+         updated.name = input.patch.name;
+       }
+       if (input.patch.sessionUrl !== undefined && !input.patch.sessionUrl.startsWith("https://")) {
+         throw fail("bad_args", "sessionUrl must be https://");
+       }
+       if (input.patch.sessionUrl !== undefined) {
+         updated.sessionUrl = input.patch.sessionUrl;
+       }
+       if (input.patch.username !== undefined) {
+         updated.username = input.patch.username;
+       }
+       if (input.patch.color !== undefined) {
+         updated.color = input.patch.color;
+       }
+       if (input.patch.enabled !== undefined) {
+         updated.enabled = input.patch.enabled;
+       }
+       if (input.patch.syncMail !== undefined) {
+         updated.syncMail = input.patch.syncMail;
+       }
+       if (input.patch.syncContacts !== undefined) {
+         updated.syncContacts = input.patch.syncContacts;
+       }
+       if (input.patch.syncCalendars !== undefined) {
+         updated.syncCalendars = input.patch.syncCalendars;
+       }
+       if (input.patch.fetchBodies !== undefined) {
+         updated.fetchBodies = input.patch.fetchBodies;
+       }
+       accounts = accounts.map((a) => (a.id === input.id ? updated : a));
+       return structuredClone(updated);
+     }
+     if (cmd === "account.remove") {
+       const before = accounts.length;
+       accounts = accounts.filter((a) => a.id !== input.id);
+       if (accounts.length === before) {
+         throw fail("not_found", "account not found");
+       }
+       return { id: input.id };
+     }
+     if (cmd === "account.test") {
+       if (typeof input.secret !== "string" || input.secret === "") {
+         throw fail("bad_args", "secret is required");
+       }
+       if (typeof input.username !== "string" || input.username.trim() === "") {
+         throw fail("bad_args", "username is required");
+       }
+       if (typeof input.sessionUrl !== "string" || !input.sessionUrl.startsWith("https://")) {
+         throw fail("bad_args", "sessionUrl must be https://");
+       }
+       if (input.secret === "wrong") {
+         throw fail("auth", "The credentials were rejected by the server.");
+       }
+       return {
+         ok: true,
+         capabilities: ["mail", "submission", "contacts", "calendars"],
+         accounts: [{ id: "test-account", name: "Test Account" }],
+       };
+     }
+     if (cmd === "debug.activity_demo") {
       if (!Number.isInteger(input.steps) || !Number.isInteger(input.ms)) {
         throw fail("bad_args", "steps and ms are required");
       }

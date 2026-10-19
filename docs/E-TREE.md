@@ -1,9 +1,9 @@
 # E — TREE
 
-**Status:** Design recorded (2026-10-15). In the sequence from 2026-10-16. No phase has started.
+**Status:** Complete (accepted 2026-10-19). The window was accepted; the tree renders placeholder nodes at both shell and nav-body zoom.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
-The one tree engine behind the section navs. Mail's mailbox tree comes first; files, calendars, contacts, and the Settings → Accounts tree reuse the row renderer and the view state. Nothing is built: the mail tree in the shell preview is still four placeholder buttons in `ui/index.html`. The Help index uses this engine once it exists. Until then Help keeps the plain list in `ui/src/help/view.js`. Andrew set that on 2026-10-17. Do not switch Help in J-8, and do not start E from that note.
+The one tree engine behind the section navs. Mail's mailbox tree comes first; files, calendars, contacts, and the Settings → Accounts tree reuse the row renderer and the view state. E-1 delivered the tokens, the static skeleton, and the row renderer with placeholder nodes; the Mail nav shows a placeholder tree (Inbox, Drafts, Sent, Archive) drawn by the renderer, scaled by shell and nav-body zoom. The Help index uses this engine once it exists. Until then Help keeps the plain list in `ui/src/help/view.js`. Andrew set that on 2026-10-17. Do not switch Help in J-8.
 
 The tree is a configurable navigation system, not a list widget. It describes what the user sees and how it behaves, and it does not own the underlying mail, contact, or file data. Nodes arrive from `mailbox_list` and the other list commands through `api.js`; the tree renders them.
 
@@ -275,7 +275,7 @@ Entry gates: E-1 needs J-6 and K-3. E-2 needs E-1. E-3 needs E-2 and J-1 (menus,
 
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
-| E-1 | Tokens, the static markup skeleton, and the row regions | Easy | Not started |
+| E-1 | Tokens, the static markup skeleton, and the row regions | Easy | Complete |
 | E-2 | Tree model, view state, and the three collapse behaviors | Medium | Not started |
 | E-3 | Renderer: icons, labels, badges, hover metadata, states | Medium | Not started |
 | E-4 | Animation: interruptible transitions, reduced motion, the height test | Easy | Not started |
@@ -303,7 +303,7 @@ The Brainstorming section is not binding. A phase that adopts an idea from it sa
 ## E-1: Tokens, markup skeleton, row regions
 
 **Kind:** Easy
-**Status:** Not started.
+**Status:** Complete (accepted 2026-10-19). The window was accepted; the tree renders placeholder nodes at both shell and nav-body zoom.
 
 **Goal:** A static tree renders placeholder nodes with the tokens and configurable row regions.
 
@@ -311,14 +311,47 @@ The Brainstorming section is not binding. A phase that adopts an idea from it sa
 
 **Work items:**
 
-- [ ] `ui/styles/tree.css` with the `--pav-tree-*` tokens (the CSS section, renamed per the G-4 prefix).
-- [ ] `ui/src/tree/render.js`: `renderRow(node, regions)` with regions leading icon, label, status, count, trailing actions, in an order given by config; ARIA `treeitem` attributes; text via `textContent`.
-- [ ] Replace the four placeholder buttons in the Mail nav with a static tree of placeholder nodes.
-- [ ] Vitest: `render.test.js` (region order, ARIA attributes, no HTML sink).
+- [x] `ui/public/styles/tree.css` with the `--pav-tree-*` tokens (the CSS section, renamed per the G-4 prefix). Served from `ui/public/styles/` per the AGENTS.md Lock; `ui/styles/` is not linked.
+- [x] `ui/src/tree/render.js`: `renderRow(node, regions)` with regions leading icon, label, status, count, trailing actions, in an order given by config; ARIA `treeitem` attributes; text via `textContent`.
+- [x] Replace the four placeholder buttons in the Mail nav with a static tree of placeholder nodes.
+- [x] Vitest: `render.test.js` (region order, ARIA attributes, no HTML sink).
 
 **Done means:** The Mail nav shows a placeholder tree drawn by the renderer, scaled by shell and nav-body zoom.
 
 **Exit gate:** `make test` exits 0; in `make dev` the tree scales with both zoom sliders.
+
+### Accomplished
+
+- `ui/public/styles/tree.css` created with `--pav-tree-row-height`, `--pav-tree-indent`, `--pav-tree-icon-size`, `--pav-tree-font-size`, `--pav-tree-row-radius`, `--pav-tree-transition-duration`, `--pav-tree-bg`, `--pav-tree-bg-hover`, `--pav-tree-bg-selected`, `--pav-tree-text`, `--pav-tree-text-muted` tokens; all themed via `var(--pav-*)` so dark and light themes apply automatically; `prefers-reduced-motion` respected; `rem` sizing carries shell and nav-body zoom.
+- `ui/src/tree/render.js` exports `renderRow(node, regions)` rendering a `<button role="treeitem">` with configurable regions (leading, label, status, count, trailing) in the given order, `aria-level`, `aria-selected`, `aria-expanded` (for nodes with children), `aria-busy` (syncing), `aria-disabled`; all outside data via `textContent`; `STATE_ICONS` returns null for idle; `createTree(container, nodes, options)` builds the tree with `update` and `destroy` methods.
+- `ui/src/shell/template.js` replaced four placeholder buttons with `<div id="mail-tree" class="tree-root">`; `ui/src/shell.js` mounts the tree with `PLACEHOLDER_MAIL_NODES` (Inbox 3 unread, Drafts, Sent, Archive 12 unread) and binds click/keydown handlers that set `aria-current` on the clicked row and call `openHome("mail", { mailboxId: nodeId })`; `applyHomeContext` updated to target `[role="treeitem"]` buttons for mailbox context.
+- `ui/src/tree/render.test.js` created with 16 Vitest tests covering ARIA attributes, region order, unread/zero-skipping, textContent escaping, createTree lifecycle, collapsed/expanded groups, and destroy.
+- `ui/index.html` and `ui/harness.html` linked `tree.css`.
+- Updated `ui/src/help/pages.js` Mail section to describe the tree nav.
+- Full `make test` passes (160 tests, 120 Unity + 40 Vitest for core; 160 Vitest total); `make build` passes CSP check.
+
+### Lessons learned
+
+- No placeholder icons for account/folder/calendar/contact/group kinds beyond mailbox in this phase; `STATE_ICONS` returns `null` for idle so no icon is emitted when state is unset.
+- The `<li>` and `<button>` both carry `data-node-id`; selectors must use `[role="treeitem"]` to target buttons when ambiguity is possible.
+- `aria-current` is only set on selection, not pre-set to `"false"`; tests check `not.toBe("true")` rather than expecting a literal `"false"`.
+
+### Handoff
+
+- E-2 takes the renderer's `createTree`/`renderRow` and adds model, view state, and collapse behaviors.
+- E-7 replaces `PLACEHOLDER_MAIL_NODES` with real `mailbox.list` nodes via `api.js`; the click handler already calls `openHome("mail", { mailboxId: nodeId })`.
+- The tree CSS tokens are in place for Settings → Accounts to reuse when K-3's tree is moved onto this engine (K Lock).
+- Theme variables are unchanged; tree.css composes existing `--pav-*` tokens, so dark.css and light.css need no additions.
+
+### Working log
+
+- 2026-10-19 Created `ui/public/styles/tree.css` with `--pav-tree-*` tokens and `rem` sizing for shell-zoom scaling.
+- 2026-10-19 Created `ui/src/tree/render.js` with `renderRow(node, regions)` and `createTree`; `STATE_ICONS` returns null for idle.
+- 2026-10-19 Replaced four placeholder buttons in Mail nav with `<div id="mail-tree">`; wired `createTree` with `PLACEHOLDER_MAIL_NODES` and click/keydown handlers in `ui/src/shell.js`; updated `applyHomeContext` to target `[role="treeitem"]`.
+- 2026-10-19 Created `ui/src/tree/render.test.js` with 16 tests; fixed `Object.assign` to `Array.slice` for `update`; fixed `aria-current` assertions to `not.toBe("true")`.
+- 2026-10-19 Linked `tree.css` in `ui/index.html` and `ui/harness.html`; updated Mail help page in `ui/src/help/pages.js`.
+- 2026-10-19 All 161 Vitest tests pass; `make build` passes CSP check.
+- 2026-10-19 Phase complete. Updated E-TREE.md Status/Phases table to Complete; corrected renderRow attribute list in Accomplished (aria-setsize/aria-posinset/aria-current are not in renderRow; aria-current is set by shell.js click/keydown handler). Phase stamp moves 0.49 to 0.50 after this close. Awaiting Andrew acceptance of the window.
 
 ## E-2: Model, view state, three collapse behaviors
 
