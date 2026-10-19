@@ -117,7 +117,7 @@ Pavillion is a personal desktop app for mail, contacts, calendars, tasks, files,
 | 49 | E-1 | Tree tokens, skeleton, row regions | Easy | Complete (2026-10-19) |
 | 50 | E-2 | Tree model, view state, three collapse behaviors | Medium | Complete (2026-10-19) |
 | 51 | E-3 | Tree renderer states, badges, hover, menus | Medium | Complete (2026-10-19) |
-| 52 | E-4 | Tree animation and the height test | Easy | |
+| 52 | E-4 | Tree animation and the height test | Easy | Complete (2026-10-19) |
 | 53 | M-3 | Sync supervisor, Identity and Mailbox sync, `mailbox.list` | Medium | |
 | 54 | E-7 | Real mailbox tree from `mailbox.list` | Hard | |
 | | | *Milestone 2: real accounts and mailbox trees (old P0)* | | |

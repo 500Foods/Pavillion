@@ -208,19 +208,20 @@ test("controller render method re-renders the full tree", () => {
   });
 
   const beforeCount = container.querySelectorAll('[role="treeitem"]').length;
+  expect(beforeCount).toBe(6);
 
   controller.viewState.setShowFavorites(true);
   controller.render();
 
-  const afterCount = container.querySelectorAll('[role="treeitem"]').length;
-  expect(beforeCount).toBe(5);
-  expect(afterCount).toBe(1);
+  const visibleItems = container.querySelectorAll('[role="treeitem"]');
+  expect(visibleItems.length).toBe(1);
+  expect(visibleItems[0].dataset.nodeId).toBe("archive");
 
   controller.viewState.setShowFavorites(false);
   controller.render();
 
   const finalCount = container.querySelectorAll('[role="treeitem"]').length;
-  expect(finalCount).toBe(5);
+  expect(finalCount).toBe(6);
 
   controller.destroy();
 });

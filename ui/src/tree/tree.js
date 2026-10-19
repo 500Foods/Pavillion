@@ -33,14 +33,12 @@ function renderGroup(node, regions, viewState, model) {
     const childContainer = document.createElement("ul");
     childContainer.setAttribute("role", "group");
     childContainer.setAttribute("aria-label", `${node.label || node.id} children`);
-    if (!viewState.isExpanded(node.id)) {
-      childContainer.setAttribute("hidden", "");
-    }
+    childContainer.classList.add("tree-group");
+    const isExpanded = viewState.isExpanded(node.id);
+    childContainer.classList.add(isExpanded ? "tree-group-expanded" : "tree-group-collapsed");
     const children = model.children(node.id);
     for (const child of children) {
-      if (viewState.isExpanded(node.id)) {
-        childContainer.append(renderGroup(child, regions, viewState, model));
-      }
+      childContainer.append(renderGroup(child, regions, viewState, model));
     }
     li.append(childContainer);
   }
@@ -124,7 +122,8 @@ export function createTreeController(container, options = {}) {
 
   function toggleExpand(id) {
     const now = viewState.toggle(id);
-    renderTree(root, viewState, model, regions);
+    syncGroupContainer(id);
+    syncRowExpanded(id);
     emit(expandCallbacks, id, now);
     if (persistFn) {
       persistFn(treeId, { expanded: [...viewState.expanded] });
@@ -135,7 +134,8 @@ export function createTreeController(container, options = {}) {
   function expand(id) {
     const changed = viewState.expand(id);
     if (changed) {
-      renderTree(root, viewState, model, regions);
+      syncGroupContainer(id);
+      syncRowExpanded(id);
       emit(expandCallbacks, id, true);
       if (persistFn) {
         persistFn(treeId, { expanded: [...viewState.expanded] });
@@ -147,7 +147,8 @@ export function createTreeController(container, options = {}) {
   function collapse(id) {
     const changed = viewState.collapse(id);
     if (changed) {
-      renderTree(root, viewState, model, regions);
+      syncGroupContainer(id);
+      syncRowExpanded(id);
       emit(expandCallbacks, id, false);
       if (persistFn) {
         persistFn(treeId, { expanded: [...viewState.expanded] });
@@ -169,7 +170,13 @@ export function createTreeController(container, options = {}) {
 
   function collapseAllReset() {
     viewState.collapseAllReset();
-    renderTree(root, viewState, model, regions);
+    for (const id of model.toArray().map((n) => n.id)) {
+      if (findGroup(id)) {
+        syncGroupContainer(id);
+        syncRowExpanded(id);
+      }
+    }
+    emit(expandCallbacks, null, false);
     if (persistFn) {
       persistFn(treeId, { expanded: [], selected: viewState.selected, focused: viewState.focused });
     }
@@ -177,7 +184,12 @@ export function createTreeController(container, options = {}) {
 
   function collapseAllRemember() {
     const snapshot = viewState.collapseAllRemember();
-    renderTree(root, viewState, model, regions);
+    for (const id of model.toArray().map((n) => n.id)) {
+      if (findGroup(id)) {
+        syncGroupContainer(id);
+        syncRowExpanded(id);
+      }
+    }
     if (persistFn) {
       persistFn(treeId, { expanded: [] });
     }
@@ -186,7 +198,12 @@ export function createTreeController(container, options = {}) {
 
   function restoreAll(snapshot) {
     viewState.restoreAll(snapshot);
-    renderTree(root, viewState, model, regions);
+    for (const id of model.toArray().map((n) => n.id)) {
+      if (findGroup(id)) {
+        syncGroupContainer(id);
+        syncRowExpanded(id);
+      }
+    }
     if (persistFn) {
       persistFn(treeId, { expanded: [...snapshot] });
     }
@@ -194,7 +211,8 @@ export function createTreeController(container, options = {}) {
 
   function collapseBranch(id) {
     viewState.collapseBranch(id);
-    renderTree(root, viewState, model, regions);
+    syncGroupContainer(id);
+    syncRowExpanded(id);
     if (persistFn) {
       persistFn(treeId, { expanded: [...viewState.expanded] });
     }
@@ -207,6 +225,44 @@ export function createTreeController(container, options = {}) {
       return row;
     }
     return null;
+  }
+
+  function findGroup(id) {
+    const row = findRow(id);
+    if (!row) {
+      return null;
+    }
+    const group = row.parentElement.querySelector('ul[role="group"]');
+    if (group) {
+      return group;
+    }
+    return null;
+  }
+
+  function syncGroupContainer(id) {
+    const group = findGroup(id);
+    if (!group) {
+      return;
+    }
+    if (viewState.isExpanded(id)) {
+      group.classList.remove("tree-group-collapsed");
+      group.classList.add("tree-group-expanded");
+    } else {
+      group.classList.remove("tree-group-expanded");
+      group.classList.add("tree-group-collapsed");
+    }
+  }
+
+  function syncRowExpanded(id) {
+    const row = findRow(id);
+    if (!row) {
+      return;
+    }
+    if (viewState.isExpanded(id)) {
+      row.classList.add("tree-row-expanded");
+    } else {
+      row.classList.remove("tree-row-expanded");
+    }
   }
 
   /* Re-render the full tree. Used after view-state-only changes that affect

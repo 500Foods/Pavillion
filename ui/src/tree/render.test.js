@@ -122,7 +122,8 @@ test("createTree hides collapsed children groups", () => {
 
   const group = container.querySelector('[role="group"]');
   expect(group).not.toBeNull();
-  expect(group.hasAttribute("hidden")).toBe(true);
+  expect(group.classList.contains("tree-group-collapsed")).toBe(true);
+  expect(group.classList.contains("tree-group-expanded")).toBe(false);
 });
 
 test("createTree shows expanded children groups", () => {
@@ -135,7 +136,8 @@ test("createTree shows expanded children groups", () => {
 
   const group = container.querySelector('[role="group"]');
   expect(group).not.toBeNull();
-  expect(group.hasAttribute("hidden")).toBe(false);
+  expect(group.classList.contains("tree-group-expanded")).toBe(true);
+  expect(group.classList.contains("tree-group-collapsed")).toBe(false);
 });
 
 test("createTree renders placeholder nodes without HTML sink", () => {

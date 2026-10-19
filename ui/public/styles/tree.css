@@ -141,6 +141,24 @@
   color: var(--pav-status-error);
 }
 
+.pav-root .tree-row-disclosure {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--pav-tree-icon-size);
+  height: var(--pav-tree-icon-size);
+  font-size: var(--pav-tree-icon-size);
+  color: var(--pav-tree-text-muted);
+  transition: transform var(--pav-tree-transition-duration) ease;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.pav-root .tree-row-expanded .tree-row-disclosure {
+  transform: rotate(90deg);
+}
+
 .pav-root .tree-row-count {
   display: inline-flex;
   flex: none;
@@ -186,6 +204,41 @@
   border-radius: var(--pav-tree-row-radius);
   opacity: 0.45;
   pointer-events: none;
+}
+
+.pav-root .tree-group {
+  list-style: none;
+  margin: 0;
+  padding-left: var(--pav-tree-indent);
+  overflow: hidden;
+  max-height: 1000px;
+  transition: max-height var(--pav-tree-transition-duration) ease;
+}
+
+.pav-root .tree-group-collapsed {
+  max-height: 0;
+}
+
+.pav-root .tree-group-expanded {
+  max-height: 1000px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pav-root .tree-row-disclosure {
+    transition: none;
+  }
+
+  .pav-root .tree-group {
+    transition: none;
+  }
+
+  .pav-root .tree-group-collapsed {
+    display: none;
+  }
+
+  .pav-root .tree-group-expanded {
+    display: block;
+  }
 }
 
 .pav-root .tree-toolbar {

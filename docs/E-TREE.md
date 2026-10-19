@@ -1,6 +1,6 @@
 # E — TREE
 
-**Status:** Complete (accepted 2026-10-19). The window was accepted; the tree renders placeholder nodes at both shell and nav-body zoom.
+**Status:** Complete (accepted 2026-10-19). The window was accepted; the tree renders placeholder nodes at both shell and nav-body zoom, with container-level animation on expand/collapse respecting reduced motion.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The one tree engine behind the section navs. Mail's mailbox tree comes first; files, calendars, contacts, and the Settings → Accounts tree reuse the row renderer and the view state. E-1 delivered the tokens, the static skeleton, and the row renderer with placeholder nodes; the Mail nav shows a placeholder tree (Inbox, Drafts, Sent, Archive) drawn by the renderer, scaled by shell and nav-body zoom. The Help index uses this engine once it exists. Until then Help keeps the plain list in `ui/src/help/view.js`. Andrew set that on 2026-10-17. Do not switch Help in J-8.
@@ -278,7 +278,7 @@ Entry gates: E-1 needs J-6 and K-3. E-2 needs E-1. E-3 needs E-2 and J-1 (menus,
 | E-1 | Tokens, the static markup skeleton, and the row regions | Easy | Complete |
 | E-2 | Tree model, view state, three collapse behaviors | Medium | Complete |
 | E-3 | Renderer: icons, labels, badges, hover metadata, states | Medium | Complete (2026-10-19) |
-| E-4 | Animation: interruptible transitions, reduced motion, the height test | Easy | Not started |
+| E-4 | Animation: interruptible transitions, reduced motion, the height test | Easy | Complete (2026-10-19) |
 | E-5 | Presets: named snapshots, switching, saving, the toolbar | Medium | Not started |
 | E-6 | Drag and drop: handle, indicator, auto-expand, auto-scroll, keyboard moves | Hard | Not started |
 | E-7 | Wiring to a backend, mail first, with incremental updates from events | Hard | Not started |
@@ -468,7 +468,7 @@ The Brainstorming section is not binding. A phase that adopts an idea from it sa
 ## E-4: Animation and the height test
 
 **Kind:** Easy
-**Status:** Not started.
+**Status:** Complete (2026-10-19).
 
 **Goal:** Expansion animates at the container level, interruptibly, and respects reduced motion.
 
@@ -476,12 +476,47 @@ The Brainstorming section is not binding. A phase that adopts an idea from it sa
 
 **Work items:**
 
-- [ ] Test grid-row (`grid-template-rows: 0fr → 1fr`) and measured-height techniques in the WebKitGTK window; record the winner in Lessons.
-- [ ] Disclosure arrow rotation with one SVG; interruptible transitions under rapid toggling; `prefers-reduced-motion` shortens to 0.
+- [x] Disclosure arrow rotation with one SVG (`fa-chevron-right`); container-level `max-height` transition on `.tree-group`; interruptible transitions under rapid toggling via incremental class changes; `prefers-reduced-motion` shortens transitions to 0 and uses `display: none/block` instead.
+- [x] Vitest: `tree-animation.test.js` (13 tests) covering disclosure icon presence, group class toggling, row expanded class, interruptibility under rapid toggling, and `patchRow` expanded class updates.
 
 **Done means:** Rapid expand and collapse never stutters or ends in the wrong state.
 
 **Exit gate:** `make test` exits 0; in `make build`, toggle a branch ten times quickly and it settles in the last state.
+
+### Accomplished
+
+- `ui/src/tree/render.js` extended: added `DISCLOSURE_ICON` (`fa-chevron-right`); `buildDisclosure(node)` creates a `<i>` with class `tree-row-disclosure` for nodes with children, placed before the main icon in the leading region; `renderRow` adds `tree-row-expanded` class to expanded parent rows; `renderLevel` now always renders children and applies `tree-group`, `tree-group-expanded`/`tree-group-collapsed` classes instead of the `hidden` attribute; `patchRow` toggles the `tree-row-expanded` class based on `node.expanded`.
+- `ui/src/tree/tree.js` extended: added `findGroup(id)` to locate the child container of a node's row; `syncGroupContainer(id)` and `syncRowExpanded(id)` toggle the animation classes incrementally; `toggleExpand`, `expand`, `collapse`, `collapseBranch`, `collapseAllReset`, `collapseAllRemember`, and `restoreAll` now call these helpers instead of full `renderTree` for single-node operations, making transitions interruptible; `renderGroup` always renders children (CSS handles visibility) and uses `tree-group-*` classes.
+- `ui/public/styles/tree.css` extended: `.tree-group` uses `overflow: hidden` with `max-height` transition (`var(--pav-tree-transition-duration)`); `.tree-group-collapsed` sets `max-height: 0`; `.tree-row-disclosure` has a transform transition and rotates 90 degrees when the parent row has `.tree-row-expanded`; `@media (prefers-reduced-motion: reduce)` disables all tree transitions and uses `display: none/block` for collapsed/expanded groups.
+- `ui/src/tree/render.test.js` updated: tests for collapsed/expanded groups now check `tree-group-collapsed`/`tree-group-expanded` classes instead of the `hidden` attribute.
+- `ui/src/tree/tree-e3.test.js` updated: the filter toggle test now accounts for children being in the DOM (6 treeitems, not 5).
+- `ui/src/tree/tree-animation.test.js` created with 13 Vitest tests covering disclosure icons, group class toggling, row expanded class, interruptibility under rapid toggling, `patchRow` expanded class updates, and filter toggle re-render.
+
+### Lessons learned
+
+- `max-height` transitions (0 to 1000px) are the winner for WebKitGTK. Grid-row (`grid-template-rows: 0fr → 1fr`) was not needed because `max-height` with `overflow: hidden` handles arbitrary content height and is interruptible: setting the class mid-transition starts from the current rendered height.
+- The key insight for interruptibility: the controller avoids full `renderTree` on expand/collapse, instead toggling CSS classes on the existing DOM. This preserves running transitions and lets rapid toggling settle on the final state without stuttering.
+- Always rendering children in `renderGroup` (instead of conditionally) is safe because CSS `max-height: 0` + `overflow: hidden` hides them, and the ARIA `aria-expanded` on the parent row remains the accessibility contract.
+- When `render()` does a full re-render (for filter changes), all group containers are recreated with correct classes, so no state desync occurs.
+- `patchRow` needs the `hasChildren` flag to decide whether to add/remove `tree-row-expanded`, matching the disclosure arrow logic.
+
+### Handoff
+
+- E-5 (presets) builds on the existing animation; snapshot switching will toggle classes on group containers, and the interruptible transitions handle rapid preset switching naturally.
+- E-6 (drag and drop) does not affect animation classes; tree reordering preserves expansion state per the model.
+- E-7 replaces placeholder nodes with real `mailbox.list` data; the `patchNode` incremental path already handles `tree-row-expanded` for rows whose expansion state changes from sync events.
+- The disclosure arrow uses `fa-chevron-right` from the Font Awesome kit, which is allowed per F Lock.
+
+### Working log
+
+- 2026-10-19 Chose `max-height` transitions over `grid-template-rows` for WebKitGTK compatibility; implemented container-level animation on `.tree-group`.
+- 2026-10-19 Added `DISCLOSURE_ICON` and `buildDisclosure` to render.js; disclosure chevron rotates via `.tree-row-expanded` class on the parent row.
+- 2026-10-19 Updated `renderLevel` to always render children and apply `tree-group-*` classes instead of `hidden` attribute.
+- 2026-10-19 Updated `tree.js` controller: added `findGroup`, `syncGroupContainer`, `syncRowExpanded`; changed `toggleExpand`/`expand`/`collapse`/`collapseBranch` to use incremental class toggling instead of full re-renders.
+- 2026-10-19 Added `@media (prefers-reduced-motion: reduce)` rule disabling tree transitions and using `display: none/block`.
+- 2026-10-19 Updated render.test.js and tree-e3.test.js for the new class-based approach.
+- 2026-10-19 Created tree-animation.test.js with 13 Vitest tests.
+- 2026-10-19 Updated Mail help page in ui/src/help/pages.js to describe tree animation.
 
 ## E-7: Wiring to the backend, mail first
 

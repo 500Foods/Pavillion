@@ -2,7 +2,7 @@
    row regions. Outside data (labels, counts) is set via textContent, never
    innerHTML. The renderer owns DOM only; it does not fetch nodes. */
 
-const DEFAULT_REGIONS = ["leading", "label", "status", "count", "trailing"];
+export const DEFAULT_REGIONS = ["leading", "label", "status", "count", "trailing"];
 
 const REGION_CLASSES = {
   leading: "tree-row-leading",
@@ -25,6 +25,8 @@ const STATE_ICONS = {
   syncing: "fa-solid fa-spinner",
   error: "fa-sharp-duotone fa-solid fa-circle-exclamation",
 };
+
+const DISCLOSURE_ICON = "fa-sharp-duotone fa-solid fa-chevron-right";
 
 const SWATCH_MAP = {
   1: "tree-row-swatch tree-row-swatch-1",
@@ -59,6 +61,15 @@ function regionEl(kind, node, content) {
 function buildLeadingIcon(node) {
   const iconClass = node.icon || ICON_MAP[node.kind] || "fa-solid fa-circle";
   return createIcon(iconClass);
+}
+
+function buildDisclosure(node) {
+  if (!node.hasChildren) {
+    return null;
+  }
+  const icon = createIcon(DISCLOSURE_ICON, "Expand");
+  icon.classList.add("tree-row-disclosure");
+  return icon;
 }
 
 function buildSwatch(node) {
@@ -180,6 +191,9 @@ function buildRegion(kind, node) {
     if (swatch) {
       content.append(swatch);
     }
+    if (node.hasChildren) {
+      content.append(buildDisclosure(node));
+    }
     content.append(icon);
     return regionEl("leading", node, content);
   }
@@ -296,6 +310,15 @@ export function patchRow(node, row) {
     row.classList.remove("tree-row-error");
   }
 
+  if (node.hasChildren) {
+    const wasExpanded = row.classList.contains("tree-row-expanded");
+    if (node.expanded === true && !wasExpanded) {
+      row.classList.add("tree-row-expanded");
+    } else if (node.expanded === false && wasExpanded) {
+      row.classList.remove("tree-row-expanded");
+    }
+  }
+
   return true;
 }
 
@@ -321,6 +344,9 @@ export function renderRow(node, regions = DEFAULT_REGIONS) {
   row.setAttribute("aria-selected", selected ? "true" : "false");
   if (node.hasChildren) {
     row.setAttribute("aria-expanded", node.expanded ? "true" : "false");
+    if (node.expanded) {
+      row.classList.add("tree-row-expanded");
+    }
   }
   if (node.unread && node.unread > 0) {
     row.classList.add("tree-row-unread");
@@ -368,8 +394,11 @@ export function renderLevel(nodes, parentId, regions, depth = 0) {
       const childContainer = document.createElement("ul");
       childContainer.setAttribute("role", "group");
       childContainer.setAttribute("aria-label", `${computed.label || node.id} children`);
+      childContainer.classList.add("tree-group");
       if (!computed.expanded) {
-        childContainer.setAttribute("hidden", "");
+        childContainer.classList.add("tree-group-collapsed");
+      } else {
+        childContainer.classList.add("tree-group-expanded");
       }
       childContainer.append(renderLevel(nodes, node.id, regions, depth + 1));
       li.append(childContainer);
@@ -411,4 +440,4 @@ export function createTree(container, nodes, options = {}) {
   };
 }
 
-export { DEFAULT_REGIONS as DEFAULT_REGIONS_EXPORT };
+

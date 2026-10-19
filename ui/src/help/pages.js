@@ -54,6 +54,7 @@ export const helpPages = [
           "The tree engine keeps view state separate from the node model: expansion, selection, and hidden roots persist in preferences.ui.trees.mail across restarts. Collapsing a branch and reopening it restores its descendants exactly as they were. Keyboard shortcuts scoped to the tree use the arrow keys, Home/End, +/- to expand and collapse, and * to expand all siblings of the current branch.",
           "Rows show a primary unread badge, and a secondary badge that appears on hover for total messages or recursive folder size. Unread rows get a colored status marker, and a selected row stays selected on hover. Account nodes show a color swatch on the leading edge of the icon. Syncing folders show a spinner, and errors are marked in red.",
           "Right-click a folder or press Shift+F10 (or the Menu key) to open a context menu with actions like Collapse this branch, Mark favorite, and Properties. A toolbar above the tree has filter buttons: Star shows only favorite roots, Heart shows the second favorite set, and Ghost hides infrequent folders.",
+          "Expanding and collapsing a branch animates the disclosure arrow and the child group together at the container level. The animation is interruptible: rapid toggling settles on the final state. If your system asks for reduced motion, these transitions are disabled and branches show or hide instantly.",
           "When mail arrives, an HTML message is drawn in a sandboxed frame. Remote images stay off until you allow them for that message.",
         ],
       },
