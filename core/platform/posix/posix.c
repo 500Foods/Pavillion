@@ -14,6 +14,11 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "pav_compat.h"
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 static const PavPlatform *g_platform;
 
 void pav_platform_install(const PavPlatform *platform) {
@@ -270,7 +275,12 @@ static int write_temp(const char *path, const void *buf, size_t n, int abort_ren
         unlink(tmp);
         return -1;
     }
+#ifdef _WIN32
+    /* rename() will not replace an existing file on Windows. */
+    if (!MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+#else
     if (rename(tmp, path) != 0) {
+#endif
         unlink(tmp);
         return -1;
     }

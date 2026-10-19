@@ -27,7 +27,15 @@ void pav_secret_free(char *value) {
     if (value == NULL) {
         return;
     }
-    explicit_bzero(value, strlen(value));
+    {
+        /* Portable explicit_bzero: the volatile stores are not optimised away. */
+        volatile char *p = value;
+        size_t n = strlen(value);
+
+        while (n-- > 0) {
+            *p++ = 0;
+        }
+    }
     free(value);
 }
 

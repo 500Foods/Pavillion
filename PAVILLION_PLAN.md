@@ -312,11 +312,10 @@ Each is owned by the document named; the answer is written into that document's 
 | V-Q3 | How much of "tell a bot" is a Lua tool suite on `P.bot.tell`, and how much is C? Same talk as R-Q4. | V-10 |
 | R-Q4 | Lua tools and examples versus more core C, for bot triggers. Same talk as V-Q3. | V-10 |
 | G-Q1 | How does Lithium host the core (native module, WASM, Hydrogen-like process, or a socket to a running Pavillion)? | after G-4 |
-| G-Q4 | Windows: MSVC or MinGW? | G-6 |
 | W-Q1 | Fedora rpm only to start, or Omarchy from day one? Where is the dnf repo hosted? | W-3 |
 | W-Q2 | Vanadium Sans and Mono: package the fonts or rely on a system install? | W-3 |
 
-Answered: the repo is [github.com/500Foods/Pavillion](https://github.com/500Foods/Pavillion) (old Q11). Browsing is in scope (J-7). Lua is in (R). The kit stays the only way to load Font Awesome and is the default icon library; other libraries are typed https URLs on a build-time allowlist, and icons are sanitized HTML snippets (F, 2026-10-16).
+Answered: G-Q4 (2026-10-19): Windows uses MinGW, MSYS2 UCRT64, for the core, and the Tauri shell targets `x86_64-pc-windows-gnu` to link it; no Microsoft toolchain where a viable alternative exists (WebView2 is the exception). See the [G-LAYERS.md](docs/G-LAYERS.md) Lock. Answered: the repo is [github.com/500Foods/Pavillion](https://github.com/500Foods/Pavillion) (old Q11). Browsing is in scope (J-7). Lua is in (R). The kit stays the only way to load Font Awesome and is the default icon library; other libraries are typed https URLs on a build-time allowlist, and icons are sanitized HTML snippets (F, 2026-10-16).
 
 ## Where the old plan went
 

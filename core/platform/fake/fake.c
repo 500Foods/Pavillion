@@ -7,6 +7,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "pav_compat.h"
+
 #define SECRET_CAP 32
 
 typedef struct FakeSecret {

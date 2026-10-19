@@ -310,6 +310,11 @@ static void note_stack(void) {
     if (sz != 0) {
         g_stack = sz;
     }
+#elif defined(_WIN32)
+    /* winpthreads cannot read a thread's stack size; g_stack stays 0. */
+    (void)attr;
+    (void)sz;
+    (void)thread;
 #else
     if (pthread_getattr_np(*thread, &attr) != 0) {
         return;

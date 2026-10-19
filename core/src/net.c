@@ -12,11 +12,14 @@
 
 #include <errno.h>
 #include <pthread.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#else
 #include <sys/select.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/resource.h>
 #include <time.h>
 #include <unistd.h>
 

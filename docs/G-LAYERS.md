@@ -181,6 +181,7 @@ int pav_protocol(const char *req_json, PavBytes *out);
 | Packaging | rpm + dnf repo, Arch PKGBUILD | MSI | notarized .app | App Store |
 
 - The core must not: call X11, Wayland, or libayatana; use a `dlopen` database layer; take on libmicrohttpd, libwebsockets, MagickWand, or Brotli; assume `/` separators or `~`.
+- Windows toolchain (G-Q4, resolved 2026-10-19): the core builds with MinGW under MSYS2 UCRT64 (gcc, winpthreads), and the Tauri shell targets `x86_64-pc-windows-gnu` so it links the MinGW core. No MSVC or other Microsoft toolchain where a viable alternative exists; WebView2 is the one unavoidable Microsoft piece. Core code stays POSIX plus small `_WIN32` guards (Win32 API calls are fine) until G-6 adds `core/platform/windows/`.
 - Windows and macOS get no updater; manual downloads until a separate decision. The app never vendors a browser engine (that is also why AppImage is rejected, [W-SHIP.md](W-SHIP.md)).
 - iPad is the furthest out: the split-pane UI needs a touch layout and iOS background sync is a different domain from EventSource. Revisit after the initial working copy if there is demand.
 
@@ -351,7 +352,7 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 
 **Work items:**
 
-- [ ] `core/platform/macos/` with Keychain secrets (`SecItem*`) and Application Support dirs, or `windows/` per the toolchain answer (open question G-Q4).
+- [ ] `core/platform/macos/` with Keychain secrets (`SecItem*`) and Application Support dirs, or `windows/` (MinGW, G-Q4 resolved).
 - [ ] Homebrew (or vcpkg) dependency list in [W-SHIP.md](W-SHIP.md).
 - [ ] The CI job for the chosen second platform (`macos-core` or `windows-core`) loses `continue-on-error`.
 
@@ -362,7 +363,7 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 ## Open questions for Andrew
 
 - G-Q1. Lithium host: does Lithium run the C core itself (native module, WASM, or a Hydrogen-like process), or does Pavillion's UI talk to a running Pavillion over a socket or HTTP? This decides what `lithiumTransport` is. G-4 does not depend on the answer.
-- G-Q4. Windows: MSVC or MinGW for the core? It affects the pthreads choice in L1.
+- G-Q4. Resolved 2026-10-19: MinGW (MSYS2 UCRT64), see the Platforms Lock.
 
 ## Working log
 
@@ -378,3 +379,4 @@ G-2 writes `docs/API.md` from this list. The planned header line is `API version
 - 2026-10-17 G-4 follow-ons closed. Session zoom stack, shared bar strut, icons on `--pav-bar-zoom`, toolbar rules held at 1px. `make test` is 67 Unity tests and 34 Vitest tests. D-4 is next. Not pushed.
 - 2026-10-18 The L3 Lock no longer execs `pavillion-gui`. One ELF calls `pav_cli_main` before the window. No phase was started.
 - 2026-10-19 Added the `windows-core` CI job (MSYS2 UCRT64, `make test`, no window, `continue-on-error` until G-6), beside `macos-core`. G-Q4 stays open.
+- 2026-10-19 G-Q4 resolved: MinGW (MSYS2 UCRT64) for the core, Tauri shell on `x86_64-pc-windows-gnu`, no Microsoft toolchain except WebView2. Small `_WIN32` guards so `make test` builds on the fake platform in `windows-core`.

@@ -30,6 +30,15 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "pav_compat.h"
+
+/* File modes are a no-op on Windows (G Lock), so mode checks are skipped there. */
+#ifdef _WIN32
+#define ASSERT_MODE(want, st) ((void)(st))
+#else
+#define ASSERT_MODE(want, st) TEST_ASSERT_EQUAL_INT((want), (int)((st).st_mode & 0777))
+#endif
+
 /* Removed from pavillion.h in G-8. The bodies stay so these tests still link. */
 typedef struct PavillionStatus {
     char profile_name[256];
@@ -813,9 +822,9 @@ void test_ensure_writes_defaults_once(void) {
     snprintf(index_path, sizeof(index_path), "%s/Pavillion.json", dir);
     snprintf(profile_path, sizeof(profile_path), "%s/profiles/default.json", dir);
     TEST_ASSERT_EQUAL_INT(0, stat(index_path, &st));
-    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    ASSERT_MODE(0600, st);
     TEST_ASSERT_EQUAL_INT(0, stat(profile_path, &st));
-    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    ASSERT_MODE(0600, st);
 
     index_text = slurp(index_path);
     profile_text = slurp(profile_path);
@@ -1077,12 +1086,12 @@ void test_prepare_resolves_paths_and_skips_sqlite(void) {
     snprintf(expect, sizeof(expect), "%s/logs/default.log", g_cfg_dir);
     TEST_ASSERT_EQUAL_STRING(expect, load->profile->resolved_logs);
     TEST_ASSERT_EQUAL_INT(0, stat(expect, &st));
-    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    ASSERT_MODE(0600, st);
 
     snprintf(expect, sizeof(expect), "%s/blobs/default", g_cfg_dir);
     TEST_ASSERT_EQUAL_STRING(expect, load->profile->resolved_blobs);
     TEST_ASSERT_EQUAL_INT(0, stat(expect, &st));
-    TEST_ASSERT_EQUAL_INT(0700, (int)(st.st_mode & 0777));
+    ASSERT_MODE(0700, st);
 
     snprintf(expect, sizeof(expect), "%s/cache/default", g_cfg_dir);
     TEST_ASSERT_EQUAL_STRING(expect, load->profile->resolved_cache);
@@ -1110,7 +1119,7 @@ void test_prepare_resolves_paths_and_skips_sqlite(void) {
     TEST_ASSERT_EQUAL_INT(0, pav_config_prepare(g_cfg_dir, load->profile, err, sizeof(err)));
     TEST_ASSERT_EQUAL_STRING(absolute_log, load->profile->resolved_logs);
     TEST_ASSERT_EQUAL_INT(0, stat(absolute_log, &st));
-    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    ASSERT_MODE(0600, st);
     snprintf(path, sizeof(path), "%s/logs/default.log", g_cfg_dir);
     TEST_ASSERT_TRUE(access(path, F_OK) != 0);
     pav_config_load_free(load);
@@ -1193,7 +1202,7 @@ void test_sqlite_open_exec_and_reopen(void) {
     TEST_ASSERT_NOT_NULL(store);
     TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
     TEST_ASSERT_TRUE(S_ISREG(st.st_mode));
-    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    ASSERT_MODE(0600, st);
     TEST_ASSERT_EQUAL_INT(0, pav_store_exec(store, "SELECT 1", err, sizeof(err)));
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT(-1, pav_store_exec(store, "SELECT", err, sizeof(err)));
@@ -1202,7 +1211,7 @@ void test_sqlite_open_exec_and_reopen(void) {
     store = NULL;
 
     TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
-    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    ASSERT_MODE(0600, st);
     TEST_ASSERT_EQUAL_INT(0, user_table_count(path));
 
     TEST_ASSERT_EQUAL_INT(0, pav_store_open(&store, "sqlite", path, err, sizeof(err)));
@@ -1254,7 +1263,7 @@ void test_start_loads_default_profile(void) {
     snprintf(path, sizeof(path), "%s/default.sqlite", g_cfg_dir);
     TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
     TEST_ASSERT_TRUE(S_ISREG(st.st_mode));
-    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    ASSERT_MODE(0600, st);
 
     pavillion_stop();
     TEST_ASSERT_EQUAL_INT(0, pav_core_thread_alive());
@@ -1396,7 +1405,7 @@ void test_prefs_round_trip_clamp_and_mask(void) {
     TEST_ASSERT_EQUAL_INT(0, pavillion_prefs_apply(&prefs, PAV_PREFS_WINDOW, err, sizeof(err)));
     snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
     TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
-    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    ASSERT_MODE(0600, st);
 
     pavillion_stop();
     TEST_ASSERT_EQUAL_INT(-1, pavillion_prefs_apply(&prefs, PAV_PREFS_WINDOW, err, sizeof(err)));
@@ -1455,7 +1464,7 @@ void test_missing_ui_is_inserted(void) {
     TEST_ASSERT_TRUE(zoom > ui);
     free(text);
     TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
-    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    ASSERT_MODE(0600, st);
     pavillion_stop();
 }
 
@@ -1848,7 +1857,7 @@ void test_profile_write_is_atomic(void) {
     snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
     TEST_ASSERT_EQUAL_INT(0, pav_profile_store(path, load->profile, err, sizeof(err)));
     TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
-    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    ASSERT_MODE(0600, st);
     snprintf(tmp, sizeof(tmp), "%s.tmp", path);
     TEST_ASSERT_TRUE(stat(tmp, &st) != 0);
 
@@ -1870,7 +1879,7 @@ void test_profile_write_is_atomic(void) {
     after = slurp(path);
     TEST_ASSERT_EQUAL_STRING(file, after);
     TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
-    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    ASSERT_MODE(0600, st);
     TEST_ASSERT_TRUE(stat(tmp, &st) != 0);
 
     free(body);
@@ -1895,7 +1904,7 @@ void test_platform_fake_dirs_secrets_and_clock(void) {
     TEST_ASSERT_EQUAL_INT(0, platform->dir(PAV_DIR_DATA, data, sizeof(data)));
     TEST_ASSERT_EQUAL_INT(0, stat(data, &st));
     TEST_ASSERT_TRUE(S_ISDIR(st.st_mode));
-    TEST_ASSERT_EQUAL_INT(0700, (int)(st.st_mode & 0777));
+    ASSERT_MODE(0700, st);
     TEST_ASSERT_EQUAL_INT(0, platform->dir(PAV_DIR_RUNTIME, runtime, sizeof(runtime)));
     TEST_ASSERT_TRUE(strcmp(data, runtime) != 0);
     TEST_ASSERT_EQUAL_INT(0, stat(runtime, &st));
@@ -2657,7 +2666,7 @@ void test_themes_catalog_and_asset(void) {
 
     TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/Pavillion Dark.theme", g_cfg_dir) < (int)sizeof(path));
     TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
-    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    ASSERT_MODE(0600, st);
 
     root = call_reply("themes.ensure",
                       "{\"files\":[{\"name\":\"Pavillion Dark.theme\",\"text\":\"changed\"}]}");
@@ -2776,7 +2785,7 @@ void test_start_creates_workdir_0700(void) {
     TEST_ASSERT_EQUAL_INT(0, pavillion_start(nested, err, sizeof(err)));
     TEST_ASSERT_EQUAL_INT(0, stat(nested, &st));
     TEST_ASSERT_TRUE(S_ISDIR(st.st_mode));
-    TEST_ASSERT_EQUAL_INT(0700, (int)(st.st_mode & 0777));
+    ASSERT_MODE(0700, st);
 }
 
 void test_logring_wraps_at_capacity(void) {
@@ -2935,7 +2944,7 @@ void test_log_rotation_over_limit(void) {
     TEST_ASSERT_TRUE(snprintf(generation, sizeof(generation), "%s.1", exact) < (int)sizeof(generation));
     TEST_ASSERT_TRUE(stat(generation, &st) != 0);
     TEST_ASSERT_EQUAL_INT(0, stat(exact, &st));
-    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    ASSERT_MODE(0600, st);
 
     write_sized(over, limit + 1, 'Z');
     write_text(bak, "old-gen\n");
@@ -2948,7 +2957,7 @@ void test_log_rotation_over_limit(void) {
     TEST_ASSERT_TRUE(st.st_size > limit);
     TEST_ASSERT_EQUAL_CHAR('Z', last_byte(bak));
     TEST_ASSERT_EQUAL_INT(0, stat(over, &st));
-    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    ASSERT_MODE(0600, st);
     TEST_ASSERT_TRUE(st.st_size < 4096);
     text = slurp(over);
     TEST_ASSERT_EQUAL_INT(1, count_text(text, "rotated-line"));
@@ -3060,7 +3069,7 @@ void test_log_before_profile_goes_to_workdir_log(void) {
     free(text);
     free(err);
     TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
-    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    ASSERT_MODE(0600, st);
     TEST_ASSERT_TRUE(snprintf(profile, sizeof(profile), "%s/logs/default.log", g_cfg_dir) <
                      (int)sizeof(profile));
     TEST_ASSERT_TRUE(stat(profile, &st) != 0);
@@ -3134,7 +3143,7 @@ void test_log_export_filter(void) {
     TEST_ASSERT_EQUAL_STRING(line, exported);
     free(exported);
     TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
-    TEST_ASSERT_EQUAL_INT(0600, (int)(st.st_mode & 0777));
+    ASSERT_MODE(0600, st);
 
     TEST_ASSERT_TRUE(snprintf(args, sizeof(args),
                               "{\"path\":\"%s\",\"filter\":{\"levels\":[\"WARN\"],\"subsystems\":[\"config\"],"
@@ -4064,6 +4073,9 @@ void test_writer_busy_retries_once(void) {
 }
 
 void test_store_writer_stack_is_512kb(void) {
+#ifdef _WIN32
+    TEST_IGNORE_MESSAGE("winpthreads cannot read a thread stack size");
+#endif
     char path[160];
     size_t stack = 0;
 
