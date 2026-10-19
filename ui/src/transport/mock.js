@@ -62,6 +62,11 @@ export function mockTransport() {
   let accounts = [];
   let nextNumber = 1;
   let accountTestState = "idle";
+  /* log.db stand-in (H-4): every line ever logged, oldest first, each
+     {seq, ts, level, subsystem, text, session}. The ring is the last 10,000. */
+  let logHistory = [];
+  let logCapMb = 10;
+  const LOG_ROW_BYTES = 200;
 
   async function call(cmd, args) {
     const input = args ?? {};
@@ -286,7 +291,54 @@ export function mockTransport() {
       return {};
     }
     if (cmd === "log.tail") {
-      return { lines: [] };
+      return { lines: logHistory.slice(-10000).map(({ session, ...line }) => line) };
+    }
+    if (cmd === "log.query") {
+      if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 10000) {
+        throw fail("bad_args", "limit must be an integer from 1 to 10000");
+      }
+      const current = logHistory.reduce((max, line) => Math.max(max, line.session || 1), 1);
+      const wanted = input.session === "current" ? current : input.session === "previous" ? current - 1 : null;
+      const kept = logHistory.filter((line) => {
+        const ms = Date.parse(line.ts);
+        return (input.beforeSeq === undefined || line.seq < input.beforeSeq)
+          && (input.since === undefined || ms >= input.since)
+          && (input.until === undefined || ms < input.until)
+          && (wanted === null || (line.session || 1) === wanted)
+          && (!Array.isArray(input.levels) || input.levels.includes(line.level));
+      });
+      return { lines: kept.slice(-input.limit).map(({ session, ...line }) => line) };
+    }
+    if (cmd === "log.stats" || cmd === "log.trim") {
+      if (cmd === "log.trim") {
+        if (input.mb !== undefined) {
+          if (!Number.isInteger(input.mb) || input.mb < 1 || input.mb > 100) {
+            throw fail("bad_args", "mb must be an integer from 1 to 100");
+          }
+          logCapMb = input.mb;
+        }
+        const keep = Math.floor((logCapMb * 1024 * 1024) / LOG_ROW_BYTES);
+        logHistory = logHistory.slice(-keep);
+      }
+      const oldest = logHistory[0];
+      return {
+        bytes: logHistory.length * LOG_ROW_BYTES,
+        records: logHistory.length,
+        oldestSeq: oldest ? oldest.seq : null,
+        oldestTs: oldest ? Date.parse(oldest.ts) : null,
+        capMb: logCapMb,
+      };
+    }
+    if (cmd === "log.trim_preview") {
+      if (!Number.isInteger(input.mb) || input.mb < 1 || input.mb > 100) {
+        throw fail("bad_args", "mb must be an integer from 1 to 100");
+      }
+      const kept = logHistory.slice(-Math.floor((input.mb * 1024 * 1024) / LOG_ROW_BYTES));
+      return {
+        bytes: kept.length * LOG_ROW_BYTES,
+        records: kept.length,
+        oldestTs: kept.length > 0 ? Date.parse(kept[0].ts) : null,
+      };
     }
     if (cmd === "log.export") {
       if (typeof input.path !== "string" || !isObject(input.filter)) {
@@ -299,6 +351,9 @@ export function mockTransport() {
 
   return {
     seen,
+    setLogHistory(lines) {
+      logHistory = Array.isArray(lines) ? lines.slice() : [];
+    },
     call,
     on(handler) {
       listeners.add(handler);

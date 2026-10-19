@@ -5883,6 +5883,300 @@ void test_remote_accounts_from_session(void) {
     free(body);
 }
 
+void test_api_md_lists_every_event(void) {
+    static const char *const emitted[] = {"accounts.changed", "activity.changed", "link.clicked", "log.lines"};
+    FILE *f = fopen("docs/API.md", "rb");
+    char line[2048];
+    char heading[API_NAME_LEN] = "";
+    int in_events = 0;
+    int real = 0;
+    size_t i;
+
+    TEST_ASSERT_NOT_NULL(f);
+    while (fgets(line, sizeof(line), f) != NULL) {
+        rstrip(line);
+        if (strncmp(line, "## ", 3) == 0) {
+            in_events = strcmp(line, "## Events") == 0;
+            continue;
+        }
+        if (in_events && strncmp(line, "### ", 4) == 0) {
+            snprintf(heading, sizeof(heading), "%s", line + 4);
+            continue;
+        }
+        if (in_events && strncmp(line, "State: real", 11) == 0) {
+            int known = 0;
+
+            for (i = 0; i < sizeof(emitted) / sizeof(emitted[0]); i++) {
+                known |= strcmp(emitted[i], heading) == 0;
+            }
+            TEST_ASSERT_TRUE_MESSAGE(known, heading);
+            real++;
+        }
+    }
+    fclose(f);
+    TEST_ASSERT_EQUAL_INT((int)(sizeof(emitted) / sizeof(emitted[0])), real);
+}
+
+/* H-4 commit 3: history from log.db through the core. */
+static void start_core_db(void) {
+    capture_stderr();
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+}
+
+static void stop_core_db(void) {
+    pavillion_stop();
+    pav_log_thread_shutdown();
+    free(take_stderr());
+}
+
+static json_t *query_lines(const char *args, json_t **root_out) {
+    json_t *root = call_reply("log.query", args);
+    json_t *lines;
+
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    lines = json_object_get(json_object_get(root, "data"), "lines");
+    TEST_ASSERT_TRUE(json_is_array(lines));
+    *root_out = root;
+    return lines;
+}
+
+static json_int_t line_seq(json_t *lines, size_t i) {
+    return json_integer_value(json_object_get(json_array_get(lines, i), "seq"));
+}
+
+void test_log_query_pages_before_seq(void) {
+    json_t *root;
+    json_t *lines;
+    json_int_t oldest;
+    size_t i;
+    char args[128];
+    int got = 0;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    start_core_db();
+    for (i = 0; i < 12000; i++) {
+        pav_log("core", PAV_DEBUG, 1, "page-row-%d", (int)i);
+    }
+    /* The ring holds 10,000 lines; older ones come only from log.db. */
+    root = call_reply("log.tail", "{\"limit\":1}");
+    json_decref(root);
+    lines = query_lines("{\"limit\":5000,\"text\":\"page-row-\"}", &root);
+    TEST_ASSERT_EQUAL_INT(5000, (int)json_array_size(lines));
+    TEST_ASSERT_EQUAL_STRING("page-row-11999",
+                             json_string_value(json_object_get(json_array_get(lines, 4999), "text")));
+    for (i = 1; i < 5000; i++) {
+        TEST_ASSERT_TRUE(line_seq(lines, i - 1) < line_seq(lines, i));
+    }
+    oldest = line_seq(lines, 0);
+    json_decref(root);
+    for (;;) {
+        snprintf(args, sizeof(args), "{\"limit\":5000,\"text\":\"page-row-\",\"beforeSeq\":%lld}", (long long)oldest);
+        lines = query_lines(args, &root);
+        got += (int)json_array_size(lines);
+        if (json_array_size(lines) == 0) {
+            json_decref(root);
+            break;
+        }
+        TEST_ASSERT_TRUE(line_seq(lines, json_array_size(lines) - 1) < oldest);
+        oldest = line_seq(lines, 0);
+        if (json_array_size(lines) < 5000) {
+            TEST_ASSERT_EQUAL_STRING("page-row-0", json_string_value(json_object_get(json_array_get(lines, 0), "text")));
+            json_decref(root);
+            break;
+        }
+        json_decref(root);
+    }
+    TEST_ASSERT_EQUAL_INT(7000, got);
+    stop_core_db();
+}
+
+void test_log_query_since_until(void) {
+    json_t *root;
+    json_t *lines;
+    char args[200];
+    char path[200];
+    sqlite3 *db = NULL;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    start_core_db();
+    stop_core_db();
+    /* Rows at known times: 1000, 2000, 3000 ms. */
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/default.log.db", g_cfg_dir) < (int)sizeof(path));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open(path, &db));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db,
+                                                  "INSERT INTO log (seq, ts, session, level, subsystem, text) VALUES "
+                                                  "(100001, 1000, 1, 2, 'core', 'range-a'),"
+                                                  "(100002, 2000, 1, 2, 'core', 'range-b'),"
+                                                  "(100003, 3000, 1, 2, 'core', 'range-c')",
+                                                  NULL, NULL, NULL));
+    sqlite3_close(db);
+    start_core_db();
+    snprintf(args, sizeof(args), "{\"limit\":100,\"text\":\"range-\",\"since\":2000,\"until\":3000}");
+    lines = query_lines(args, &root);
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(lines));
+    TEST_ASSERT_EQUAL_STRING("range-b", json_string_value(json_object_get(json_array_get(lines, 0), "text")));
+    json_decref(root);
+    lines = query_lines("{\"limit\":100,\"text\":\"range-\",\"since\":2000}", &root);
+    TEST_ASSERT_EQUAL_INT(2, (int)json_array_size(lines));
+    json_decref(root);
+    lines = query_lines("{\"limit\":100,\"text\":\"range-\",\"until\":2000}", &root);
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(lines));
+    TEST_ASSERT_EQUAL_STRING("range-a", json_string_value(json_object_get(json_array_get(lines, 0), "text")));
+    json_decref(root);
+    stop_core_db();
+}
+
+void test_log_query_filters(void) {
+    json_t *root;
+    json_t *lines;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    start_core_db();
+    pav_log("core", PAV_WARN, 0, "filt-warn");
+    pav_log("ui", PAV_INFO, 0, "filt-info");
+    pav_log("ui", PAV_TRACE, 0, "filt-trace");
+    lines = query_lines("{\"limit\":100,\"text\":\"FILT-\",\"levels\":[\"WARN\",\"TRACE\"]}", &root);
+    TEST_ASSERT_EQUAL_INT(2, (int)json_array_size(lines));
+    TEST_ASSERT_EQUAL_STRING("WARN", json_string_value(json_object_get(json_array_get(lines, 0), "level")));
+    TEST_ASSERT_EQUAL_STRING("TRACE", json_string_value(json_object_get(json_array_get(lines, 1), "level")));
+    json_decref(root);
+    lines = query_lines("{\"limit\":100,\"text\":\"filt-\",\"subsystems\":[\"ui\"]}", &root);
+    TEST_ASSERT_EQUAL_INT(2, (int)json_array_size(lines));
+    json_decref(root);
+    lines = query_lines("{\"limit\":100,\"text\":\"filt-\",\"levels\":[]}", &root);
+    TEST_ASSERT_EQUAL_INT(0, (int)json_array_size(lines));
+    json_decref(root);
+    lines = query_lines("{\"limit\":1,\"text\":\"filt-\"}", &root);
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(lines));
+    TEST_ASSERT_EQUAL_STRING("filt-trace", json_string_value(json_object_get(json_array_get(lines, 0), "text")));
+    json_decref(root);
+    stop_core_db();
+}
+
+void test_log_query_session_current_previous_all(void) {
+    json_t *root;
+    json_t *lines;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    start_core_db();
+    lines = query_lines("{\"limit\":100,\"session\":\"previous\"}", &root);
+    TEST_ASSERT_EQUAL_INT(0, (int)json_array_size(lines));
+    json_decref(root);
+    pav_log("core", PAV_INFO, 0, "sess-one");
+    stop_core_db();
+    start_core_db();
+    pav_log("core", PAV_INFO, 0, "sess-two");
+    lines = query_lines("{\"limit\":100,\"text\":\"sess-\",\"session\":\"current\"}", &root);
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(lines));
+    TEST_ASSERT_EQUAL_STRING("sess-two", json_string_value(json_object_get(json_array_get(lines, 0), "text")));
+    json_decref(root);
+    lines = query_lines("{\"limit\":100,\"text\":\"sess-\",\"session\":\"previous\"}", &root);
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(lines));
+    TEST_ASSERT_EQUAL_STRING("sess-one", json_string_value(json_object_get(json_array_get(lines, 0), "text")));
+    json_decref(root);
+    lines = query_lines("{\"limit\":100,\"text\":\"sess-\",\"session\":\"all\"}", &root);
+    TEST_ASSERT_EQUAL_INT(2, (int)json_array_size(lines));
+    json_decref(root);
+    lines = query_lines("{\"limit\":100,\"text\":\"sess-\",\"session\":1}", &root);
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(lines));
+    json_decref(root);
+    stop_core_db();
+}
+
+void test_log_query_bad_args(void) {
+    static const char *const bad_args[] = {
+        "{}", "{\"limit\":0}", "{\"limit\":10001}", "{\"limit\":5,\"beforeSeq\":0}",
+        "{\"limit\":5,\"since\":-1}", "{\"limit\":5,\"until\":\"x\"}", "{\"limit\":5,\"session\":\"later\"}",
+        "{\"limit\":5,\"levels\":[\"LOUD\"]}", "{\"limit\":5,\"subsystems\":7}", "{\"limit\":5,\"bogus\":1}",
+    };
+    size_t i;
+    json_t *root;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    start_core_db();
+    for (i = 0; i < sizeof(bad_args) / sizeof(bad_args[0]); i++) {
+        root = call_reply("log.query", bad_args[i]);
+        assert_call_error(root, "bad_args", NULL);
+        json_decref(root);
+    }
+    stop_core_db();
+}
+
+void test_log_export_reads_db(void) {
+    json_t *root;
+    char out[200];
+    char args[400];
+    char *text;
+    int i;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    start_core_db();
+    for (i = 0; i < 10500; i++) {
+        pav_log("core", PAV_DEBUG, 1, "exp-row-%d.", i);
+    }
+    TEST_ASSERT_TRUE(snprintf(out, sizeof(out), "%s/export.log", g_cfg_dir) < (int)sizeof(out));
+    snprintf(args, sizeof(args),
+             "{\"path\":\"%s\",\"filter\":{\"levels\":[\"DEBUG\"],\"text\":\"exp-row-\",\"session\":\"current\"}}", out);
+    root = call_reply("log.export", args);
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    TEST_ASSERT_EQUAL_INT(10500, (int)json_integer_value(json_object_get(json_object_get(root, "data"), "lines")));
+    json_decref(root);
+    text = slurp(out);
+    /* Older than the ring, and in order, as UTC C-CORE lines. */
+    TEST_ASSERT_NOT_NULL(strstr(text, " DEBUG core  exp-row-0.\n"));
+    TEST_ASSERT_TRUE(strstr(text, "exp-row-0.") < strstr(text, "exp-row-10499."));
+    TEST_ASSERT_EQUAL_CHAR('Z', text[23]);
+    free(text);
+    stop_core_db();
+}
+
+void test_log_trim_apply_saves_pref(void) {
+    json_t *root;
+    json_t *data;
+    char path[200];
+    json_error_t jerr;
+    json_t *profile;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    start_core_db();
+    log_megabytes(3, "apply");
+    root = call_reply("log.stats", "{}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    TEST_ASSERT_EQUAL_INT(10, (int)json_integer_value(json_object_get(json_object_get(root, "data"), "capMb")));
+    json_decref(root);
+    root = call_reply("log.trim_preview", "{\"mb\":1}");
+    data = json_object_get(root, "data");
+    TEST_ASSERT_TRUE(json_integer_value(json_object_get(data, "bytes")) <= 1024 * 1024);
+    TEST_ASSERT_NULL(json_object_get(data, "capMb"));
+    json_decref(root);
+    root = call_reply("log.trim", "{\"mb\":1}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_INT(1, (int)json_integer_value(json_object_get(data, "capMb")));
+    TEST_ASSERT_TRUE(json_integer_value(json_object_get(data, "bytes")) <= 1024 * 1024);
+    TEST_ASSERT_TRUE(json_is_integer(json_object_get(data, "oldestSeq")));
+    json_decref(root);
+    snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
+    profile = json_load_file(path, 0, &jerr);
+    TEST_ASSERT_NOT_NULL(profile);
+    TEST_ASSERT_EQUAL_INT(1, (int)json_integer_value(
+                                 json_object_get(json_object_get(profile, "preferences"), "log_max_mb")));
+    json_decref(profile);
+    root = call_reply("log.trim", "{\"mb\":0}");
+    assert_call_error(root, "bad_args", "mb");
+    json_decref(root);
+    root = call_reply("log.trim_preview", "{}");
+    assert_call_error(root, "bad_args", "mb");
+    json_decref(root);
+    stop_core_db();
+    /* The saved cap is read at the next start. */
+    start_core_db();
+    root = call_reply("log.stats", "{}");
+    TEST_ASSERT_EQUAL_INT(1, (int)json_integer_value(json_object_get(json_object_get(root, "data"), "capMb")));
+    json_decref(root);
+    stop_core_db();
+}
+
 int main(void) {
     setvbuf(stdout, NULL, _IONBF, 0); /* keep results visible if a test crashes */
     pav_platform_install(pav_platform_fake());
@@ -5960,6 +6254,14 @@ int main(void) {
     RUN_TEST(test_log_trim_preview_deletes_nothing);
     RUN_TEST(test_log_trim_now_uses_saved_cap);
     RUN_TEST(test_log_trim_bad_mb);
+    RUN_TEST(test_api_md_lists_every_event);
+    RUN_TEST(test_log_query_pages_before_seq);
+    RUN_TEST(test_log_query_since_until);
+    RUN_TEST(test_log_query_filters);
+    RUN_TEST(test_log_query_session_current_previous_all);
+    RUN_TEST(test_log_query_bad_args);
+    RUN_TEST(test_log_export_reads_db);
+    RUN_TEST(test_log_trim_apply_saves_pref);
     RUN_TEST(test_log_lines_one_batch);
     RUN_TEST(test_log_client_sanitizes);
     RUN_TEST(test_log_before_workdir_stderr_only);

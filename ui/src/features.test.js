@@ -57,6 +57,7 @@ test("suite cells start hidden, and hiding Mail removes that cell and its home",
     "Tabs",
     "Accounts",
     "Zooms",
+    "Logs",
   ]);
   expect(root.querySelector('[data-settings="features"]').hidden).toBe(false);
   expect(root.querySelector('[data-feature="bots"]').checked).toBe(false);

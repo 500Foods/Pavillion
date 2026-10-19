@@ -38,6 +38,8 @@ int pav_core_prefs_get_data(json_t **data, PavError *err);
 int pav_core_prefs_set(json_t *args, json_t **data, PavError *err);
 int pav_core_ui_get_data(json_t **data, PavError *err);
 int pav_core_ui_set(json_t *args, json_t **data, PavError *err);
+/* Writes preferences.log_max_mb (1 to 100) to the profile. Returns 0, or -1. */
+int pav_core_set_log_max_mb(int mb, PavError *err);
 
 int pav_ui_log(const char *subsystem, int level, const char *message);
 

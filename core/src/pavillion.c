@@ -1593,6 +1593,30 @@ int pav_core_ui_get_data(json_t **data, PavError *err) {
     return 0;
 }
 
+/* log.trim {mb}: writes preferences.log_max_mb (H-4 Lock, Retention). */
+int pav_core_set_log_max_mb(int mb, PavError *err) {
+    json_t *prefs;
+    char errbuf[512];
+
+    if (mb < 1 || mb > 100) {
+        pav_error_set(err, "bad_args", "mb must be an integer from 1 to 100", 0);
+        return -1;
+    }
+    if (!profile_is_ready(err)) {
+        return -1;
+    }
+    errbuf[0] = '\0';
+    prefs = json_object_get((json_t *)g_load->profile->doc, "preferences");
+    if (!json_is_object(prefs) || json_object_set_new(prefs, "log_max_mb", json_integer(mb)) != 0) {
+        return fail_profile(err, "cannot write preferences.log_max_mb");
+    }
+    g_load->profile->log_max_mb = mb;
+    if (pav_profile_store(g_load->profile_path, g_load->profile, errbuf, sizeof(errbuf)) != 0) {
+        return fail_profile(err, errbuf);
+    }
+    return 0;
+}
+
 int pav_core_ui_set(json_t *args, json_t **data, PavError *err) {
     char *compact;
     char errbuf[512];
@@ -1642,6 +1666,7 @@ int pav_core_ui_set(json_t *args, json_t **data, PavError *err) {
 #define LOG_REQ_STATS 1
 #define LOG_REQ_PREVIEW 2
 #define LOG_REQ_TRIM 3
+#define LOG_REQ_CALL 4
 
 typedef struct LogNode {
     struct LogNode *next;
@@ -1700,6 +1725,8 @@ static int g_log_req;
 static int g_log_req_mb;
 static int g_log_req_rc;
 static PavLogStats g_log_req_out;
+static PavLogDbFn g_log_req_fn;
+static void *g_log_req_ctx;
 static uint64_t g_log_seq;
 
 /* Same specifier count as Hydrogen's count_format_specifiers. */
@@ -2213,6 +2240,8 @@ static void run_req_outside_lock(void) {
             rc = pav_logdb_trim_preview(g_logdb, cap, &out);
         } else if (req == LOG_REQ_TRIM) {
             rc = pav_logdb_trim(g_logdb, cap, g_log_session, &out);
+        } else if (req == LOG_REQ_CALL) {
+            rc = g_log_req_fn(g_log_req_ctx, g_logdb, g_log_session);
         }
     }
     pthread_mutex_lock(&g_log_mu);
@@ -2487,6 +2516,37 @@ static int log_request(int req, int mb, PavLogStats *out) {
     }
     rc = g_log_req_rc;
     *out = g_log_req_out;
+    pthread_mutex_unlock(&g_log_mu);
+    return rc;
+}
+
+int pav_log_db_call(PavLogDbFn fn, void *ctx) {
+    int rc;
+
+    if (fn == NULL) {
+        return -1;
+    }
+    pthread_mutex_lock(&g_log_mu);
+    if (!g_log_alive || g_log_dest != LOG_DEST_PROFILE || pthread_equal(pthread_self(), g_log_tid)) {
+        pthread_mutex_unlock(&g_log_mu);
+        return -2;
+    }
+    while (g_log_req != LOG_REQ_NONE && g_log_alive) {
+        pthread_cond_wait(&g_log_cv, &g_log_mu);
+    }
+    if (!g_log_alive || g_log_dest != LOG_DEST_PROFILE) {
+        pthread_mutex_unlock(&g_log_mu);
+        return -2;
+    }
+    g_log_req = LOG_REQ_CALL;
+    g_log_req_fn = fn;
+    g_log_req_ctx = ctx;
+    g_log_req_rc = -1;
+    pthread_cond_broadcast(&g_log_cv);
+    while (g_log_req == LOG_REQ_CALL && g_log_alive) {
+        pthread_cond_wait(&g_log_cv, &g_log_mu);
+    }
+    rc = g_log_req_rc;
     pthread_mutex_unlock(&g_log_mu);
     return rc;
 }

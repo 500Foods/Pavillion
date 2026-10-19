@@ -165,6 +165,14 @@ export const helpPages = [
         ],
       },
       {
+        id: "log",
+        title: "Logs",
+        paragraphs: [
+          "Every log line is kept in the profile's log database, beside its store, up to a size cap from 1 MB to 100 MB (10 MB unless you change it). When the database is over the cap, the oldest lines go first: at shutdown, and when you press Apply or Trim Now.",
+          "Refresh shows the size, the number of records, and the oldest line's local date and time. Moving the slider shows an estimate of what a trim to that size would keep; nothing is deleted until you press a button. Apply saves the new cap and trims to it. Trim Now trims to the saved cap.",
+        ],
+      },
+      {
         id: "theme",
         title: "Themes",
         paragraphs: [
@@ -254,6 +262,7 @@ export const helpPages = [
         title: "Activity and Logs",
         paragraphs: [
           "Activity and Logs share one tab. The nav button opens whichever you used last. Logs are the live log, with severity, subsystem, and search. Activity is the list of work the app is doing. The column is labeled Action.",
+          "The log shows a time range: the last 12 hours unless you pick 24 hours, 7 days, All, or Custom (a From and To date and time). The choice is kept. The session list shows This run, Last run, or All. Scroll above the oldest line, or widen the range, and older lines are read from the profile's log database. Copy, Save, and Print use the same range, session, and filters.",
           "Update asks for a sync and spins while sync work is running. Until accounts exist, that request does nothing. Settings → Features can hide Update, and can give it a shortcut that runs the same sync. Activity can be hidden there too. A release build hides the demo item on the Help bar.",
         ],
       },
@@ -295,7 +304,7 @@ export const helpPages = [
         id: "index",
         title: "Pavillion.json",
         paragraphs: [
-          "The working directory holds Pavillion.json, a profiles folder, a logs folder, the database file, blobs, and cache. Pavillion.json is the index. It is never a profile. The app writes it on first run and keeps unknown keys on a later rewrite.",
+          "The working directory holds Pavillion.json, a profiles folder, the database file, its log database (default.log.db), blobs, and cache. Pavillion.json is the index. It is never a profile. The app writes it on first run and keeps unknown keys on a later rewrite.",
           "A profile is a .json file in the profile folder, other than the index, with kind pavillion-profile. The id must match the file name without .json. A mismatch is skipped. Anything else in that folder is ignored and logged.",
         ],
         code: `{
@@ -323,7 +332,7 @@ export const helpPages = [
   "id": "default",
   "name": "Default",
   "storage": { "engine": "sqlite", "path": "default.sqlite" },
-  "logs": "logs/default.log",
+  "logs": "default.log.db",
   "blobs": "blobs/default",
   "cache": "cache/default",
   "accounts": [

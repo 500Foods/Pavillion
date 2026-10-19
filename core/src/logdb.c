@@ -1,6 +1,7 @@
 #include "pav_logdb.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "migrations_embed.h"
@@ -292,4 +293,110 @@ void pav_logdb_close(sqlite3 *db) {
     }
     (void)exec_sql(db, "PRAGMA wal_checkpoint(TRUNCATE)");
     sqlite3_close(db);
+}
+
+static const char *row_level_name(int level) {
+    static const char *const names[] = {"ERROR", "WARN", "INFO", "DEBUG", "TRACE"};
+
+    return level >= 0 && level <= 4 ? names[level] : "?????";
+}
+
+int pav_logdb_walk(sqlite3 *db, const PavLogQuery *q, PavLogLineFn fn, void *ctx) {
+    char sql[512];
+    char levels[32];
+    sqlite3_stmt *stmt = NULL;
+    size_t off = 0;
+    int bind = 1;
+    int rc = 0;
+    int i;
+
+    if (db == NULL || q == NULL || fn == NULL) {
+        return -1;
+    }
+    levels[0] = '\0';
+    for (i = 0; i <= 4; i++) {
+        if (q->level_mask & (1u << i)) {
+            off += (size_t)snprintf(levels + off, sizeof(levels) - off, "%s%d", off > 0 ? "," : "", i);
+        }
+    }
+    if (off == 0) {
+        return 0;
+    }
+    snprintf(sql, sizeof(sql),
+             "SELECT seq, ts, level, subsystem, text FROM log WHERE level IN (%s)%s%s%s%s ORDER BY seq DESC", levels,
+             q->before_seq > 0 ? " AND seq < ?" : "", q->has_since ? " AND ts >= ?" : "",
+             q->has_until ? " AND ts < ?" : "", q->session > 0 ? " AND session = ?" : "");
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        return -1;
+    }
+    if (q->before_seq > 0) {
+        sqlite3_bind_int64(stmt, bind++, q->before_seq);
+    }
+    if (q->has_since) {
+        sqlite3_bind_int64(stmt, bind++, q->since);
+    }
+    if (q->has_until) {
+        sqlite3_bind_int64(stmt, bind++, q->until);
+    }
+    if (q->session > 0) {
+        sqlite3_bind_int64(stmt, bind++, q->session);
+    }
+    while (rc == 0) {
+        int step = sqlite3_step(stmt);
+        char stamp[32];
+        char *line;
+        const char *sub;
+        const char *text;
+        const char *name;
+        int n;
+
+        if (step == SQLITE_DONE) {
+            break;
+        }
+        if (step != SQLITE_ROW) {
+            rc = -1;
+            break;
+        }
+        if (pav_format_utc(stamp, sizeof(stamp), sqlite3_column_int64(stmt, 1)) != 0) {
+            snprintf(stamp, sizeof(stamp), "0000-00-00T00:00:00.000Z");
+        }
+        name = row_level_name(sqlite3_column_int(stmt, 2));
+        sub = (const char *)sqlite3_column_text(stmt, 3);
+        text = (const char *)sqlite3_column_text(stmt, 4);
+        if (sub == NULL) {
+            sub = "";
+        }
+        if (text == NULL) {
+            text = "";
+        }
+        n = snprintf(NULL, 0, "%s %-5s %s  %s\n", stamp, name, sub, text);
+        line = n >= 0 ? malloc((size_t)n + 1) : NULL;
+        if (line == NULL) {
+            rc = -1;
+            break;
+        }
+        snprintf(line, (size_t)n + 1, "%s %-5s %s  %s\n", stamp, name, sub, text);
+        rc = fn(ctx, sqlite3_column_int64(stmt, 0), line);
+        free(line);
+    }
+    sqlite3_finalize(stmt);
+    return rc < 0 ? -1 : 0;
+}
+
+int pav_logdb_previous_session(sqlite3 *db, int64_t current, int64_t *out) {
+    sqlite3_stmt *stmt = NULL;
+
+    if (db == NULL || out == NULL) {
+        return -1;
+    }
+    *out = 0;
+    if (sqlite3_prepare_v2(db, "SELECT max(id) FROM session WHERE id < ?", -1, &stmt, NULL) != SQLITE_OK) {
+        return -1;
+    }
+    sqlite3_bind_int64(stmt, 1, current);
+    if (sqlite3_step(stmt) == SQLITE_ROW && sqlite3_column_type(stmt, 0) != SQLITE_NULL) {
+        *out = sqlite3_column_int64(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+    return 0;
 }

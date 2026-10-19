@@ -1,6 +1,7 @@
 import { Text } from "@codemirror/state";
 import { SearchQuery } from "@codemirror/search";
 import { fileLine } from "./format.js";
+import { normalizeRange, rangeBounds } from "./range.js";
 
 /* The core's log.export uses this same predicate. levels is the checked
    set (empty shows nothing). subsystems null means every subsystem, and an
@@ -19,7 +20,14 @@ export function levelsAtOrAbove(name) {
   return LOG_LEVELS.slice(0, (index < 0 ? 2 : index) + 1);
 }
 const LEVEL_SET = new Set(LOG_LEVELS);
-const OWN = ["levels", "subsystems", "text", "follow", "wrap"];
+const OWN = ["levels", "subsystems", "text", "follow", "wrap", "range"];
+
+/* The Log view's session filter (H-4 Lock): This run, Last run, All. */
+export const SESSIONS = [
+  { value: "current", label: "This run" },
+  { value: "previous", label: "Last run" },
+  { value: "all", label: "All" },
+];
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -63,6 +71,7 @@ export function normalizeFilter(raw) {
     text,
     follow: src.follow !== false,
     wrap: src.wrap === true,
+    range: normalizeRange(src.range),
   };
   for (const key of Object.keys(src)) {
     if (!OWN.includes(key)) {
@@ -113,4 +122,16 @@ export function lineVisible(entry, filter) {
     return false;
   }
   return textMatches(fileLine(entry), spec.text);
+}
+
+/* The filter as log.query and log.export take it (H-4 Lock, Reading
+   history): Copy, Save, and Print use the view's own query. */
+export function queryArgs(filter, session, now = Date.now()) {
+  const spec = normalizeFilter(filter);
+  const args = { levels: spec.levels, subsystems: spec.subsystems, ...rangeBounds(spec.range, now) };
+  if (spec.text !== "") {
+    args.text = spec.text;
+  }
+  args.session = SESSIONS.some((item) => item.value === session) ? session : "all";
+  return args;
 }

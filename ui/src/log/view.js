@@ -1,9 +1,12 @@
 import { Compartment, EditorState, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType } from "@codemirror/view";
-import { LOG_LEVELS, VIEW_LEVEL_NAMES, countMatches, levelsAtOrAbove, lineVisible, normalizeFilter } from "./filter.js";
+import { LOG_LEVELS, SESSIONS, VIEW_LEVEL_NAMES, countMatches, levelsAtOrAbove, lineVisible, normalizeFilter, queryArgs } from "./filter.js";
+import { fromLocalInput, inRange, normalizeRange, rangeBounds, rangeWidened, toLocalInput } from "./range.js";
 import { fileLine, parseFileLine, screenLine } from "./format.js";
 
 const LEVELS = new Set(LOG_LEVELS);
+/* One log.query page of history (H-4). */
+export const HISTORY_PAGE = 2000;
 const zoneEffect = StateEffect.define();
 
 class LocalTimeWidget extends WidgetType {
@@ -26,15 +29,24 @@ class LocalTimeWidget extends WidgetType {
   }
 }
 
-/* The document stays the UTC file line. One widget draws the whole
-   screen line: local time, level, and subsystem at fixed widths, two
-   spaces between fields, then the message. The line title is the UTC stamp. */
-export function buildLogDecorations(state, timeZone) {
+/* The document is the screen line (local 24 h time in the profile zone,
+   level, subsystem, message; H-4 Lock). Each line gets its level class and
+   the UTC stamp as its title. A UTC file line (older callers, tests) is
+   still drawn through the local-time widget. */
+export function buildLogDecorations(state, timeZone, stamps = []) {
   const builder = new RangeSetBuilder();
   for (let number = 1; number <= state.doc.lines; number += 1) {
     const line = state.doc.line(number);
     const parsed = parseFileLine(line.text);
     if (!parsed || !LEVELS.has(parsed.level) || parsed.ts.length !== 24) {
+      const level = line.text.slice(14, 19).trim();
+      if (LEVELS.has(level)) {
+        const utc = typeof stamps[number - 1] === "string" ? stamps[number - 1] : "";
+        builder.add(line.from, line.from, Decoration.line({
+          class: `pav-log-level-${level}`,
+          attributes: utc ? { title: utc } : {},
+        }));
+      }
       continue;
     }
     builder.add(line.from, line.from, Decoration.line({
@@ -98,6 +110,13 @@ export function createLogView(parent, api, options = {}) {
   let pinning = false;
   let pinTimer = 0;
   let subsystemKey = null;
+  let session = "all";
+  /* UTC stamp of each document line: the document is the local screen line
+     (H-4 Lock), the stamp is the hover title. */
+  let docStamps = [];
+  const show = (entry) => screenLine(entry, timeZone);
+  let exhausted = false;
+  let olderPending = null;
   const font = new Compartment();
   const wrap = new Compartment();
 
@@ -189,6 +208,93 @@ export function createLogView(parent, api, options = {}) {
   });
   const subsystemItems = document.createElement("div");
   subsystem.panel.append(subsystemAll.label, subsystemNone.label, rule(), subsystemItems);
+
+  /* Time range (H-4 Lock): 12 h, 24 h, 7 d, All, Custom. */
+  const RANGE_LABELS = { "12h": "12 h", "24h": "24 h", "7d": "7 d", all: "All", custom: "Custom" };
+  const rangeSelect = document.createElement("select");
+  rangeSelect.className = "log-range";
+  rangeSelect.setAttribute("aria-label", "Time range");
+  for (const value of ["12h", "24h", "7d", "all", "custom"]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = RANGE_LABELS[value];
+    rangeSelect.append(option);
+  }
+  const custom = document.createElement("span");
+  custom.className = "log-range-custom";
+  const sinceInput = document.createElement("input");
+  sinceInput.type = "datetime-local";
+  sinceInput.setAttribute("aria-label", "From");
+  const untilInput = document.createElement("input");
+  untilInput.type = "datetime-local";
+  untilInput.setAttribute("aria-label", "To");
+  custom.append(sinceInput, untilInput);
+
+  function paintRange() {
+    const range = normalizeRange(filter.range);
+    rangeSelect.value = typeof range === "string" ? range : "custom";
+    custom.hidden = typeof range === "string";
+    if (typeof range !== "string") {
+      sinceInput.value = toLocalInput(range.since);
+      untilInput.value = toLocalInput(range.until);
+    }
+  }
+
+  function setRange(next) {
+    const prev = filter.range;
+    filter.range = normalizeRange(next);
+    commit(false);
+    paintRange();
+    if (!isOpen) {
+      return;
+    }
+    const widened = rangeWidened(prev, filter.range);
+    open().then(() => (widened ? loadOlder() : undefined)).catch((err) => report(err));
+  }
+
+  rangeSelect.addEventListener("change", () => {
+    if (rangeSelect.value !== "custom") {
+      setRange(rangeSelect.value);
+      return;
+    }
+    /* Custom starts as the range that was showing, up to now. */
+    const bounds = currentBounds();
+    custom.hidden = false;
+    sinceInput.value = toLocalInput(bounds.since !== undefined ? bounds.since : Date.now() - 12 * 3600 * 1000);
+    untilInput.value = "";
+    setRange({ since: fromLocalInput(sinceInput.value) });
+  });
+  for (const input of [sinceInput, untilInput]) {
+    input.addEventListener("change", () => {
+      const since = fromLocalInput(sinceInput.value);
+      const until = fromLocalInput(untilInput.value);
+      const next = {};
+      if (since !== null) {
+        next.since = since;
+      }
+      if (until !== null) {
+        next.until = until;
+      }
+      setRange(Object.keys(next).length > 0 ? next : "all");
+    });
+  }
+
+  const sessionSelect = document.createElement("select");
+  sessionSelect.className = "log-session";
+  sessionSelect.setAttribute("aria-label", "Session");
+  for (const item of SESSIONS) {
+    const option = document.createElement("option");
+    option.value = item.value;
+    option.textContent = item.label;
+    sessionSelect.append(option);
+  }
+  sessionSelect.value = session;
+  sessionSelect.addEventListener("change", () => {
+    session = sessionSelect.value;
+    if (isOpen) {
+      open().catch((err) => report(err));
+    }
+  });
 
   const topSpacer = document.createElement("div");
   topSpacer.className = "log-bar-spacer";
@@ -290,11 +396,14 @@ export function createLogView(parent, api, options = {}) {
   editorHost.className = "log-editor pav-log";
   const sheet = document.createElement("pre");
   sheet.className = "log-print";
-  const logChrome = [severity.root, subsystem.root, topSpacer, search, gear.root];
+  const logChrome = [severity.root, subsystem.root, rangeSelect, custom, sessionSelect, topSpacer, search, gear.root];
 
   function setChrome(shown) {
     for (const el of logChrome) {
       el.hidden = shown !== true;
+    }
+    if (shown === true) {
+      paintRange();
     }
     if (shown !== true) {
       closeMenus();
@@ -302,13 +411,13 @@ export function createLogView(parent, api, options = {}) {
   }
 
   if (topbar && bottombar) {
-    topbar.append(severity.root, subsystem.root, topSpacer, search, gear.root);
+    topbar.append(severity.root, subsystem.root, rangeSelect, custom, sessionSelect, topSpacer, search, gear.root);
     bottombar.append(refresh, status, bottomSpacer, copy, save, print);
     parent.replaceChildren(editorHost, sheet);
   } else {
     const localTop = document.createElement("div");
     localTop.className = "button-bar log-topbar";
-    localTop.append(severity.root, subsystem.root, topSpacer, search, gear.root);
+    localTop.append(severity.root, subsystem.root, rangeSelect, custom, sessionSelect, topSpacer, search, gear.root);
     const localBottom = document.createElement("div");
     localBottom.className = "button-bar log-bottombar";
     localBottom.append(refresh, status, bottomSpacer, copy, save, print);
@@ -341,15 +450,16 @@ export function createLogView(parent, api, options = {}) {
   keyTarget.addEventListener("keydown", onEscape);
   paintSeverity();
   paintSubsystems();
+  paintRange();
 
   const decorations = StateField.define({
     create(state) {
-      return buildLogDecorations(state, timeZone);
+      return buildLogDecorations(state, timeZone, docStamps);
     },
     update(value, transaction) {
       const refresh = transaction.effects.some((effect) => effect.is(zoneEffect));
       if (transaction.docChanged || refresh) {
-        return buildLogDecorations(transaction.state, timeZone);
+        return buildLogDecorations(transaction.state, timeZone, docStamps);
       }
       return value;
     },
@@ -366,6 +476,9 @@ export function createLogView(parent, api, options = {}) {
         EditorView.contentAttributes.of({ "aria-label": "Log", spellcheck: "false" }),
         EditorView.domEventHandlers({
           scroll(_event, editor) {
+            if (!pinning && editor.scrollDOM.scrollTop < 40) {
+              loadOlder();
+            }
             if (pinning || !filter.follow) {
               return;
             }
@@ -410,7 +523,7 @@ export function createLogView(parent, api, options = {}) {
   }
 
   function severityText() {
-    if (filter.levels.length === 4) {
+    if (filter.levels.length === LOG_LEVELS.length) {
       return "All severities";
     }
     if (filter.levels.length === 0) {
@@ -439,7 +552,7 @@ export function createLogView(parent, api, options = {}) {
     for (const box of severityBoxes) {
       box.checked = filter.levels.includes(box.value);
     }
-    severityAll.box.checked = filter.levels.length === 4;
+    severityAll.box.checked = filter.levels.length === LOG_LEVELS.length;
     severityNone.box.checked = filter.levels.length === 0;
     severity.button.textContent = severityText();
   }
@@ -477,7 +590,8 @@ export function createLogView(parent, api, options = {}) {
   }
 
   function visibleLines() {
-    return loaded.filter((entry) => lineVisible(entry, filter));
+    const bounds = currentBounds();
+    return loaded.filter((entry) => lineVisible(entry, filter) && inRange(entry, bounds));
   }
 
   function paintChrome(visible) {
@@ -497,7 +611,8 @@ export function createLogView(parent, api, options = {}) {
 
   function replaceAll() {
     const visible = visibleLines();
-    const text = visible.length === 0 ? "" : `${visible.map(fileLine).join("\n")}\n`;
+    const text = visible.length === 0 ? "" : `${visible.map(show).join("\n")}\n`;
+    docStamps = visible.map((entry) => entry.ts);
     const end = view.state.doc.length;
     pinScroll();
     view.dispatch({
@@ -510,9 +625,11 @@ export function createLogView(parent, api, options = {}) {
   }
 
   function appendVisible(entries) {
-    const fresh = entries.filter((entry) => lineVisible(entry, filter));
+    const bounds = currentBounds();
+    const fresh = entries.filter((entry) => lineVisible(entry, filter) && inRange(entry, bounds));
     if (fresh.length > 0) {
-      const chunk = `${fresh.map(fileLine).join("\n")}\n`;
+      const chunk = `${fresh.map(show).join("\n")}\n`;
+      docStamps.push(...fresh.map((entry) => entry.ts));
       const end = view.state.doc.length;
       pinScroll();
       view.dispatch({
@@ -555,6 +672,30 @@ export function createLogView(parent, api, options = {}) {
       added.push(entry);
     }
     return added;
+  }
+
+  function toEntry(line) {
+    return {
+      seq: line.seq,
+      ts: typeof line.ts === "string" ? line.ts : "",
+      level: typeof line.level === "string" ? line.level : "",
+      subsystem: typeof line.subsystem === "string" ? line.subsystem : "",
+      text: typeof line.text === "string" ? line.text : "",
+    };
+  }
+
+  function rememberOlder(lines) {
+    const floor = loaded.length > 0 ? loaded[0].seq : Infinity;
+    const older = orderedLines(lines, 0).filter((line) => line.seq < floor).map(toEntry);
+    if (loaded.length === 0) {
+      for (const entry of older) {
+        if (entry.seq > lastSeq) {
+          lastSeq = entry.seq;
+        }
+      }
+    }
+    loaded = older.concat(loaded);
+    return older;
   }
 
   function onFind(event) {
@@ -603,15 +744,7 @@ export function createLogView(parent, api, options = {}) {
     if (!path) {
       return;
     }
-    const spec = normalizeFilter(filter);
-    await api.log.export({
-      path,
-      filter: {
-        levels: spec.levels,
-        subsystems: spec.subsystems,
-        text: spec.text,
-      },
-    });
+    await api.log.export({ path, filter: queryArgs(filter, session) });
   }
 
   function printVisible() {
@@ -620,18 +753,84 @@ export function createLogView(parent, api, options = {}) {
     window.print();
   }
 
+  function currentBounds() {
+    return rangeBounds(filter.range);
+  }
+
+  /* The newest PAGE lines before the oldest loaded one, from log.db
+     (H-4 Lock). The filter stays client-side, so a page asks for every
+     level and subsystem, within the range and session. */
+  function fetchPage(beforeSeq) {
+    const args = { ...currentBounds(), session, limit: HISTORY_PAGE };
+    if (Number.isFinite(beforeSeq)) {
+      args.beforeSeq = beforeSeq;
+    }
+    if (!api.log || typeof api.log.query !== "function") {
+      return Promise.resolve([]);
+    }
+    return api.log.query(args).then((reply) => (reply && Array.isArray(reply.lines) ? reply.lines : []));
+  }
+
+  function prependVisible(entries) {
+    const fresh = entries.filter((entry) => lineVisible(entry, filter) && inRange(entry, currentBounds()));
+    if (fresh.length > 0) {
+      const scroller = view.scrollDOM;
+      const height = scroller.scrollHeight;
+      const top = scroller.scrollTop;
+      pinScroll();
+      docStamps = fresh.map((entry) => entry.ts).concat(docStamps);
+      view.dispatch({ changes: { from: 0, insert: `${fresh.map(show).join("\n")}\n` } });
+      /* Keep the line that was on screen where it was. */
+      view.requestMeasure({
+        read: () => scroller.scrollHeight,
+        write: (next) => {
+          scroller.scrollTop = top + (next - height);
+        },
+      });
+    }
+    paintChrome(visibleLines());
+  }
+
+  function loadOlder() {
+    if (!isOpen || exhausted || olderPending) {
+      return olderPending || Promise.resolve();
+    }
+    const ticket = generation;
+    const before = loaded.length > 0 ? loaded[0].seq : undefined;
+    olderPending = fetchPage(before).then((lines) => {
+      if (ticket !== generation) {
+        return;
+      }
+      if (lines.length < HISTORY_PAGE) {
+        exhausted = true;
+      }
+      prependVisible(rememberOlder(lines));
+    }).catch(() => {
+      /* No log.db (a test sink or no profile): the ring is all there is. */
+      if (ticket === generation) {
+        exhausted = true;
+      }
+    }).finally(() => {
+      olderPending = null;
+    });
+    return olderPending;
+  }
+
   function open() {
     const ticket = generation + 1;
     generation = ticket;
     isOpen = true;
+    exhausted = false;
+    olderPending = null;
     if (unsubscribe) {
       unsubscribe();
       unsubscribe = null;
     }
     const pending = [];
     let ready = false;
+    const live = session !== "previous";
     unsubscribe = api.on("log.lines", (payload) => {
-      if (ticket !== generation) {
+      if (ticket !== generation || !live) {
         return;
       }
       const lines = payload && Array.isArray(payload.lines) ? payload.lines : [];
@@ -641,12 +840,25 @@ export function createLogView(parent, api, options = {}) {
       }
       appendVisible(remember(lines, false));
     });
-    return api.log.tail({}).then((tail) => {
+    /* This run and All start from the ring inside the range; Last run is
+       only in log.db. */
+    const first = live
+      ? api.log.tail({}).then((tail) => {
+        const bounds = currentBounds();
+        return (tail && Array.isArray(tail.lines) ? tail.lines : []).filter((line) => inRange(line, bounds));
+      })
+      : fetchPage(undefined).then((lines) => {
+        if (lines.length < HISTORY_PAGE) {
+          exhausted = true;
+        }
+        return lines;
+      });
+    return first.then((lines) => {
       if (ticket !== generation) {
         return;
       }
       ready = true;
-      remember(tail && Array.isArray(tail.lines) ? tail.lines : [], true);
+      remember(lines, true);
       replaceAll();
       appendVisible(remember(pending, false));
       view.requestMeasure();
@@ -685,10 +897,14 @@ export function createLogView(parent, api, options = {}) {
     },
     setTimeZone(zone) {
       timeZone = zone || "America/Vancouver";
-      view.dispatch({ effects: zoneEffect.of(null) });
+      replaceAll();
       paintChrome(visibleLines());
     },
     setChrome,
+    loadOlder,
+    loadedCount() {
+      return loaded.length;
+    },
     destroy() {
       close();
       keyTarget.removeEventListener("keydown", onFind);

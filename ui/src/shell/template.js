@@ -75,6 +75,7 @@ export const shellMarkup = `<div class="shell">
               <button type="button" data-heading="tabs">Tabs</button>
               <button type="button" data-heading="accounts">Accounts</button>
               <button type="button" data-heading="zoom">Zooms</button>
+              <button type="button" data-heading="log">Logs</button>
             </div>
           </div>
         </div>
@@ -213,6 +214,29 @@ export const shellMarkup = `<div class="shell">
             </div>
             <p class="muted">Shell multiplies every row below. Button bars covers the navigation, the main tabs, the log bars, the Help search bar, and the bars on other settings pages. Each row is its own key on the profile. Hold Ctrl and roll the wheel over a button bar, the nav, the calendar, a mail pane, the log, the Help index, or the Help page to change that row by 5%. The wheel leaves Shell alone. Away zooms in unless the switch says toward.</p>
             <p class="muted" id="profile-name"></p>
+            </div>
+          </div>
+          <div data-settings="log" hidden>
+            <div class="button-bar settings-bar" role="toolbar" aria-label="Logs">
+              <span class="settings-bar-title">Logs</span>
+              <span class="log-bar-spacer"></span>
+              <button type="button" class="help-jump" data-help-page="settings" data-help-section="log" aria-label="Help for Logs">
+                <i class="icon fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="settings-body log-settings">
+              <label class="zoom"><span class="zoom-label">Size cap</span>
+                <input id="log-cap" type="range" min="1" max="100" step="1" value="10" aria-label="Log size cap in MB" />
+                <span class="zoom-value" id="log-cap-value">10 MB</span>
+              </label>
+              <p id="log-stats" aria-live="polite"></p>
+              <p id="log-preview" class="muted" aria-live="polite"></p>
+              <div class="log-settings-actions">
+                <button type="button" id="log-refresh">Refresh</button>
+                <button type="button" id="log-apply">Apply</button>
+                <button type="button" id="log-trim-now">Trim Now</button>
+              </div>
+              <p class="muted">The log is kept in the profile's log database. Every level is kept. At shutdown, and on Apply or Trim Now, the oldest lines are removed until the database fits the cap. Apply saves the cap and trims to it. Trim Now trims to the saved cap.</p>
             </div>
           </div>
           <div data-settings="theme" hidden>

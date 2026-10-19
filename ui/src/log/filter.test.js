@@ -74,3 +74,21 @@ test("a TRACE line is accepted and hidden at the info default", () => {
   expect(levelsAtOrAbove("debug")).toEqual(["ERROR", "WARN", "INFO", "DEBUG"]);
   expect(levelsAtOrAbove("nope")).toEqual(["ERROR", "WARN", "INFO"]);
 });
+
+test("queryArgs is the view filter as log.query and log.export take it", async () => {
+  const { queryArgs } = await import("./filter.js");
+  const now = Date.UTC(2026, 9, 19, 12, 0);
+  expect(queryArgs({ levels: ["WARN"], subsystems: ["core"], text: "x", range: "24h" }, "previous", now)).toEqual({
+    levels: ["WARN"],
+    subsystems: ["core"],
+    text: "x",
+    since: now - 24 * 3600 * 1000,
+    session: "previous",
+  });
+  expect(queryArgs({ range: "all" }, "bogus", now)).toEqual({
+    levels: ["ERROR", "WARN", "INFO"],
+    subsystems: null,
+    session: "all",
+  });
+  expect(normalizeFilter({}).range).toBe("12h");
+});

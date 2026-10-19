@@ -10,6 +10,7 @@ import { createFeatureEditor } from "./shell/features.js";
 import { createRailDrag } from "./shell/rail-drag.js";
 import { createActivityView } from "./activity/view.js";
 import { createAccountsView } from "./settings/accounts.js";
+import { createLogSettings } from "./settings/log.js";
 import { createHelpView } from "./help/view.js";
 import { createLogView } from "./log/view.js";
 import { createTreeController } from "./tree/tree.js";
@@ -1175,6 +1176,8 @@ let logView = null;
 let activityView = null;
 let helpView = null;
 let accountsView = null;
+let logSettings = null;
+let logTimeZone = "America/Vancouver";
 let mailTree = null;
 let syncing = 0;
 let motionQuery = null;
@@ -1430,6 +1433,9 @@ function applyHomeContext(entry) {
       }
       for (const pane of mountRoot.querySelectorAll("[data-settings]")) {
         pane.hidden = pane.dataset.settings !== ctx.heading;
+      }
+      if (ctx.heading === "log" && logSettings) {
+        logSettings.refresh();
       }
     }
   }
@@ -1884,6 +1890,9 @@ function bindSettings() {
       if (button.dataset.heading === "theme") {
         refreshThemes(session);
       }
+      if (button.dataset.heading === "log" && logSettings) {
+        logSettings.refresh();
+      }
       showNav("settings");
       openHome("settings", { heading: button.dataset.heading });
     });
@@ -2134,6 +2143,10 @@ export function stopShell() {
     accountsView.destroy();
     accountsView = null;
   }
+  if (logSettings) {
+    logSettings.destroy();
+    logSettings = null;
+  }
   if (mailTree) {
     mailTree.destroy();
     mailTree = null;
@@ -2290,6 +2303,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
       }
       if (typeof prefs.timezone === "string" && prefs.timezone !== "") {
         timeZone = prefs.timezone;
+        logTimeZone = timeZone;
       }
       if (typeof prefs.logLevel === "string" && prefs.logLevel !== "") {
         logLevel = prefs.logLevel;
@@ -2658,6 +2672,12 @@ export async function startShell(surface, nextApi, nextHost, result) {
   helpView = createHelpView(mountRoot);
   mountRoot.addEventListener("click", onHelpJump);
   accountsView = createAccountsView(api, mountRoot);
+  logSettings = createLogSettings(api, mountRoot, {
+    timeZone: () => logTimeZone,
+    onError(text) {
+      showBanner(text);
+    },
+  });
   if (mountRoot.querySelector("[data-settings='accounts']")) {
     accountsView.refresh();
   }

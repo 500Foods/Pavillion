@@ -1697,3 +1697,16 @@
   font-size: 0.9rem;
   font-weight: 600;
 }
+
+/* H-4: Log view time range and Settings → Logs. */
+.pav-root .log-range-custom {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+.pav-root .log-range-custom[hidden] {
+  display: none;
+}
+.pav-root .log-settings-actions {
+  display: flex;
+  gap: 0.5rem;
+}

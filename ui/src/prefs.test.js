@@ -167,6 +167,7 @@ test("log zoom snaps and the activity view defaults to log", () => {
     text: "",
     follow: true,
     wrap: false,
+    range: "12h",
   });
   expect(clampUi({
     log: { levels: ["WARN", "nope"], subsystems: ["config", "config"], text: " saved", follow: false, wrap: true, note: 1 },
@@ -176,6 +177,7 @@ test("log zoom snaps and the activity view defaults to log", () => {
     text: " saved",
     follow: false,
     wrap: true,
+    range: "12h",
     note: 1,
   });
 });

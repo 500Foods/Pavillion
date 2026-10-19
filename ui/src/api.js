@@ -97,6 +97,18 @@ export function createApi(transport) {
       export(body) {
         return call("log.export", body ?? {});
       },
+      query(query) {
+        return call("log.query", query ?? {});
+      },
+      stats() {
+        return call("log.stats", {});
+      },
+      trimPreview(mb) {
+        return call("log.trim_preview", { mb });
+      },
+      trim(mb) {
+        return call("log.trim", mb === undefined ? {} : { mb });
+      },
     },
     on(name, fn) {
       return transport.on((eventName, payload) => {

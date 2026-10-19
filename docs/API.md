@@ -372,11 +372,11 @@ Errors: `bad_args`, `too_large`, `not_ready`, `internal`.
 
 ### log.export
 
-State: real (H-3)
+State: real (H-3, from H-4 reads log.db)
 
-Writes the ring lines that match a filter. The bytes are the file lines, including each trailing newline. The ring is not changed. The view uses this same predicate for the lines it shows. Copy uses those UTC lines. Print draws the on-screen line instead.
+Writes the lines that match a filter from the profile's `log.db`, oldest first, through the log thread (H-4). The bytes are C-CORE file lines with UTC stamps, including each trailing newline. When `log.db` is not open (no profile attached) it writes the matching ring lines instead. The view uses this same predicate for the lines it shows. Copy uses those UTC lines. Print draws the on-screen line instead.
 
-Args: `{path, filter}`. `path` is an absolute file path whose parent directory exists. `filter.levels` is an array of `ERROR`, `WARN`, `INFO`, `DEBUG`, and `TRACE`. A line is kept only when its level is in that array. An empty array keeps nothing. `filter.subsystems` is an array of subsystem names, or null. Null and omitted both keep every subsystem. An empty array keeps nothing. `filter.text` is a string of at most 2000 bytes. Omitted or empty, it keeps every line. Otherwise the line is kept when the file line, without its trailing newline, contains that text. The match is literal and ASCII case-insensitive.
+Args: `{path, filter}`. `path` is an absolute file path whose parent directory exists. `filter.levels` is an array of `ERROR`, `WARN`, `INFO`, `DEBUG`, and `TRACE`. A line is kept only when its level is in that array. An empty array keeps nothing. `filter.subsystems` is an array of subsystem names, or null. Null and omitted both keep every subsystem. An empty array keeps nothing. `filter.text` is a string of at most 2000 bytes. Omitted or empty, it keeps every line. Otherwise the line is kept when the file line, without its trailing newline, contains that text. The match is literal and ASCII case-insensitive. `filter.since`, `filter.until`, and `filter.session` are as in `log.query`, so Copy, Save, and Print use the view's query.
 
 Result: `{lines}`. `lines` is how many lines were written.
 
@@ -384,21 +384,25 @@ Errors: `bad_args`, `too_large`, `internal`.
 
 ### log.query
 
-State: planned (H-4)
+State: real (H-4)
 
 Reads older lines from the profile's `log.db` through the log thread ([H-LOGGING.md](H-LOGGING.md) Lock). `log.tail` stays the ring.
 
-Args: `{beforeSeq?, since?, until?, limit, levels?, subsystems?, text?, session?}`. `since` and `until` are UTC milliseconds (`since <= ts < until`; either omitted is open), read through the `ts` index; the Log view passes its time range (default the last 12 hours) when the user widens it. The result is the newest matching lines with a `seq` below `beforeSeq`, oldest first. `session` is `current`, `previous`, `all` (default), or a session id. H-4 fixes the limits and error codes.
+Args: `{beforeSeq?, since?, until?, limit, levels?, subsystems?, text?, session?}`. `since` and `until` are UTC milliseconds (`since <= ts < until`; either omitted is open), read through the `ts` index; the Log view passes its time range (default the last 12 hours) when the user widens it. The result is the newest matching lines with a `seq` below `beforeSeq`, oldest first. `session` is `current`, `previous`, `all` (default), or a session id. `limit` is required, an integer from 1 to 10000. `beforeSeq` is an integer >= 1. `levels`, `subsystems`, and `text` are as in `log.export`'s filter; `levels` omitted keeps every level.
 
-Result: `{lines:[{seq, ts, level, subsystem, text}]}`, the `log.tail` row shape.
+Result: `{lines:[{seq, ts, level, subsystem, text}]}`, the `log.tail` row shape. Fewer than `limit` lines means there is nothing older in range. `previous` with no earlier run returns no lines.
+
+Errors: `bad_args`, `not_ready` (no `log.db` open), `internal`.
 
 ### log.stats
 
-State: planned (H-4)
+State: real (H-4)
 
 Reads the size of the profile's `log.db` through the log thread ([H-LOGGING.md](H-LOGGING.md) Lock, Retention).
 
-Args: `{}`. Returns `{bytes, records, oldestSeq, oldestTs, capMb}`. `bytes` is `(page_count - freelist_count) * page_size`. `oldestTs` is UTC milliseconds or null when empty. `capMb` is `preferences.log_max_mb`.
+Args: `{}`. Returns `{bytes, records, oldestSeq, oldestTs, capMb}`. `bytes` is `(page_count - freelist_count) * page_size`. `oldestTs` is UTC milliseconds or null when empty. `capMb` is `preferences.log_max_mb`. `oldestSeq` is null when empty.
+
+Errors: `bad_args`, `not_ready` (no `log.db` open).
 
 ### log.tail
 
@@ -416,17 +420,21 @@ Errors: `bad_args`, `not_ready`, `internal`.
 
 ### log.trim
 
-State: planned (H-4)
+State: real (H-4)
 
 Trims `log.db` oldest first until it fits the cap, then runs `incremental_vacuum`, on the same path as shutdown.
 
 Args: `{mb?}`. With `mb` (integer 1 to 100) it writes `preferences.log_max_mb` and trims to it (Settings Apply). Without `mb` it trims to the saved cap and writes nothing (Settings Trim Now). Returns the `log.stats` result after the trim. Other values are `bad_args`.
 
+Errors: `bad_args`, `not_ready`, `internal`.
+
 ### log.trim_preview
 
-State: planned (H-4)
+State: real (H-4)
 
-Deletes nothing. Args: `{mb}` (integer 1 to 100). Returns `{bytes, records, oldestTs}` estimated for a trim to `mb`, from per-row size estimates scaled to the measured size (about 10 % accuracy). The Settings slider calls it while moving.
+Deletes nothing. Args: `{mb}` (integer 1 to 100). Returns `{bytes, records, oldestTs}` estimated for a trim to `mb`, from per-row size estimates scaled to the measured size (about 10 % accuracy). The Settings slider calls it while moving. `oldestTs` is null when nothing would be kept.
+
+Errors: `bad_args`, `not_ready`.
 
 ### mailbox.create
 
@@ -843,7 +851,7 @@ State: real (F-4)
 ### log.lines
 
 Kind: event
-State: planned (H-1)
+State: real (H-4)
 
 `{lines:[{seq, ts, level, subsystem, text}, ...]}`. At most one batch per 100 ms. There is no `log.line` event.
 

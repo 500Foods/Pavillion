@@ -35,6 +35,10 @@ void pav_logring_renumber(uint64_t from_seq, uint64_t offset);
    file line, without its trailing newline, contains text. The match is
    literal and ASCII case-insensitive. *lines is the count. A result over
    32 MB returns -2. Returns 0, -1 on allocation failure, or -2. */
+/* The export predicate on one file line (see below). log.query and
+   log.export on log.db use it too. Returns 1 when kept. */
+int pav_logring_line_kept(const char *line, const json_t *levels, const json_t *subsystems, const char *text);
+
 int pav_logring_export(const json_t *levels, const json_t *subsystems, const char *text,
                        char **out, size_t *out_len, int *lines);
 

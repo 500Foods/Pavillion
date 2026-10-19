@@ -371,7 +371,7 @@ static int ascii_has(const char *hay, size_t hay_n, const char *needle) {
     return 0;
 }
 
-static int export_kept(const char *line, const json_t *levels, const json_t *subsystems, const char *text) {
+int pav_logring_line_kept(const char *line, const json_t *levels, const json_t *subsystems, const char *text) {
     char ts[32];
     char level[8];
     char subsystem[128];
@@ -417,7 +417,7 @@ int pav_logring_export(const json_t *levels, const json_t *subsystems, const cha
             RingSlot *slot = &g_ring[(g_ring_start + i) % PAV_LOGRING_CAP];
             size_t len;
 
-            if (!export_kept(slot->line, levels, subsystems, text)) {
+            if (!pav_logring_line_kept(slot->line, levels, subsystems, text)) {
                 continue;
             }
             len = strlen(slot->line);
