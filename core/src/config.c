@@ -211,6 +211,22 @@ int pav_profile_parse(const char *text, PavProfile **out, char *err, size_t err_
     }
     profile->window_width = (int)json_integer_value(json_object_get(window, "width"));
     profile->window_height = (int)json_integer_value(json_object_get(window, "height"));
+    if (cfg_int_range(prefs, "log_max_mb", 10, 1, 100, 0, &profile->log_max_mb, err, err_len) != 0) {
+        goto fail;
+    }
+    {
+        size_t n = strlen(profile->logs);
+
+        /* H-4: a profile from before log.db named a .log file. */
+        if (n >= 4 && strcmp(profile->logs + n - 4, ".log") == 0) {
+            snprintf(profile->logs, sizeof(profile->logs), "%s.log.db", profile->id);
+            if (json_object_set_new(root, "logs", json_string(profile->logs)) != 0) {
+                cfg_err(err, err_len, "cannot update logs");
+                goto fail;
+            }
+            profile->logs_migrated = 1;
+        }
+    }
     profile->account_count = json_array_size(accounts);
     profile->doc = root;
     *out = profile;

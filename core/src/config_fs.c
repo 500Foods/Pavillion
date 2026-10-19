@@ -27,7 +27,7 @@ static const char k_default_profile[] =
     "    \"engine\": \"sqlite\",\n"
     "    \"path\": \"default.sqlite\"\n"
     "  },\n"
-    "  \"logs\": \"logs/default.log\",\n"
+    "  \"logs\": \"default.log.db\",\n"
     "  \"blobs\": \"blobs/default\",\n"
     "  \"cache\": \"cache/default\",\n"
     "  \"accounts\": [],\n"
@@ -178,29 +178,6 @@ int pav_config_ensure(const char *workdir, char *err, size_t err_len) {
     return 0;
 }
 
-static int create_log_file(const char *path, char *err, size_t err_len) {
-    const PavPlatform *platform = need_platform();
-    char parent[4096];
-
-    if (platform == NULL || pav_path_parent(parent, sizeof(parent), path) != 0 ||
-        platform->mkdir_private(parent) != 0) {
-        cfg_err(err, err_len, "cannot create %s", path);
-        return -1;
-    }
-    if (pav_exists(path)) {
-        if (pav_file_private(path) != 0) {
-            cfg_err(err, err_len, "cannot create %s", path);
-            return -1;
-        }
-        return 0;
-    }
-    if (platform->write_private(path, "", 0) != 0) {
-        cfg_err(err, err_len, "cannot create %s", path);
-        return -1;
-    }
-    return 0;
-}
-
 int pav_config_prepare(const char *workdir, PavProfile *profile, char *err, size_t err_len) {
     const PavPlatform *platform = need_platform();
 
@@ -216,9 +193,6 @@ int pav_config_prepare(const char *workdir, PavProfile *profile, char *err, size
         config_resolve(profile->resolved_storage, sizeof(profile->resolved_storage), workdir,
                        profile->storage_path) != 0) {
         cfg_err(err, err_len, "path is too long");
-        return -1;
-    }
-    if (create_log_file(profile->resolved_logs, err, err_len) != 0) {
         return -1;
     }
     if (platform == NULL || platform->mkdir_private(profile->resolved_blobs) != 0) {

@@ -24,6 +24,10 @@ json_t *pav_logring_line_json(uint64_t seq, const char *line);
 
 void pav_logring_reset(void);
 
+/* Adds offset to every seq >= from_seq. log.db attach uses it so lines
+   logged before attach continue the stored seq (H-4 Lock). */
+void pav_logring_renumber(uint64_t from_seq, uint64_t offset);
+
 /* Copies matching file lines, including each trailing newline, into *out.
    levels is ERROR|WARN|INFO|DEBUG|TRACE; an empty array keeps nothing.
    subsystems NULL keeps every subsystem; an empty array keeps nothing.

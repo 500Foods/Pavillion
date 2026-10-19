@@ -19,6 +19,20 @@ add_custom_command(
     VERBATIM
 )
 
+set(LOG_MIGRATION_EMBED ${CMAKE_CURRENT_BINARY_DIR}/log_migrations_embed.c)
+file(GLOB LOG_MIGRATION_SQL CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/migrations/log/*.sql")
+add_custom_command(
+    OUTPUT ${LOG_MIGRATION_EMBED}
+    COMMAND ${CMAKE_COMMAND}
+        -DDIR=${CMAKE_CURRENT_SOURCE_DIR}/src/migrations/log
+        -DOUT=${LOG_MIGRATION_EMBED}
+        -DFUNC=pav_log_migration_table
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/embed_sql.cmake
+    DEPENDS ${LOG_MIGRATION_SQL} ${CMAKE_CURRENT_SOURCE_DIR}/embed_sql.cmake
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/migrations_embed.h
+    VERBATIM
+)
+
 add_library(pavillion_core STATIC
     src/pavillion.c
     src/logring.c
@@ -37,6 +51,8 @@ add_library(pavillion_core STATIC
     src/db_readpool.c
     src/migrate.c
     ${MIGRATION_EMBED}
+    ${LOG_MIGRATION_EMBED}
+    src/logdb.c
     src/activity.c
     src/secret.c
     src/auth_basic.c

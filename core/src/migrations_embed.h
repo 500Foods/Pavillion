@@ -9,5 +9,7 @@ typedef struct PavMigration {
 } PavMigration;
 
 const PavMigration *pav_migration_table(int *count);
+/* log.db has its own migrations (core/src/migrations/log/), run by logdb.c. */
+const PavMigration *pav_log_migration_table(int *count);
 
 #endif

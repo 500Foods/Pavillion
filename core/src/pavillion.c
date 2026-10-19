@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "dispatch.h"
+#include "pav_logdb.h"
 #include "logring.h"
 #include "pav_activity.h"
 #include "pav_cfg.h"
@@ -156,6 +157,43 @@ static void publish_boot(const char *state, const char *name, const char *id, co
 
 /* Loads the profile and, on success, opens SQLite. Publishes ready or error.
    Does not hold g_core_mu across the file and database calls. */
+/* H-4: log files from before log.db are deleted, not imported. A failure
+   other than a missing file is one WARN. */
+static void remove_old_logs(const char *workdir, const char *id) {
+    char logs[4608];
+    char path[4700];
+    char name[96];
+    const char *names[3];
+    int failed = 0;
+    size_t i;
+
+    if (pav_path_join(logs, sizeof(logs), workdir, "logs") != 0) {
+        return;
+    }
+    snprintf(name, sizeof(name), "%s.log", id);
+    names[0] = name;
+    names[1] = NULL;
+    names[2] = "pavillion.log";
+    for (i = 0; i < 3; i++) {
+        char gen[100];
+        const char *leaf = names[i];
+
+        if (leaf == NULL) {
+            snprintf(gen, sizeof(gen), "%s.log.1", id);
+            leaf = gen;
+        }
+        if (pav_path_join(path, sizeof(path), logs, leaf) == 0 && remove(path) != 0 && errno != ENOENT) {
+            failed = 1;
+        }
+    }
+    if (rmdir(logs) != 0 && errno != ENOENT && errno != ENOTEMPTY && errno != EEXIST) {
+        failed = 1;
+    }
+    if (failed) {
+        pav_log("core", PAV_WARN, 1, "cannot remove old log files in %s", logs);
+    }
+}
+
 static void core_boot(void) {
     char err[512];
     PavProfile *profile;
@@ -193,7 +231,9 @@ static void core_boot(void) {
         publish_boot("error", profile->name, profile->id, "cannot open activity registry");
         return;
     }
+    (void)pav_log_set_cap_mb(profile->log_max_mb);
     (void)pav_log_attach_profile(profile->resolved_logs);
+    remove_old_logs(g_core_workdir, profile->id);
     if (core_prepare_prefs(err, sizeof(err)) != 0) {
         publish_boot("error", profile->name, profile->id, err);
         return;
@@ -215,7 +255,8 @@ static int core_prepare_prefs(char *err, size_t err_len) {
     if (pav_profile_migrate_ui(g_load->profile, &changed, err, err_len) != 0) {
         return -1;
     }
-    if (changed && pav_profile_store(g_load->profile_path, g_load->profile, err, err_len) != 0) {
+    if ((changed || g_load->profile->logs_migrated) &&
+        pav_profile_store(g_load->profile_path, g_load->profile, err, err_len) != 0) {
         return -1;
     }
     if (pav_profile_read_shell(g_load->profile, &snap, err, err_len) != 0) {
@@ -1586,15 +1627,29 @@ int pav_core_ui_set(json_t *args, json_t **data, PavError *err) {
 }
 
 #define PAV_LOG_MSG_MAX 4096
-#define PAV_LOG_ROTATE_BYTES (10L * 1024L * 1024L)
 #define LOG_DEST_NONE 0
 #define LOG_DEST_WORKDIR 1
 #define LOG_DEST_PROFILE 2
 #define LOG_DEST_EXPLICIT 3
+/* log.db writer (H-4 Lock): about every 100 ms or 500 rows. */
+#define LOG_DB_FLUSH_MS 100
+#define LOG_DB_FLUSH_ROWS 500
+#define LOG_ERROR_WAIT_MS 250
+/* Lines kept between workdir and attach. The oldest go first past this. */
+#define LOG_PENDING_MAX 10000
+
+#define LOG_REQ_NONE 0
+#define LOG_REQ_STATS 1
+#define LOG_REQ_PREVIEW 2
+#define LOG_REQ_TRIM 3
 
 typedef struct LogNode {
     struct LogNode *next;
     char *line;
+    char *subsystem;
+    char *msg;
+    int64_t ts;
+    uint64_t ticket;
     int level;
 } LogNode;
 
@@ -1604,23 +1659,47 @@ typedef struct BatchNode {
     char *line;
 } BatchNode;
 
+typedef struct DbRow {
+    struct DbRow *next;
+    uint64_t seq;
+    uint64_t ticket;
+    int64_t ts;
+    int level;
+    char *subsystem;
+    char *text;
+} DbRow;
+
 static pthread_mutex_t g_log_mu = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t g_log_cv = PTHREAD_COND_INITIALIZER;
 static void *g_log_thread;
+static pthread_t g_log_tid;
 static FILE *g_log_out;
 static LogNode *g_q_head;
 static LogNode *g_q_tail;
 static BatchNode *g_batch_head;
 static BatchNode *g_batch_tail;
 static int64_t g_batch_started_ms;
+static DbRow *g_db_head;
+static DbRow *g_db_tail;
+static size_t g_db_count;
+static int64_t g_db_started_ms;
+static int g_db_urgent;
+static uint64_t g_ticket_next;
+static uint64_t g_ticket_done;
+static sqlite3 *g_logdb;
+static int64_t g_log_session;
+static int g_log_cap_mb = 10;
 static char g_log_switch_path[4096];
-static int g_log_own;
 static int g_log_dest;
 
 static int g_log_alive;
 static int g_log_shutdown;
 static int g_log_flush_req;
 static int g_log_switch_req;
+static int g_log_req;
+static int g_log_req_mb;
+static int g_log_req_rc;
+static PavLogStats g_log_req_out;
 static uint64_t g_log_seq;
 
 /* Same specifier count as Hydrogen's count_format_specifiers. */
@@ -1696,12 +1775,6 @@ static const char *level_name(int level) {
     }
 }
 
-static void format_stamp(char *out, size_t out_len) {
-    if (pav_format_utc(out, out_len, pav_now_ms()) != 0) {
-        snprintf(out, out_len, "0000-00-00T00:00:00.000Z");
-    }
-}
-
 static int64_t mono_ms(void) {
     struct timespec ts;
 
@@ -1744,16 +1817,16 @@ static void abs_after_ms(struct timespec *ts, int ms) {
     }
 }
 
-/* Once the profile log is open, a terminal sees warn and error only.
-   Info and debug stay in the file and the ring. */
+/* stderr gets WARN and ERROR always, and every level only before any
+   workdir exists (H-4 Lock). The test sink keeps stderr quiet. */
 static int stderr_too_unlocked(int level) {
     if (g_log_dest == LOG_DEST_EXPLICIT) {
         return 0;
     }
-    if (g_log_dest == LOG_DEST_NONE || g_log_dest == LOG_DEST_WORKDIR) {
+    if (g_log_dest == LOG_DEST_NONE) {
         return 1;
     }
-    return g_log_dest == LOG_DEST_PROFILE && level <= PAV_WARN && isatty(fileno(stderr));
+    return level <= PAV_WARN;
 }
 
 static void emit_line_unlocked(int level, const char *line) {
@@ -1791,62 +1864,136 @@ static void batch_add_unlocked(uint64_t seq, const char *line) {
     g_batch_tail = node;
 }
 
-/* The caller holds g_log_mu. The line is written now and copied into the ring. */
-static void commit_unlocked(int level, const char *line) {
+static void free_rows(DbRow *head) {
+    while (head != NULL) {
+        DbRow *next = head->next;
+
+        free(head->subsystem);
+        free(head->text);
+        free(head);
+        head = next;
+    }
+}
+
+static void db_add_unlocked(uint64_t seq, uint64_t ticket, int64_t ts, int level, const char *subsystem,
+                            const char *msg) {
+    DbRow *row = calloc(1, sizeof(*row));
+
+    if (row == NULL) {
+        return;
+    }
+    row->subsystem = strdup(subsystem);
+    row->text = strdup(msg);
+    if (row->subsystem == NULL || row->text == NULL) {
+        free_rows(row);
+        return;
+    }
+    row->seq = seq;
+    row->ticket = ticket;
+    row->ts = ts;
+    row->level = level;
+    if (g_db_tail != NULL) {
+        g_db_tail->next = row;
+    } else {
+        g_db_head = row;
+        g_db_started_ms = mono_ms();
+    }
+    g_db_tail = row;
+    g_db_count++;
+    if (level == PAV_ERROR) {
+        g_db_urgent = 1;
+    }
+    while (g_log_dest == LOG_DEST_WORKDIR && g_db_count > LOG_PENDING_MAX) {
+        DbRow *old = g_db_head;
+
+        g_db_head = old->next;
+        old->next = NULL;
+        free_rows(old);
+        g_db_count--;
+    }
+}
+
+static void drop_rows_unlocked(void) {
+    free_rows(g_db_head);
+    g_db_head = NULL;
+    g_db_tail = NULL;
+    g_db_count = 0;
+    g_db_urgent = 0;
+    g_ticket_done = g_ticket_next;
+}
+
+/* The caller holds g_log_mu. The line is written now and copied into the
+   ring, and kept for log.db once a workdir exists. */
+static void commit_unlocked(const LogNode *node) {
     uint64_t seq;
 
-    emit_line_unlocked(level, line);
+    emit_line_unlocked(node->level, node->line);
     seq = ++g_log_seq;
-    (void)pav_logring_push(seq, line);
+    (void)pav_logring_push(seq, node->line);
     if (g_log_alive) {
-        batch_add_unlocked(seq, line);
+        batch_add_unlocked(seq, node->line);
+    }
+    if (g_log_dest == LOG_DEST_WORKDIR || g_log_dest == LOG_DEST_PROFILE) {
+        db_add_unlocked(seq, node->ticket, node->ts, node->level, node->subsystem, node->msg);
     }
 }
 
-static int enqueue_line_unlocked(char *line, int level) {
-    LogNode *node = malloc(sizeof(*node));
-
-    if (node == NULL) {
-        return -1;
+static void free_node(LogNode *node) {
+    if (node != NULL) {
+        free(node->line);
+        free(node->subsystem);
+        free(node->msg);
+        free(node);
     }
-    node->line = line;
-    node->level = level;
-    node->next = NULL;
-    if (g_q_tail != NULL) {
-        g_q_tail->next = node;
-    } else {
-        g_q_head = node;
-    }
-    g_q_tail = node;
-    pthread_cond_signal(&g_log_cv);
-    return 0;
 }
 
-/* The caller holds g_log_mu. A running log thread writes the bytes later.
-   Otherwise the caller writes them now, so a line before start is not lost. */
-static void deliver_unlocked(int level, const char *subsystem, const char *msg) {
+/* The caller holds g_log_mu. A running log thread writes the line later.
+   Otherwise the caller writes it now, so a line before start is not lost.
+   Returns the line's ticket, or 0. */
+static uint64_t deliver_unlocked(int level, const char *subsystem, const char *msg) {
     char stamp[32];
-    char *line;
+    LogNode *node;
     int wrote;
 
     if (!level_kept(level)) {
-        return;
+        return 0;
     }
-    format_stamp(stamp, sizeof(stamp));
+    node = calloc(1, sizeof(*node));
+    if (node == NULL) {
+        return 0;
+    }
+    node->ts = pav_now_ms();
+    if (pav_format_utc(stamp, sizeof(stamp), node->ts) != 0) {
+        snprintf(stamp, sizeof(stamp), "0000-00-00T00:00:00.000Z");
+    }
     wrote = snprintf(NULL, 0, "%s %-5s %s  %s\n", stamp, level_name(level), subsystem, msg);
     if (wrote < 0) {
-        return;
+        free(node);
+        return 0;
     }
-    line = malloc((size_t)wrote + 1);
-    if (line == NULL) {
-        return;
+    node->line = malloc((size_t)wrote + 1);
+    node->subsystem = strdup(subsystem);
+    node->msg = strdup(msg);
+    if (node->line == NULL || node->subsystem == NULL || node->msg == NULL) {
+        free_node(node);
+        return 0;
     }
-    snprintf(line, (size_t)wrote + 1, "%s %-5s %s  %s\n", stamp, level_name(level), subsystem, msg);
-    if (g_log_alive && enqueue_line_unlocked(line, level) == 0) {
-        return;
+    snprintf(node->line, (size_t)wrote + 1, "%s %-5s %s  %s\n", stamp, level_name(level), subsystem, msg);
+    node->level = level;
+    node->ticket = ++g_ticket_next;
+    if (g_log_alive) {
+        if (g_q_tail != NULL) {
+            g_q_tail->next = node;
+        } else {
+            g_q_head = node;
+        }
+        g_q_tail = node;
+        pthread_cond_signal(&g_log_cv);
+        return node->ticket;
     }
-    commit_unlocked(level, line);
-    free(line);
+    commit_unlocked(node);
+    free_node(node);
+    return 0;
 }
 
 static void free_batch(BatchNode *head) {
@@ -1945,83 +2092,201 @@ static void emit_batch_outside_lock(void) {
     pthread_mutex_lock(&g_log_mu);
 }
 
-static void rotate_if_over(const char *path) {
-    FILE *file;
-    long size;
-    char bak[4100];
-    size_t len;
-
-    file = fopen(path, "rb");
-    if (file == NULL) {
-        return;
-    }
-    if (fseek(file, 0, SEEK_END) != 0) {
-        fclose(file);
-        return;
-    }
-    size = ftell(file);
-    fclose(file);
-    if (size <= PAV_LOG_ROTATE_BYTES) {
-        return;
-    }
-    len = strlen(path);
-    if (len + 3 >= sizeof(bak)) {
-        return;
-    }
-    memcpy(bak, path, len);
-    bak[len] = '.';
-    bak[len + 1] = '1';
-    bak[len + 2] = '\0';
-    (void)remove(bak);
-    (void)rename(path, bak);
+/* log.lines waits while lines may still be renumbered by attach. */
+static int batch_held_unlocked(void) {
+    return g_log_dest == LOG_DEST_WORKDIR && !g_log_shutdown;
 }
 
-/* The caller holds g_log_mu. Closes the workdir file and opens path. */
-static int open_profile_unlocked(const char *path) {
-    FILE *file;
+static int db_due_unlocked(void) {
+    if (g_db_head == NULL || g_log_dest != LOG_DEST_PROFILE || g_logdb == NULL) {
+        return 0;
+    }
+    return g_log_shutdown || g_log_flush_req || g_db_urgent || g_db_count >= LOG_DB_FLUSH_ROWS ||
+           mono_ms() - g_db_started_ms >= LOG_DB_FLUSH_MS;
+}
 
-    rotate_if_over(path);
-    file = fopen(path, "ab");
-    if (file == NULL) {
-        return -1;
+/* The caller holds g_log_mu and is the log thread. One transaction, written
+   outside the lock. */
+static void flush_db_outside_lock(void) {
+    DbRow *head = g_db_head;
+    size_t count = g_db_count;
+    PavLogRow *rows;
+    DbRow *row;
+    uint64_t last = 0;
+    size_t i = 0;
+
+    g_db_head = NULL;
+    g_db_tail = NULL;
+    g_db_count = 0;
+    g_db_urgent = 0;
+    pthread_mutex_unlock(&g_log_mu);
+    rows = calloc(count > 0 ? count : 1, sizeof(*rows));
+    for (row = head; row != NULL; row = row->next) {
+        if (rows != NULL && i < count) {
+            rows[i].seq = (int64_t)row->seq;
+            rows[i].ts = row->ts;
+            rows[i].level = row->level;
+            rows[i].subsystem = row->subsystem;
+            rows[i].text = row->text;
+            i++;
+        }
+        last = row->ticket;
     }
-    (void)pav_file_private(path);
-    if (g_log_own && g_log_out != NULL) {
-        fclose(g_log_out);
+    if (rows != NULL) {
+        (void)pav_logdb_insert(g_logdb, g_log_session, rows, i);
     }
-    g_log_out = file;
-    g_log_own = 1;
+    free(rows);
+    free_rows(head);
+    pthread_mutex_lock(&g_log_mu);
+    if (last > g_ticket_done) {
+        g_ticket_done = last;
+    }
+    pthread_cond_broadcast(&g_log_cv);
+}
+
+/* The caller holds g_log_mu and is the log thread. */
+static void attach_db_unlocked(void) {
+    char path[sizeof(g_log_switch_path)];
+    sqlite3 *db = NULL;
+    int64_t session = 0;
+    int64_t max_seq = 0;
+    int rc;
+
+    memcpy(path, g_log_switch_path, sizeof(path));
+    pthread_mutex_unlock(&g_log_mu);
+    rc = pav_logdb_open(path, &db, &session, &max_seq, NULL, 0);
+    pthread_mutex_lock(&g_log_mu);
+    if (rc != 0) {
+        /* No record this run: stderr and the ring only. */
+        drop_rows_unlocked();
+        g_log_dest = LOG_DEST_NONE;
+        return;
+    }
+    if (g_logdb != NULL) {
+        pav_logdb_close(g_logdb);
+    }
+    {
+        uint64_t first = g_db_head != NULL ? g_db_head->seq : g_log_seq + 1;
+        uint64_t base = (uint64_t)max_seq + 1;
+
+        if (base > first) {
+            uint64_t offset = base - first;
+            DbRow *row;
+            BatchNode *node;
+
+            for (row = g_db_head; row != NULL; row = row->next) {
+                row->seq += offset;
+            }
+            for (node = g_batch_head; node != NULL; node = node->next) {
+                if (node->seq >= first) {
+                    node->seq += offset;
+                }
+            }
+            pav_logring_renumber(first, offset);
+            g_log_seq += offset;
+        }
+    }
+    g_logdb = db;
+    g_log_session = session;
     g_log_dest = LOG_DEST_PROFILE;
-    return 0;
+    g_db_started_ms = mono_ms() - LOG_DB_FLUSH_MS;
+}
+
+/* The caller holds g_log_mu and is the log thread. */
+static void run_req_outside_lock(void) {
+    int req = g_log_req;
+    int mb = g_log_req_mb;
+    PavLogStats out;
+    int rc = -1;
+
+    memset(&out, 0, sizeof(out));
+    if (mb == 0) {
+        mb = g_log_cap_mb;
+    }
+    pthread_mutex_unlock(&g_log_mu);
+    if (g_logdb != NULL) {
+        int64_t cap = (int64_t)mb * 1024 * 1024;
+
+        if (req == LOG_REQ_STATS) {
+            rc = pav_logdb_stats(g_logdb, &out);
+        } else if (req == LOG_REQ_PREVIEW) {
+            rc = pav_logdb_trim_preview(g_logdb, cap, &out);
+        } else if (req == LOG_REQ_TRIM) {
+            rc = pav_logdb_trim(g_logdb, cap, g_log_session, &out);
+        }
+    }
+    pthread_mutex_lock(&g_log_mu);
+    if (rc == 0 && req == LOG_REQ_TRIM) {
+        g_log_cap_mb = mb;
+    }
+    out.cap_mb = g_log_cap_mb;
+    g_log_req_out = out;
+    g_log_req_rc = rc;
+    g_log_req = LOG_REQ_NONE;
+    pthread_cond_broadcast(&g_log_cv);
+}
+
+/* Shutdown: the rows are written, then trimmed to the cap (H-4 Lock). */
+static void close_db_outside_lock(void) {
+    sqlite3 *db = g_logdb;
+    int64_t cap = (int64_t)g_log_cap_mb * 1024 * 1024;
+    int64_t session = g_log_session;
+
+    g_logdb = NULL;
+    g_log_dest = LOG_DEST_NONE;
+    pthread_mutex_unlock(&g_log_mu);
+    (void)pav_logdb_trim(db, cap, session, NULL);
+    pav_logdb_close(db);
+    pthread_mutex_lock(&g_log_mu);
 }
 
 static void *log_thread_main(void *arg) {
     (void)arg;
     pthread_mutex_lock(&g_log_mu);
+    g_log_tid = pthread_self();
     for (;;) {
-        if (g_q_head != NULL) {
+        if (g_q_head != NULL && g_db_count < LOG_DB_FLUSH_ROWS) {
             LogNode *node = g_q_head;
 
             g_q_head = node->next;
             if (g_q_head == NULL) {
                 g_q_tail = NULL;
             }
-            commit_unlocked(node->level, node->line);
-            free(node->line);
-            free(node);
-            if (batch_due_unlocked()) {
+            commit_unlocked(node);
+            free_node(node);
+            if (batch_due_unlocked() && !batch_held_unlocked()) {
                 emit_batch_outside_lock();
             }
             continue;
         }
         if (g_log_switch_req) {
-            (void)open_profile_unlocked(g_log_switch_path);
+            attach_db_unlocked();
             g_log_switch_req = 0;
             pthread_cond_broadcast(&g_log_cv);
             continue;
         }
-        if (g_batch_head != NULL && (g_log_shutdown || batch_due_unlocked())) {
+        if (db_due_unlocked() || (g_db_head != NULL && g_q_head != NULL && g_log_dest == LOG_DEST_PROFILE)) {
+            flush_db_outside_lock();
+            continue;
+        }
+        if (g_q_head != NULL) {
+            /* Pending rows at the cap with no log.db yet: keep committing. */
+            LogNode *node = g_q_head;
+
+            g_q_head = node->next;
+            if (g_q_head == NULL) {
+                g_q_tail = NULL;
+            }
+            commit_unlocked(node);
+            free_node(node);
+            continue;
+        }
+        if (g_batch_head != NULL && !batch_held_unlocked() && (g_log_shutdown || batch_due_unlocked())) {
             emit_batch_outside_lock();
+            continue;
+        }
+        if (g_log_req != LOG_REQ_NONE) {
+            run_req_outside_lock();
             continue;
         }
         if (g_log_flush_req) {
@@ -2030,17 +2295,36 @@ static void *log_thread_main(void *arg) {
             continue;
         }
         if (g_log_shutdown) {
+            if (g_logdb != NULL) {
+                close_db_outside_lock();
+            }
             g_log_alive = 0;
+            g_ticket_done = g_ticket_next;
             pthread_cond_broadcast(&g_log_cv);
             pthread_mutex_unlock(&g_log_mu);
             return NULL;
         }
-        if (g_batch_head != NULL) {
-            struct timespec ts;
+        {
+            int wait = -1;
 
-            abs_after_ms(&ts, batch_wait_ms_unlocked());
-            pthread_cond_timedwait(&g_log_cv, &g_log_mu, &ts);
-            continue;
+            if (g_batch_head != NULL && !batch_held_unlocked()) {
+                wait = batch_wait_ms_unlocked();
+            }
+            if (g_db_head != NULL && g_log_dest == LOG_DEST_PROFILE) {
+                int64_t left = LOG_DB_FLUSH_MS - (mono_ms() - g_db_started_ms);
+                int db_wait = left < 1 ? 1 : (int)left;
+
+                if (wait < 0 || db_wait < wait) {
+                    wait = db_wait;
+                }
+            }
+            if (wait >= 0) {
+                struct timespec ts;
+
+                abs_after_ms(&ts, wait);
+                pthread_cond_timedwait(&g_log_cv, &g_log_mu, &ts);
+                continue;
+            }
         }
         pthread_cond_wait(&g_log_cv, &g_log_mu);
     }
@@ -2102,59 +2386,27 @@ void pav_log_flush(void) {
 }
 
 int pav_log_set_workdir(const char *workdir) {
-    char logs[4608];
-    char path[4608];
-    FILE *file;
-    const PavPlatform *platform;
-
     pthread_mutex_lock(&g_log_mu);
     if (g_log_dest == LOG_DEST_EXPLICIT || g_log_dest == LOG_DEST_PROFILE) {
         pthread_mutex_unlock(&g_log_mu);
         return 0;
     }
     if (workdir == NULL || workdir[0] == '\0') {
-        if (g_log_dest == LOG_DEST_WORKDIR && g_log_own && g_log_out != NULL) {
-            fclose(g_log_out);
-            g_log_out = NULL;
-            g_log_own = 0;
-        }
         if (g_log_dest == LOG_DEST_WORKDIR) {
+            drop_rows_unlocked();
             g_log_dest = LOG_DEST_NONE;
         }
         pthread_mutex_unlock(&g_log_mu);
         return 0;
     }
-    pthread_mutex_unlock(&g_log_mu);
-
-    platform = pav_platform();
-    if (pav_path_join(logs, sizeof(logs), workdir, "logs") != 0 || platform == NULL ||
-        platform->mkdir_private == NULL || platform->mkdir_private(logs) != 0 ||
-        pav_path_join(path, sizeof(path), logs, "pavillion.log") != 0) {
-        return -1;
-    }
-    file = fopen(path, "ab");
-    if (file == NULL) {
-        return -1;
-    }
-    (void)pav_file_private(path);
-
-    pthread_mutex_lock(&g_log_mu);
-    if (g_log_dest == LOG_DEST_EXPLICIT || g_log_dest == LOG_DEST_PROFILE) {
-        fclose(file);
-        pthread_mutex_unlock(&g_log_mu);
-        return 0;
-    }
-    if (g_log_own && g_log_out != NULL) {
-        fclose(g_log_out);
-    }
-    g_log_out = file;
-    g_log_own = 1;
     g_log_dest = LOG_DEST_WORKDIR;
     pthread_mutex_unlock(&g_log_mu);
     return 0;
 }
 
 int pav_log_attach_profile(const char *path) {
+    int rc;
+
     pthread_mutex_lock(&g_log_mu);
     if (path == NULL || path[0] == '\0' || strlen(path) >= sizeof(g_log_switch_path)) {
         pthread_mutex_unlock(&g_log_mu);
@@ -2165,10 +2417,8 @@ int pav_log_attach_profile(const char *path) {
         return 0;
     }
     if (!g_log_alive) {
-        int rc = open_profile_unlocked(path);
-
         pthread_mutex_unlock(&g_log_mu);
-        return rc;
+        return -1;
     }
     memcpy(g_log_switch_path, path, strlen(path) + 1);
     g_log_switch_req = 1;
@@ -2176,39 +2426,105 @@ int pav_log_attach_profile(const char *path) {
     while (g_log_switch_req && g_log_alive) {
         pthread_cond_wait(&g_log_cv, &g_log_mu);
     }
-    {
-        int rc = g_log_dest == LOG_DEST_PROFILE ? 0 : -1;
-
-        pthread_mutex_unlock(&g_log_mu);
-        return rc;
-    }
+    rc = g_log_dest == LOG_DEST_PROFILE ? 0 : -1;
+    pthread_mutex_unlock(&g_log_mu);
+    return rc;
 }
 
 int pav_log_set_output(const char *path) {
     pthread_mutex_lock(&g_log_mu);
-    if (g_log_own && g_log_out != NULL) {
+    if (g_log_out != NULL) {
         fclose(g_log_out);
     }
-    g_log_own = 0;
     g_log_out = NULL;
-    g_log_dest = LOG_DEST_NONE;
+    if (g_log_dest != LOG_DEST_PROFILE) {
+        drop_rows_unlocked();
+        g_log_dest = LOG_DEST_NONE;
+    }
     if (path != NULL) {
         g_log_out = fopen(path, "wb");
         if (g_log_out == NULL) {
             pthread_mutex_unlock(&g_log_mu);
             return -1;
         }
-        g_log_own = 1;
         g_log_dest = LOG_DEST_EXPLICIT;
     }
     pthread_mutex_unlock(&g_log_mu);
     return 0;
 }
 
+int pav_log_set_cap_mb(int mb) {
+    if (mb < 1 || mb > 100) {
+        return -1;
+    }
+    pthread_mutex_lock(&g_log_mu);
+    g_log_cap_mb = mb;
+    pthread_mutex_unlock(&g_log_mu);
+    return 0;
+}
+
+static int log_request(int req, int mb, PavLogStats *out) {
+    int rc;
+
+    if (out == NULL || (mb != 0 && (mb < 1 || mb > 100)) || (req == LOG_REQ_PREVIEW && mb == 0)) {
+        return -1;
+    }
+    pthread_mutex_lock(&g_log_mu);
+    if (!g_log_alive || g_log_dest != LOG_DEST_PROFILE ||
+        pthread_equal(pthread_self(), g_log_tid)) {
+        pthread_mutex_unlock(&g_log_mu);
+        return -1;
+    }
+    while (g_log_req != LOG_REQ_NONE && g_log_alive) {
+        pthread_cond_wait(&g_log_cv, &g_log_mu);
+    }
+    g_log_req = req;
+    g_log_req_mb = mb;
+    g_log_req_rc = -1;
+    pthread_cond_broadcast(&g_log_cv);
+    while (g_log_req == req && g_log_alive) {
+        pthread_cond_wait(&g_log_cv, &g_log_mu);
+    }
+    rc = g_log_req_rc;
+    *out = g_log_req_out;
+    pthread_mutex_unlock(&g_log_mu);
+    return rc;
+}
+
+int pav_log_stats(PavLogStats *out) {
+    return log_request(LOG_REQ_STATS, 0, out);
+}
+
+int pav_log_trim_preview(int mb, PavLogStats *out) {
+    return log_request(LOG_REQ_PREVIEW, mb, out);
+}
+
+int pav_log_trim(int mb, PavLogStats *out) {
+    return log_request(LOG_REQ_TRIM, mb, out);
+}
+
+/* An ERROR waits up to about 250 ms for its log.db commit (H-4 Lock). */
+static void wait_ticket_unlocked(uint64_t ticket) {
+    struct timespec ts;
+
+    if (ticket == 0 || !g_log_alive || g_log_dest != LOG_DEST_PROFILE ||
+        pthread_equal(pthread_self(), g_log_tid)) {
+        return;
+    }
+    abs_after_ms(&ts, LOG_ERROR_WAIT_MS);
+    pthread_cond_broadcast(&g_log_cv);
+    while (g_ticket_done < ticket && g_log_alive && g_log_dest == LOG_DEST_PROFILE) {
+        if (pthread_cond_timedwait(&g_log_cv, &g_log_mu, &ts) != 0) {
+            break;
+        }
+    }
+}
+
 void pav_log(const char *subsystem, int level, int num_args, const char *fmt, ...) {
     size_t specifiers;
     char msg[PAV_LOG_MSG_MAX];
     va_list ap;
+    uint64_t ticket;
 
     if (subsystem == NULL || subsystem[0] == '\0') {
         subsystem = "log";
@@ -2223,14 +2539,17 @@ void pav_log(const char *subsystem, int level, int num_args, const char *fmt, ..
         snprintf(msg, sizeof(msg),
                  "format specifier count mismatch: format has %zu, num_args is %d",
                  specifiers, num_args);
-        deliver_unlocked(PAV_ERROR, "log", msg);
-        pthread_mutex_unlock(&g_log_mu);
-        return;
+        level = PAV_ERROR;
+        subsystem = "log";
+    } else {
+        va_start(ap, fmt);
+        vsnprintf(msg, sizeof(msg), fmt, ap);
+        va_end(ap);
     }
-    va_start(ap, fmt);
-    vsnprintf(msg, sizeof(msg), fmt, ap);
-    va_end(ap);
-    deliver_unlocked(level, subsystem, msg);
+    ticket = deliver_unlocked(level, subsystem, msg);
+    if (level == PAV_ERROR) {
+        wait_ticket_unlocked(ticket);
+    }
     pthread_mutex_unlock(&g_log_mu);
 }
 

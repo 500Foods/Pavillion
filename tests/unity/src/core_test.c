@@ -252,6 +252,7 @@ void tearDown(void) {
     pav_log_thread_shutdown();
     pav_log_set_output(NULL);
     pav_log_set_workdir(NULL);
+    (void)pav_log_set_cap_mb(10);
     pav_logring_reset();
     restore_stderr();
     if (g_log_path[0] != '\0') {
@@ -545,7 +546,10 @@ void test_parse_index_and_profile(void) {
     TEST_ASSERT_EQUAL_STRING("Default", profile->name);
     TEST_ASSERT_EQUAL_STRING("sqlite", profile->engine);
     TEST_ASSERT_EQUAL_STRING("default.sqlite", profile->storage_path);
-    TEST_ASSERT_EQUAL_STRING("logs/default.log", profile->logs);
+    /* H-4: an old .log path is rewritten to <id>.log.db on load. */
+    TEST_ASSERT_EQUAL_STRING("default.log.db", profile->logs);
+    TEST_ASSERT_EQUAL_INT(1, profile->logs_migrated);
+    TEST_ASSERT_EQUAL_INT(10, profile->log_max_mb);
     TEST_ASSERT_EQUAL_STRING("blobs/default", profile->blobs);
     TEST_ASSERT_EQUAL_STRING("cache/default", profile->cache);
     TEST_ASSERT_EQUAL_STRING("America/Vancouver", profile->timezone);
@@ -649,7 +653,7 @@ static const char k_default_profile[] =
     "    \"engine\": \"sqlite\",\n"
     "    \"path\": \"default.sqlite\"\n"
     "  },\n"
-    "  \"logs\": \"logs/default.log\",\n"
+    "  \"logs\": \"default.log.db\",\n"
     "  \"blobs\": \"blobs/default\",\n"
     "  \"cache\": \"cache/default\",\n"
     "  \"accounts\": [],\n"
@@ -731,74 +735,6 @@ static int count_text(const char *haystack, const char *needle) {
         p += n;
     }
     return count;
-}
-
-static void write_sized(const char *path, long size, char last) {
-    FILE *f;
-    struct stat st;
-
-    TEST_ASSERT_TRUE(size >= 1);
-    f = fopen(path, "wb");
-    TEST_ASSERT_NOT_NULL(f);
-    TEST_ASSERT_EQUAL_INT(0, fseek(f, size - 1, SEEK_SET));
-    TEST_ASSERT_EQUAL_INT(1, (int)fwrite(&last, 1, 1, f));
-    TEST_ASSERT_EQUAL_INT(0, fclose(f));
-    TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
-    TEST_ASSERT_TRUE(st.st_size == size);
-}
-
-/* The rotation fixture is a sparse file of NUL bytes. strstr would stop
-   on the first one, so the marker is checked in the tail only. */
-static char *read_tail(const char *path, size_t max_bytes, size_t *out_n) {
-    FILE *f;
-    struct stat st;
-    off_t start;
-    char *buf;
-    size_t n;
-    size_t got;
-
-    TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
-    f = fopen(path, "rb");
-    TEST_ASSERT_NOT_NULL(f);
-    start = st.st_size > (off_t)max_bytes ? st.st_size - (off_t)max_bytes : 0;
-    TEST_ASSERT_EQUAL_INT(0, fseek(f, (long)start, SEEK_SET));
-    n = (size_t)(st.st_size - start);
-    buf = calloc(n + 1, 1);
-    TEST_ASSERT_NOT_NULL(buf);
-    got = fread(buf, 1, n, f);
-    TEST_ASSERT_EQUAL_INT(0, fclose(f));
-    TEST_ASSERT_EQUAL_UINT((unsigned)n, (unsigned)got);
-    *out_n = n;
-    return buf;
-}
-
-static int count_bytes(const char *hay, size_t hay_n, const char *needle) {
-    size_t n = strlen(needle);
-    size_t i;
-    int count = 0;
-
-    if (n == 0 || hay_n < n) {
-        return 0;
-    }
-    for (i = 0; i + n <= hay_n; i++) {
-        if (memcmp(hay + i, needle, n) == 0) {
-            count++;
-            i += n - 1;
-        }
-    }
-    return count;
-}
-
-static char last_byte(const char *path) {
-    FILE *f;
-    unsigned char c = 0;
-
-    f = fopen(path, "rb");
-    TEST_ASSERT_NOT_NULL(f);
-    TEST_ASSERT_EQUAL_INT(0, fseek(f, -1, SEEK_END));
-    TEST_ASSERT_EQUAL_INT(1, (int)fread(&c, 1, 1, f));
-    TEST_ASSERT_EQUAL_INT(0, fclose(f));
-    return (char)c;
 }
 
 static json_t *tail_lines(json_t *root) {
@@ -1123,10 +1059,11 @@ void test_prepare_resolves_paths_and_skips_sqlite(void) {
     TEST_ASSERT_EQUAL_INT(0, pav_config_load(g_cfg_dir, &load, err, sizeof(err)));
     TEST_ASSERT_EQUAL_INT(0, pav_config_prepare(g_cfg_dir, load->profile, err, sizeof(err)));
 
-    snprintf(expect, sizeof(expect), "%s/logs/default.log", g_cfg_dir);
+    snprintf(expect, sizeof(expect), "%s/default.log.db", g_cfg_dir);
     TEST_ASSERT_EQUAL_STRING(expect, load->profile->resolved_logs);
-    TEST_ASSERT_EQUAL_INT(0, stat(expect, &st));
-    ASSERT_MODE(0600, st);
+    TEST_ASSERT_TRUE(access(expect, F_OK) != 0);
+    snprintf(expect, sizeof(expect), "%s/logs", g_cfg_dir);
+    TEST_ASSERT_TRUE(access(expect, F_OK) != 0);
 
     snprintf(expect, sizeof(expect), "%s/blobs/default", g_cfg_dir);
     TEST_ASSERT_EQUAL_STRING(expect, load->profile->resolved_blobs);
@@ -1148,7 +1085,7 @@ void test_prepare_resolves_paths_and_skips_sqlite(void) {
 
     make_slot(g_cfg_dir, sizeof(g_cfg_dir));
     make_slot(g_extra_dir, sizeof(g_extra_dir));
-    snprintf(absolute_log, sizeof(absolute_log), "%s/app.log", g_extra_dir);
+    snprintf(absolute_log, sizeof(absolute_log), "%s/app.log.db", g_extra_dir);
     snprintf(path, sizeof(path), "%s/profiles", g_cfg_dir);
     TEST_ASSERT_EQUAL_INT(0, mkdir(path, 0700));
     snprintf(path, sizeof(path), "%s/Pavillion.json", g_cfg_dir);
@@ -1158,8 +1095,7 @@ void test_prepare_resolves_paths_and_skips_sqlite(void) {
     TEST_ASSERT_EQUAL_INT(0, pav_config_load(g_cfg_dir, &load, err, sizeof(err)));
     TEST_ASSERT_EQUAL_INT(0, pav_config_prepare(g_cfg_dir, load->profile, err, sizeof(err)));
     TEST_ASSERT_EQUAL_STRING(absolute_log, load->profile->resolved_logs);
-    TEST_ASSERT_EQUAL_INT(0, stat(absolute_log, &st));
-    ASSERT_MODE(0600, st);
+    TEST_ASSERT_TRUE(access(absolute_log, F_OK) != 0);
     snprintf(path, sizeof(path), "%s/logs/default.log", g_cfg_dir);
     TEST_ASSERT_TRUE(access(path, F_OK) != 0);
     pav_config_load_free(load);
@@ -1174,12 +1110,11 @@ void test_prepare_resolves_paths_and_skips_sqlite(void) {
     snprintf(path, sizeof(path), "%s/Pavillion.json", g_cfg_dir);
     write_index(path, "default.json", "profiles");
     snprintf(path, sizeof(path), "%s/profiles/default.json", g_cfg_dir);
-    write_profile_logs(path, "default", "Default", "blocked/app.log");
+    write_profile_logs(path, "default", "Default", "blocked/app.log.db");
     TEST_ASSERT_EQUAL_INT(0, pav_config_load(g_cfg_dir, &load, err, sizeof(err)));
-    err[0] = '\0';
-    TEST_ASSERT_EQUAL_INT(-1, pav_config_prepare(g_cfg_dir, load->profile, err, sizeof(err)));
-    snprintf(expect, sizeof(expect), "%s/blocked/app.log", g_cfg_dir);
-    TEST_ASSERT_NOT_NULL(strstr(err, expect));
+    /* prepare no longer touches the log path (H-4). */
+    TEST_ASSERT_EQUAL_INT(0, pav_config_prepare(g_cfg_dir, load->profile, err, sizeof(err)));
+    snprintf(expect, sizeof(expect), "%s/blocked/app.log.db", g_cfg_dir);
     TEST_ASSERT_TRUE(access(expect, F_OK) != 0);
     TEST_ASSERT_EQUAL_INT(0, tree_has_sqlite(g_cfg_dir));
     pav_config_load_free(load);
@@ -2944,66 +2879,473 @@ void test_log_tail_filters_level(void) {
     json_decref(root);
 }
 
-void test_log_rotation_over_limit(void) {
-    const long limit = 10L * 1024L * 1024L;
-    char logs[160];
-    char exact[180];
-    char over[180];
-    char bak[180];
-    char generation[180];
-    char *text;
-    char *err;
+/* H-4 commit 2: log.db. */
+static int64_t db_int(const char *path, const char *sql) {
+    sqlite3 *db = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int64_t v = -1;
+
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(db, sql, -1, &stmt, NULL));
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        v = sqlite3_column_int64(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+    return v;
+}
+
+static char *db_text_where(const char *needle) {
+    char sql[256];
+
+    snprintf(sql, sizeof(sql), "SELECT count(*) FROM log WHERE text LIKE '%%%s%%'", needle);
+    return strdup(sql);
+}
+
+static int64_t db_count(const char *path, const char *needle) {
+    char *sql = db_text_where(needle);
+    int64_t n = db_int(path, sql);
+
+    free(sql);
+    return n;
+}
+
+/* Every row as "subsystem  text\n", oldest first. Caller frees. */
+static char *db_text(const char *path) {
+    sqlite3 *db = NULL;
+    sqlite3_stmt *stmt = NULL;
+    size_t len = 0;
+    char *out = calloc(1, 1);
+
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,
+                          sqlite3_prepare_v2(db, "SELECT subsystem, text FROM log ORDER BY seq", -1, &stmt, NULL));
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *sub = (const char *)sqlite3_column_text(stmt, 0);
+        const char *txt = (const char *)sqlite3_column_text(stmt, 1);
+        size_t add = strlen(sub) + strlen(txt) + 4;
+
+        out = realloc(out, len + add);
+        TEST_ASSERT_NOT_NULL(out);
+        len += (size_t)snprintf(out + len, add, "%s  %s\n", sub, txt);
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+    return out;
+}
+
+static void attach_db(char *path, size_t path_len) {
+    TEST_ASSERT_EQUAL_INT(0, pav_log_set_workdir(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pav_log_thread_start());
+    TEST_ASSERT_TRUE(snprintf(path, path_len, "%s/default.log.db", g_cfg_dir) < (int)path_len);
+    TEST_ASSERT_EQUAL_INT(0, pav_log_attach_profile(path));
+}
+
+static void log_megabytes(int mb, const char *tag) {
+    char line[1001];
+    int i;
+
+    memset(line, 'x', 1000);
+    line[1000] = '\0';
+    for (i = 0; i < mb * 1024; i++) {
+        pav_log("core", PAV_INFO, 3, "%s-%d %s", tag, i, line);
+    }
+}
+
+void test_logdb_opens_private_wal(void) {
+    char path[200];
     struct stat st;
 
     make_slot(g_cfg_dir, sizeof(g_cfg_dir));
-    TEST_ASSERT_TRUE(snprintf(logs, sizeof(logs), "%s/logs", g_cfg_dir) < (int)sizeof(logs));
-    TEST_ASSERT_EQUAL_INT(0, pav_platform()->mkdir_private(logs));
-    TEST_ASSERT_TRUE(snprintf(exact, sizeof(exact), "%s/exact.log", logs) < (int)sizeof(exact));
-    TEST_ASSERT_TRUE(snprintf(over, sizeof(over), "%s/over.log", logs) < (int)sizeof(over));
-    TEST_ASSERT_TRUE(snprintf(bak, sizeof(bak), "%s/over.log.1", logs) < (int)sizeof(bak));
-    write_sized(exact, limit, 'Q');
-
-    capture_stderr();
-    TEST_ASSERT_EQUAL_INT(0, pav_log_attach_profile(exact));
-    pav_log("core", PAV_INFO, 0, "exact-stays");
-    {
-        size_t n = 0;
-        FILE *f;
-        char q = 0;
-
-        text = read_tail(exact, 128, &n);
-        TEST_ASSERT_EQUAL_INT(1, count_bytes(text, n, "exact-stays"));
-        free(text);
-        f = fopen(exact, "rb");
-        TEST_ASSERT_NOT_NULL(f);
-        TEST_ASSERT_EQUAL_INT(0, fseek(f, limit - 1, SEEK_SET));
-        TEST_ASSERT_EQUAL_INT(1, (int)fread(&q, 1, 1, f));
-        TEST_ASSERT_EQUAL_INT(0, fclose(f));
-        TEST_ASSERT_EQUAL_CHAR('Q', q);
-    }
-    TEST_ASSERT_TRUE(snprintf(generation, sizeof(generation), "%s.1", exact) < (int)sizeof(generation));
-    TEST_ASSERT_TRUE(stat(generation, &st) != 0);
-    TEST_ASSERT_EQUAL_INT(0, stat(exact, &st));
+    attach_db(path, sizeof(path));
+    pav_log("core", PAV_INFO, 0, "wal-line");
+    pav_log_flush();
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
     ASSERT_MODE(0600, st);
+    TEST_ASSERT_EQUAL_INT64(2, db_int(path, "PRAGMA auto_vacuum"));
+    {
+        sqlite3 *db = NULL;
+        sqlite3_stmt *stmt = NULL;
 
-    write_sized(over, limit + 1, 'Z');
-    write_text(bak, "old-gen\n");
-    TEST_ASSERT_EQUAL_INT(0, pav_log_attach_profile(over));
-    pav_log("core", PAV_INFO, 0, "rotated-line");
+        TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, NULL));
+        TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(db, "PRAGMA journal_mode", -1, &stmt, NULL));
+        TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+        TEST_ASSERT_EQUAL_STRING("wal", (const char *)sqlite3_column_text(stmt, 0));
+        sqlite3_finalize(stmt);
+        sqlite3_close(db);
+    }
+}
+
+void test_logdb_migrate_fresh_to_v1(void) {
+    char path[200];
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    attach_db(path, sizeof(path));
+    pav_log_flush();
+    TEST_ASSERT_EQUAL_INT64(1, db_int(path, "PRAGMA user_version"));
+    TEST_ASSERT_EQUAL_INT64(3, db_int(path, "SELECT count(*) FROM sqlite_master WHERE type='index' AND name IN "
+                                            "('log_ts','log_session_seq','log_level_seq')"));
+    TEST_ASSERT_EQUAL_INT64(1, db_int(path, "SELECT count(*) FROM session WHERE source='run'"));
+}
+
+void test_logdb_newer_is_error(void) {
+    char path[200];
+    sqlite3 *db = NULL;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/default.log.db", g_cfg_dir) < (int)sizeof(path));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open(path, &db));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db, "PRAGMA user_version=99", NULL, NULL, NULL));
+    sqlite3_close(db);
+    TEST_ASSERT_EQUAL_INT(0, pav_log_set_workdir(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pav_log_thread_start());
+    capture_stderr();
+    TEST_ASSERT_EQUAL_INT(-1, pav_log_attach_profile(path));
+    pav_log("core", PAV_DEBUG, 0, "after-newer");
+    pav_log_flush();
+    {
+        char *err = take_stderr();
+
+        /* No record this run: every level goes to stderr. */
+        TEST_ASSERT_EQUAL_INT(1, count_text(err, "after-newer"));
+        free(err);
+    }
+    TEST_ASSERT_EQUAL_INT64(99, db_int(path, "PRAGMA user_version"));
+}
+
+void test_logdb_batches_within_100ms(void) {
+    char path[200];
+    struct timespec ts = {0, 300L * 1000000L};
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    attach_db(path, sizeof(path));
+    pav_log("core", PAV_INFO, 0, "batched-line");
+    nanosleep(&ts, NULL);
+    TEST_ASSERT_EQUAL_INT64(1, db_count(path, "batched-line"));
+}
+
+void test_logdb_error_flushes_sync(void) {
+    char path[200];
+    char *err;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    attach_db(path, sizeof(path));
+    capture_stderr();
+    pav_log("core", PAV_ERROR, 0, "sync-error-line");
+    TEST_ASSERT_EQUAL_INT64(1, db_count(path, "sync-error-line"));
+    err = take_stderr();
+    TEST_ASSERT_EQUAL_INT(1, count_text(err, "sync-error-line"));
+    free(err);
+}
+
+void test_logdb_shutdown_flushes(void) {
+    char path[200];
+    int i;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    attach_db(path, sizeof(path));
+    for (i = 0; i < 700; i++) {
+        pav_log("core", PAV_DEBUG, 1, "shutdown-row-%d", i);
+    }
+    pav_log_thread_shutdown();
+    TEST_ASSERT_EQUAL_INT64(700, db_count(path, "shutdown-row-"));
+    TEST_ASSERT_EQUAL_INT64(700, db_int(path, "SELECT count(DISTINCT seq) FROM log WHERE text LIKE 'shutdown-row-%'"));
+}
+
+void test_log_pre_attach_written_once(void) {
+    char path[200];
+    char *err;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pav_log_set_workdir(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pav_log_thread_start());
+    capture_stderr();
+    pav_log("core", PAV_INFO, 0, "early-marker-h1");
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/default.log.db", g_cfg_dir) < (int)sizeof(path));
+    TEST_ASSERT_EQUAL_INT(0, pav_log_attach_profile(path));
+    pav_log("core", PAV_INFO, 0, "late-marker-h1");
+    pav_log_flush();
     err = take_stderr();
     free(err);
+    TEST_ASSERT_EQUAL_INT64(1, db_count(path, "early-marker-h1"));
+    TEST_ASSERT_EQUAL_INT64(1, db_count(path, "late-marker-h1"));
+    TEST_ASSERT_TRUE(db_int(path, "SELECT seq FROM log WHERE text='early-marker-h1'") <
+                     db_int(path, "SELECT seq FROM log WHERE text='late-marker-h1'"));
+}
 
-    TEST_ASSERT_EQUAL_INT(0, stat(bak, &st));
-    TEST_ASSERT_TRUE(st.st_size > limit);
-    TEST_ASSERT_EQUAL_CHAR('Z', last_byte(bak));
-    TEST_ASSERT_EQUAL_INT(0, stat(over, &st));
-    ASSERT_MODE(0600, st);
-    TEST_ASSERT_TRUE(st.st_size < 4096);
-    text = slurp(over);
-    TEST_ASSERT_EQUAL_INT(1, count_text(text, "rotated-line"));
-    free(text);
-    TEST_ASSERT_TRUE(snprintf(generation, sizeof(generation), "%s.2", over) < (int)sizeof(generation));
-    TEST_ASSERT_TRUE(stat(generation, &st) != 0);
+void test_log_seq_continues_across_runs(void) {
+    char path[200];
+    int64_t first_max;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    attach_db(path, sizeof(path));
+    pav_log("core", PAV_INFO, 0, "run-one");
+    pav_log_thread_shutdown();
+    first_max = db_int(path, "SELECT max(seq) FROM log");
+    TEST_ASSERT_TRUE(first_max > 0);
+
+    pav_logring_reset();
+    TEST_ASSERT_EQUAL_INT(0, pav_log_set_workdir(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pav_log_thread_start());
+    pav_log("core", PAV_INFO, 0, "run-two-early");
+    TEST_ASSERT_EQUAL_INT(0, pav_log_attach_profile(path));
+    pav_log("core", PAV_INFO, 0, "run-two-late");
+    pav_log_thread_shutdown();
+    TEST_ASSERT_EQUAL_INT64(first_max + 1, db_int(path, "SELECT seq FROM log WHERE text='run-two-early'"));
+    TEST_ASSERT_EQUAL_INT64(first_max + 2, db_int(path, "SELECT seq FROM log WHERE text='run-two-late'"));
+    TEST_ASSERT_EQUAL_INT64(2, db_int(path, "SELECT count(*) FROM session"));
+}
+
+void test_log_stderr_warn_error_only(void) {
+    char path[200];
+    char *err;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    capture_stderr();
+    TEST_ASSERT_EQUAL_INT(0, pav_log_set_workdir(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pav_log_thread_start());
+    pav_log("core", PAV_INFO, 0, "pre-info-h4");
+    pav_log("core", PAV_WARN, 0, "pre-warn-h4");
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/default.log.db", g_cfg_dir) < (int)sizeof(path));
+    TEST_ASSERT_EQUAL_INT(0, pav_log_attach_profile(path));
+    pav_log("core", PAV_DEBUG, 0, "post-debug-h4");
+    pav_log("core", PAV_ERROR, 0, "post-error-h4");
+    pav_log_flush();
+    err = take_stderr();
+    TEST_ASSERT_EQUAL_INT(0, count_text(err, "pre-info-h4"));
+    TEST_ASSERT_EQUAL_INT(1, count_text(err, "pre-warn-h4"));
+    TEST_ASSERT_EQUAL_INT(0, count_text(err, "post-debug-h4"));
+    TEST_ASSERT_EQUAL_INT(1, count_text(err, "post-error-h4"));
+    free(err);
+}
+
+void test_log_before_workdir_stderr_only(void) {
+    char *err;
+    char path[160];
+    struct stat st;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    capture_stderr();
+    pav_log("core", PAV_INFO, 0, "stderr-only-h1");
+    pav_log_flush();
+    err = take_stderr();
+    TEST_ASSERT_EQUAL_INT(1, count_text(err, "stderr-only-h1"));
+    free(err);
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/default.log.db", g_cfg_dir) < (int)sizeof(path));
+    TEST_ASSERT_TRUE(stat(path, &st) != 0);
+}
+
+void test_log_no_duplicate_after_profile_attach(void) {
+    char path[200];
+    char *err;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    capture_stderr();
+    TEST_ASSERT_EQUAL_INT(0, pav_log_set_workdir(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pav_log_thread_start());
+    pav_log("core", PAV_WARN, 0, "early-marker-h1");
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/default.log.db", g_cfg_dir) < (int)sizeof(path));
+    TEST_ASSERT_EQUAL_INT(0, pav_log_attach_profile(path));
+    pav_log("core", PAV_WARN, 0, "late-marker-h1");
+    pav_log_thread_shutdown();
+    err = take_stderr();
+    TEST_ASSERT_EQUAL_INT(1, count_text(err, "early-marker-h1"));
+    TEST_ASSERT_EQUAL_INT(1, count_text(err, "late-marker-h1"));
+    free(err);
+    TEST_ASSERT_EQUAL_INT64(1, db_count(path, "early-marker-h1"));
+    TEST_ASSERT_EQUAL_INT64(1, db_count(path, "late-marker-h1"));
+}
+
+void test_logdb_error_wait_capped(void) {
+    char path[200];
+    sqlite3 *db = NULL;
+    int64_t t0;
+    int64_t took;
+    char *err;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    attach_db(path, sizeof(path));
+    pav_log_flush();
+    /* Another writer holds the lock, so the commit cannot finish. */
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open(path, &db));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db, "BEGIN IMMEDIATE", NULL, NULL, NULL));
+    capture_stderr();
+    t0 = pav_now_ms();
+    pav_log("core", PAV_ERROR, 0, "capped-error-line");
+    took = pav_now_ms() - t0;
+    TEST_ASSERT_TRUE(took >= 200);
+    TEST_ASSERT_TRUE(took < 600);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db, "COMMIT", NULL, NULL, NULL));
+    sqlite3_close(db);
+    pav_log_flush();
+    err = take_stderr();
+    free(err);
+    TEST_ASSERT_EQUAL_INT64(1, db_count(path, "capped-error-line"));
+}
+
+void test_log_before_workdir_stderr_all_levels(void) {
+    char *err;
+    char path[160];
+    struct stat st;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    capture_stderr();
+    pav_log("core", PAV_DEBUG, 0, "stderr-debug-h4");
+    pav_log("core", PAV_TRACE, 0, "stderr-trace-h4");
+    pav_log_flush();
+    err = take_stderr();
+    TEST_ASSERT_EQUAL_INT(1, count_text(err, "stderr-debug-h4"));
+    TEST_ASSERT_EQUAL_INT(1, count_text(err, "stderr-trace-h4"));
+    free(err);
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/logs", g_cfg_dir) < (int)sizeof(path));
+    TEST_ASSERT_TRUE(stat(path, &st) != 0);
+}
+
+void test_no_logs_dir_created(void) {
+    char path[200];
+    struct stat st;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    capture_stderr();
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pavillion_stop();
+    pav_log_thread_shutdown();
+    free(take_stderr());
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/logs", g_cfg_dir) < (int)sizeof(path));
+    TEST_ASSERT_TRUE(stat(path, &st) != 0);
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/default.log.db", g_cfg_dir) < (int)sizeof(path));
+    TEST_ASSERT_EQUAL_INT64(1, db_count(path, "core ready"));
+}
+
+void test_log_old_files_deleted(void) {
+    char path[200];
+    char logs[160];
+    struct stat st;
+    const char *names[] = {"default.log", "default.log.1", "pavillion.log"};
+    size_t i;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_TRUE(snprintf(logs, sizeof(logs), "%s/logs", g_cfg_dir) < (int)sizeof(logs));
+    TEST_ASSERT_EQUAL_INT(0, mkdir(logs, 0700));
+    for (i = 0; i < 3; i++) {
+        TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/%s", logs, names[i]) < (int)sizeof(path));
+        write_text(path, "old-file-line-h4\n");
+    }
+    capture_stderr();
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pavillion_stop();
+    pav_log_thread_shutdown();
+    free(take_stderr());
+    TEST_ASSERT_TRUE(stat(logs, &st) != 0);
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/default.log.db", g_cfg_dir) < (int)sizeof(path));
+    TEST_ASSERT_EQUAL_INT64(0, db_count(path, "old-file-line-h4"));
+    TEST_ASSERT_EQUAL_INT64(1, db_count(path, "core ready"));
+}
+
+void test_logdb_trim_to_cap_at_shutdown(void) {
+    char path[200];
+    int64_t bytes;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pav_log_set_cap_mb(1));
+    attach_db(path, sizeof(path));
+    log_megabytes(3, "cap");
+    pav_log_thread_shutdown();
+    bytes = db_int(path, "SELECT (SELECT page_count FROM pragma_page_count()) - "
+                         "(SELECT freelist_count FROM pragma_freelist_count())") *
+            db_int(path, "PRAGMA page_size");
+    TEST_ASSERT_TRUE(bytes <= 1024 * 1024);
+    TEST_ASSERT_TRUE(bytes > 512 * 1024);
+    TEST_ASSERT_EQUAL_INT64(1, db_count(path, "cap-3071 "));
+    TEST_ASSERT_EQUAL_INT64(0, db_count(path, "cap-0 "));
+    /* incremental_vacuum gave the pages back. */
+    TEST_ASSERT_TRUE(db_int(path, "PRAGMA freelist_count") < 16);
+}
+
+void test_logdb_trim_drops_empty_sessions(void) {
+    char path[200];
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    attach_db(path, sizeof(path));
+    pav_log("core", PAV_INFO, 0, "old-session-line");
+    pav_log_thread_shutdown();
+    TEST_ASSERT_EQUAL_INT(0, pav_log_set_cap_mb(1));
+    TEST_ASSERT_EQUAL_INT(0, pav_log_set_workdir(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pav_log_thread_start());
+    TEST_ASSERT_EQUAL_INT(0, pav_log_attach_profile(path));
+    log_megabytes(2, "drop");
+    pav_log_thread_shutdown();
+    TEST_ASSERT_EQUAL_INT64(0, db_count(path, "old-session-line"));
+    TEST_ASSERT_EQUAL_INT64(1, db_int(path, "SELECT count(*) FROM session"));
+}
+
+void test_log_stats_reports_size_records_oldest(void) {
+    char path[200];
+    PavLogStats st;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    attach_db(path, sizeof(path));
+    pav_log("core", PAV_INFO, 0, "stats-a");
+    pav_log("core", PAV_INFO, 0, "stats-b");
+    pav_log_flush();
+    TEST_ASSERT_EQUAL_INT(0, pav_log_stats(&st));
+    TEST_ASSERT_EQUAL_INT64(2, st.records);
+    TEST_ASSERT_TRUE(st.bytes > 0);
+    TEST_ASSERT_EQUAL_INT64(db_int(path, "SELECT seq FROM log WHERE text='stats-a'"), st.oldest_seq);
+    TEST_ASSERT_EQUAL_INT64(db_int(path, "SELECT ts FROM log WHERE text='stats-a'"), st.oldest_ts);
+    TEST_ASSERT_EQUAL_INT(10, st.cap_mb);
+}
+
+void test_log_trim_preview_deletes_nothing(void) {
+    char path[200];
+    PavLogStats before;
+    PavLogStats preview;
+    PavLogStats after;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    attach_db(path, sizeof(path));
+    log_megabytes(2, "prev");
+    pav_log_flush();
+    TEST_ASSERT_EQUAL_INT(0, pav_log_stats(&before));
+    TEST_ASSERT_EQUAL_INT(0, pav_log_trim_preview(1, &preview));
+    TEST_ASSERT_TRUE(preview.bytes <= 1024 * 1024);
+    TEST_ASSERT_TRUE(preview.records > 0 && preview.records < before.records);
+    TEST_ASSERT_TRUE(preview.oldest_seq > before.oldest_seq);
+    TEST_ASSERT_EQUAL_INT(0, pav_log_stats(&after));
+    TEST_ASSERT_EQUAL_INT64(before.records, after.records);
+    TEST_ASSERT_EQUAL_INT(10, after.cap_mb);
+}
+
+void test_log_trim_now_uses_saved_cap(void) {
+    char path[200];
+    PavLogStats st;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pav_log_set_cap_mb(1));
+    attach_db(path, sizeof(path));
+    log_megabytes(3, "now");
+    pav_log_flush();
+    TEST_ASSERT_EQUAL_INT(0, pav_log_stats(&st));
+    TEST_ASSERT_TRUE(st.bytes > 2 * 1024 * 1024);
+    TEST_ASSERT_EQUAL_INT(0, pav_log_trim(0, &st));
+    TEST_ASSERT_TRUE(st.bytes <= 1024 * 1024);
+    TEST_ASSERT_EQUAL_INT(1, st.cap_mb);
+    TEST_ASSERT_EQUAL_INT64(st.records, db_int(path, "SELECT count(*) FROM log"));
+}
+
+void test_log_trim_bad_mb(void) {
+    char path[200];
+    PavLogStats st;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    attach_db(path, sizeof(path));
+    TEST_ASSERT_EQUAL_INT(-1, pav_log_trim(101, &st));
+    TEST_ASSERT_EQUAL_INT(-1, pav_log_trim(-1, &st));
+    TEST_ASSERT_EQUAL_INT(-1, pav_log_trim_preview(0, &st));
+    TEST_ASSERT_EQUAL_INT(-1, pav_log_set_cap_mb(0));
+    TEST_ASSERT_EQUAL_INT(-1, pav_log_set_cap_mb(101));
+    TEST_ASSERT_EQUAL_INT(0, pav_log_stats(&st));
+    TEST_ASSERT_EQUAL_INT(10, st.cap_mb);
 }
 
 void test_log_lines_one_batch(void) {
@@ -3070,49 +3412,6 @@ void test_log_client_sanitizes(void) {
     TEST_ASSERT_NOT_NULL(at);
     TEST_ASSERT_EQUAL_CHAR('\n', at[2000]);
     free(text);
-}
-
-void test_log_before_workdir_stderr_only(void) {
-    char *err;
-    char path[160];
-    struct stat st;
-
-    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
-    capture_stderr();
-    pav_log("core", PAV_INFO, 0, "stderr-only-h1");
-    pav_log_flush();
-    err = take_stderr();
-    TEST_ASSERT_EQUAL_INT(1, count_text(err, "stderr-only-h1"));
-    free(err);
-    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/logs/pavillion.log", g_cfg_dir) < (int)sizeof(path));
-    TEST_ASSERT_TRUE(stat(path, &st) != 0);
-}
-
-void test_log_before_profile_goes_to_workdir_log(void) {
-    char path[160];
-    char profile[160];
-    char *err;
-    char *text;
-    struct stat st;
-
-    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
-    capture_stderr();
-    TEST_ASSERT_EQUAL_INT(0, pav_log_set_workdir(g_cfg_dir));
-    TEST_ASSERT_EQUAL_INT(0, pav_log_thread_start());
-    pav_log("core", PAV_INFO, 0, "workdir-marker-h1");
-    pav_log_flush();
-    err = take_stderr();
-    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/logs/pavillion.log", g_cfg_dir) < (int)sizeof(path));
-    text = slurp(path);
-    TEST_ASSERT_EQUAL_INT(1, count_text(text, "workdir-marker-h1"));
-    TEST_ASSERT_EQUAL_INT(1, count_text(err, "workdir-marker-h1"));
-    free(text);
-    free(err);
-    TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
-    ASSERT_MODE(0600, st);
-    TEST_ASSERT_TRUE(snprintf(profile, sizeof(profile), "%s/logs/default.log", g_cfg_dir) <
-                     (int)sizeof(profile));
-    TEST_ASSERT_TRUE(stat(profile, &st) != 0);
 }
 
 static int line_with(const char *text, const char *needle, char *out, size_t out_len) {
@@ -3334,37 +3633,6 @@ void test_index_log_level_and_prefs_saved(void) {
     free(text);
 }
 
-void test_log_no_duplicate_after_profile_attach(void) {
-    char work_path[160];
-    char profile_path[160];
-    char *work;
-    char *profile;
-    char *err;
-
-    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
-    TEST_ASSERT_TRUE(snprintf(work_path, sizeof(work_path), "%s/logs/pavillion.log", g_cfg_dir) <
-                     (int)sizeof(work_path));
-    TEST_ASSERT_TRUE(snprintf(profile_path, sizeof(profile_path), "%s/logs/default.log", g_cfg_dir) <
-                     (int)sizeof(profile_path));
-    capture_stderr();
-    TEST_ASSERT_EQUAL_INT(0, pav_log_set_workdir(g_cfg_dir));
-    TEST_ASSERT_EQUAL_INT(0, pav_log_thread_start());
-    pav_log("core", PAV_INFO, 0, "early-marker-h1");
-    TEST_ASSERT_EQUAL_INT(0, pav_log_attach_profile(profile_path));
-    pav_log("core", PAV_INFO, 0, "late-marker-h1");
-    pav_log_flush();
-    err = take_stderr();
-    free(err);
-    work = slurp(work_path);
-    profile = slurp(profile_path);
-    TEST_ASSERT_EQUAL_INT(1, count_text(work, "early-marker-h1"));
-    TEST_ASSERT_EQUAL_INT(0, count_text(profile, "early-marker-h1"));
-    TEST_ASSERT_EQUAL_INT(1, count_text(profile, "late-marker-h1"));
-    TEST_ASSERT_EQUAL_INT(0, count_text(work, "late-marker-h1"));
-    free(work);
-    free(profile);
-}
-
 static void act_text(char *dst, size_t dst_len, int64_t id) {
     snprintf(dst, dst_len, "act-%lld", (long long)id);
 }
@@ -3480,8 +3748,8 @@ void test_activity_begin_progress_end(void) {
     json_decref(root);
 
     pav_log_flush();
-    snprintf(path, sizeof(path), "%s/logs/default.log", g_cfg_dir);
-    log_text = slurp(path);
+    snprintf(path, sizeof(path), "%s/default.log.db", g_cfg_dir);
+    log_text = db_text(path);
     TEST_ASSERT_NOT_NULL(strstr(log_text, "activity  begin "));
     TEST_ASSERT_NOT_NULL(strstr(log_text, parent_id));
     TEST_ASSERT_NOT_NULL(strstr(log_text, "sync.mail"));
@@ -5674,11 +5942,28 @@ int main(void) {
     RUN_TEST(test_logring_wraps_at_capacity);
     RUN_TEST(test_log_tail_since_seq);
     RUN_TEST(test_log_tail_filters_level);
-    RUN_TEST(test_log_rotation_over_limit);
+    RUN_TEST(test_logdb_opens_private_wal);
+    RUN_TEST(test_logdb_migrate_fresh_to_v1);
+    RUN_TEST(test_logdb_newer_is_error);
+    RUN_TEST(test_logdb_batches_within_100ms);
+    RUN_TEST(test_logdb_error_flushes_sync);
+    RUN_TEST(test_logdb_error_wait_capped);
+    RUN_TEST(test_logdb_shutdown_flushes);
+    RUN_TEST(test_log_pre_attach_written_once);
+    RUN_TEST(test_log_seq_continues_across_runs);
+    RUN_TEST(test_log_stderr_warn_error_only);
+    RUN_TEST(test_no_logs_dir_created);
+    RUN_TEST(test_log_old_files_deleted);
+    RUN_TEST(test_logdb_trim_to_cap_at_shutdown);
+    RUN_TEST(test_logdb_trim_drops_empty_sessions);
+    RUN_TEST(test_log_stats_reports_size_records_oldest);
+    RUN_TEST(test_log_trim_preview_deletes_nothing);
+    RUN_TEST(test_log_trim_now_uses_saved_cap);
+    RUN_TEST(test_log_trim_bad_mb);
     RUN_TEST(test_log_lines_one_batch);
     RUN_TEST(test_log_client_sanitizes);
     RUN_TEST(test_log_before_workdir_stderr_only);
-    RUN_TEST(test_log_before_profile_goes_to_workdir_log);
+    RUN_TEST(test_log_before_workdir_stderr_all_levels);
     RUN_TEST(test_log_no_duplicate_after_profile_attach);
     RUN_TEST(test_index_log_level_and_prefs_saved);
     RUN_TEST(test_log_export_filter);

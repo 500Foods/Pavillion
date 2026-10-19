@@ -50,7 +50,7 @@ This lock is the contract for every phase below. A phase that needs a field adde
     default/
 ```
 
-From H-4 ([H-LOGGING.md](H-LOGGING.md) Lock, written 2026-10-19): there is no `logs/` directory and no log file. Each profile's log is a SQLite database next to its store, named `<profile id>.log.db` (`default.log.db` beside `default.sqlite`), mode `0600`. H-4 imports and deletes the old `logs/` files once. The `logs` key names that path (Andrew, 2026-10-19): from H-4 it is `<profile id>.log.db`, and an old profile whose `logs` names a `.log` file is rewritten once on load, schema still 1. Until H-4 the `logs` key below is unchanged. H-4 also adds `preferences.log_max_mb`, an integer from 1 to 100 (default 10), the size cap of `log.db` ([H-LOGGING.md](H-LOGGING.md) Lock, Retention). `preferences.log_levels` (H-Q2) was dropped on 2026-10-19.
+From H-4 ([H-LOGGING.md](H-LOGGING.md) Lock, written 2026-10-19): there is no `logs/` directory and no log file. Each profile's log is a SQLite database next to its store, named `<profile id>.log.db` (`default.log.db` beside `default.sqlite`), mode `0600`. H-4 deletes the old `logs/` files (`<id>.log`, `<id>.log.1`, `pavillion.log`) and the `logs/` directory at attach, without importing them. The `logs` key names that path (Andrew, 2026-10-19): from H-4 it is `<profile id>.log.db`, and an old profile whose `logs` names a `.log` file is rewritten once on load, schema still 1. H-4 also adds `preferences.log_max_mb`, an integer from 1 to 100 (default 10), the size cap of `log.db` ([H-LOGGING.md](H-LOGGING.md) Lock, Retention). `preferences.log_levels` (H-Q2) was dropped on 2026-10-19.
 
 `Pavillion.json` is the index. It is never a profile. The scan looks in `profile_dir`, default `profiles` under the working directory. A relative `profile_dir` resolves against the working directory. An absolute one is used as given.
 
@@ -93,7 +93,7 @@ One profile is loaded for the life of the process. Switching is a restart. Schem
     "engine": "sqlite",
     "path": "default.sqlite"
   },
-  "logs": "logs/default.log",
+  "logs": "default.log.db",
   "blobs": "blobs/default",
   "cache": "cache/default",
   "accounts": [],

@@ -138,6 +138,20 @@ void pav_logring_reset(void) {
     pthread_mutex_unlock(&g_ring_mu);
 }
 
+void pav_logring_renumber(uint64_t from_seq, uint64_t offset) {
+    size_t i;
+
+    pthread_mutex_lock(&g_ring_mu);
+    for (i = 0; i < g_ring_count; i++) {
+        RingSlot *slot = &g_ring[(g_ring_start + i) % PAV_LOGRING_CAP];
+
+        if (slot->seq >= from_seq) {
+            slot->seq += offset;
+        }
+    }
+    pthread_mutex_unlock(&g_ring_mu);
+}
+
 int pav_logring_push(uint64_t seq, const char *line) {
     char *copy;
     size_t index;

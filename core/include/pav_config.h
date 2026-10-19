@@ -15,6 +15,8 @@ typedef struct PavShellPrefs {
     int window_x;
     int window_y;
     char chrome[16];
+    int log_max_mb;    /* preferences.log_max_mb, 1 to 100, default 10 */
+    int logs_migrated; /* logs named an old .log file and now names <id>.log.db */
 } PavShellPrefs;
 
 #define PAV_PREFS_WINDOW 2u
@@ -52,6 +54,8 @@ typedef struct PavProfile {
     int window_x;
     int window_y;
     char chrome[16];
+    int log_max_mb;    /* preferences.log_max_mb, 1 to 100, default 10 */
+    int logs_migrated; /* logs named an old .log file and now names <id>.log.db */
     size_t account_count;
     char resolved_logs[4096];
     char resolved_blobs[4096];
@@ -90,9 +94,9 @@ typedef struct PavConfigLoad {
 int pav_config_load(const char *workdir, PavConfigLoad **out, char *err, size_t err_len);
 void pav_config_load_free(PavConfigLoad *load);
 
-/* Resolves logs, blobs, cache, and storage.path. Creates the log file mode 0600
-   and the blobs and cache directories. blobs is 0700. Does not create the
-   SQLite file. Returns 0, or -1 and err names the path that failed. */
+/* Resolves logs, blobs, cache, and storage.path. Creates nothing for logs
+   (the log thread creates log.db, H-4). Creates the blobs and cache
+   directories; blobs is 0700. Does not create the SQLite file. Returns 0, or -1 and err names the path that failed. */
 int pav_config_prepare(const char *workdir, PavProfile *profile, char *err, size_t err_len);
 
 /* sqlite is accepted. A missing engine is sqlite. Any other engine is an

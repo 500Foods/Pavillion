@@ -2,6 +2,7 @@
 #define PAVILLION_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 /* Incompatible-change epoch. pavillion_api_version() returns this number.
    build.rs copies it into the shell. Adding a command or an optional field
@@ -87,22 +88,39 @@ int pav_cli_main(int argc, char **argv);
 /* Test-only. 1 when the caller is the running core thread. */
 int pav_on_core_thread(void);
 
-/* Test-only. Truncates path and writes later lines there. NULL closes that
-   file and leaves later lines on stderr until a workdir or profile log is
-   attached. Returns 0, or -1 when path cannot be opened. */
+/* Test-only text sink. Truncates path and writes later lines there instead
+   of log.db. NULL closes it. Returns 0, or -1 when path cannot be opened. */
 int pav_log_set_output(const char *path);
 
-/* NULL closes a workdir log that is not yet the profile log. A path appends
-   <workdir>/logs/pavillion.log (creating logs/). An explicit test file or an
-   attached profile log is left alone. Returns 0, or -1. */
+/* A workdir exists: stderr drops to WARN/ERROR and lines are kept for
+   log.db until pav_log_attach_profile. NULL forgets them. Creates nothing. */
 int pav_log_set_workdir(const char *workdir);
 
-/* Switches the log file to path. A profile log over 10 MB is renamed
-   path.1 first, and that generation replaces any previous path.1.
-   Does nothing when an explicit test file is set. Returns 0, or -1. */
+/* The log thread opens log.db at path (H-4 Lock), writes the lines kept since
+   the workdir once, renumbered to continue the stored seq. Needs the log
+   thread. Does nothing when a test sink is set. Returns 0, or -1. */
 int pav_log_attach_profile(const char *path);
 
-/* Blocks until lines queued before this call are in the file and the ring. */
+typedef struct PavLogStats {
+    int64_t bytes;
+    int64_t records;
+    int64_t oldest_seq;
+    int64_t oldest_ts;
+    int cap_mb;
+} PavLogStats;
+
+/* preferences.log_max_mb, 1 to 100 (default 10). The cap trimmed to at
+   shutdown and by pav_log_trim(0). */
+int pav_log_set_cap_mb(int mb);
+/* Each runs on the log thread and needs log.db open. Returns 0, or -1. */
+int pav_log_stats(PavLogStats *out);
+/* Estimate after a trim to mb (1 to 100). Deletes nothing. */
+int pav_log_trim_preview(int mb, PavLogStats *out);
+/* Trims to mb and makes it the cap; mb 0 trims to the saved cap. */
+int pav_log_trim(int mb, PavLogStats *out);
+
+/* Blocks until lines queued before this call are in log.db (or the test
+   sink) and the ring. */
 void pav_log_flush(void);
 
 /* The log thread writes queued lines. A second start while it runs returns -1.
