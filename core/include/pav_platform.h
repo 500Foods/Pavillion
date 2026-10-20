@@ -28,6 +28,9 @@ typedef struct PavPlatform {
     int64_t (*now_ms)(void); /* UTC unix milliseconds, or -1 */
     void (*on_network_change)(void (*cb)(void *), void *user);
     void (*on_resume)(void (*cb)(void *), void *user);
+    /* SRV lookup for name: the lowest-priority, highest-weight target (no
+       trailing dot) and port. 0 found, 1 no record, -1 lookup failed. */
+    int (*srv_lookup)(const char *name, char *target, size_t len, int *port);
 } PavPlatform;
 
 /* The first install wins. pavillion_start will not replace a test's fake. */
@@ -44,6 +47,9 @@ void pav_platform_fake_reset(void);
 void pav_platform_fake_abort_next_write(void);
 /* Non-zero: secret_get/set/delete return PAV_SECRET_LOCKED and do not touch the store. */
 void pav_platform_fake_set_locked(int locked);
+/* The fake srv_lookup answers name with target:port. NULL target: no record.
+   One entry; pav_platform_fake_reset clears it. */
+void pav_platform_fake_set_srv(const char *name, const char *target, int port);
 
 int pav_path_join(char *out, size_t len, const char *a, const char *b);
 int pav_path_is_absolute(const char *path);

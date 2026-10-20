@@ -72,6 +72,7 @@ typedef struct PavPlatform {
     int64_t (*now_ms)(void);                            /* UTC unix ms */
     void (*on_network_change)(void (*cb)(void *), void *user);
     void (*on_resume)(void (*cb)(void *), void *user);
+    int  (*srv_lookup)(const char *name, char *target, size_t len, int *port); /* 0 found, 1 none, -1 failed (K-Q5) */
 } PavPlatform;
 void pav_platform_install(const PavPlatform *p);
 const PavPlatform *pav_platform(void);
@@ -177,7 +178,7 @@ int pav_protocol(const char *req_json, PavBytes *out);
 | Data dir | `$XDG_DATA_HOME/pavillion` | `%APPDATA%\Pavillion` | `~/Library/Application Support/Pavillion` | app container |
 | Autostart | XDG autostart | Run key | launch agent | n/a |
 | mailto | deep-link plugin + xdg-mime | protocol registration | `CFBundleURLTypes` | custom scheme |
-| Single instance | `tauri-plugin-single-instance` (D-Bus), id per workdir; core profile lock (`flock`) | plugin (named mutex); `LockFileEx` | plugin (socket); `flock` | n/a |
+| Single instance | `tauri-plugin-single-instance` (D-Bus name from the per-workdir id, each element sanitized: invalid characters to `_`, `_` before a leading digit, so `com._500nodes.pavillion`); core profile lock (`flock`) | plugin (named mutex); `LockFileEx` | plugin (socket); `flock` | n/a |
 | Packaging | rpm + dnf repo, Arch PKGBUILD | MSI | notarized .app | App Store |
 
 - The core must not: call X11, Wayland, or libayatana; use a `dlopen` database layer; take on libmicrohttpd, libwebsockets, MagickWand, or Brotli; assume `/` separators or `~`.

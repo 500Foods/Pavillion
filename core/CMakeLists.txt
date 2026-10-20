@@ -68,6 +68,7 @@ target_link_libraries(pavillion_core PUBLIC pthread)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_sources(pavillion_core PRIVATE platform/linux/linux.c)
+    target_link_libraries(pavillion_core PUBLIC resolv)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(LIBCURL libcurl)
     if(LIBCURL_FOUND)

@@ -62,6 +62,7 @@ export function mockTransport() {
   let accounts = [];
   let nextNumber = 1;
   let accountTestState = "idle";
+  const savedSecrets = new Map();
   /* log.db stand-in (H-4): every line ever logged, oldest first, each
      {seq, ts, level, subsystem, text, session}. The ring is the last 10,000. */
   let logHistory = [];
@@ -202,6 +203,7 @@ export function mockTransport() {
          ...(typeof input.caFile === "string" && input.caFile !== "" ? { caFile: input.caFile } : {}),
        };
        accounts = [...accounts, account];
+       savedSecrets.set(id, input.secret);
        accountTestState = { accountId: id, capabilities: ["mail", "submission", "contacts", "calendars"] };
        return structuredClone(account);
      }
@@ -259,8 +261,29 @@ export function mockTransport() {
        }
        return { id: input.id };
      }
+     if (cmd === "account.discover") {
+       const m = typeof input.email === "string" ? /^[^@\s]+@([a-z0-9.-]+)$/i.exec(input.email) : null;
+       if (!m) {
+         throw fail("bad_args", "email must look like name@domain");
+       }
+       const domain = m[1].toLowerCase();
+       if (domain === "missing.example") {
+         throw fail("not_found", `no JMAP session found for ${domain} (server returned 404)`);
+       }
+       return { sessionUrl: `https://mail.${domain}/jmap/session`, via: "srv" };
+     }
      if (cmd === "account.test") {
-       if (typeof input.secret !== "string" || input.secret === "") {
+       let secret = typeof input.secret === "string" ? input.secret : "";
+       if (secret === "" && typeof input.id === "string" && input.id !== "") {
+         if (!accounts.find((a) => a.id === input.id)) {
+           throw fail("not_found", "account not found");
+         }
+         secret = savedSecrets.get(input.id) || "";
+         if (secret === "") {
+           throw fail("bad_args", "no saved password for this account");
+         }
+       }
+       if (secret === "") {
          throw fail("bad_args", "secret is required");
        }
        if (typeof input.username !== "string" || input.username.trim() === "") {
@@ -269,7 +292,7 @@ export function mockTransport() {
        if (typeof input.sessionUrl !== "string" || !input.sessionUrl.startsWith("https://")) {
          throw fail("bad_args", "sessionUrl must be https://");
        }
-       if (input.secret === "wrong") {
+       if (secret === "wrong") {
          throw fail("auth", "The credentials were rejected by the server.");
        }
        return {

@@ -25,6 +25,10 @@ int pav_net_request(PavReq *req);
 /* Free a body_out buffer handed out by the net thread. */
 void pav_net_free(void *p);
 
+/* Attempts per request. A caller that wants one attempt presets
+   req->retry_count to PAV_NET_RETRY_MAX - 1. */
+#define PAV_NET_RETRY_MAX 8
+
 /* The per-server in-flight cap (Lock). */
 #define PAV_NET_PER_SERVER_CAP 6
 

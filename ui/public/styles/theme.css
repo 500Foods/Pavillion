@@ -1610,32 +1610,37 @@
   font-variant-numeric: tabular-nums;
 }
 
-.pav-root .accounts-field {
+/* Account form (2026-10-19): grouped fieldsets, one label column. */
+.pav-root .accounts-group {
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem 0.25rem;
+  border: 1px solid var(--pav-border);
+}
+
+.pav-root .accounts-group legend {
+  padding: 0 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.pav-root .accounts-line {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  margin-bottom: 0.75rem;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
 }
 
-.pav-root .accounts-field-row {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
-}
-
-.pav-root .accounts-field-row .accounts-field {
-  flex: 1;
-}
-
-.pav-root .accounts-field label {
+.pav-root .accounts-label {
+  flex: 0 0 8rem;
   font-size: 0.8rem;
   color: var(--pav-text-muted);
 }
 
-.pav-root .accounts-field input[type="text"],
-.pav-root .accounts-field input[type="url"],
-.pav-root .accounts-field input[type="color"],
-.pav-root .accounts-field select {
+.pav-root .accounts-line input[type="text"],
+.pav-root .accounts-line input[type="url"],
+.pav-root .accounts-line input[type="email"],
+.pav-root .accounts-line input[type="password"],
+.pav-root .accounts-line select {
   padding: 0.3rem 0.45rem;
   border: 1px solid var(--pav-border);
   background: var(--pav-surface-button);
@@ -1643,59 +1648,51 @@
   font: inherit;
 }
 
-.pav-root .accounts-field input[type="color"] {
+.pav-root .accounts-line input[type="text"],
+.pav-root .accounts-line input[type="url"],
+.pav-root .accounts-line input[type="email"],
+.pav-root .accounts-line input[type="password"] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pav-root .accounts-line select {
+  font-size: 0.85rem;
+}
+
+.pav-root .accounts-line input[type="color"] {
   width: 2.5rem;
   height: 1.5rem;
   padding: 0;
   background: transparent;
-  border-color: var(--pav-border);
+  border: 1px solid var(--pav-border);
   cursor: pointer;
 }
 
-.pav-root .accounts-field select {
-  font-size: 0.85rem;
+.pav-root .accounts-result {
+  min-height: 1rem;
+  margin-top: -0.25rem;
 }
 
-.pav-root .accounts-test-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin: 1rem 0;
-}
-
-.pav-root .accounts-test-status {
+.pav-root .accounts-test-status,
+.pav-root .accounts-saved {
   color: var(--pav-text-muted);
   font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 .pav-root .accounts-error {
-  margin: 0.5rem 0;
   color: var(--pav-status-failed);
   font-size: 0.85rem;
 }
 
 .pav-root .accounts-capabilities {
-  margin: 0.5rem 0;
   color: var(--pav-text);
   font-size: 0.85rem;
 }
 
 .pav-root .accounts-form-actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
-
-.pav-root .accounts-credentials {
-  margin-top: 1.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--pav-border);
-}
-
-.pav-root .accounts-credentials h3 {
-  margin: 0 0 0.5rem;
-  font-size: 0.9rem;
-  font-weight: 600;
+  margin-top: 0.5rem;
 }
 
 /* H-4: Log view time range and Settings → Logs. */

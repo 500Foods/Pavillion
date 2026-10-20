@@ -66,7 +66,7 @@ $(TEST_BIN): $(LIB) $(TEST_SRC) $(PLATFORM_TEST_SRC) $(UNITY_DIR)/unity.c $(UNIT
 	$(CC) -std=c11 -Wall -Wextra -Wpedantic -pthread -DUNITY_INCLUDE_DOUBLE \
 		-Icore/include -Icore/src -I$(UNITY_DIR) $(PLATFORM_TEST_INC) $(CFLAGS) \
 		-o $@ $(TEST_SRC) $(UNITY_DIR)/unity.c $(PLATFORM_TEST_SRC) $(LIB) \
-		-ljansson -lsqlite3 $(LDFLAGS) \
+		-ljansson -lsqlite3 -lresolv $(LDFLAGS) \
 		$(shell pkg-config --libs libsecret-1 2>/dev/null) \
 		$(shell pkg-config --libs libcurl 2>/dev/null) \
 		$(if $(wildcard core/platform/stronghold/target/release/libpav_stronghold.a),core/platform/stronghold/target/release/libpav_stronghold.a -ldl -lm,)

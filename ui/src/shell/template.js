@@ -443,78 +443,77 @@ export const shellMarkup = `<div class="shell">
                       <span class="accounts-form-number" id="account-form-number"></span>
                     </div>
                     <form id="account-form" autocomplete="off">
-                      <div class="accounts-field-row">
-                        <label class="accounts-field">Name
+                      <fieldset class="accounts-group" data-group="identity">
+                        <legend>Identity</legend>
+                        <label class="accounts-line"><span class="accounts-label">Display name</span>
                           <input id="account-name-input" type="text" spellcheck="true" autocomplete="off" />
+                          <input id="account-color-input" type="color" value="#2a7" aria-label="Color" />
                         </label>
-                        <label class="accounts-field">Color
-                          <input id="account-color-input" type="color" value="#2a7" />
+                        <label class="accounts-line"><span class="accounts-label">Email</span>
+                          <input id="account-email-input" type="email" spellcheck="false" autocomplete="off" placeholder="you@example.com" />
                         </label>
-                      </div>
-                      <div class="accounts-field">
-                        <label>Kind
+                      </fieldset>
+                      <fieldset class="accounts-group" data-group="server">
+                        <legend>Server</legend>
+                        <label class="accounts-line"><span class="accounts-label">Kind</span>
                           <select id="account-kind">
                             <option value="jmap">JMAP</option>
                           </select>
                         </label>
-                      </div>
-                      <div class="accounts-field">
-                        <label>Session URL
+                        <label class="accounts-line"><span class="accounts-label">Session URL</span>
                           <input id="account-session-url-input" type="url" spellcheck="false" autocomplete="off" placeholder="https://example.com/.well-known/jmap" />
+                          <button type="button" id="account-detect" disabled>Detect</button>
                         </label>
-                      </div>
-                      <details class="accounts-advanced">
-                        <summary>Advanced</summary>
-                        <div class="accounts-field">
-                          <label>CA file
+                        <p class="accounts-line accounts-result"><span class="accounts-label"></span><span id="account-detect-status" class="accounts-test-status"></span><span id="account-detect-error" class="accounts-error"></span></p>
+                        <div class="accounts-line"><span class="accounts-label">Auth method</span>
+                          <span id="account-auth">basic</span>
+                        </div>
+                        <details class="accounts-advanced">
+                          <summary>Advanced</summary>
+                          <label class="accounts-line"><span class="accounts-label">CA file</span>
                             <input id="account-ca-file-input" type="text" spellcheck="false" autocomplete="off" placeholder="/path/to/ca.pem (blank: system store)" />
                           </label>
-                        </div>
-                      </details>
-                      <div class="accounts-field-row">
-                        <label class="accounts-field">Username
+                        </details>
+                      </fieldset>
+                      <fieldset class="accounts-group" data-group="credentials">
+                        <legend>Credentials</legend>
+                        <label class="accounts-line"><span class="accounts-label">Username</span>
                           <input id="account-username-input" type="text" spellcheck="false" autocomplete="off" />
                         </label>
-                        <label class="accounts-field">Auth method
-                          <span id="account-auth">basic</span>
-                        </label>
-                      </div>
-                      <div class="accounts-field">
-                        <label>Password
+                        <label class="accounts-line"><span class="accounts-label">Password</span>
                           <input id="account-secret-input" type="password" autocomplete="new-password" />
+                          <span id="account-credentials-status" class="accounts-saved">Not saved yet</span>
                         </label>
-                      </div>
-                      <div class="accounts-field-row">
-                        <label class="accounts-field"><input id="account-sync-mail" type="checkbox" checked /> Sync mail</label>
-                        <label class="accounts-field"><input id="account-sync-contacts" type="checkbox" checked /> Sync contacts</label>
-                        <label class="accounts-field"><input id="account-sync-calendars" type="checkbox" checked /> Sync calendars</label>
-                      </div>
-                      <div class="accounts-field-row">
-                        <label class="accounts-field">Fetch bodies
+                      </fieldset>
+                      <fieldset class="accounts-group" data-group="options">
+                        <legend>Options</legend>
+                        <div class="accounts-line"><span class="accounts-label">Sync</span>
+                          <label><input id="account-sync-mail" type="checkbox" checked /> Mail</label>
+                          <label><input id="account-sync-contacts" type="checkbox" checked /> Contacts</label>
+                          <label><input id="account-sync-calendars" type="checkbox" checked /> Calendars</label>
+                        </div>
+                        <label class="accounts-line"><span class="accounts-label">Fetch bodies</span>
                           <select id="account-fetch-bodies">
                             <option value="recent">Recent</option>
                             <option value="all">All</option>
                             <option value="none">None</option>
                           </select>
                         </label>
-                        <label class="accounts-field"><input id="account-enabled" type="checkbox" checked /> Enabled</label>
-                      </div>
-                      <div class="accounts-test-row">
+                        <label class="accounts-line"><span class="accounts-label">Enabled</span>
+                          <input id="account-enabled" type="checkbox" checked />
+                        </label>
+                      </fieldset>
+                      <div class="accounts-line accounts-form-actions">
+                        <span class="accounts-label"></span>
                         <button type="button" id="account-test" disabled>Test</button>
-                        <span id="account-test-status" class="accounts-test-status"></span>
-                      </div>
-                      <p id="account-test-error" class="accounts-error"></p>
-                      <p id="account-test-capabilities" class="accounts-capabilities"></p>
-                      <div class="accounts-form-actions">
                         <button type="button" id="account-add">Add</button>
                         <button type="button" id="account-save" disabled>Save</button>
                         <button type="button" id="account-remove" disabled>Remove</button>
+                        <span id="account-test-status" class="accounts-test-status"></span>
                       </div>
+                      <p class="accounts-line accounts-result"><span class="accounts-label"></span><span id="account-test-error" class="accounts-error"></span><span id="account-test-capabilities" class="accounts-capabilities"></span></p>
                     </form>
-                    <div class="accounts-credentials">
-                      <h3>Credentials</h3>
-                      <p id="account-credentials-status">Stored in keyring</p>
-                    </div>
+
                   </div>
                 </div>
               </div>

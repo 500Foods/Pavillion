@@ -57,6 +57,7 @@ int pav_cmd_secret_smoke(json_t *args, json_t **data, PavError *err);
 /* strcmp order. bsearch requires it. */
 static const PavCommand k_commands[] = {
     {"account.add", pav_account_add, 0},
+    {"account.discover", pav_account_discover, PAV_CMD_WORKER},
     {"account.list", pav_account_list, 0},
     {"account.remove", pav_account_remove, 0},
     {"account.set_secret", pav_account_set_secret, 0},
@@ -1088,9 +1089,10 @@ static int64_t dispatch_mono_ms(void) {
     return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
-static const char *account_id_of(json_t *args, json_t *data) {
+static const char *account_id_of(json_t *args, json_t *data, char *host, size_t host_len) {
     const char *keys[2] = {"id", "accountId"};
     int i;
+    json_t *url;
 
     for (i = 0; i < 2; i++) {
         json_t *v = json_is_object(data) ? json_object_get(data, keys[i]) : NULL;
@@ -1103,15 +1105,31 @@ static const char *account_id_of(json_t *args, json_t *data) {
             return json_string_value(v);
         }
     }
-    return "?";
+    /* No account id yet (account.test, a failed add): name the session host.
+       Never the username: an email address is DEBUG-only (H redaction). */
+    url = json_object_get(args, "sessionUrl");
+    if (json_is_string(url)) {
+        pav_account_test_host(json_string_value(url), host, host_len);
+        if (host[0] != '\0') {
+            return host;
+        }
+    }
+    url = json_object_get(args, "email");
+    if (json_is_string(url) && strchr(json_string_value(url), '@') != NULL) {
+        snprintf(host, host_len, "%s", strchr(json_string_value(url), '@') + 1);
+        return host;
+    }
+    return "-";
 }
 
 static void log_command(const char *name, json_t *args, json_t *data, int rc, const PavError *err, int64_t ms) {
+    char host[256];
+
     if (strncmp(name, "account.", 8) == 0 && strcmp(name, "account.list") != 0) {
         if (rc == 0) {
-            pav_log("account", PAV_INFO, 2, "%s ok: %s", name, account_id_of(args, data));
+            pav_log("account", PAV_INFO, 2, "%s ok: %s", name, account_id_of(args, data, host, sizeof(host)));
         } else {
-            pav_log("account", PAV_WARN, 3, "%s failed: %s (%s)", name, account_id_of(args, NULL), err->code);
+            pav_log("account", PAV_WARN, 3, "%s failed: %s (%s)", name, account_id_of(args, NULL, host, sizeof(host)), err->code);
         }
     }
     if (strncmp(name, "log.", 4) == 0) {

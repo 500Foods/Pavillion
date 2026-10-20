@@ -211,6 +211,8 @@ Andrew asked for this beside the usual URL, username, and password. It is not pa
 - K-Q2. Resolved 2026-10-16: username and password for every account (Basic or SASL PLAIN over TLS), stored in the keyring. OIDC comes later (K-4).
 - K-Q3. Resolved 2026-10-16: discovery uses `https://<email domain>/.well-known/jmap` with a manual override. Andrew gives the hostnames at K-3.
 - K-Q4. Resolved 2026-10-18: the OS keyring holds the Stronghold snapshot password. A session unlock opens the snapshot. No second prompt. Account secrets stay in Stronghold.
+- K-Q5. Resolved 2026-10-19 (Andrew): Configure. `account.discover {email}` finds the session URL with no credentials: the SRV record `_jmap._tcp.<domain>` first (lowest priority, then highest weight; `https://<target>[:port]/.well-known/jmap`, port omitted when 443), then `https://<domain>/.well-known/jmap`. Redirects are followed the same way as `account.test` (at most 3, `https://` only) and the final response must be JSON with an `apiUrl`. The result is the final resolved URL, which the account form's Configure button writes into Session URL; the form's Email field defaults from the username when it looks like an address. SRV is an OS call, so it is a platform entry, `srv_lookup` (G Lock); the fake answers from a table the tests set. Tests never use the network. Example: 500foods.com has `0 1 443 mail.500foods.com`, and its well-known redirects to `https://mail.500foods.com/jmap/session`. Supersedes the discovery half of K-Q3.
+
 
 ## Working log
 

@@ -175,6 +175,7 @@ fn main() {
     println!("cargo:rustc-link-lib=jansson");
     println!("cargo:rustc-link-lib=sqlite3");
     if cfg!(target_os = "linux") {
+        println!("cargo:rustc-link-lib=resolv");
         if let Ok(libs) = std::process::Command::new("pkg-config")
             .args(["--libs", "libsecret-1"])
             .output()

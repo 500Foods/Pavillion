@@ -1,7 +1,8 @@
 /* H-4 Lock: nothing bypasses pav_log. This lists every allowed direct
    output call site and fails on any new one. Allowed: --help and --version
-   output, the F-1 API version mismatch line, pav_log's own stderr copy, and
-   the console router in ui/src/log.js. */
+   output, the F-1 API version mismatch line, pav_log's own stderr copy, the
+   second-launch line in lib.rs (O-COMPOSE Lock), and the console router in
+   ui/src/log.js. */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,7 +19,7 @@ const RULES = [
 
 const ALLOWED = {
   "core/src/pavillion.c": ["fputs(line, stderr"],
-  "src-tauri/src/lib.rs": ["eprintln!"],
+  "src-tauri/src/lib.rs": ["eprintln!", "eprintln!"],
   "src-tauri/src/main.rs": ["print!", "println!", "eprint!"],
   "ui/src/log.js": ["console.warn", "console.error", "console.warn", "console.error"],
 };

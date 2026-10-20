@@ -3,6 +3,11 @@ export function createAccountsView(api, root) {
   let selectedId = null;
   let testPending = false;
   let testResult = { ok: false, capabilities: [], error: "" };
+  /* Email and Detect stay in the form; they are not account fields. */
+  let email = "";
+  let emailTouched = false;
+  let detectPending = false;
+  let detectResult = { text: "", error: "" };
   const formState = {
     name: "",
     sessionUrl: "",
@@ -26,6 +31,9 @@ export function createAccountsView(api, root) {
   }
 
   function clearForm() {
+    email = "";
+    emailTouched = false;
+    detectResult = { text: "", error: "" };
     formState.name = "";
     formState.sessionUrl = "";
     formState.username = "";
@@ -51,8 +59,21 @@ export function createAccountsView(api, root) {
     return formState[key];
   }
 
+  function looksLikeEmail(value) {
+    return typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+  }
+
+  /* The Email field follows the username until the user types in it. */
+  function effectiveEmail() {
+    if (emailTouched) {
+      return email;
+    }
+    return looksLikeEmail(formState.username) ? formState.username.trim() : email;
+  }
+
+  /* A blank password is fine when the selected account has one saved. */
   function isTestReady() {
-    return Boolean(formState.sessionUrl) && Boolean(formState.username) && Boolean(formState.secret);
+    return Boolean(formState.sessionUrl) && Boolean(formState.username) && (Boolean(formState.secret) || Boolean(selectedId));
   }
 
   function isSaveReady() {
@@ -191,7 +212,24 @@ export function createAccountsView(api, root) {
     removeBtn.disabled = !editing;
 
     const credentialsEl = formEl.querySelector("#account-credentials-status");
-    credentialsEl.textContent = editing ? "Stored in keyring" : "Not saved yet";
+    if (!editing) {
+      credentialsEl.textContent = "Not saved yet";
+    } else if (formState.secret) {
+      credentialsEl.textContent = "Replaces the saved password";
+    } else {
+      credentialsEl.textContent = "Saved in keyring";
+    }
+
+    const emailInput = formEl.querySelector("#account-email-input");
+    if (emailInput && emailInput.value !== effectiveEmail()) {
+      emailInput.value = effectiveEmail();
+    }
+    const detectBtn = formEl.querySelector("#account-detect");
+    if (detectBtn) {
+      detectBtn.disabled = detectPending || !looksLikeEmail(effectiveEmail());
+    }
+    textContent(formEl.querySelector("#account-detect-status"), detectPending ? "Detecting…" : detectResult.text);
+    textContent(formEl.querySelector("#account-detect-error"), detectResult.error);
   }
 
   function updateFormState() {
@@ -202,6 +240,11 @@ export function createAccountsView(api, root) {
     const secretInput = root.querySelector("#account-secret-input");
     const kindSelect = root.querySelector("#account-kind");
     const caFileInput = root.querySelector("#account-ca-file-input");
+    const emailInput = root.querySelector("#account-email-input");
+    if (emailInput && emailInput.value !== effectiveEmail()) {
+      email = emailInput.value;
+      emailTouched = true;
+    }
     if (nameInput) {
       formState.name = nameInput.value;
     }
@@ -280,6 +323,9 @@ export function createAccountsView(api, root) {
       }
       selectedId = id;
       syncFormState(selected);
+      email = "";
+      emailTouched = false;
+      detectResult = { text: "", error: "" };
       clearSecretField();
       testResult = { ok: false, capabilities: [], error: "" };
       paintTree();
@@ -385,7 +431,7 @@ export function createAccountsView(api, root) {
     const sessionUrl = formState.sessionUrl;
     const username = formState.username;
     const secret = formState.secret;
-    if (!sessionUrl || !username || !secret) {
+    if (!isTestReady()) {
       return;
     }
     testPending = true;
@@ -397,6 +443,7 @@ export function createAccountsView(api, root) {
         username,
         auth: formState.auth,
         secret,
+        ...(selectedId && !secret ? { id: selectedId } : {}),
         ...(formState.caFile ? { caFile: formState.caFile } : {}),
       });
       testResult = { ok: true, capabilities: result.capabilities || [], error: "" };
@@ -405,6 +452,41 @@ export function createAccountsView(api, root) {
     } finally {
       testPending = false;
       paintForm();
+    }
+  }
+
+  async function runDetect() {
+    updateFormState();
+    const address = effectiveEmail().trim();
+    if (!looksLikeEmail(address) || detectPending) {
+      return;
+    }
+    detectPending = true;
+    detectResult = { text: "", error: "" };
+    paintForm();
+    try {
+      const result = await api.account.discover({
+        email: address,
+        ...(formState.caFile ? { caFile: formState.caFile } : {}),
+      });
+      formState.sessionUrl = result.sessionUrl || "";
+      testResult = { ok: false, capabilities: [], error: "" };
+      detectResult = { text: `Found via ${result.via === "srv" ? "SRV" : "well-known"}`, error: "" };
+    } catch (err) {
+      detectResult = { text: "", error: err instanceof Error ? err.message : String(err ?? "") };
+    } finally {
+      detectPending = false;
+      paintForm();
+    }
+  }
+
+  function bindDetect() {
+    const detectBtn = root.querySelector("#account-detect");
+    if (detectBtn) {
+      detectBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        void runDetect();
+      });
     }
   }
 
@@ -447,6 +529,7 @@ export function createAccountsView(api, root) {
   bindSave();
   bindRemove();
   bindTest();
+  bindDetect();
   bindSecretInput();
   bindFormInputs();
 

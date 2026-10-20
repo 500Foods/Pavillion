@@ -6,6 +6,7 @@
 #include "platform_internal.h"
 #include "pav_platform.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -31,6 +32,9 @@ static void (*g_net)(void *);
 static void *g_net_user;
 static void (*g_resume)(void *);
 static void *g_resume_user;
+static char g_srv_name[256];
+static char g_srv_target[256];
+static int g_srv_port;
 
 static void secret_clear(FakeSecret *slot) {
     free(slot->service);
@@ -231,6 +235,25 @@ void pav_platform_fake_reset(void) {
     g_now_ms = 0;
     g_abort_write = 0;
     g_locked = 0;
+    g_srv_name[0] = '\0';
+    g_srv_target[0] = '\0';
+    g_srv_port = 0;
+}
+
+void pav_platform_fake_set_srv(const char *name, const char *target, int port) {
+    snprintf(g_srv_name, sizeof(g_srv_name), "%s", name != NULL ? name : "");
+    snprintf(g_srv_target, sizeof(g_srv_target), "%s", target != NULL ? target : "");
+    g_srv_port = port;
+}
+
+static int fake_srv_lookup(const char *name, char *target, size_t len, int *port) {
+    if (name == NULL || g_srv_name[0] == '\0' || strcmp(name, g_srv_name) != 0 ||
+        g_srv_target[0] == '\0') {
+        return 1;
+    }
+    snprintf(target, len, "%s", g_srv_target);
+    *port = g_srv_port;
+    return 0;
 }
 
 void pav_platform_fake_set_locked(int locked) {
@@ -256,6 +279,7 @@ const PavPlatform *pav_platform_fake(void) {
         platform.now_ms = fake_now;
         platform.on_network_change = fake_on_network;
         platform.on_resume = fake_on_resume;
+        platform.srv_lookup = fake_srv_lookup;
         ready = 1;
     }
     return &platform;

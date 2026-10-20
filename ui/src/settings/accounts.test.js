@@ -407,3 +407,157 @@ test("a blank CA file is left out of add and test", async () => {
     el.remove();
   }
 });
+
+function typeInto(selector, value) {
+  const input = document.querySelector(selector);
+  input.value = value;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+async function addSavedAccount() {
+  typeInto("#account-name-input", "Saved One");
+  typeInto("#account-session-url-input", "https://example.com/.well-known/jmap");
+  typeInto("#account-username-input", "saved@example.com");
+  typeInto("#account-secret-input", "pw-saved");
+  document.querySelector("#account-add").click();
+  await vi.waitFor(() => {
+    expect(document.querySelector('[data-account-id="saved-one"]')).not.toBeNull();
+  });
+  document.querySelector('[data-account-id="saved-one"]').click();
+}
+
+test("Test with a blank password uses the saved credential", async () => {
+  const el = document.createElement("div");
+  document.body.append(el);
+  try {
+    const transport = mockTransport();
+    const callSpy = vi.spyOn(transport, "call");
+    const api = createApi(transport);
+    await mount(el, api, {});
+    openAccountsPanel();
+    await addSavedAccount();
+
+    expect(document.querySelector("#account-secret-input").value).toBe("");
+    expect(document.querySelector("#account-credentials-status").textContent).toBe("Saved in keyring");
+    expect(document.querySelector("#account-test").disabled).toBe(false);
+    document.querySelector("#account-test").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("#account-test-status").textContent).toBe("OK");
+    });
+    const testCall = callSpy.mock.calls.filter(([cmd]) => cmd === "account.test").pop();
+    expect(testCall[1].id).toBe("saved-one");
+    expect(testCall[1].secret).toBe("");
+  } finally {
+    unmount();
+    el.remove();
+  }
+});
+
+test("a typed password wins over the saved one", async () => {
+  const el = document.createElement("div");
+  document.body.append(el);
+  try {
+    const transport = mockTransport();
+    const callSpy = vi.spyOn(transport, "call");
+    const api = createApi(transport);
+    await mount(el, api, {});
+    openAccountsPanel();
+    await addSavedAccount();
+    typeInto("#account-secret-input", "wrong");
+    expect(document.querySelector("#account-credentials-status").textContent).toBe("Replaces the saved password");
+    document.querySelector("#account-test").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("#account-test-error").textContent).toContain("rejected");
+    });
+    const testCall = callSpy.mock.calls.filter(([cmd]) => cmd === "account.test").pop();
+    expect(testCall[1].secret).toBe("wrong");
+    expect(testCall[1].id).toBeUndefined();
+  } finally {
+    unmount();
+    el.remove();
+  }
+});
+
+test("a new account still needs a password to test", async () => {
+  const el = document.createElement("div");
+  document.body.append(el);
+  try {
+    const { api } = getTransport();
+    await mount(el, api, {});
+    openAccountsPanel();
+    typeInto("#account-session-url-input", "https://example.com/.well-known/jmap");
+    typeInto("#account-username-input", "new@example.com");
+    expect(document.querySelector("#account-test").disabled).toBe(true);
+    expect(document.querySelector("#account-credentials-status").textContent).toBe("Not saved yet");
+  } finally {
+    unmount();
+    el.remove();
+  }
+});
+
+test("Email defaults from the username and Detect fills the session URL", async () => {
+  const el = document.createElement("div");
+  document.body.append(el);
+  try {
+    const transport = mockTransport();
+    const callSpy = vi.spyOn(transport, "call");
+    const api = createApi(transport);
+    await mount(el, api, {});
+    openAccountsPanel();
+    const detect = document.querySelector("#account-detect");
+    expect(detect.disabled).toBe(true);
+    typeInto("#account-username-input", "andrew");
+    expect(document.querySelector("#account-email-input").value).toBe("");
+    typeInto("#account-username-input", "andrew@500foods.com");
+    expect(document.querySelector("#account-email-input").value).toBe("andrew@500foods.com");
+    expect(detect.disabled).toBe(false);
+    detect.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("#account-session-url-input").value).toBe("https://mail.500foods.com/jmap/session");
+    });
+    expect(document.querySelector("#account-detect-status").textContent).toBe("Found via SRV");
+    const call = callSpy.mock.calls.find(([cmd]) => cmd === "account.discover");
+    expect(call[1]).toEqual({ email: "andrew@500foods.com" });
+  } finally {
+    unmount();
+    el.remove();
+  }
+});
+
+test("a typed Email is kept and a failed Detect shows the error inline", async () => {
+  const el = document.createElement("div");
+  document.body.append(el);
+  try {
+    const { api } = getTransport();
+    await mount(el, api, {});
+    openAccountsPanel();
+    typeInto("#account-email-input", "me@missing.example");
+    typeInto("#account-username-input", "other@example.com");
+    expect(document.querySelector("#account-email-input").value).toBe("me@missing.example");
+    document.querySelector("#account-detect").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("#account-detect-error").textContent).toContain("no JMAP session found");
+    });
+    expect(document.querySelector("#account-session-url-input").value).toBe("");
+  } finally {
+    unmount();
+    el.remove();
+  }
+});
+
+test("the account form groups fields in order", async () => {
+  const el = document.createElement("div");
+  document.body.append(el);
+  try {
+    const { api } = getTransport();
+    await mount(el, api, {});
+    openAccountsPanel();
+    const groups = [...document.querySelectorAll("#account-form fieldset.accounts-group")].map((g) => g.dataset.group);
+    expect(groups).toEqual(["identity", "server", "credentials", "options"]);
+    const server = document.querySelector('[data-group="server"]');
+    expect(server.querySelector("#account-session-url-input").nextElementSibling.id).toBe("account-detect");
+  } finally {
+    unmount();
+    el.remove();
+  }
+});

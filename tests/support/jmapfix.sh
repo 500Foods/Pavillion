@@ -31,6 +31,11 @@
 #
 # Routes:
 #   GET  /.well-known/jmap     -> 302 to https://<Host>/jmap/session
+#   GET  /rel/well-known      -> 307, lowercase `location: /jmap/session` (relative, like Stalwart)
+#   GET  /rel/insecure        -> 302 to http://<Host>/jmap/session (not https)
+#   GET  /html                -> 200 text/html page (a portal, not a session)
+#   GET  /xhost               -> 302 to https://localhost:<port>/authcheck (another host)
+#   GET  /authcheck           -> Session only when no Authorization header came; else 400
 #   GET  /jmap/session         -> Session for the Host's domain (test-a.local
 #                                 when the Host is not a fixture domain)
 #   POST /jmap/api             -> canned method responses
@@ -92,6 +97,7 @@ reason() {
     200) echo "OK" ;;
     204) echo "No Content" ;;
     302) echo "Found" ;;
+    307) echo "Temporary Redirect" ;;
     400) echo "Bad Request" ;;
     401) echo "Unauthorized" ;;
     404) echo "Not Found" ;;
@@ -391,6 +397,30 @@ do_get() {
       status_line 302
       printf 'Location: https://%s/jmap/session\r\nContent-Length: 0\r\nConnection: close\r\n\r\n' "${host:-localhost}"
       ;;
+    /rel/well-known)
+      status_line 307
+      printf 'location: /jmap/session\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'
+      ;;
+    /rel/insecure)
+      status_line 302
+      printf 'Location: http://%s/jmap/session\r\nContent-Length: 0\r\nConnection: close\r\n\r\n' "${host:-localhost}"
+      ;;
+    /html)
+      body='<!DOCTYPE html><html><body>Portal</body></html>'
+      status_line 200
+      printf 'Content-Type: text/html; charset=utf-8\r\nContent-Length: %s\r\nConnection: close\r\n\r\n%s' "${#body}" "$body"
+      ;;
+    /xhost)
+      status_line 302
+      printf 'Location: https://localhost:%s/authcheck\r\nContent-Length: 0\r\nConnection: close\r\n\r\n' "${host##*:}"
+      ;;
+    /authcheck)
+      if [ -n "$auth_seen" ]; then
+        send_json 400 '{"error": {"code": "authLeaked", "description": "Authorization crossed hosts"}}'
+      else
+        send_json 200 "$(cat "$run/session-test-a.local.json")"
+      fi
+      ;;
     /jmap/session)
       domain=${host:-localhost}
       domain=${domain%%:*}
@@ -429,6 +459,7 @@ do_options() {
 handle() {
   local line method target version h name value expect=""
   host="" content_length=0 path="" query=""
+  auth_seen=""
   IFS= read -r -t 30 line || exit 0
   line=${line%$'\r'}
   # shellcheck disable=SC2086
@@ -449,6 +480,7 @@ handle() {
       [Hh][Oo][Ss][Tt]) [ -n "$host" ] || host=$value ;;
       [Cc][Oo][Nn][Tt][Ee][Nn][Tt]-[Ll][Ee][Nn][Gg][Tt][Hh]) content_length=$value ;;
       [Ee][Xx][Pp][Ee][Cc][Tt]) expect=$value ;;
+      [Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]) auth_seen=1 ;;
     esac
   done
 

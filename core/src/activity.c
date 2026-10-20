@@ -32,6 +32,7 @@
 #define ST_CANCELLED 4
 
 static const char *const k_kinds[] = {
+    "account.discover",
     "account.test",
     "attachment.download",
     "body.fetch",
@@ -549,7 +550,11 @@ static void log_end(const Act *a) {
     const char *state = state_name(a->state);
 
     format_id(id, sizeof(id), a->id);
-    pav_log("activity", PAV_INFO, 2, "end %s %s", id, state != NULL ? state : "done");
+    if (a->has_error && a->error[0] != '\0') {
+        pav_log("activity", PAV_INFO, 4, "end %s %s %s: %s", id, a->kind, state != NULL ? state : "done", a->error);
+    } else {
+        pav_log("activity", PAV_INFO, 3, "end %s %s %s", id, a->kind, state != NULL ? state : "done");
+    }
 }
 
 static void note_rate(Act *a, int64_t done, int64_t total, int64_t now) {

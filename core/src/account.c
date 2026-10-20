@@ -1051,3 +1051,38 @@ int pav_account_set_secret(json_t *args, json_t **data, PavError *err) {
         return 0;
     }
 }
+
+int pav_account_saved_secret(const char *id, char **out, PavError *err) {
+    PavConfigLoad *load;
+    json_t *accounts;
+    char keyring_user[256];
+    char buf[160];
+    int rc;
+
+    *out = NULL;
+    if (!profile_is_ready(err)) {
+        return -1;
+    }
+    load = pav_core_load();
+    accounts = json_object_get((json_t *)load->profile->doc, "accounts");
+    if (accounts == NULL || !json_is_array(accounts) || !account_has(accounts, id)) {
+        snprintf(buf, sizeof(buf), "account %.100s not found", id);
+        pav_error_set(err, "not_found", buf, 0);
+        return -1;
+    }
+    snprintf(keyring_user, sizeof(keyring_user), "%s/%s", load->profile->id, id);
+    rc = pav_secret_get("pavillion", keyring_user, out);
+    if (rc == PAV_SECRET_LOCKED) {
+        pav_error_set(err, "locked", "keyring is locked", 0);
+        return -1;
+    }
+    if (rc != 0 || *out == NULL || (*out)[0] == '\0') {
+        if (*out != NULL) {
+            pav_secret_free(*out);
+            *out = NULL;
+        }
+        pav_error_set(err, "bad_args", "no saved password for this account", 0);
+        return -1;
+    }
+    return 0;
+}

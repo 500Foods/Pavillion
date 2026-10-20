@@ -26,6 +26,7 @@ const KIND_ROWS = {
   "cache.evict": ["fa-box-archive", "Evict cache"],
   "search.server": ["fa-magnifying-glass", "Server search"],
   "queue.flush": ["fa-list-check", "Flush queue"],
+  "account.discover": ["fa-wand-magic-sparkles", "Configure account"],
   "account.test": ["fa-plug", "Test account"],
 };
 

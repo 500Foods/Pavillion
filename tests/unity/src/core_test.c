@@ -6162,6 +6162,216 @@ void test_account_test_bad_password(void) {
     json_decref(data);
 }
 
+
+static int fixture_account_test(const char *path, json_t **data, PavError *err) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char full[512];
+    json_t *args;
+    int rc;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+    snprintf(full, sizeof(full), "%s%s", url, path);
+    args = json_object();
+    TEST_ASSERT_NOT_NULL(args);
+    json_object_set_new(args, "sessionUrl", json_string(full));
+    json_object_set_new(args, "username", json_string("andrew@test-a.local"));
+    json_object_set_new(args, "auth", json_string("basic"));
+    json_object_set_new(args, "secret", json_string("testpassword"));
+    json_object_set_new(args, "caFile", json_string(ca));
+    memset(err, 0, sizeof(*err));
+    rc = pav_account_test(args, data, err);
+    json_decref(args);
+    return rc;
+}
+
+void test_account_test_relative_redirect(void) {
+    json_t *data = NULL;
+    PavError err;
+    int rc = fixture_account_test("/rel/well-known", &data, &err);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, rc, err.message);
+    TEST_ASSERT_NOT_NULL(data);
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(data, "ok")));
+    TEST_ASSERT_TRUE_MESSAGE(json_array_size(json_object_get(data, "capabilities")) > 0,
+                             "a relative 307 must reach the session and its capabilities");
+    json_decref(data);
+}
+
+void test_account_test_early_failure_not_ok(void) {
+    json_t *data = NULL;
+    PavError err;
+    char *reply;
+    json_t *parsed;
+    int rc = fixture_account_test("/rel/insecure", &data, &err);
+
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(0, rc, "a redirect to http:// must fail, not return ok without data");
+    TEST_ASSERT_NULL(data);
+    TEST_ASSERT_EQUAL_STRING("server", err.code);
+    TEST_ASSERT_NOT_NULL(strstr(err.message, "not https"));
+    json_decref(data);
+
+    /* Through the dispatcher the reply is not-ok, never {ok:true,data:null}. */
+    {
+        const char *url = getenv("PAV_FIXTURE_URL");
+        char argsj[1024];
+        snprintf(argsj, sizeof(argsj),
+                 "{\"sessionUrl\":\"%s/rel/insecure\",\"username\":\"andrew@test-a.local\","
+                 "\"auth\":\"basic\",\"secret\":\"testpassword\",\"caFile\":\"%s\"}",
+                 url, getenv("PAV_FIXTURE_CA"));
+        parsed = json_loads(argsj, 0, NULL);
+        TEST_ASSERT_NOT_NULL(parsed);
+        reply = pav_dispatch_reply("account.test", parsed);
+        json_decref(parsed);
+        TEST_ASSERT_NOT_NULL(reply);
+        parsed = json_loads(reply, 0, NULL);
+        free(reply);
+        TEST_ASSERT_NOT_NULL(parsed);
+        TEST_ASSERT_TRUE(json_is_false(json_object_get(parsed, "ok")));
+        TEST_ASSERT_EQUAL_STRING("server",
+            json_string_value(json_object_get(json_object_get(parsed, "error"), "code")));
+        json_decref(parsed);
+    }
+}
+void test_account_test_html_is_server_error(void) {
+    json_t *data = NULL;
+    PavError err;
+    int rc = fixture_account_test("/html", &data, &err);
+
+    TEST_ASSERT_NOT_EQUAL_INT(0, rc);
+    TEST_ASSERT_NULL(data);
+    TEST_ASSERT_EQUAL_STRING("server", err.code);
+    TEST_ASSERT_EQUAL_STRING("the server returned a web page, not a JMAP session (check the URL)",
+                             err.message);
+}
+
+void test_account_test_drops_auth_across_hosts(void) {
+    json_t *data = NULL;
+    PavError err;
+    /* 127.0.0.1 -> localhost: the fixture answers 400 if Authorization arrives. */
+    int rc = fixture_account_test("/xhost", &data, &err);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, rc, err.message);
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(data, "ok")));
+    json_decref(data);
+}
+
+static int fixture_port(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *c = url != NULL ? strrchr(url, ':') : NULL;
+    return c != NULL ? atoi(c + 1) : 0;
+}
+
+static int run_discover(const char *email, json_t **data, PavError *err) {
+    json_t *args = json_object();
+    int rc;
+
+    json_object_set_new(args, "email", json_string(email));
+    json_object_set_new(args, "caFile", json_string(getenv("PAV_FIXTURE_CA")));
+    memset(err, 0, sizeof(*err));
+    *data = NULL;
+    rc = pav_account_discover(args, data, err);
+    json_decref(args);
+    return rc;
+}
+
+void test_account_discover_srv(void) {
+    json_t *data;
+    PavError err;
+    char want[128];
+    int rc;
+
+    pav_platform_fake_set_srv("_jmap._tcp.test-a.local", "localhost.", fixture_port());
+    rc = run_discover("andrew@Test-A.local", &data, &err);
+    pav_platform_fake_set_srv(NULL, NULL, 0);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, rc, err.message);
+    snprintf(want, sizeof(want), "https://localhost:%d/jmap/session", fixture_port());
+    TEST_ASSERT_EQUAL_STRING(want, json_string_value(json_object_get(data, "sessionUrl")));
+    TEST_ASSERT_EQUAL_STRING("srv", json_string_value(json_object_get(data, "via")));
+    json_decref(data);
+}
+
+void test_account_discover_well_known_fallback(void) {
+    json_t *data;
+    PavError err;
+    char want[128];
+    int rc;
+
+    /* The SRV target refuses connections, so discovery falls back. */
+    pav_platform_fake_set_srv("_jmap._tcp.localhost", "127.0.0.1", 1);
+    pav_account_discover_set_port(fixture_port());
+    rc = run_discover("andrew@localhost", &data, &err);
+    pav_account_discover_set_port(0);
+    pav_platform_fake_set_srv(NULL, NULL, 0);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, rc, err.message);
+    snprintf(want, sizeof(want), "https://localhost:%d/jmap/session", fixture_port());
+    TEST_ASSERT_EQUAL_STRING(want, json_string_value(json_object_get(data, "sessionUrl")));
+    TEST_ASSERT_EQUAL_STRING("well-known", json_string_value(json_object_get(data, "via")));
+    json_decref(data);
+}
+
+void test_account_discover_errors(void) {
+    json_t *data;
+    PavError err;
+
+    TEST_ASSERT_NOT_EQUAL_INT(0, run_discover("no-at-sign", &data, &err));
+    TEST_ASSERT_EQUAL_STRING("bad_args", err.code);
+    TEST_ASSERT_NOT_EQUAL_INT(0, run_discover("a@bad_domain!", &data, &err));
+    TEST_ASSERT_EQUAL_STRING("bad_args", err.code);
+    pav_account_discover_set_port(1); /* nothing listens: not_found, no network */
+    TEST_ASSERT_NOT_EQUAL_INT(0, run_discover("a@localhost", &data, &err));
+    pav_account_discover_set_port(0);
+    TEST_ASSERT_EQUAL_STRING("not_found", err.code);
+    TEST_ASSERT_NULL(data);
+}
+
+void test_account_test_uses_saved_secret(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char body[1024];
+    json_t *root;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    snprintf(body, sizeof(body),
+             "{\"kind\":\"jmap\",\"sessionUrl\":\"%s/.well-known/jmap\",\"username\":\"andrew@test-a.local\","
+             "\"secret\":\"testpassword\",\"id\":\"saved\",\"caFile\":\"%s\"}", url, ca);
+    root = call_reply("account.add", body);
+    assert_ok(root);
+    json_decref(root);
+
+    /* Blank password plus id: the saved secret is used. */
+    snprintf(body, sizeof(body),
+             "{\"sessionUrl\":\"%s/.well-known/jmap\",\"username\":\"andrew@test-a.local\","
+             "\"id\":\"saved\",\"secret\":\"\",\"caFile\":\"%s\"}", url, ca);
+    root = call_reply("account.test", body);
+    assert_ok(root);
+    json_decref(root);
+
+    /* A typed secret still wins over the saved one. */
+    snprintf(body, sizeof(body),
+             "{\"sessionUrl\":\"%s/.well-known/jmap?error=401\",\"username\":\"andrew@test-a.local\","
+             "\"id\":\"saved\",\"secret\":\"typed\",\"caFile\":\"%s\"}", url, ca);
+    root = call_reply("account.test", body);
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(root, "ok")));
+    json_decref(root);
+
+    /* An unknown id is not_found; no id and no secret is bad_args. */
+    snprintf(body, sizeof(body),
+             "{\"sessionUrl\":\"%s/.well-known/jmap\",\"username\":\"u\",\"id\":\"nope\"}", url);
+    root = call_reply("account.test", body);
+    TEST_ASSERT_EQUAL_STRING("not_found",
+        json_string_value(json_object_get(json_object_get(root, "error"), "code")));
+    json_decref(root);
+    snprintf(body, sizeof(body), "{\"sessionUrl\":\"%s/.well-known/jmap\",\"username\":\"u\"}", url);
+    root = call_reply("account.test", body);
+    TEST_ASSERT_EQUAL_STRING("bad_args",
+        json_string_value(json_object_get(json_object_get(root, "error"), "code")));
+    json_decref(root);
+    pavillion_stop();
+}
+
 void test_account_test_bad_args(void) {
     json_t *args;
     json_t *data = NULL;
@@ -6680,6 +6890,14 @@ int main(void) {
     RUN_TEST(test_account_test_reports_caps);
     RUN_TEST(test_account_test_bad_password);
     RUN_TEST(test_account_test_bad_args);
+    RUN_TEST(test_account_test_relative_redirect);
+    RUN_TEST(test_account_test_early_failure_not_ok);
+    RUN_TEST(test_account_test_html_is_server_error);
+    RUN_TEST(test_account_test_drops_auth_across_hosts);
+    RUN_TEST(test_account_discover_srv);
+    RUN_TEST(test_account_discover_well_known_fallback);
+    RUN_TEST(test_account_discover_errors);
+    RUN_TEST(test_account_test_uses_saved_secret);
     RUN_TEST(test_remote_accounts_from_session);
     return UNITY_END();
 }

@@ -55,6 +55,15 @@ Result: the account object (without the secret). Includes `number`.
 
 Errors: `bad_args`, `forbidden` (secret in profile), `failed` (keyring), `internal`. A keyring failure rolls back the profile write and the `account_state` row insertion. A profile write failure deletes the keyring entry.
 
+### account.discover
+
+State: real (K-Q5)
+
+`{email, caFile?}` returns `{sessionUrl, via}`. Each candidate gets one attempt (no net retries). `via` is `"srv"` or `"well-known"`. Tries the SRV record `_jmap._tcp.<domain>` (`https://<target>[:port]/.well-known/jmap`), then `https://<domain>/.well-known/jmap`. No credentials are sent. Redirects follow the `account.test` rules; the final response must be JSON with an `apiUrl`, and `sessionUrl` is that final URL. Runs as an activity of kind `account.discover` (title `Configure <domain>`); logs the domain and the found host at `INFO`. It does not write the profile.
+
+Errors: `bad_args` (missing or invalid email), `not_found` (neither SRV nor well-known gave a JMAP session; the message names the last failure), `network`, `server`.
+
+
 ### account.list
 
 State: real (K-2)
@@ -90,6 +99,13 @@ Errors: `bad_args`, `not_found`, `failed` (keyring).
 State: real (M-2)
 
 `{sessionUrl | email, username, auth?, secret, caFile?}` returns `{ok, capabilities[], error?}`. `caFile` pins a CA bundle for this test; without it the system store is used (the test build also honours `PAV_FIXTURE_CA`). It does not write the profile.
+
+From 2026-10-19 (Andrew): any failure, including an early one (bad redirect, queue or memory failure, timeout), returns a not-ok reply with an error code; it never returns `ok` without data. Redirects (301, 302, 307, 308, at most 3) read `Location` case-insensitively and resolve a relative value (`/jmap/session`, `//host/path`, or a bare path) against the request URL; the target must still be `https://`. Each test runs as an activity of kind `account.test` (title `Test <host>`), ended `done` or `failed` with the error message. Log lines name the session host (`account.test ok: localhost:1443`); the username appears only at `DEBUG`, per the H redaction rule for email addresses.
+
+From 2026-10-19 (Andrew): a 200 that is not JSON (an HTML `Content-Type`, or a body whose first non-space byte is `<`) fails with `server`, "the server returned a web page, not a JMAP session (check the URL)". A redirect that changes scheme, host, or port drops the `Authorization` header for the rest of the chain, logged at `DEBUG` with both hosts.
+
+From 2026-10-19 (Andrew): `id?` names a saved account. When `secret` is absent or empty and `id` is given, the test uses that account's saved secret from the secret store; a typed `secret` still wins. Errors: `not_found` (no such account), `locked`, `bad_args` "no saved password for this account". The secret is never returned or logged.
+
 
 ### account.update
 

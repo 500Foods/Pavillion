@@ -189,6 +189,7 @@ fn start_core(workdir: &str) {
     if unsafe { pavillion_start(path.as_ptr(), err.as_mut_ptr().cast(), err.len()) } != 0 {
         shell_error!("pavillion_start failed: {}", unsafe { CStr::from_ptr(err.as_ptr().cast()) }.to_string_lossy());
     }
+    exit_if_profile_locked();
 }
 
 fn stop_events() {
@@ -370,29 +371,102 @@ fn instance_identifier(base: &str, workdir: &str) -> String {
 }
 
 fn focus_existing(app: &tauri::AppHandle) {
-    let Some(window) = app.get_webview_window("main") else { shell_warn!("second launch: main window is missing"); return };
     core_log(2, "second launch of this workdir: focusing the existing window");
-    let _ = window.show();
-    let _ = window.unminimize();
-    let _ = window.set_focus();
+    let Some(window) = app.get_webview_window("main") else { shell_warn!("second launch: main window is missing"); return };
+    if let Err(e) = window.unminimize() { shell_warn!("second launch: cannot unminimize the window ({e})"); }
+    if let Err(e) = window.show() { shell_warn!("second launch: cannot show the window ({e})"); }
+    if let Err(e) = window.set_focus() { shell_warn!("second launch: cannot focus the window ({e})"); }
 }
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run(workdir: &str) {
-    block_quit_signals();
-    install_quit_handler();
-    quiet_webkit_exit();
+
+/// O-COMPOSE Lock (2026-10-19): the one line a refused second launch prints.
+const SECOND_LAUNCH_MSG: &str = "Pavillion is already running for this profile; bringing it to the front.";
+const PROFILE_LOCKED_MSG: &str = "This profile is open in another Pavillion window.";
+/// True while the app is being built: the single-instance plugin exits the
+/// second process from inside build, before our setup runs.
+static IN_BUILD: AtomicBool = AtomicBool::new(false);
+
+fn say_second_launch() {
+    eprintln!("{SECOND_LAUNCH_MSG}");
+}
+
+extern "C" fn exit_during_build() {
+    if IN_BUILD.load(Ordering::SeqCst) {
+        say_second_launch();
+    }
+}
+
+/// The profile lock refused this process: say so, log it, and leave quietly.
+fn exit_if_profile_locked() {
+    let locked = core_data("system.status", &json!({}))
+        .ok()
+        .and_then(|v| v.get("error").and_then(Value::as_str).map(|e| e == PROFILE_LOCKED_MSG))
+        .unwrap_or(false);
+    if locked {
+        say_second_launch();
+        core_log(2, SECOND_LAUNCH_MSG);
+        unsafe { pavillion_stop() };
+        std::process::exit(0);
+    }
+}
+
+
+/// D-Bus well-known name for the single-instance plugin (G-LAYERS / O-COMPOSE Lock).
+/// Each element: characters outside [A-Za-z0-9_-] become '_', and '_' is
+/// prefixed when it starts with a digit (`500nodes` -> `_500nodes`). Empty
+/// elements are dropped. The Tauri identifier itself is left alone.
+pub(crate) fn dbus_name_for(identifier: &str) -> String {
+    let elements: Vec<String> = identifier
+        .split('.')
+        .filter(|e| !e.is_empty())
+        .map(|e| {
+            let mut s: String = e.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' }).collect();
+            if s.starts_with(|c: char| c.is_ascii_digit()) {
+                s.insert(0, '_');
+            }
+            s
+        })
+        .collect();
+    if elements.len() < 2 { format!("pavillion.{}", elements.join(".")).trim_end_matches('.').to_string() } else { elements.join(".") }
+}
+
+/// The plugin appends ".SingleInstance"; D-Bus caps a name at 255 bytes.
+pub(crate) fn dbus_name_valid(name: &str) -> bool {
+    let full = format!("{name}.SingleInstance");
+    full.len() <= 255
+        && full.split('.').count() >= 2
+        && full.split('.').all(|e| {
+            !e.is_empty()
+                && !e.starts_with(|c: char| c.is_ascii_digit())
+                && e.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        })
+}
+
+fn build_app(workdir: &str, single_instance: bool) -> Result<tauri::App, tauri::Error> {
     let mut context = tauri::generate_context!();
     let identifier = instance_identifier(&context.config().identifier, workdir);
+    let dbus_id = dbus_name_for(&identifier);
     context.config_mut().identifier = identifier;
     let workdir = workdir.to_string();
-    let mut builder = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| focus_existing(app)))
-        .plugin(tauri_plugin_dialog::init()).invoke_handler(tauri::generate_handler![core]);
+    let mut builder = tauri::Builder::default();
+    if single_instance {
+        if dbus_name_valid(&dbus_id) {
+            builder = builder.plugin(
+                tauri_plugin_single_instance::Builder::new()
+                    .dbus_id(dbus_id)
+                    .callback(|app, _argv, _cwd| focus_existing(app))
+                    .build(),
+            );
+        } else {
+            shell_warn!("second-window check is off: the instance name is not usable here; the profile lock still stops a second window from opening this profile");
+        }
+    }
+    let mut builder = builder.plugin(tauri_plugin_dialog::init()).invoke_handler(tauri::generate_handler![core]);
     for scheme in ["pav-blob", "pav-cid", "pav-link", "pav-theme"] {
         let name = scheme.to_string();
         builder = builder.register_uri_scheme_protocol(scheme, move |_ctx, request| scheme_reply(&name, &request));
     }
-    let app = builder.setup(move |app| {
+    builder.setup(move |app| {
+        IN_BUILD.store(false, Ordering::SeqCst);
         start_core(&workdir);
         start_events(app.handle());
         let Some(window) = app.get_webview_window("main") else { shell_error!("main window is missing"); return Ok(()) };
@@ -414,7 +488,29 @@ pub fn run(workdir: &str) {
         });
         app.listen("pav-quit-done", |_| note_quit_result(true));
         Ok(())
-    }).build(context).expect("error while building pavillion");
+    }).build(context)
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run(workdir: &str) {
+    block_quit_signals();
+    install_quit_handler();
+    quiet_webkit_exit();
+    unsafe { libc::atexit(exit_during_build) };
+    IN_BUILD.store(true, Ordering::SeqCst);
+    let app = match build_app(workdir, true) {
+        Ok(app) => app,
+        Err(tauri::Error::PluginInitialization(name, reason)) if name == "single-instance" => {
+            shell_warn!("could not set up the check for a second window ({reason}); continuing without it. The profile lock still stops a second window from opening this profile");
+            IN_BUILD.store(false, Ordering::SeqCst);
+            build_app(workdir, false).expect("error while building pavillion")
+        }
+        Err(e) => {
+            IN_BUILD.store(false, Ordering::SeqCst);
+            panic!("error while building pavillion: {e}")
+        }
+    };
+    IN_BUILD.store(false, Ordering::SeqCst);
     watch_sigint(app.handle().clone());
     app.run(|app, event| match event {
         tauri::RunEvent::ExitRequested { .. } => {
@@ -424,4 +520,24 @@ pub fn run(workdir: &str) {
         tauri::RunEvent::Exit => { stop_events(); unsafe { pavillion_stop() }; }
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{dbus_name_for, dbus_name_valid};
+
+    #[test]
+    fn digit_led_element_gets_underscore() {
+        assert_eq!(dbus_name_for("com.500nodes.pavillion"), "com._500nodes.pavillion");
+        assert!(dbus_name_valid(&dbus_name_for("com.500nodes.pavillion")));
+    }
+
+    #[test]
+    fn workdir_suffix_kept_and_bad_chars_replaced() {
+        let id = "com.500nodes.pavillion.w0123456789abcdef0123456789abcdef";
+        assert_eq!(dbus_name_for(id), "com._500nodes.pavillion.w0123456789abcdef0123456789abcdef");
+        assert_eq!(dbus_name_for("com.my app.x+y"), "com.my_app.x_y");
+        assert!(!dbus_name_valid("com.500nodes.pavillion"));
+        assert!(!dbus_name_valid(&"a".repeat(300)));
+    }
 }

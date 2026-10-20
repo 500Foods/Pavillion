@@ -76,6 +76,9 @@ export function createApi(transport) {
        test(body) {
          return call("account.test", body ?? {});
        },
+       discover(body) {
+         return call("account.discover", body ?? {});
+       },
      },
     sync: {
       now(body) {
