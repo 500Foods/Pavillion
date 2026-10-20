@@ -37,3 +37,15 @@ test("checkedTitle shows 24-hour local time in the profile zone (K-Q10)", async 
   expect(checkedTitle("2026-10-19T17:05:09Z", "Europe/Berlin")).toBe("Checked 2026-10-19 19:05:09");
   expect(checkedTitle(null, "America/Vancouver")).toBe("Not checked yet");
 });
+
+test("serverGroup labels by host and full URL, else (no server) (K-Q11)", async () => {
+  const { serverGroup, accountCountText, NO_SERVER } = await import("./accounts-table.js");
+  expect(serverGroup("https://mail.500foods.com/jmap/session")).toBe("mail.500foods.com (https://mail.500foods.com/jmap/session)");
+  expect(serverGroup(" https://h.example:8443/x ")).toBe("h.example (https://h.example:8443/x)");
+  expect(serverGroup("")).toBe(NO_SERVER);
+  expect(serverGroup(undefined)).toBe("(no server)");
+  expect(serverGroup("not a url")).toBe("(no server)");
+  expect(accountCountText(0)).toBe("0 accounts");
+  expect(accountCountText(1)).toBe("1 account");
+  expect(accountCountText(3)).toBe("3 accounts");
+});

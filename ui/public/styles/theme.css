@@ -1590,7 +1590,6 @@
 }
 
 .pav-root .accounts-tree-number {
-  margin-left: 0.5rem;
   color: var(--pav-text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -1803,6 +1802,29 @@
 }
 .pav-root .pav-table .tabulator-placeholder {
   padding: 0.75rem;
+  color: var(--pav-text-muted);
+}
+
+/* Group header rows (groupBy) and the table footer. */
+.pav-root .pav-table .tabulator-row.tabulator-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.4rem;
+  cursor: default;
+  color: var(--pav-text-muted);
+  background: var(--pav-surface-button);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pav-root .pav-table .pav-group-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.pav-root .pav-table .pav-table-footer {
+  padding: 0.3rem 0.4rem;
+  border-top: 1px solid var(--pav-border);
   color: var(--pav-text-muted);
 }
 

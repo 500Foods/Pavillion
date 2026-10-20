@@ -1,14 +1,15 @@
 /* The shared table (N Lock, Shared table component): the only module that
    imports Tabulator, loaded on first use as its own chunk. Screens call
-   createTable(el, {columns, data, rowId, onRowClick, rowClass}); the look is
+   createTable(el, {columns, data, rowId, onRowClick, rowClass, groupBy,
+   groupHeader, footer}); the look is
    .pav-table on --pav-* variables in theme.css, and no Tabulator stylesheet
    is loaded. Formatters build DOM with textContent. */
 let loading = null;
 
 function loadTabulator() {
   if (!loading) {
-    loading = import("tabulator-tables").then(({ Tabulator, FormatModule, InteractionModule }) => {
-      Tabulator.registerModule([FormatModule, InteractionModule]);
+    loading = import("tabulator-tables").then(({ Tabulator, FormatModule, InteractionModule, GroupRowsModule }) => {
+      Tabulator.registerModule([FormatModule, InteractionModule, GroupRowsModule]);
       return Tabulator;
     });
   }
@@ -36,6 +37,17 @@ export function createTable(el, options) {
   let destroyed = false;
   let observer = null;
   let data = options.data || [];
+  /* footer(data) gives the footer text; the page owns the element. */
+  const footerEl = typeof options.footer === "function" ? el.ownerDocument.createElement("div") : null;
+  const paintFooter = () => {
+    if (footerEl) {
+      footerEl.textContent = options.footer(data);
+    }
+  };
+  if (footerEl) {
+    footerEl.className = "pav-table-footer";
+    paintFooter();
+  }
 
   void loadTabulator().then((Tabulator) => {
     if (destroyed) {
@@ -48,6 +60,13 @@ export function createTable(el, options) {
       layout: "fitColumns",
       renderVertical: "basic",
       placeholder: options.placeholder || "",
+      /* groupBy: a field name or fn(data); groupHeader(value, count, rows)
+         returns a DOM node built with textContent, never an HTML string. */
+      ...(options.groupBy ? { groupBy: options.groupBy, groupToggleElement: false } : {}),
+      ...(typeof options.groupHeader === "function"
+        ? { groupHeader: (value, count, rows) => options.groupHeader(value, count, rows) }
+        : {}),
+      ...(footerEl ? { footerElement: footerEl } : {}),
       ...(typeof options.rowClass === "function" ? { rowFormatter: (row) => markRow(row, options.rowClass) } : {}),
     });
     table.on("tableBuilt", () => {
@@ -72,6 +91,7 @@ export function createTable(el, options) {
   return {
     setData(next) {
       data = next;
+      paintFooter();
       if (built) {
         void table.replaceData(next);
       }

@@ -31,7 +31,7 @@ vi.mock("tabulator-tables", () => {
       this.destroyed = true;
     }
   }
-  return { Tabulator, FormatModule: "format", InteractionModule: "interaction" };
+  return { Tabulator, FormatModule: "format", InteractionModule: "interaction", GroupRowsModule: "groupRows" };
 });
 
 /* A ResizeObserver stand-in the test can fire. */
@@ -61,7 +61,7 @@ test("the shared table loads Tabulator with only the modules it needs and wires 
   await vi.waitFor(() => expect(made.length).toBe(1));
   const t = made[0];
   const { Tabulator } = await import("tabulator-tables");
-  expect(Tabulator.registered).toEqual(["format", "interaction"]);
+  expect(Tabulator.registered).toEqual(["format", "interaction", "groupRows"]);
   expect(t.options.layout).toBe("fitColumns");
   t.handlers.tableBuilt();
   handle.setData([{ id: "y" }]);
@@ -86,4 +86,26 @@ test("the accounts table fills its width with Name and keeps the other columns n
     expect(column.width).toBeLessThanOrEqual(96);
     expect(column.resizable).toBe(false);
   }
+});
+
+test("groupBy, groupHeader and a footer reach Tabulator; the footer follows setData", async () => {
+  const el = document.createElement("div");
+  const header = document.createElement("span");
+  const handle = createTable(el, {
+    columns: [{ field: "a" }],
+    data: [{ id: "x", g: "one" }],
+    groupBy: "g",
+    groupHeader: () => header,
+    footer: (data) => `${data.length} rows`,
+  });
+  await vi.waitFor(() => expect(made.length).toBe(2));
+  const t = made[1];
+  expect(t.options.groupBy).toBe("g");
+  expect(t.options.groupHeader("one", 1, [])).toBe(header);
+  expect(t.options.footerElement.className).toBe("pav-table-footer");
+  expect(t.options.footerElement.textContent).toBe("1 rows");
+  t.handlers.tableBuilt();
+  handle.setData([{ id: "x" }, { id: "y" }]);
+  expect(t.options.footerElement.textContent).toBe("2 rows");
+  handle.destroy();
 });

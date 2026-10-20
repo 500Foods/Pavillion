@@ -1,7 +1,9 @@
-/* K-Q8: Settings → Accounts list, the first Tabulator table. Columns: the
-   color swatch with the account icon, Name, then one read-only checkbox per
-   feature with the main nav's icon as its header. A box is on when the
-   stored capabilities (K-Q10) include it and the account syncs it.
+/* K-Q8, K-Q11: Settings → Accounts list, the first Tabulator table. Columns:
+   the number, the color swatch with the account icon, Name, then one
+   read-only checkbox per feature with the main nav's icon as its header.
+   Rows are grouped by server (serverGroup) and the footer counts them.
+   A box is on when the stored capabilities (K-Q10) include it and the
+   account syncs it.
    Files has no sync flag yet, so it shows the capability only. */
 import { accountSwatch } from "./account-icon.js";
 
@@ -64,6 +66,47 @@ export function checkedTitle(iso, timeZone) {
   return `Checked ${pick("year")}-${pick("month")}-${pick("day")} ${hour}:${pick("minute")}:${pick("second")}`;
 }
 
+export const NO_SERVER = "(no server)";
+
+/* Group key for an account: the session URL's host, then the whole URL in
+   parentheses; "(no server)" when the URL is empty or does not parse. */
+export function serverGroup(sessionUrl) {
+  const text = typeof sessionUrl === "string" ? sessionUrl.trim() : "";
+  if (text === "") {
+    return NO_SERVER;
+  }
+  let url;
+  try {
+    url = new URL(text);
+  } catch {
+    return NO_SERVER;
+  }
+  if (url.hostname === "") {
+    return NO_SERVER;
+  }
+  return `${url.hostname} (${text})`;
+}
+
+/* The footer: "1 account", "3 accounts". */
+export function accountCountText(count) {
+  return count === 1 ? "1 account" : `${count} accounts`;
+}
+
+/* A group header row: the server label and the count, built with textContent. */
+export function serverGroupHeader(value, count, documentRef = globalThis.document) {
+  const span = documentRef.createElement("span");
+  span.className = "pav-group-label";
+  span.textContent = value;
+  const num = documentRef.createElement("span");
+  num.className = "pav-group-count";
+  num.textContent = String(count);
+  num.title = accountCountText(count);
+  const wrap = documentRef.createElement("span");
+  wrap.className = "pav-group";
+  wrap.append(span, num);
+  return wrap;
+}
+
 export function accountRows(accounts, timeZone) {
   return accounts.map((account) => {
     const caps = Array.isArray(account.capabilities) ? account.capabilities : null;
@@ -71,6 +114,7 @@ export function accountRows(accounts, timeZone) {
       id: account.id,
       name: account.name || account.id,
       number: account.number || "",
+      server: serverGroup(account.sessionUrl),
       account,
       checked: checkedTitle(account.capabilitiesChecked, timeZone),
     };
@@ -104,6 +148,19 @@ function checkbox(on, label, documentRef) {
 export function accountColumns(documentRef = globalThis.document) {
   const columns = [
     {
+      title: "#",
+      field: "number",
+      width: 52,
+      headerSort: false,
+      resizable: false,
+      formatter: (cell) => {
+        const num = documentRef.createElement("span");
+        num.className = "accounts-tree-number";
+        num.textContent = cell.getValue();
+        return num;
+      },
+    },
+    {
       title: "",
       field: "account",
       width: 44,
@@ -120,10 +177,6 @@ export function accountColumns(documentRef = globalThis.document) {
         const span = documentRef.createElement("span");
         span.className = "accounts-name-cell";
         span.textContent = cell.getValue();
-        const num = documentRef.createElement("span");
-        num.className = "accounts-tree-number";
-        num.textContent = cell.getRow().getData().number;
-        span.append(" ", num);
         return span;
       },
     },

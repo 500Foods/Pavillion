@@ -11,25 +11,52 @@ import { mockTransport } from "../transport/mock.js";
    column formatters, and a row click calls onRowClick like Tabulator does. */
 vi.mock("../common/table.js", () => ({
   createTable(el, options) {
+    const drawRow = (row) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.accountId = row.id;
+      if (options.rowClass && options.rowClass(row)) {
+        button.classList.add(options.rowClass(row));
+      }
+      for (const column of options.columns) {
+        const cell = { getValue: () => row[column.field], getRow: () => ({ getData: () => row }) };
+        const out = column.formatter ? column.formatter(cell) : String(row[column.field] ?? "");
+        const span = document.createElement("span");
+        span.dataset.field = column.field;
+        span.append(out);
+        button.append(span);
+      }
+      button.addEventListener("click", () => options.onRowClick(row));
+      return button;
+    };
+    /* Like Tabulator groupBy: groups in first-seen order, header, rows. */
     const draw = (data) => {
       el.replaceChildren();
+      const groups = new Map();
       for (const row of data) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.dataset.accountId = row.id;
-        if (options.rowClass && options.rowClass(row)) {
-          button.classList.add(options.rowClass(row));
+        const key = options.groupBy ? row[options.groupBy] : "";
+        if (!groups.has(key)) {
+          groups.set(key, []);
         }
-        for (const column of options.columns) {
-          const cell = { getValue: () => row[column.field], getRow: () => ({ getData: () => row }) };
-          const out = column.formatter ? column.formatter(cell) : String(row[column.field] ?? "");
-          const span = document.createElement("span");
-          span.dataset.field = column.field;
-          span.append(out);
-          button.append(span);
+        groups.get(key).push(row);
+      }
+      for (const [key, rows] of groups) {
+        if (options.groupBy) {
+          const header = document.createElement("div");
+          header.className = "tabulator-group";
+          header.dataset.group = key;
+          header.append(options.groupHeader ? options.groupHeader(key, rows.length, rows) : key);
+          el.append(header);
         }
-        button.addEventListener("click", () => options.onRowClick(row));
-        el.append(button);
+        for (const row of rows) {
+          el.append(drawRow(row));
+        }
+      }
+      if (options.footer) {
+        const footer = document.createElement("div");
+        footer.className = "pav-table-footer";
+        footer.textContent = options.footer(data);
+        el.append(footer);
       }
     };
     draw(options.data);
@@ -784,5 +811,35 @@ test("a Test from an unsaved form sends its capabilities on Add", async () => {
     const add = callSpy.mock.calls.filter(([cmd]) => cmd === "account.add").pop();
     expect(add[1].capabilities).toContain("files");
     expect(typeof add[1].capabilitiesChecked).toBe("string");
+  });
+});
+
+/* K-Q11: number, swatch, Name, features; grouped by server; a count footer. */
+test("the table orders columns, groups by server, and counts accounts", async () => {
+  await withView(async () => {
+    const add = async (name, url) => {
+      typeInto("#account-name-input", name);
+      typeInto("#account-session-url-input", url);
+      typeInto("#account-username-input", `${name.toLowerCase()}@example.com`);
+      typeInto("#account-secret-input", "pw");
+      document.querySelector("#account-add").click();
+      await vi.waitFor(() => {
+        expect(document.querySelector(`[data-account-id="${name.toLowerCase()}"]`)).not.toBeNull();
+      });
+    };
+    await add("One", "https://mail.500foods.com/jmap/session");
+    expect(document.querySelector("#accounts-tree .pav-table-footer").textContent).toBe("1 account");
+    await add("Two", "https://mail.example.com/.well-known/jmap");
+    await add("Three", "https://mail.500foods.com/jmap/session");
+    const fields = [...document.querySelectorAll('[data-account-id="one"] > span')].map((s) => s.dataset.field);
+    expect(fields).toEqual(["number", "account", "name", "mail", "calendars", "contacts", "files"]);
+    expect(document.querySelector('[data-account-id="one"] [data-field="number"]').textContent).toMatch(/^\d{3}$/);
+    const headers = [...document.querySelectorAll("#accounts-tree .tabulator-group")];
+    expect(headers.map((h) => h.querySelector(".pav-group-label").textContent)).toEqual([
+      "mail.500foods.com (https://mail.500foods.com/jmap/session)",
+      "mail.example.com (https://mail.example.com/.well-known/jmap)",
+    ]);
+    expect(headers.map((h) => h.querySelector(".pav-group-count").textContent)).toEqual(["2", "1"]);
+    expect(document.querySelector("#accounts-tree .pav-table-footer").textContent).toBe("3 accounts");
   });
 });

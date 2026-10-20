@@ -20,6 +20,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | D-5 | Theme extras: density, gradient tuning, the contrast audit | Medium | Not started |
 | D-8 | Settings → Formats: app-wide display formats through Luxon (before N-3) | Medium | Not started |
 | D-9 | Icon Wizard (DRAFT spec, docs only): up to 3 layered icons or images per icon, stored as an HTML snippet | Medium | Not started |
+| D-10 | Module top bars (DRAFT spec, docs only): Accounts Clone and search, the Help bar with search and Back | Medium | Not started |
 
 Kind: **Easy** is the static frame or one function in `api.js`. **Medium** crosses one boundary. **Hard** is unused.
 
@@ -383,6 +384,35 @@ This records Andrew's ideas. It does not decide the look: layout, sizes, spacing
 - D-Q11: Scope of Settings → Icons: it exists today (Source Theme or Override, kit, icon overrides). Does the wizard's page become part of it, a new section within it, or a separate heading?
 - D-Q12: Rendering at small sizes (16 px in the table and tree): how 3 layers and photos stay legible; whether a simplified fallback is drawn below some size.
 - D-Q13: Recent picks and favourites: wanted, and where kept?
+
+## D-10: Module top bars: Accounts Clone and search, Help bar (DRAFT)
+
+**Kind:** Medium
+**Status:** Not started. DRAFT spec, docs only; no code in this phase until Andrew answers the open questions. Added 2026-10-19 at Andrew's request.
+
+**Goal:** The Accounts module and the Help panel get a top bar like the Logs panel's: a title on the left, a search field on the right, and module buttons.
+
+**What it does (Andrew's ideas, 2026-10-19):**
+
+- Accounts top bar: a **Clone** button. It copies the selected account into a new unsaved form: every field except the username, the password, and the id. A new id and number come from Add as usual. Clone needs a selected row, so the table gets row selection (optionally single-select through Tabulator's SelectRow module); Clone is disabled when nothing is selected.
+- Accounts top bar: a **search** field like the Logs panel (H-3) that filters the table as you type.
+- Help bar reworked to match: the title `Help` on the left, search on the right, and a **Back** button to the right of search. Back returns to the panel that opened Help, or, when Help was opened from the nav Help button, to the last panel shown before it.
+
+**Entry gate:** Andrew answers the open questions below.
+
+**Work items:** none yet (DRAFT).
+
+**Tests:** to be written with the spec (Vitest: Clone copies all but username, password, and id; Clone disabled without a selection; search filters rows and groups; Back returns to the opener).
+
+**Open questions for Andrew:**
+
+- D-Q14: Clone and the copied values: are `capabilities` and `capabilitiesChecked` (K-Q10) copied, or reset to `[]` and `null` until the clone's first Test? Is the email copied (it usually matches the username), and is the name copied as is or as `<name> (copy)`?
+- D-Q15: Clone with an unsaved form: does it ask before discarding edits, and does the clone open in the form ready for Add, or is it added at once?
+- D-Q16: Selection: the table today highlights the selected row (`pav-row-selected`) from the form. Is Tabulator's SelectRow module (single row) wanted, or is the existing highlight enough as the selection? Keyboard up and down?
+- D-Q17: Accounts search: which columns does it match (name, number, username, email, server), is it plain substring or the Logs query syntax, and does it hide whole server groups that have no match?
+- D-Q18: Help Back: what counts as "the panel that opened Help" (section, Settings heading, a tab), how far back the history goes (one step or a stack), and what Back does when there is no earlier panel (hidden or disabled).
+- D-Q19: Help search moves from where it is today to the bar's right side: same behaviour, or does it also search topic bodies?
+- D-Q20: A shared top-bar widget (title, search, buttons) for Logs, Accounts, and Help, in `ui/src/common/`, or each module draws its own?
 
 ## Working log
 

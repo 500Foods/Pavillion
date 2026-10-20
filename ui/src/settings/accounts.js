@@ -1,6 +1,6 @@
 import { createTable } from "../common/table.js";
 import { accountSwatch, ICON_CHOICES, iconChoice, iconSnippet } from "./account-icon.js";
-import { accountColumns, accountRows } from "./accounts-table.js";
+import { accountColumns, accountCountText, accountRows, serverGroupHeader } from "./accounts-table.js";
 
 export function createAccountsView(api, root, options = {}) {
   let table = null;
@@ -165,6 +165,9 @@ export function createAccountsView(api, root, options = {}) {
         data: rows,
         rowId: "id",
         onRowClick: (row) => selectAccount(row.id),
+        groupBy: "server",
+        groupHeader: (value, count) => serverGroupHeader(value, count, document),
+        footer: (data) => accountCountText(data.length),
         rowClass: (row) => (row.id === selectedId ? "pav-row-selected" : ""),
       });
     } else {
