@@ -114,14 +114,14 @@ The license is [MIT](LICENSE.md).
 [![Count Lines of Code](https://github.com/500Foods/Pavillion/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/main.yml)
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-20 19:19:40 UTC
+Last updated at 2026-10-20 19:53:14 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
 C                               34           2452            422          22866
-JavaScript                      97           1471            434          20222
-Markdown                        34           2620              2           5498
-CSS                              7            432             20           2864
+JavaScript                      99           1497            451          20591
+Markdown                        34           2625              2           5513
+CSS                              7            432             24           2989
 JSON                             9              0              0           2662
 C/C++ Header                    23            423            499           2119
 Rust                             4             72             62           1070
@@ -134,7 +134,7 @@ HTML                             3              4              0             84
 Text                             2              8              0             57
 TOML                             2              8              5             54
 -------------------------------------------------------------------------------
-SUM:                           232           7620           1598          58715
+SUM:                           234           7651           1619          59224
 -------------------------------------------------------------------------------
 27 Files were skipped (duplicate, binary, or without source code):
   png: 17
