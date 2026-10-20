@@ -2134,3 +2134,25 @@
   justify-content: center;
   text-align: center;
 }
+
+/* D-UI module footer: Refresh spins once per click (module-bar.js). */
+.pav-root .pav-module-footer button.is-spinning .icon,
+.pav-root .pav-module-footer button.is-spinning svg,
+.pav-root .pav-module-footer button.is-spinning i {
+  animation: pav-refresh-spin var(--pav-refresh-spin-duration) ease-in-out 1;
+}
+@keyframes pav-refresh-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pav-root .pav-module-footer button.is-spinning .icon,
+  .pav-root .pav-module-footer button.is-spinning svg,
+  .pav-root .pav-module-footer button.is-spinning i {
+    animation: none;
+  }
+}

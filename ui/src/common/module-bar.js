@@ -12,7 +12,7 @@ function iconButton(spec, documentRef) {
   if (spec.action) {
     button.dataset.moduleAction = spec.action;
   }
-  button.title = spec.label;
+  button.dataset.pavTip = spec.label;
   button.setAttribute("aria-label", spec.label);
   if (spec.icon) {
     const icon = documentRef.createElement("i");
@@ -85,6 +85,24 @@ export function moduleToolbar(options, documentRef = globalThis.document) {
   return bar;
 }
 
+/* D-UI module footer: one 360° spin per Refresh click (class is-spinning,
+   removed on animationend; a click mid-spin restarts it). No spin under
+   prefers-reduced-motion. */
+export function reducedMotion(documentRef = globalThis.document) {
+  const view = documentRef.defaultView;
+  return Boolean(view && typeof view.matchMedia === "function" && view.matchMedia("(prefers-reduced-motion: reduce)").matches);
+}
+
+export function spinOnce(button, documentRef = globalThis.document) {
+  button.classList.remove("is-spinning");
+  if (reducedMotion(documentRef)) {
+    return false;
+  }
+  void button.offsetWidth; /* reflow, so a re-added class restarts the keyframes */
+  button.classList.add("is-spinning");
+  return true;
+}
+
 /* options: { label, noun ("account": "First account"), onRefresh, onNav(action) (omit: no navigator),
    end: [spec] }. Refresh is always the first button. */
 export function moduleFooter(options, documentRef = globalThis.document) {
@@ -94,7 +112,17 @@ export function moduleFooter(options, documentRef = globalThis.document) {
   bar.setAttribute("aria-label", options.label || "Module actions");
   const nav = documentRef.createElement("span");
   nav.className = "pav-module-nav";
-  nav.append(iconButton({ ...REFRESH, onClick: options.onRefresh }, documentRef));
+  const refresh = iconButton({
+    ...REFRESH,
+    onClick: (event) => {
+      spinOnce(refresh, documentRef);
+      if (typeof options.onRefresh === "function") {
+        options.onRefresh(event);
+      }
+    },
+  }, documentRef);
+  refresh.addEventListener("animationend", () => refresh.classList.remove("is-spinning"));
+  nav.append(refresh);
   if (typeof options.onNav === "function") {
     for (const spec of NAV_BUTTONS) {
       const label = options.noun ? `${spec.label} ${options.noun}` : spec.label;

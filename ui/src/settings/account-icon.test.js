@@ -126,7 +126,7 @@ test("header row: swatch unsortable, protocol and feature check columns with wid
   expect([row.jmap, row.imap, row.smtp]).toEqual([true, false, false]);
   const cell = { getValue: () => true, getRow: () => ({ getData: () => ({ name: "A", checked: "Checked 2026-10-20 12:00:00" }) }) };
   const out = by("smtp").formatter(cell);
-  expect(out.title).toBe("Checked 2026-10-20 12:00:00");
+  expect(out.dataset.pavTip).toBe("Checked 2026-10-20 12:00:00");
   expect(out.querySelector("input").getAttribute("aria-label")).toBe("SMTP for A");
 });
 

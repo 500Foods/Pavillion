@@ -134,7 +134,7 @@ export function tabulatorOptions(options, data, gate, documentRef = globalThis.d
     renderVertical: "virtual",
     autoResize: true,
     placeholder: options.placeholder || "",
-    columnDefaults: { resizable: false, ...(sortable ? { headerSortTristate: true } : {}) },
+    columnDefaults: { resizable: false, headerTooltip: false, ...(sortable ? { headerSortTristate: true } : {}) },
     ...(sortable ? { headerSortElement: (_column, dir) => sortIcon(dir, documentRef) } : {}),
     ...(options.groupBy ? { groupBy: options.groupBy, groupStartOpen: true, groupToggleElement: "header" } : {}),
     ...(typeof options.groupHeader === "function"
@@ -162,6 +162,7 @@ export function createTable(el, options) {
   const gate = { open: false, stateOf: null };
   /* TABULATOR.md zoom in place: base (100%) widths of the fixed columns, and
      the current width and font scales. */
+  let pending = Promise.resolve();
   let widthScale = 1;
   let fontScale = 1;
   const base = {};
@@ -279,10 +280,34 @@ export function createTable(el, options) {
 
   /* After anything that can change column widths: fit, dividers, then tell
      the page (pane minimum). */
+  /* D-UI Tooltips, TABULATOR.md Header tooltips: every header cell gets the
+     shared tooltip from its column title (data-pav-tip on the whole cell, so
+     the sort icon and padding count) and never a native title. Tabulator
+     reuses column elements across redraws, so this is idempotent. */
+  function tipHeaders() {
+    if (!table || typeof table.getColumns !== "function") {
+      return;
+    }
+    for (const column of table.getColumns()) {
+      const colEl = column.getElement();
+      const def = typeof column.getDefinition === "function" ? column.getDefinition() || {} : {};
+      if (!colEl) {
+        continue;
+      }
+      for (const el of [colEl, ...colEl.querySelectorAll("[title]")]) {
+        el.removeAttribute("title");
+      }
+      if (typeof def.title === "string" && def.title !== "") {
+        colEl.dataset.pavTip = def.title;
+      }
+    }
+  }
+
   function relayout() {
     if (!built) {
       return;
     }
+    tipHeaders();
     fitTitles();
     paintDividers();
     if (typeof options.onWidths === "function") {
@@ -346,7 +371,7 @@ export function createTable(el, options) {
       data = next;
       if (built) {
         applyGroupOrder();
-        void table.replaceData(next).then(() => {
+        pending = table.replaceData(next).then(() => {
           markSelected();
           rendered();
         });
@@ -362,6 +387,20 @@ export function createTable(el, options) {
         table.redraw(true);
         relayout();
       }
+    },
+    /* TABULATOR.md Refresh refits: after any pending data load, redraw(true),
+       re-apply base widths x scale, fit titles, dividers, onWidths, and keep the
+       current row selected. Resolves when done. */
+    refit() {
+      return pending.catch(() => {}).then(() => {
+        if (!built || destroyed) {
+          return;
+        }
+        table.redraw(true);
+        applyScale();
+        relayout();
+        markSelected();
+      });
     },
     /* After a zoom change or a pane shown: redraw and re-measure. */
     redraw() {

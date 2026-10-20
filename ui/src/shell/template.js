@@ -93,7 +93,7 @@ export const shellMarkup = `<div class="shell">
             <i class="icon fa-sharp-duotone fa-solid fa-gear" data-icon-definition="fa-sharp-duotone fa-solid fa-gear" aria-hidden="true"></i>
           </button>
           <button type="button" id="update" data-rail="update" aria-label="Update">
-            <i class="icon fa-sharp-duotone fa-solid fa-arrows-rotate" data-icon-definition="fa-sharp-duotone fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+            <i class="icon fa-sharp-duotone fa-solid fa-up-down" data-icon-definition="fa-sharp-duotone fa-solid fa-up-down" aria-hidden="true"></i>
             <span class="update-badge" hidden></span>
           </button>
           <button type="button" data-section="help" data-rail="help" aria-pressed="false" aria-label="Help">
@@ -393,8 +393,8 @@ export const shellMarkup = `<div class="shell">
                    </tr>
                    <tr data-icon-key="update">
                      <td>Update</td>
-                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-arrows-rotate" data-icon-key="update"></i></td>
-                     <td><textarea type="text" data-icon-key="update" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-arrows-rotate</textarea></td>
+                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-up-down" data-icon-key="update"></i></td>
+                     <td><textarea type="text" data-icon-key="update" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-up-down</textarea></td>
                    </tr>
                    <tr data-icon-key="help">
                      <td>Help</td>

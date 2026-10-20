@@ -155,7 +155,7 @@
   --pav-icon-settings: "<i class='fa-sharp-duotone fa-solid fa-gear'></i>";
 
   /* Update nav icon. Same three forms as Mail. This button is not a section tab. */
-  --pav-icon-update: "<i class='fa-sharp-duotone fa-solid fa-arrows-rotate'></i>";
+  --pav-icon-update: "<i class='fa-sharp-duotone fa-solid fa-up-down'></i>";
 
   /* Help nav icon. Same three forms as Mail. */
   --pav-icon-help: "<i class='fa-sharp-duotone fa-solid fa-circle-question'></i>";
@@ -266,6 +266,7 @@
   --pav-table-divider: #c9a8a8;
   --pav-table-header-pad-y: 0.2em;
   --pav-table-header-pad-x: 0.4em;
+  --pav-refresh-spin-duration: 0.5s;
 }
 
 /*

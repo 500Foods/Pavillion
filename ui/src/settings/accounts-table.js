@@ -117,7 +117,7 @@ export function serverGroupHeader(value, count, documentRef = globalThis.documen
   const num = documentRef.createElement("span");
   num.className = "pav-group-count";
   num.textContent = String(count);
-  num.title = accountCountText(count);
+  num.dataset.pavTip = accountCountText(count);
   const wrap = documentRef.createElement("span");
   wrap.className = "pav-group";
   wrap.append(toggle, span, num);
@@ -151,7 +151,7 @@ function headerIcon(feature, documentRef) {
   const icon = documentRef.createElement("i");
   icon.className = `icon ${navIconClass(feature, documentRef)}`;
   icon.setAttribute("aria-hidden", "true");
-  span.title = feature.title;
+  span.dataset.pavTip = feature.title;
   span.setAttribute("aria-label", feature.title);
   span.append(icon);
   return span;
@@ -222,7 +222,7 @@ function checkColumn(field, title, width, titleFormatter, documentRef, extraClas
     formatter: (cell) => {
       const wrap = documentRef.createElement("span");
       wrap.className = "accounts-feature-cell";
-      wrap.title = cell.getRow().getData().checked || "Not checked yet";
+      wrap.dataset.pavTip = cell.getRow().getData().checked || "Not checked yet";
       wrap.append(checkbox(cell.getValue() === true, `${title} for ${cell.getRow().getData().name}`, documentRef));
       return wrap;
     },
@@ -275,7 +275,8 @@ export function accountColumns(documentRef = globalThis.document, hidden = [], w
       },
     },
     {
-      title: "",
+      title: "Account icon",
+      titleFormatter: () => "",
       field: "account",
       width: 44,
       resizable: false,

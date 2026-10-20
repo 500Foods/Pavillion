@@ -43,7 +43,7 @@ function createIcon(className, label) {
   icon.className = className || "icon";
   icon.setAttribute("aria-hidden", "true");
   if (label) {
-    icon.setAttribute("title", label);
+    icon.setAttribute("data-pav-tip", label);
   }
   return icon;
 }

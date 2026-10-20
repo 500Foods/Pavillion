@@ -31,6 +31,7 @@
   --pav-table-divider: #5a3030;
   --pav-table-header-pad-y: 0.2em;
   --pav-table-header-pad-x: 0.4em;
+  --pav-refresh-spin-duration: 0.5s;
   --pav-surface-nav: linear-gradient(160deg, #160808 0%, #000 70%);
   --pav-surface-workspace: linear-gradient(160deg, #100606 0%, #000 78%);
   --pav-surface-list: linear-gradient(160deg, #140707 0%, #000 74%);
@@ -66,7 +67,7 @@
   --pav-icon-github: "<i class='fa-brands fa-github'></i>";
   --pav-icon-activity: "<i class='fa-sharp-duotone fa-solid fa-list-timeline'></i>";
   --pav-icon-settings: "<i class='fa-sharp-duotone fa-solid fa-gear'></i>";
-  --pav-icon-update: "<i class='fa-sharp-duotone fa-solid fa-arrows-rotate'></i>";
+  --pav-icon-update: "<i class='fa-sharp-duotone fa-solid fa-up-down'></i>";
   --pav-icon-help: "<i class='fa-sharp-duotone fa-solid fa-circle-question'></i>";
   --pav-tooltip-bg: #f7f4f2;
   --pav-tooltip-text: #1c1212;

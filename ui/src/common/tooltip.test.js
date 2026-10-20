@@ -57,3 +57,35 @@ test("keyboard focus shows the tooltip and a click does not", () => {
   tips.destroy();
   expect(root.querySelector(".pav-tooltip")).toBeNull();
 });
+
+test("D-UI Tooltips: delegation covers data-pav-tip and icon-only buttons added later", () => {
+  vi.useFakeTimers();
+  const root = document.createElement("div");
+  document.body.append(root);
+  const tips = createTooltip(root);
+  const tip = root.querySelector(".pav-tooltip");
+  const late = document.createElement("button");
+  late.dataset.pavTip = "Refresh";
+  late.append(document.createElement("i"));
+  root.append(late);
+  late.firstChild.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+  vi.advanceTimersByTime(500);
+  expect(tip.hidden).toBe(false);
+  expect(tip.textContent).toBe("Refresh");
+  late.dispatchEvent(new PointerEvent("pointerout", { bubbles: true }));
+  const iconOnly = document.createElement("button");
+  iconOnly.setAttribute("aria-label", "Close Inbox");
+  root.append(iconOnly);
+  iconOnly.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+  vi.advanceTimersByTime(500);
+  expect(tip.textContent).toBe("Close Inbox");
+  iconOnly.dispatchEvent(new PointerEvent("pointerout", { bubbles: true }));
+  const texted = document.createElement("button");
+  texted.setAttribute("aria-label", "Save");
+  texted.textContent = "Save";
+  root.append(texted);
+  texted.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+  vi.advanceTimersByTime(500);
+  expect(tip.hidden).toBe(true);
+  tips.destroy();
+});

@@ -304,6 +304,7 @@ export function createTabs(tablist, options = {}) {
         tab.append(close);
       }
       close.setAttribute("aria-label", `Close ${entry.title}`);
+      close.dataset.pavTip = `Close ${entry.title}`;
     } else if (close) {
       close.remove();
     }

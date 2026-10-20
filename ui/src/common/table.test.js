@@ -221,7 +221,7 @@ test("without the option there is no indicator column", () => {
 
 test("resize round: columns default unresizable, indicator divider, resize events, fitted titles, widths", async () => {
   const { tabulatorOptions, indicatorColumn } = await import("./table.js");
-  expect(tabulatorOptions({ columns: [{ field: "a", headerSort: false }] }, [], { open: false }).columnDefaults).toEqual({ resizable: false });
+  expect(tabulatorOptions({ columns: [{ field: "a", headerSort: false }] }, [], { open: false }).columnDefaults).toEqual({ resizable: false, headerTooltip: false });
   expect(indicatorColumn(() => null).cssClass).toBe("pav-table-indicator pav-col-divider-right");
   expect(modulesFor({ columns: [{ field: "a", resizable: true }] })).toContain("ResizeColumnsModule");
   expect(modulesFor({ columns: [{ field: "a" }] })).not.toContain("ResizeColumnsModule");
@@ -351,5 +351,73 @@ test("zoom in place: setScale sets the font, scales fixed columns from base widt
   handle.setScale(2, 2);
   expect(cols.n.width).toBe(120);
   expect(el.style.fontSize).toBe("200%");
+  handle.destroy();
+});
+
+test("refit waits for the data load, then redraw(true), re-applies scaled widths, keeps the selection", async () => {
+  const el = document.createElement("div");
+  document.body.append(el);
+  let widthsCalls = 0;
+  const before = made.length;
+  const handle = createTable(el, {
+    select: true,
+    columns: [{ field: "n", width: 60, headerSort: false }],
+    data: [{ id: "a" }, { id: "b" }],
+    onWidths: () => { widthsCalls += 1; },
+  });
+  await vi.waitFor(() => expect(made.length).toBe(before + 1));
+  const t = made.at(-1);
+  const order = [];
+  const col = { width: 60, getField: () => "n", getElement: () => document.createElement("div"), getWidth: () => col.width, setWidth: (w) => { col.width = w; order.push(["setWidth", w]); }, isVisible: () => true };
+  t.getColumn = (f) => (f === "n" ? col : undefined);
+  t.getColumns = () => [col];
+  t.redraw = (force) => order.push(["redraw", force]);
+  let release;
+  t.replaceData = (data) => { t.options.data = data; order.push(["replace"]); return new Promise((r) => { release = r; }); };
+  t.handlers.tableBuilt();
+  handle.select("b");
+  handle.setScale(1.5);
+  order.length = 0;
+  col.width = 999; /* drawn at a wrong width */
+  handle.setData([{ id: "a" }, { id: "b" }, { id: "c" }]);
+  const done = handle.refit();
+  await Promise.resolve();
+  expect(order.some((o) => o[0] === "redraw")).toBe(false); /* waits for the load */
+  release();
+  await done;
+  const redrawAt = order.findIndex((o) => o[0] === "redraw" && o[1] === true);
+  expect(redrawAt).toBeGreaterThan(order.findIndex((o) => o[0] === "replace"));
+  expect(col.width).toBe(90);
+  expect(t.selected).toEqual(["b"]);
+  expect(widthsCalls).toBeGreaterThan(0);
+  handle.destroy();
+});
+
+test("D-UI Tooltips: header cells get the shared tooltip from the title, no native title, across redraws", async () => {
+  const el = document.createElement("div");
+  document.body.append(el);
+  const before = made.length;
+  const handle = createTable(el, { columns: [{ field: "mail", title: "Mail", headerSort: false }], data: [{ id: "x" }] });
+  await vi.waitFor(() => expect(made.length).toBe(before + 1));
+  const t = made.at(-1);
+  const mk = (title) => {
+    const colEl = document.createElement("div");
+    colEl.title = title;
+    const inner = document.createElement("span");
+    inner.className = "tabulator-col-title";
+    inner.title = title;
+    colEl.append(inner);
+    return { getElement: () => colEl, getDefinition: () => ({ title }), getField: () => title, isVisible: () => true };
+  };
+  const cols = [mk("Mail"), mk("Account icon"), mk("")];
+  t.getColumns = () => cols;
+  t.getColumn = () => null;
+  t.handlers.tableBuilt();
+  t.handlers.renderComplete();
+  expect(cols.map((c) => c.getElement().dataset.pavTip)).toEqual(["Mail", "Account icon", undefined]);
+  for (const c of cols) {
+    expect(c.getElement().querySelectorAll("[title]").length).toBe(0);
+    expect(c.getElement().hasAttribute("title")).toBe(false);
+  }
   handle.destroy();
 });

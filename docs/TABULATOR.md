@@ -20,7 +20,7 @@ Andrew paused the Tabulator work on 2026-10-20. This section is the current stat
 - **Theme variables:** every table colour and size is a `--pav-table-*` variable, in all four theme files.
 
 **Open issues:**
-- **(a) Wrong width:** the table is sometimes drawn at a width that differs from its container: rows or the header end short of, or past, the pane edge. The redraw triggers (a hidden pane being shown, a split drag, zoom, the font scale) or the measurement order need work. Cause not yet found.
+- **(a) Wrong width:** the table is sometimes drawn at a width that differs from its container: rows or the header end short of, or past, the pane edge. The redraw triggers (a hidden pane being shown, a split drag, zoom, the font scale) or the measurement order need work. Cause not yet found. Workaround: the footer Refresh calls `refit()` (see "Refresh refits the table").
 - **(b) Vertical alignment:** the vertical alignment of the header and footer rows is still not right.
 - **(c) Remembering zoom and widths:**
   - Widths are saved per table (`preferences.ui.tables.<id>.widths`).
@@ -44,6 +44,15 @@ Andrew paused the Tabulator work on 2026-10-20. This section is the current stat
 - **Data flow:** pass data once (constructor, then `replaceData`). After an add, the page must reload and select the new row itself (K-Q13: Save with no selection silently did nothing).
 
 **Doc links.** `https://tabulator.info/docs/6.6/...` URLs fall back to the home page. The real pages are under `https://tabulator.info/docs/6.x/<page>/` (below: `D/<page>`). That site still says "Latest version 6.5.0". The 6.6.0 and 6.6.1 notes are only on GitHub: https://github.com/tabulator-tables/tabulator/releases.
+
+## Header tooltips (2026-10-20, Andrew; Lock)
+
+Column headers use the shared tooltip (D-UI.md Tooltips), never a native `title`. `tabulatorOptions` sets `columnDefaults.headerTooltip: false`. `createTable` runs `tipHeaders()` at the start of every relayout (tableBuilt, renderComplete, sort, visibility change from the column chooser, resize, `setScale`/`refit`): for each column it removes any `title` on the header cell and its children and sets `data-pav-tip` on the whole `.tabulator-col` from the definition `title`, so hovering the sort icon or padding also shows it. Tabulator keeps the column element across redraws, so this is idempotent and touches no listeners: sort click, resize handles and drag are untouched. Icon-only headers need a real `title` and draw the icon with `titleFormatter`: the account icon column is `title: "Account icon"` with an empty `titleFormatter`; Mail, Contacts, Calendars and Files keep their names as `title`. A column whose `title` is empty gets no tip.
+
+## Refresh refits the table (2026-10-20, Andrew; Lock)
+
+- **`handle.refit()`** is the reusable "make it right again" call for any table. It runs Tabulator `redraw(true)`, which re-measures the container width and re-lays the columns. It then re-applies the fixed column widths (the base widths at 100%, times the current width scale: saved widths, coded widths, or widths widened to fit their titles), fits the titles again, repaints the full-height dividers, and calls `onWidths` so the page recomputes the pane minimum. It also re-selects the current row, so the selection and the indicator stay on the same row if that row still exists. `redraw()` does the same without re-applying the widths.
+- **Module footer Refresh** on a table view: reload the data (`setData`, unchanged), then `refit()` once the new rows are in. Accounts: `refresh()` reloads `account.list`, keeps `selectedId` when that account still exists, then calls `table.refit()`. Every table should wire its footer Refresh the same way. This is the manual fix for open issue (a), the table drawn at the wrong width, until its cause is found.
 
 ## Version, install, import
 

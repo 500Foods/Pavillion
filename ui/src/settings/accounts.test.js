@@ -105,6 +105,12 @@ vi.mock("../common/table.js", () => ({
         handle.widthCalls.push([field, width]);
       },
       widths: () => ({}),
+      refits: 0,
+      refit() {
+        handle.refits += 1;
+        globalThis.__lastTableRefits = handle.refits;
+        return Promise.resolve();
+      },
       scales: [],
       setScale(w, f) {
         handle.scales.push([w, f]);
@@ -849,7 +855,7 @@ test("the table ticks stored capabilities after a reload", async () => {
   document.body.append(el);
   const transport = mockTransport();
   const box = (field) => document.querySelector(`[data-account-id="saved-one"] [data-field="${field}"] input[type="checkbox"]`);
-  const tip = () => document.querySelector('[data-account-id="saved-one"] [data-field="mail"] .accounts-feature-cell').title;
+  const tip = () => document.querySelector('[data-account-id="saved-one"] [data-field="mail"] .accounts-feature-cell').dataset.pavTip;
   try {
     await mount(el, createApi(transport), {});
     openAccountsPanel();
@@ -1257,5 +1263,21 @@ test("K-Q14 zoom in place: the table gets width and font scales, the pane minimu
     expect(document.querySelector("#accounts-tree").style.zoom).toBe("");
     const { accountColumns, tableMinWidth } = await import("./accounts-table.js");
     expect(document.querySelector(".accounts-tree-pane").style.minWidth).toBe(`${tableMinWidth(accountColumns(document)) + 22 + 2}px`);
+  });
+});
+
+test("footer Refresh reloads the accounts, refits the table, and keeps the selected row", async () => {
+  await withView(async (callSpy) => {
+    await addSavedAccount();
+    expect(document.querySelector('[data-account-id="saved-one"]').classList.contains("tabulator-selected")).toBe(true);
+    const lists = () => callSpy.mock.calls.filter(([c]) => c === "account.list").length;
+    const before = lists();
+    globalThis.__lastTableRefits = 0;
+    const refits = 0;
+    document.querySelector('#accounts-footer button[data-module-action="refresh"]').click();
+    await vi.waitFor(() => expect(globalThis.__lastTableRefits).toBe(refits + 1));
+    expect(lists()).toBe(before + 1);
+    expect(document.querySelector('[data-account-id="saved-one"]').classList.contains("tabulator-selected")).toBe(true);
+    expect(document.querySelector("#account-name-input").value).toBe("Saved One");
   });
 });

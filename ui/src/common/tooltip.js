@@ -1,9 +1,24 @@
 const HOVER_MS = 500;
 
+/* D-UI Tooltips: delegated hosts. An explicit bind, a data-pav-tip
+   attribute, or an icon-only button with an aria-label. */
+export function tipText(hosts, el) {
+  if (hosts.has(el)) {
+    return hosts.get(el);
+  }
+  if (el.hasAttribute("data-pav-tip")) {
+    return el.getAttribute("data-pav-tip") || "";
+  }
+  if (el.localName === "button" && el.hasAttribute("aria-label") && el.textContent.trim() === "") {
+    return el.getAttribute("aria-label") || "";
+  }
+  return null;
+}
+
 function findHost(hosts, root, node) {
   let el = node instanceof Element ? node : null;
   while (el) {
-    if (hosts.has(el)) {
+    if (tipText(hosts, el) !== null) {
       return el;
     }
     if (el === root) {
@@ -130,7 +145,7 @@ export function createTooltip(root) {
       timer = 0;
     }
     pending = null;
-    const text = hosts.get(next);
+    const text = tipText(hosts, next);
     if (typeof text !== "string" || text === "") {
       hide();
       return;
@@ -164,7 +179,7 @@ export function createTooltip(root) {
     pending = host;
     timer = root.ownerDocument.defaultView.setTimeout(() => {
       timer = 0;
-      if (pending === host && hosts.has(host)) {
+      if (pending === host && tipText(hosts, host) !== null) {
         show(host);
       }
     }, HOVER_MS);

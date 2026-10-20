@@ -399,7 +399,7 @@ export function createAccountsView(api, root, options = {}) {
     footerEl = mountBar(root.querySelector("#accounts-footer"), moduleFooter({
       label: "Account actions",
       noun: "account",
-      onRefresh: () => void refresh(),
+      onRefresh: () => void refreshAndRefit(),
       onNav: navigate,
       end: [{ action: "export", icon: "fa-file-export", text: "Export", label: "Export the account list as CSV", onClick: () => void exportCsv() }],
     }, document));
@@ -473,7 +473,7 @@ export function createAccountsView(api, root, options = {}) {
       button.setAttribute("role", "radio");
       button.setAttribute("aria-checked", name === current ? "true" : "false");
       button.setAttribute("aria-label", name);
-      button.title = name;
+      button.dataset.pavTip = name;
       button.append(accountSwatch({ icon: iconSnippet(name), color: formState.color }, document));
       host.append(button);
     }
@@ -627,6 +627,15 @@ export function createAccountsView(api, root, options = {}) {
       email = selected.email || "";
       emailTouched = Boolean(selected.email);
     }
+  }
+
+  /* D-UI footer Refresh: reload, then refit the table to its container. */
+  async function refreshAndRefit() {
+    await refresh();
+    if (table && typeof table.refit === "function") {
+      await table.refit();
+    }
+    paintNavState();
   }
 
   async function refresh() {

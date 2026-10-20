@@ -64,3 +64,44 @@ test("navState and navTarget", () => {
   expect(navTarget(["a", "b"], "a", "next")).toBe("b");
   expect(navTarget([], null, "first")).toBeNull();
 });
+
+test("Refresh spins once per click, restarts mid-spin, and stops on animationend", () => {
+  window.matchMedia = vi.fn(() => ({ matches: false }));
+  const onRefresh = vi.fn();
+  const bar = moduleFooter({ onRefresh }, document);
+  document.body.append(bar);
+  const refresh = bar.querySelector('button[data-module-action="refresh"]');
+  refresh.click();
+  expect(onRefresh).toHaveBeenCalledTimes(1);
+  expect(refresh.classList.contains("is-spinning")).toBe(true);
+  refresh.click(); /* mid-spin: removed and re-added */
+  expect(refresh.classList.contains("is-spinning")).toBe(true);
+  expect(onRefresh).toHaveBeenCalledTimes(2);
+  refresh.querySelector("i").dispatchEvent(new Event("animationend", { bubbles: true }));
+  expect(refresh.classList.contains("is-spinning")).toBe(false);
+  bar.remove();
+  delete window.matchMedia;
+});
+
+test("Refresh does not spin under prefers-reduced-motion, but still refreshes", () => {
+  window.matchMedia = vi.fn((q) => ({ matches: q === "(prefers-reduced-motion: reduce)" }));
+  const onRefresh = vi.fn();
+  const bar = moduleFooter({ onRefresh }, document);
+  const refresh = bar.querySelector('button[data-module-action="refresh"]');
+  refresh.click();
+  expect(onRefresh).toHaveBeenCalledTimes(1);
+  expect(refresh.classList.contains("is-spinning")).toBe(false);
+  delete window.matchMedia;
+});
+
+test("D-UI Tooltips: module bar buttons carry the shared tooltip, no native title", () => {
+  const bar = moduleToolbar({ title: "T", actions: [{ action: "add", icon: "fa-plus", label: "Add an account" }] });
+  const footer = moduleFooter({ actions: [{ action: "export", icon: "fa-file-export", label: "Export" }] });
+  const buttons = [...bar.querySelectorAll("button"), ...footer.querySelectorAll("button")];
+  expect(buttons.length).toBeGreaterThan(1);
+  for (const button of buttons) {
+    expect(button.hasAttribute("title")).toBe(false);
+    expect(button.dataset.pavTip).toBeTruthy();
+    expect(button.dataset.pavTip).toBe(button.getAttribute("aria-label"));
+  }
+});
