@@ -14,4 +14,5 @@ export {
   DownloadModule,
   FilterModule,
   FrozenColumnsModule,
+  ResizeColumnsModule,
 } from "tabulator-tables";

@@ -3,7 +3,8 @@
    plus the modules a table asks for (never TabulatorFull). Screens call
    createTable(el, {columns, data, rowId, onRowClick, rowClass, groupBy,
    groupHeader, groupOrder, footerElement, select, onRender, download, filter,
-   indicator}).
+   indicator, fitTitles, onColumnResized, onWidths}). Columns resize only when they set
+   resizable:true (TABULATOR.md Fitted titles, resizing).
    The table fills el (height 100%, virtual rows) and ResizeTable redraws it
    on resize and when a hidden panel is shown. The look is .pav-table on
    --pav-* variables in theme.css; no Tabulator stylesheet is loaded.
@@ -42,6 +43,9 @@ export function modulesFor(options) {
   }
   if (options.indicator || columns.some((c) => c.frozen)) {
     names.push("FrozenColumnsModule");
+  }
+  if (columns.some((c) => c.resizable === true)) {
+    names.push("ResizeColumnsModule");
   }
   return names;
 }
@@ -92,7 +96,7 @@ export function indicatorColumn(stateOf, rowId = "id", documentRef = globalThis.
     download: false,
     hozAlign: "center",
     headerHozAlign: "center",
-    cssClass: "pav-table-indicator",
+    cssClass: "pav-table-indicator pav-col-divider-right",
     formatter: (cell) => {
       const state = stateOf(cell.getRow().getData()[rowId]);
       const name = INDICATOR_ICONS[state];
@@ -130,9 +134,8 @@ export function tabulatorOptions(options, data, gate, documentRef = globalThis.d
     renderVertical: "virtual",
     autoResize: true,
     placeholder: options.placeholder || "",
-    ...(sortable
-      ? { columnDefaults: { headerSortTristate: true }, headerSortElement: (_column, dir) => sortIcon(dir, documentRef) }
-      : {}),
+    columnDefaults: { resizable: false, ...(sortable ? { headerSortTristate: true } : {}) },
+    ...(sortable ? { headerSortElement: (_column, dir) => sortIcon(dir, documentRef) } : {}),
     ...(options.groupBy ? { groupBy: options.groupBy, groupStartOpen: true, groupToggleElement: "header" } : {}),
     ...(typeof options.groupHeader === "function"
       ? { groupHeader: (value, count, rows) => options.groupHeader(value, count, rows) }
@@ -191,7 +194,77 @@ export function createTable(el, options) {
     }
   }
 
+  /* TABULATOR.md Fitted titles: widen a listed column whose rendered title,
+     sort icon, gap and padding do not fit. Only widens; 0 in a DOM with no
+     layout, so tests and hidden panes change nothing. */
+  function fitTitles() {
+    if (!built || !Array.isArray(options.fitTitles) || typeof table.getColumn !== "function") {
+      return;
+    }
+    const view = documentRef.defaultView;
+    for (const field of options.fitTitles) {
+      const column = table.getColumn(field);
+      const colEl = column && column.getElement();
+      const title = colEl && colEl.querySelector(".tabulator-col-title");
+      if (!title || !view) {
+        continue;
+      }
+      const sorter = colEl.querySelector(".tabulator-col-sorter");
+      const style = view.getComputedStyle(colEl);
+      const pad = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0)
+        + (parseFloat(style.borderLeftWidth) || 0) + (parseFloat(style.borderRightWidth) || 0);
+      const need = Math.ceil(title.scrollWidth + (sorter ? sorter.offsetWidth + 2 : 0) + pad + 2);
+      if (title.scrollWidth > 0 && need > column.getWidth()) {
+        column.setWidth(need);
+      }
+    }
+  }
+
+  /* TABULATOR.md full-height dividers: a 1 px background line on the table
+     holder at each divider column edge, measured from the header cells. */
+  function paintDividers() {
+    const holder = el.querySelector(".tabulator-tableholder");
+    if (!built || !holder) {
+      return;
+    }
+    const box = holder.getBoundingClientRect();
+    /* CSS zoom: client rects are scaled, background offsets are not. */
+    const scale = holder.offsetWidth > 0 && box.width > 0 ? box.width / holder.offsetWidth : 1;
+    const base = box.left;
+    const xs = [];
+    for (const colEl of el.querySelectorAll(".tabulator-header .tabulator-col")) {
+      if (colEl.offsetParent === null && colEl.getBoundingClientRect().width === 0) {
+        continue;
+      }
+      const rect = colEl.getBoundingClientRect();
+      if (colEl.classList.contains("pav-col-divider-left")) {
+        xs.push(Math.round((rect.left - base) / scale + holder.scrollLeft));
+      }
+      if (colEl.classList.contains("pav-col-divider-right")) {
+        xs.push(Math.round((rect.right - base) / scale + holder.scrollLeft - 1));
+      }
+    }
+    const line = "linear-gradient(var(--pav-table-divider), var(--pav-table-divider))";
+    holder.style.backgroundImage = xs.length ? xs.map(() => line).join(", ") : "";
+    holder.style.backgroundSize = xs.length ? xs.map(() => "1px 100%").join(", ") : "";
+    holder.style.backgroundPosition = xs.length ? xs.map((x) => `${x}px 0`).join(", ") : "";
+  }
+
+  /* After anything that can change column widths: fit, dividers, then tell
+     the page (pane minimum). */
+  function relayout() {
+    if (!built) {
+      return;
+    }
+    fitTitles();
+    paintDividers();
+    if (typeof options.onWidths === "function") {
+      options.onWidths();
+    }
+  }
+
   function rendered() {
+    relayout();
     if (typeof options.onRender === "function") {
       options.onRender();
     }
@@ -221,6 +294,15 @@ export function createTable(el, options) {
       rendered();
     });
     table.on("dataSorted", () => queueMicrotask(rendered));
+    /* Redraws (a hidden pane shown, zoom), resizes and visibility changes. */
+    table.on("renderComplete", () => relayout());
+    table.on("columnVisibilityChanged", () => queueMicrotask(relayout));
+    table.on("columnResized", (column) => {
+      if (typeof options.onColumnResized === "function") {
+        options.onColumnResized(column.getField(), Math.round(column.getWidth()));
+      }
+      relayout();
+    });
     if (typeof options.onRowClick === "function") {
       table.on("rowClick", (_event, row) => options.onRowClick(row.getData()));
     }
@@ -236,6 +318,38 @@ export function createTable(el, options) {
           rendered();
         });
       }
+    },
+    /* After a zoom change or a pane shown: redraw and re-measure. */
+    redraw() {
+      if (built) {
+        table.redraw(true);
+        relayout();
+      }
+    },
+    /* Vertical scrollbar width of the rows area (pane minimum). */
+    scrollbarWidth() {
+      const holder = el.querySelector(".tabulator-tableholder");
+      return holder ? Math.max(0, holder.offsetWidth - holder.clientWidth) : 0;
+    },
+    /* Set one column's width (Reset restores the coded widths). */
+    setColumnWidth(field, width) {
+      const column = built ? table.getColumn(field) : null;
+      if (column && Number.isFinite(width)) {
+        column.setWidth(width);
+      }
+    },
+    /* Current widths of the shown columns, by field (pane minimum). */
+    widths() {
+      const out = {};
+      if (built && typeof table.getColumns === "function") {
+        for (const column of table.getColumns()) {
+          const field = column.getField();
+          if (field && column.isVisible()) {
+            out[field] = Math.round(column.getWidth());
+          }
+        }
+      }
+      return out;
     },
     /* Column chooser (TABULATOR.md): show or hide one column by field. */
     setColumnVisible(field, on) {

@@ -53,3 +53,10 @@ test("theme.css only references variables", () => {
   expect(css).toMatch(/var\(--pav-help-content-heading\)/);
   expect(css).toMatch(/var\(--pav-help-code-bg\)/);
 });
+
+test("K-Q14: the table never wraps its calc row, hides the horizontal bar, and pads the header by variable", () => {
+  const css = readFileSync(join(styles, "theme.css"), "utf8");
+  expect(css).toMatch(/\.tabulator-calcs-holder \{\n  overflow: hidden;\n  white-space: nowrap;/);
+  expect(css).toMatch(/\.tabulator-tableholder \{[^}]*overflow-x: hidden;/);
+  expect(css).toMatch(/\.tabulator-col \{[^}]*padding: var\(--pav-table-header-pad-y\) var\(--pav-table-header-pad-x\);/);
+});

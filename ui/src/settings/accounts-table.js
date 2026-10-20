@@ -1,6 +1,7 @@
 /* K-Q8, K-Q11: Settings → Accounts list, the first Tabulator table. Columns:
-   the number, the color swatch with the account icon, Name, then one
-   read-only checkbox per feature with the main nav's icon as its header.
+   the number, the color swatch with the account icon (not sortable), Name,
+   JMAP, IMAP, SMTP, then one read-only checkbox per feature with the main
+   nav icon as its header.
    Rows are grouped by server (serverGroup) and the footer counts them.
    A box is on when the stored capabilities (K-Q10) include it and the
    account syncs it.
@@ -9,17 +10,26 @@ import { accountSwatch } from "./account-icon.js";
 
 export const FEATURES = [
   { key: "mail", section: "mail", title: "Mail", fallback: "fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270", cap: "mail", flag: "syncMail" },
-  { key: "calendars", section: "calendars", title: "Calendar", fallback: "fa-sharp-duotone fa-solid fa-calendar-days", cap: "calendars", flag: "syncCalendars" },
   { key: "contacts", section: "contacts", title: "Contacts", fallback: "fa-sharp-duotone fa-solid fa-address-book", cap: "contacts", flag: "syncContacts" },
+  { key: "calendars", section: "calendars", title: "Calendars", fallback: "fa-sharp-duotone fa-solid fa-calendar-days", cap: "calendars", flag: "syncCalendars" },
   { key: "files", section: "files", title: "Files", fallback: "fa-sharp-duotone fa-solid fa-folder", cap: "files", flag: null },
 ];
 
-/* Mail protocols in the Mail cell: JMAP live; IMAP and SMTP not yet. */
-export const MAIL_BADGES = [
-  { letter: "J", title: "JMAP", enabled: true },
-  { letter: "I", title: "IMAP (not available yet)", enabled: false },
-  { letter: "S", title: "SMTP (not available yet)", enabled: false },
+/* Protocol columns (K-Q11, header-row round): JMAP is on when the account
+   has saved capabilities, which come from its JMAP session (K-Q10). IMAP and
+   SMTP are on only when the saved list names them; nothing detects them yet. */
+export const PROTOCOLS = [
+  { key: "jmap", title: "JMAP", cap: null },
+  { key: "imap", title: "IMAP", cap: "imap" },
+  { key: "smtp", title: "SMTP", cap: "smtp" },
 ];
+
+export function protocolOn(protocol, caps) {
+  if (!Array.isArray(caps)) {
+    return false;
+  }
+  return protocol.cap === null ? true : caps.includes(protocol.cap);
+}
 
 /* The nav button's live icon classes (user overrides included). */
 export function navIconClass(feature, documentRef = globalThis.document) {
@@ -126,6 +136,9 @@ export function accountRows(accounts, timeZone) {
       account,
       checked: checkedTitle(account.capabilitiesChecked, timeZone),
     };
+    for (const protocol of PROTOCOLS) {
+      row[protocol.key] = protocolOn(protocol, caps);
+    }
     for (const feature of FEATURES) {
       row[feature.key] = featureOn(account, feature, caps);
     }
@@ -153,8 +166,9 @@ function checkbox(on, label, documentRef) {
   return box;
 }
 
-const FEATURE_WIDTH = 60;
-const MAIL_WIDTH = 104;
+/* TABULATOR.md Header row: title + 2 px gap + sort icon + padding, no clipping. */
+export const PROTOCOL_WIDTH = 100; /* fallback; createTable fitTitles widens to the measured title */
+export const FEATURE_WIDTH = 68;
 
 /* K-Q12: the pane is never narrower than the fixed columns plus Name's
    minimum, so every column stays visible without a horizontal scrollbar. */
@@ -165,7 +179,7 @@ export function tableMinWidth(columns) {
 }
 
 /* K-Q12: the CSV columns, in order. Nothing else is exported. */
-export const EXPORT_FIELDS = ["number", "name", "server", "mail", "calendars", "contacts", "files", "email"];
+export const EXPORT_FIELDS = ["number", "name", "server", "jmap", "imap", "smtp", "mail", "contacts", "calendars", "files", "email"];
 
 /* The fields a Tabulator CSV download takes from these columns. */
 export function exportFields(columns) {
@@ -181,6 +195,7 @@ export const CHOOSER_COLUMNS = [
   { field: "number", title: "Number" },
   { field: "account", title: "Icon" },
   { field: "name", title: "Name", locked: true },
+  ...PROTOCOLS.map((p) => ({ field: p.key, title: p.title })),
   ...FEATURES.map((f) => ({ field: f.key, title: f.title })),
 ];
 
@@ -190,15 +205,64 @@ export function cleanHidden(hidden) {
   return Array.isArray(hidden) ? [...new Set(hidden.filter((f) => allowed.has(f)))] : [];
 }
 
-export function accountColumns(documentRef = globalThis.document, hidden = []) {
+/* A read-only checkbox column (TABULATOR.md Header row): tri-state sort,
+   footer checked count, last-checked tooltip, yes/no in the CSV. */
+function checkColumn(field, title, width, titleFormatter, documentRef, extraClass = "") {
+  return {
+    title,
+    ...(titleFormatter ? { titleFormatter } : {}),
+    field,
+    hozAlign: "center",
+    headerHozAlign: "center",
+    cssClass: extraClass ? `pav-col-check ${extraClass}` : "pav-col-check",
+    sorter: "boolean",
+    accessorDownload: yesNo,
+    bottomCalc: (values) => values.filter((v) => v === true).length,
+    width,
+    resizable: true,
+    formatter: (cell) => {
+      const wrap = documentRef.createElement("span");
+      wrap.className = "accounts-feature-cell";
+      wrap.title = cell.getRow().getData().checked || "Not checked yet";
+      wrap.append(checkbox(cell.getValue() === true, `${title} for ${cell.getRow().getData().name}`, documentRef));
+      return wrap;
+    },
+  };
+}
+
+/* TABULATOR.md resizing: saved widths for resizable fixed columns only
+   (Name stretches and is not saved), whole px from 30 to 1000. */
+export const WIDTH_FIELDS = ["number", ...PROTOCOLS.map((p) => p.key), ...FEATURES.map((f) => f.key)];
+
+export function cleanWidths(widths) {
+  const out = {};
+  if (widths && typeof widths === "object" && !Array.isArray(widths)) {
+    for (const field of WIDTH_FIELDS) {
+      const value = widths[field];
+      if (typeof value === "number" && Number.isFinite(value) && value >= 30 && value <= 1000) {
+        out[field] = Math.round(value);
+      }
+    }
+  }
+  return out;
+}
+
+/* Fields whose header width is measured at runtime (no saved width). */
+export function fitTitleFields(widths = {}) {
+  const saved = cleanWidths(widths);
+  return WIDTH_FIELDS.filter((f) => f !== "number" && !(f in saved));
+}
+
+export function accountColumns(documentRef = globalThis.document, hidden = [], widths = {}) {
   const off = new Set(cleanHidden(hidden));
+  const saved = cleanWidths(widths);
   const columns = [
     {
       title: "#",
       titleDownload: "Number",
       field: "number",
       width: 60,
-      resizable: false,
+      resizable: true,
       sorter: "string",
       formatter: (cell) => {
         const num = documentRef.createElement("span");
@@ -212,8 +276,9 @@ export function accountColumns(documentRef = globalThis.document, hidden = []) {
       field: "account",
       width: 44,
       resizable: false,
+      cssClass: "pav-col-divider-left",
       download: false,
-      sorter: (a, b) => String((a && a.color) || "").localeCompare(String((b && b.color) || "")),
+      headerSort: false,
       formatter: (cell) => accountSwatch(cell.getValue(), documentRef),
     },
     {
@@ -221,6 +286,7 @@ export function accountColumns(documentRef = globalThis.document, hidden = []) {
       field: "name",
       widthGrow: 1,
       minWidth: 120,
+      resizable: true,
       sorter: "string",
       bottomCalc: (values) => accountCountText(values.length),
       formatter: (cell) => {
@@ -232,42 +298,18 @@ export function accountColumns(documentRef = globalThis.document, hidden = []) {
     },
     { title: "Server", field: "server", visible: false, download: true },
   ];
+  for (const protocol of PROTOCOLS) {
+    columns.push(checkColumn(protocol.key, protocol.title, PROTOCOL_WIDTH, null, documentRef, protocol.key === "jmap" ? "pav-col-divider-left" : ""));
+  }
   for (const feature of FEATURES) {
-    columns.push({
-      title: feature.title,
-      titleFormatter: () => headerIcon(feature, documentRef),
-      field: feature.key,
-      hozAlign: "center",
-      headerHozAlign: "center",
-      sorter: "boolean",
-      accessorDownload: yesNo,
-      bottomCalc: (values) => values.filter((v) => v === true).length,
-      width: feature.key === "mail" ? MAIL_WIDTH : FEATURE_WIDTH,
-      resizable: false,
-      formatter: (cell) => {
-        const wrap = documentRef.createElement("span");
-        wrap.className = "accounts-feature-cell";
-        wrap.title = cell.getRow().getData().checked || "Not checked yet";
-        wrap.append(checkbox(cell.getValue() === true, `${feature.title} for ${cell.getRow().getData().name}`, documentRef));
-        if (feature.key === "mail") {
-          for (const badge of MAIL_BADGES) {
-            const b = documentRef.createElement("span");
-            b.className = badge.enabled ? "accounts-badge" : "accounts-badge is-disabled";
-            b.textContent = badge.letter;
-            b.title = badge.title;
-            if (!badge.enabled) {
-              b.setAttribute("aria-disabled", "true");
-            }
-            wrap.append(b);
-          }
-        }
-        return wrap;
-      },
-    });
+    columns.push(checkColumn(feature.key, feature.title, FEATURE_WIDTH, () => headerIcon(feature, documentRef), documentRef, feature.key === "mail" ? "pav-col-divider-left" : ""));
   }
   for (const column of columns) {
     if (off.has(column.field)) {
       column.visible = false;
+    }
+    if (column.field in saved) {
+      column.width = saved[column.field];
     }
   }
   columns.push({ title: "Email", field: "email", visible: false, download: true });
@@ -309,7 +351,7 @@ export function accountMatches(row, query) {
 /* D-10 Export: the CSV text for rows in display order, EXPORT_FIELDS only
    (no username, no secret). A cell starting with = + - @ gets a leading
    apostrophe so a spreadsheet does not run it as a formula. */
-export const EXPORT_TITLES = ["Number", "Name", "Server", "Mail", "Calendar", "Contacts", "Files", "Email"];
+export const EXPORT_TITLES = ["Number", "Name", "Server", "JMAP", "IMAP", "SMTP", "Mail", "Contacts", "Calendars", "Files", "Email"];
 
 function csvCell(value) {
   let text = typeof value === "boolean" ? yesNo(value) : String(value ?? "");

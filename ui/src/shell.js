@@ -53,6 +53,8 @@ const zoomPanes = {
   mailDetail: "#panel-mail .pane-detail",
   helpIndex: "#help-index",
   helpContent: "#help-article",
+  accountsTable: "#accounts-tree",
+  accountsForm: ".accounts-form-pane",
 };
 
 function zoomClamp(key, value) {
@@ -156,6 +158,9 @@ function applyZoom() {
   if (logView) {
     logView.setZoom(ui.zoom.log);
   }
+  if (accountsView && typeof accountsView.redraw === "function") {
+    accountsView.redraw();
+  }
 }
 
 /* A mouse notch is about 100px. Smaller pixel deltas add up until then, so a trackpad flick is not one step per event.
@@ -201,6 +206,12 @@ function zoomKeyAt(target) {
   }
   if (target.closest("#help-article")) {
     return "helpContent";
+  }
+  if (target.closest("#accounts-tree")) {
+    return "accountsTable";
+  }
+  if (target.closest(".accounts-form-pane")) {
+    return "accountsForm";
   }
   return "";
 }
@@ -893,6 +904,7 @@ async function loadPrefs() {
   ui.contacts = stored.contacts;
   ui.files = stored.files;
   ui.help = stored.help;
+  ui.accounts = stored.accounts; /* K-Q14: the split ratio was never restored */
   ui.zoom = stored.zoom;
   ui.activity = stored.activity;
   ui.log = stored.log;
@@ -2724,7 +2736,15 @@ export async function startShell(surface, nextApi, nextHost, result) {
       return entry && Array.isArray(entry.hidden) ? entry.hidden : [];
     },
     saveTableHidden(id, hidden) {
-      ui.tables = { ...(ui.tables || {}), [id]: { hidden } };
+      ui.tables = { ...(ui.tables || {}), [id]: { ...((ui.tables && ui.tables[id]) || {}), hidden } };
+      persistLayout();
+    },
+    tableWidths(id) {
+      const entry = ui.tables && ui.tables[id];
+      return entry && entry.widths && typeof entry.widths === "object" ? entry.widths : {};
+    },
+    saveTableWidths(id, widths) {
+      ui.tables = { ...(ui.tables || {}), [id]: { ...((ui.tables && ui.tables[id]) || {}), widths } };
       persistLayout();
     },
     timeZone: () => logTimeZone,

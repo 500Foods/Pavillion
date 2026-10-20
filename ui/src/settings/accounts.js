@@ -9,6 +9,9 @@ import {
   accountsCsv,
   CHOOSER_COLUMNS,
   cleanHidden,
+  cleanWidths,
+  fitTitleFields,
+  WIDTH_FIELDS,
   cloneAccount,
   navTarget,
   serverGroupHeader,
@@ -30,6 +33,7 @@ export function createAccountsView(api, root, options = {}) {
   let selectedId = null;
   let testPending = false;
   let testResult = { ok: false, capabilities: [], error: "" };
+  let formError = "";
   /* Email and Detect stay in the form; they are not account fields. */
   let email = "";
   let emailTouched = false;
@@ -80,6 +84,7 @@ export function createAccountsView(api, root, options = {}) {
     formState.caFile = "";
     selectedId = null;
     testResult = { ok: false, capabilities: [], error: "" };
+    formError = "";
   }
 
   function selectedAccount() {
@@ -141,6 +146,7 @@ export function createAccountsView(api, root, options = {}) {
 
   function selectAccount(id) {
     formCaps = null;
+    formError = "";
     const selected = accounts.find((a) => a.id === id);
     if (!selected) {
       return;
@@ -183,7 +189,7 @@ export function createAccountsView(api, root, options = {}) {
     const rows = accountRows(accounts, timeZone());
     if (!table) {
       treeEl.replaceChildren();
-      const columns = accountColumns(document, hiddenColumns());
+      const columns = currentColumns();
       sizePane(columns);
       table = createTable(treeEl, {
         indicator: true,
@@ -196,7 +202,13 @@ export function createAccountsView(api, root, options = {}) {
         groupOrder: (data) => [...new Set(data.map((row) => row.server))],
         select: true,
         filter: true,
-        onRender: paintNavState,
+        onRender: () => {
+          paintNavState();
+          sizePane(currentColumns());
+        },
+        fitTitles: fitTitleFields(savedWidths()),
+        onWidths: () => sizePane(currentColumns()),
+        onColumnResized,
       });
       if (query !== "") {
         table.setFilter((row) => accountMatches(row, query));
@@ -219,11 +231,36 @@ export function createAccountsView(api, root, options = {}) {
     return cleanHidden(typeof options.tableHidden === "function" ? options.tableHidden("accounts") : []);
   }
 
+  function savedWidths() {
+    return cleanWidths(typeof options.tableWidths === "function" ? options.tableWidths("accounts") : {});
+  }
+
+  /* K-Q12: the pane minimum from the columns, with live widths (fitted or
+     resized) for the fixed columns when the table has them; Name keeps its
+     minWidth. */
   function sizePane(columns) {
     const pane = root.querySelector(".accounts-tree-pane");
-    if (pane) {
-      pane.style.minWidth = `${tableMinWidth(columns) + INDICATOR_WIDTH + 2}px`;
+    if (!pane) {
+      return;
     }
+    const live = table && typeof table.widths === "function" ? table.widths() : {};
+    const sized = columns.map((c) => (c.field !== "name" && Number.isFinite(live[c.field]) ? { ...c, width: live[c.field] } : c));
+    /* K-Q14: the table's own zoom scales its columns; the pane is unzoomed. */
+    const treeEl = root.querySelector("#accounts-tree");
+    const zoom = (treeEl && parseFloat(treeEl.style.zoom)) || 1;
+    const bar = table && typeof table.scrollbarWidth === "function" ? table.scrollbarWidth() : 0;
+    pane.style.minWidth = `${Math.ceil((tableMinWidth(sized) + INDICATOR_WIDTH + bar) * zoom) + 2}px`;
+  }
+
+  function currentColumns() {
+    return accountColumns(document, hiddenColumns(), savedWidths());
+  }
+
+  function onColumnResized(field, width) {
+    if (WIDTH_FIELDS.includes(field) && typeof options.saveTableWidths === "function") {
+      options.saveTableWidths("accounts", cleanWidths({ ...savedWidths(), [field]: width }));
+    }
+    sizePane(currentColumns());
   }
 
   function chooseColumns(anchor) {
@@ -231,8 +268,21 @@ export function createAccountsView(api, root, options = {}) {
       label: "Account columns",
       columns: CHOOSER_COLUMNS,
       hidden: hiddenColumns(),
-      onChange(hidden) {
+      onChange(hidden, field) {
         const next = cleanHidden(hidden);
+        if (field === null) {
+          /* Reset (TABULATOR.md): every column shown and the coded widths back. */
+          if (typeof options.saveTableWidths === "function") {
+            options.saveTableWidths("accounts", {});
+          }
+          if (table) {
+            for (const column of accountColumns(document)) {
+              if (WIDTH_FIELDS.includes(column.field)) {
+                table.setColumnWidth(column.field, column.width);
+              }
+            }
+          }
+        }
         if (typeof options.saveTableHidden === "function") {
           options.saveTableHidden("accounts", next);
         }
@@ -243,7 +293,7 @@ export function createAccountsView(api, root, options = {}) {
             }
           }
         }
-        sizePane(accountColumns(document, next));
+        sizePane(accountColumns(document, next, savedWidths()));
       },
     });
   }
@@ -488,7 +538,7 @@ export function createAccountsView(api, root, options = {}) {
     }
 
     const errorEl = formEl.querySelector("#account-test-error");
-    errorEl.textContent = testResult.error || "";
+    errorEl.textContent = formError || testResult.error || "";
 
     const addBtn = formEl.querySelector("#account-add");
     const removeBtn = formEl.querySelector("#account-remove");
@@ -614,26 +664,69 @@ export function createAccountsView(api, root, options = {}) {
     if (!addBtn) {
       return;
     }
-    addBtn.addEventListener("click", async () => {
-        updateFormState();
-        try {
-          const body = { ...formState };
-          body.email = effectiveEmail().trim();
-          if (!body.caFile) {
-            delete body.caFile;
-          }
-          if (formCaps) {
-            body.capabilities = formCaps.capabilities;
-            body.capabilitiesChecked = formCaps.checked;
-          }
-          await api.account.add(body);
-          clearForm();
-          clearSecretField();
-          await refresh();
-        } catch (err) {
-          showBanner(err);
-        }
-      });
+    addBtn.addEventListener("click", () => void addAccount());
+  }
+
+  /* K-Q13: add the form as a new account. Used by the form Add button and by
+     Save when the form has no account id (toolbar Add, Clone). A missing field
+     is an inline error, never silent; a failure is shown and logged (without
+     the secret). On success the table reloads with the new row selected. */
+  function missingForAdd(body) {
+    const missing = [];
+    if (!body.name || body.name.trim() === "") missing.push("name");
+    if (!body.sessionUrl || body.sessionUrl.trim() === "") missing.push("session URL");
+    if (!body.username || body.username.trim() === "") missing.push("username");
+    if (!body.secret) missing.push("password");
+    return missing;
+  }
+
+  function logFailure(what, err) {
+    const text = err instanceof Error ? err.message : String(err ?? "");
+    if (api.log && typeof api.log.client === "function") {
+      void Promise.resolve(api.log.client({ subsystem: "accounts", level: "warn", message: `${what} failed: ${text}` })).catch(() => {});
+    }
+  }
+
+  async function addAccount() {
+    updateFormState();
+    const body = { ...formState };
+    body.email = effectiveEmail().trim();
+    if (!body.caFile) {
+      delete body.caFile;
+    }
+    delete body.id;
+    delete body.number;
+    if (formCaps) {
+      body.capabilities = formCaps.capabilities;
+      body.capabilitiesChecked = formCaps.checked;
+    }
+    const missing = missingForAdd(body);
+    if (missing.length > 0) {
+      formError = `Cannot add the account: missing ${missing.join(", ")}.`;
+      logFailure("account add", new Error(`missing ${missing.join(", ")}`));
+      paintForm();
+      return;
+    }
+    formError = "";
+    try {
+      const result = await api.account.add(body);
+      const added = result && result.account ? result.account : result;
+      clearForm();
+      clearSecretField();
+      if (added && typeof added.id === "string") {
+        selectedId = added.id;
+      }
+      await refresh();
+      const fresh = accounts.find((a) => a.id === selectedId);
+      if (fresh) {
+        selectAccount(fresh.id);
+      }
+    } catch (err) {
+      formError = err instanceof Error ? err.message : String(err ?? "");
+      logFailure("account add", err);
+      showBanner(err);
+      paintForm();
+    }
   }
 
   function bindSave() {
@@ -643,6 +736,7 @@ export function createAccountsView(api, root, options = {}) {
     }
     saveBtn.addEventListener("click", async () => {
       if (!selectedId) {
+        await addAccount();
         return;
       }
       updateFormState();
@@ -670,6 +764,7 @@ export function createAccountsView(api, root, options = {}) {
           paintForm();
         }
       } catch (err) {
+        logFailure("account update", err);
         showBanner(err);
       }
     });
@@ -836,6 +931,13 @@ export function createAccountsView(api, root, options = {}) {
 
   return {
     refresh,
+    /* K-Q14: after a zoom change, redraw and re-measure the table. */
+    redraw() {
+      if (table && typeof table.redraw === "function") {
+        table.redraw();
+      }
+      sizePane(currentColumns());
+    },
     destroy() {
       if (table) {
         table.destroy();

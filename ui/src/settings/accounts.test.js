@@ -100,6 +100,11 @@ vi.mock("../common/table.js", () => ({
       setColumnVisible(field, on) {
         handle.visibility[field] = on;
       },
+      widthCalls: [],
+      setColumnWidth(field, width) {
+        handle.widthCalls.push([field, width]);
+      },
+      widths: () => ({}),
       setFilter(fn) {
         filterFn = fn;
         draw(allRows);
@@ -786,13 +791,12 @@ test("a Test redirect to another host stores the final URL and tests it again", 
   });
 });
 
-test("the table row shows the swatch, J/I/S badges, and features after a Test", async () => {
+test("the table row shows the swatch, protocols, and features after a Test", async () => {
   await withView(async () => {
     await addSavedAccount();
     const row = () => document.querySelector('[data-account-id="saved-one"]');
     expect(row().querySelector(".account-swatch .fa-envelope")).not.toBeNull();
-    const badges = [...row().querySelectorAll(".accounts-badge")].map((b) => [b.textContent, b.classList.contains("is-disabled")]);
-    expect(badges).toEqual([["J", false], ["I", true], ["S", true]]);
+    expect(row().querySelector(".accounts-badge")).toBeNull();
     expect(row().classList.contains("tabulator-selected")).toBe(true);
     const box = (field) => row().querySelector(`[data-field="${field}"] input[type="checkbox"]`);
     expect(box("mail").checked).toBe(false);
@@ -804,6 +808,9 @@ test("the table row shows the swatch, J/I/S badges, and features after a Test", 
     expect(box("contacts").checked).toBe(true);
     expect(box("calendars").checked).toBe(true);
     expect(box("files").checked).toBe(true); /* filenode → files (2026-10-19) */
+    expect(box("jmap").checked).toBe(true);
+    expect(box("imap").checked).toBe(false);
+    expect(box("smtp").checked).toBe(false);
   });
 });
 
@@ -899,7 +906,7 @@ test("the table orders columns, groups by server, and counts accounts", async ()
     await add("Two", "https://mail.example.com/.well-known/jmap");
     await add("Three", "https://mail.500foods.com/jmap/session");
     const fields = [...document.querySelectorAll('[data-account-id="one"] > span')].map((s) => s.dataset.field);
-    expect(fields).toEqual(["number", "account", "name", "mail", "calendars", "contacts", "files"]);
+    expect(fields).toEqual(["number", "account", "name", "jmap", "imap", "smtp", "mail", "contacts", "calendars", "files"]);
     expect(document.querySelector('[data-account-id="one"] [data-field="number"]').textContent).toMatch(/^\d{3}$/);
     const headers = [...document.querySelectorAll("#accounts-tree .tabulator-group")];
     expect(headers.map((h) => h.querySelector(".pav-group-label").textContent)).toEqual([
@@ -965,8 +972,8 @@ test("the footer counts checked features, and the navigator and arrows move the 
     const write = callSpy.mock.calls.find(([cmd]) => cmd === "export.write_text")[1];
     expect(write.path).toBe("/tmp/pav-accounts.csv");
     const lines = write.text.split("\r\n");
-    expect(lines[0]).toBe("Number,Name,Server,Mail,Calendar,Contacts,Files,Email");
-    expect(lines[1].slice(4)).toBe("Alpha,a.example,no,no,no,no,alpha@example.com");
+    expect(lines[0]).toBe("Number,Name,Server,JMAP,IMAP,SMTP,Mail,Contacts,Calendars,Files,Email");
+    expect(lines[1].slice(4)).toBe("Alpha,a.example,yes,no,no,no,no,no,no,alpha@example.com");
     expect(write.text).not.toContain("pw");
     await vi.waitFor(() => {
       const log = callSpy.mock.calls.filter(([cmd]) => cmd === "log.client").pop();
@@ -1054,8 +1061,8 @@ test("toolbar Add, Clone and search, and footer Refresh first", async () => {
 
 test("accountsCsv quotes, guards formulas, and carries only export fields", async () => {
   const { accountsCsv } = await import("./accounts-table.js");
-  const text = accountsCsv([{ number: "001", name: "A, \"B\"", server: "s", mail: true, calendars: false, contacts: false, files: false, email: "=cmd", account: { username: "u" } }]);
-  expect(text).toBe("Number,Name,Server,Mail,Calendar,Contacts,Files,Email\r\n001,\"A, \"\"B\"\"\",s,yes,no,no,no,'=cmd\r\n");
+  const text = accountsCsv([{ number: "001", name: "A, \"B\"", server: "s", jmap: true, imap: false, smtp: false, mail: true, calendars: false, contacts: false, files: false, email: "=cmd", account: { username: "u" } }]);
+  expect(text).toBe("Number,Name,Server,JMAP,IMAP,SMTP,Mail,Contacts,Calendars,Files,Email\r\n001,\"A, \"\"B\"\"\",s,yes,no,no,yes,no,no,no,'=cmd\r\n");
 });
 
 test("the column chooser hides a column and saves it under preferences.ui.tables", async () => {
@@ -1096,5 +1103,136 @@ test("createTable gets indicator:true from the accounts view", async () => {
   await withView(async () => {
     await addSavedAccount();
     await vi.waitFor(() => expect(globalThis.__lastTableOptions?.indicator).toBe(true));
+  });
+});
+
+async function testThenSave() {
+  document.querySelector("#account-test").click();
+  await vi.waitFor(() => expect(document.querySelector("#account-save").disabled).toBe(false));
+  document.querySelector("#account-save").click();
+}
+
+const callsOf = (spy, cmd) => spy.mock.calls.filter(([c]) => c === cmd);
+
+test("K-Q13: toolbar Add, fill, Test, Save adds the account and selects the new row", async () => {
+  await withView(async (callSpy) => {
+    await addSavedAccount();
+    document.querySelector("#account-new").click();
+    expect(document.querySelector("#account-name-input").value).toBe("");
+    typeInto("#account-name-input", "Second Box");
+    typeInto("#account-session-url-input", "https://mail.example.org/.well-known/jmap");
+    typeInto("#account-username-input", "two@example.org");
+    typeInto("#account-secret-input", "pw-two");
+    const before = callsOf(callSpy, "account.add").length;
+    await testThenSave();
+    await vi.waitFor(() => expect(callsOf(callSpy, "account.add").length).toBe(before + 1));
+    const body = callsOf(callSpy, "account.add").at(-1)[1];
+    expect(body).toMatchObject({ name: "Second Box", kind: "jmap", sessionUrl: "https://mail.example.org/.well-known/jmap", username: "two@example.org", secret: "pw-two" });
+    await vi.waitFor(() => {
+      const row = document.querySelector('[data-account-id="second-box"]');
+      expect(row).not.toBeNull();
+      expect(row.classList.contains("tabulator-selected")).toBe(true);
+    });
+    expect(document.querySelector('[data-account-id="saved-one"]').classList.contains("tabulator-selected")).toBe(false);
+    expect(document.querySelector("#account-name-input").value).toBe("Second Box");
+    expect(document.querySelector("#account-secret-input").value).toBe("");
+    expect(callsOf(callSpy, "account.update").length).toBe(0);
+  });
+});
+
+test("K-Q13: Clone then Save adds a new account and selects it", async () => {
+  await withView(async (callSpy) => {
+    await addSavedAccount();
+    document.querySelector("#account-clone").click();
+    typeInto("#account-name-input", "Cloned Box");
+    typeInto("#account-username-input", "clone@example.com");
+    typeInto("#account-secret-input", "pw-clone");
+    await testThenSave();
+    await vi.waitFor(() => {
+      const row = document.querySelector('[data-account-id="cloned-box"]');
+      expect(row).not.toBeNull();
+      expect(row.classList.contains("tabulator-selected")).toBe(true);
+    });
+    expect(callsOf(callSpy, "account.add").at(-1)[1]).toMatchObject({ name: "Cloned Box", username: "clone@example.com" });
+    expect(document.querySelector('[data-account-id="saved-one"]')).not.toBeNull();
+  });
+});
+
+test("K-Q13: a missing field is an inline error and logged, with no account.add", async () => {
+  await withView(async (callSpy) => {
+    document.querySelector("#account-new").click();
+    typeInto("#account-name-input", "No Password");
+    typeInto("#account-session-url-input", "https://example.net/.well-known/jmap");
+    typeInto("#account-username-input", "np@example.net");
+    document.querySelector("#account-add").click();
+    await vi.waitFor(() => expect(document.querySelector("#account-test-error").textContent).toBe("Cannot add the account: missing password."));
+    expect(callsOf(callSpy, "account.add").length).toBe(0);
+    const logs = callsOf(callSpy, "log.client").map((c) => c[1]);
+    expect(logs.some((l) => l.level === "warn" && /account add failed: missing password/.test(l.message))).toBe(true);
+  });
+});
+
+test("K-Q13: an add the core refuses is shown and logged without the secret", async () => {
+  await withView(async (callSpy) => {
+    document.querySelector("#account-new").click();
+    typeInto("#account-name-input", "Bad Url");
+    typeInto("#account-session-url-input", "http://insecure.example/jmap");
+    typeInto("#account-username-input", "b@example.com");
+    typeInto("#account-secret-input", "pw-secret-xyz");
+    document.querySelector("#account-add").click();
+    await vi.waitFor(() => expect(document.querySelector("#account-test-error").textContent).toMatch(/https/));
+    const logs = callsOf(callSpy, "log.client").map((c) => JSON.stringify(c[1]));
+    expect(logs.some((l) => l.includes("account add failed"))).toBe(true);
+    expect(logs.some((l) => l.includes("pw-secret-xyz"))).toBe(false);
+  });
+});
+
+test("resize round: a resized column saves its width, Reset clears widths and restores the coded ones", async () => {
+  await withView(async (callSpy) => {
+    await addSavedAccount();
+    const saved = () => callSpy.mock.calls.filter((c) => c[0] === "prefs.ui.set").map((c) => c[1]).at(-1);
+    globalThis.__lastTableOptions.onColumnResized("jmap", 131);
+    globalThis.__lastTableOptions.onColumnResized("name", 400);
+    await vi.waitFor(() => expect(saved()?.tables?.accounts?.widths).toEqual({ jmap: 131 }), { timeout: 3000 });
+    expect(globalThis.__lastTableOptions.fitTitles).toEqual(["jmap", "imap", "smtp", "mail", "contacts", "calendars", "files"]);
+    document.querySelector("#accounts-columns").click();
+    const box = document.querySelector('.pav-column-chooser [data-field="smtp"]');
+    box.checked = false;
+    box.dispatchEvent(new Event("change"));
+    await vi.waitFor(() => expect(saved()?.tables?.accounts).toEqual({ widths: { jmap: 131 }, hidden: ["smtp"] }), { timeout: 3000 });
+    document.querySelector(".pav-column-chooser [data-reset]").click();
+    await vi.waitFor(() => expect(saved()?.tables?.accounts).toEqual({ widths: {}, hidden: [] }), { timeout: 3000 });
+  });
+});
+
+async function withStoredUi(stored, body) {
+  const el = document.createElement("div");
+  document.body.append(el);
+  try {
+    const transport = mockTransport();
+    await transport.call("prefs.ui.set", stored);
+    const api = createApi(transport);
+    await mount(el, api, { hostServices: { dialog: { save: async () => null } } });
+    await body(transport);
+  } finally {
+    unmount();
+    el.remove();
+  }
+}
+
+test("K-Q14: the Accounts split ratio is restored from preferences", async () => {
+  await withStoredUi({ accounts: { split: 0.62, min: 0.15, max: 0.6 } }, async () => {
+    await vi.waitFor(() => expect(document.querySelector(".accounts-tree-pane").style.flexBasis).toBe("62%"));
+  });
+});
+
+test("K-Q14: Accounts table and form take their own zoom rows", async () => {
+  await withStoredUi({ zoom: { accountsTable: 1.5, accountsForm: 0.75 } }, async () => {
+    await vi.waitFor(() => {
+      expect(document.querySelector("#accounts-tree").style.zoom).toBe("1.5");
+      expect(document.querySelector(".accounts-form-pane").style.zoom).toBe("0.75");
+    });
+    expect(document.querySelector('[data-zoom="accountsTable"]')).not.toBeNull();
+    expect(document.querySelector('[data-zoom="accountsForm"]')).not.toBeNull();
   });
 });

@@ -183,3 +183,17 @@ test("log zoom snaps and the activity view defaults to log", () => {
     note: 1,
   });
 });
+
+test("K-Q12 resize round: the accounts split bounds come from code (0.15 to 0.85)", () => {
+  expect(clampUi({}).accounts).toEqual({ split: 0.35, min: 0.15, max: 0.85 });
+  const old = clampUi({ accounts: { split: 0.8, min: 0.15, max: 0.6 } }).accounts;
+  expect(old).toEqual({ split: 0.8, min: 0.15, max: 0.85 });
+  expect(clampUi({ accounts: { split: 0.99 } }).accounts.split).toBe(0.85);
+});
+
+test("K-Q14: Accounts table and form zoom keys default to 1 and clamp like panes", () => {
+  const z = clampUi({}).zoom;
+  expect(z.accountsTable).toBe(1);
+  expect(z.accountsForm).toBe(1);
+  expect(clampUi({ zoom: { accountsTable: 9, accountsForm: 0.01 } }).zoom).toMatchObject({ accountsTable: 5, accountsForm: 0.05 });
+});

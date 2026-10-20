@@ -42,7 +42,7 @@ export const DEFAULT_UI = {
   contacts: { split: 0.5, min: 0.25, max: 0.75 },
   files: { split: 0.5, min: 0.25, max: 0.75 },
   help: { split: 0.25, min: 0.15, max: 0.6 },
-  accounts: { split: 0.35, min: 0.15, max: 0.6 },
+  accounts: { split: 0.35, min: 0.15, max: 0.85 },
   zoom: {
     shell: 1,
     navButtons: 1,
@@ -52,6 +52,8 @@ export const DEFAULT_UI = {
     log: 1,
     helpIndex: 1,
     helpContent: 1,
+    accountsTable: 1,
+    accountsForm: 1,
     wheel: "away",
   },
   activity: { view: "log", history: false },
@@ -82,6 +84,8 @@ export const ZOOM_KEYS = [
   "log",
   "helpIndex",
   "helpContent",
+  "accountsTable",
+  "accountsForm",
 ];
 const KNOWN = new Set([
   "nav",
@@ -158,11 +162,12 @@ function panePx(src, fallback) {
   return out;
 }
 
-function paneSplit(src, fallback) {
+function paneSplit(src, fallback, fixedBounds = false) {
   const raw = isObject(src) ? src : {};
   let min = finite(raw.min);
   let max = finite(raw.max);
-  if (min === null || max === null || min > max || min < 0 || max > 1) {
+  /* K-Q12 (2026-10-20): Accounts bounds come from code, so a stored 0.6 cap is lifted. */
+  if (fixedBounds || min === null || max === null || min > max || min < 0 || max > 1) {
     min = fallback.min;
     max = fallback.max;
   }
@@ -324,7 +329,7 @@ export function clampUi(raw) {
     contacts: paneSplit(src.contacts, DEFAULT_UI.contacts),
     files: paneSplit(src.files, DEFAULT_UI.files),
     help: paneSplit(src.help, DEFAULT_UI.help),
-    accounts: paneSplit(src.accounts, DEFAULT_UI.accounts),
+    accounts: paneSplit(src.accounts, DEFAULT_UI.accounts, true),
     zoom,
     icons: isObject(src.icons) ? { ...src.icons } : {},
     fontawesome_kit: typeof src.fontawesome_kit === "string" ? src.fontawesome_kit : DEFAULT_UI.fontawesome_kit,

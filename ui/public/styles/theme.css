@@ -1564,7 +1564,7 @@
   display: flex;
   flex-direction: column;
   min-width: 18rem; /* K-Q12: raised to the table minimum by the page */
-  max-width: 40%;
+  max-width: calc(100% - 20rem); /* K-Q12: the form keeps 20rem */
   min-height: 0;
   overflow: hidden;
   border-right: 1px solid var(--pav-border);
@@ -1580,6 +1580,7 @@
 
 .pav-root .accounts-form-pane {
   flex: 1;
+  min-width: 20rem;
   min-height: 0;
   overflow: auto;
 }
@@ -1785,16 +1786,23 @@
   justify-content: center;
   box-sizing: border-box;
   vertical-align: bottom;
-  padding: 0.3rem 0.4rem;
+  padding: var(--pav-table-header-pad-y) var(--pav-table-header-pad-x);
+  line-height: 1.2;
   text-align: left;
   user-select: none;
+}
+/* A nav icon in a header title stays one text line tall. */
+.pav-root .pav-table .tabulator-col-title .icon,
+.pav-root .pav-table .tabulator-col-title i {
+  font-size: 1em;
+  line-height: 1;
 }
 /* One-line header: the sort icon sits inline after the title. */
 .pav-root .pav-table .tabulator-col-content,
 .pav-root .pav-table .tabulator-col-title-holder {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 2px;
   min-width: 0;
 }
 .pav-root .pav-table .tabulator-col-title {
@@ -1802,6 +1810,16 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* Checkbox columns (TABULATOR.md Header row): title and sort icon centred
+   together, 2 px apart, instead of the icon pushed to the edge. */
+.pav-root .pav-table .tabulator-col.pav-col-check .tabulator-col-title-holder {
+  justify-content: center;
+}
+.pav-root .pav-table .tabulator-col.pav-col-check .tabulator-col-title {
+  flex: none;
+  overflow: visible;
+  text-overflow: clip;
 }
 .pav-root .pav-table .tabulator-col-sorter {
   display: inline-flex;
@@ -1818,7 +1836,9 @@
 }
 .pav-root .pav-table .tabulator-tableholder {
   position: relative;
-  overflow: auto;
+  overflow-x: hidden; /* TABULATOR.md: backstop; the pane minimum fits the columns */
+  overflow-y: auto;
+  background-repeat: no-repeat; /* full-height dividers, painted by table.js */
   width: 100%;
   white-space: nowrap;
 }
@@ -1836,6 +1856,15 @@
 }
 .pav-root .pav-table .tabulator-row.tabulator-row-even {
   background: var(--pav-table-row-alt-bg);
+}
+/* TABULATOR.md: group dividers, full height (header, rows, calcs). */
+.pav-root .pav-table .tabulator-col.pav-col-divider-left,
+.pav-root .pav-table .tabulator-cell.pav-col-divider-left {
+  border-left: 1px solid var(--pav-table-divider);
+}
+.pav-root .pav-table .tabulator-col.pav-col-divider-right,
+.pav-root .pav-table .tabulator-cell.pav-col-divider-right {
+  border-right: 1px solid var(--pav-table-divider);
 }
 .pav-root .pav-table .tabulator-row:hover {
   background: var(--pav-table-row-hover-bg);
@@ -1948,8 +1977,14 @@
 }
 .pav-root .pav-table .tabulator-footer {
   flex: none;
+  white-space: nowrap; /* the calc row never wraps (stray count) */
+  overflow: hidden;
   border-top: 1px solid var(--pav-table-border);
   background: var(--pav-table-footer-bg);
+}
+.pav-root .pav-table .tabulator-calcs-holder {
+  overflow: hidden;
+  white-space: nowrap;
 }
 .pav-root .pav-table .tabulator-calcs-holder .tabulator-row {
   cursor: default;
@@ -2003,19 +2038,10 @@
   align-items: center;
   gap: 0.25rem;
 }
-.pav-root .accounts-badge {
-  display: inline-block;
-  min-width: 1.1em;
-  padding: 0 0.15em;
-  border: 1px solid var(--pav-border);
-  border-radius: 0.2em;
-  font-size: 0.75em;
-  text-align: center;
-  color: var(--pav-text);
-}
-.pav-root .accounts-badge.is-disabled {
-  color: var(--pav-text-muted);
-  opacity: 0.5;
+.pav-root .accounts-feature-cell input[type="checkbox"] {
+  width: var(--pav-table-check-size);
+  height: var(--pav-table-check-size);
+  margin: 0;
 }
 .pav-root .accounts-icon-choices {
   display: inline-flex;

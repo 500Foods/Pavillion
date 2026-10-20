@@ -69,16 +69,16 @@ test("CSV columns are number, name, server, features, email only (K-Q12)", async
   const { accountColumns, exportFields, EXPORT_FIELDS, tableMinWidth, accountRows } = await import("./accounts-table.js");
   const columns = accountColumns(document);
   expect(exportFields(columns)).toEqual(EXPORT_FIELDS);
-  expect(EXPORT_FIELDS).toEqual(["number", "name", "server", "mail", "calendars", "contacts", "files", "email"]);
+  expect(EXPORT_FIELDS).toEqual(["number", "name", "server", "jmap", "imap", "smtp", "mail", "contacts", "calendars", "files", "email"]);
   expect(columns.find((c) => c.field === "mail").accessorDownload(true)).toBe("yes");
   expect(columns.find((c) => c.field === "files").accessorDownload(false)).toBe("no");
   const row = accountRows([{ id: "x", name: "X", sessionUrl: "https://h.example/j", username: "u", email: "e@h.example", secret: "s" }], "UTC")[0];
   for (const field of Object.keys(row)) {
     expect(["secret", "username", "password"]).not.toContain(field);
   }
-  expect(tableMinWidth(columns)).toBe(60 + 44 + 120 + 104 + 60 * 3);
-  /* Every visible column sorts; feature columns by checked state. */
-  for (const column of columns.filter((c) => c.visible !== false)) {
+  expect(tableMinWidth(columns)).toBe(60 + 44 + 120 + 3 * 100 + 4 * 68);
+  /* Every visible column but the swatch sorts; check columns by checked state. */
+  for (const column of columns.filter((c) => c.visible !== false && c.field !== "account")) {
     expect(column.headerSort).not.toBe(false);
     expect(column.sorter).toBeDefined();
   }
@@ -96,4 +96,56 @@ test("chooser columns lock Name and cleanHidden keeps known unlocked fields", as
   const cols = accountColumns(document, ["number"]);
   expect(cols.find((c) => c.field === "number").visible).toBe(false);
   expect(cols.find((c) => c.field === "name").visible).not.toBe(false);
+});
+
+test("header row: swatch unsortable, protocol and feature check columns with widths, chooser and order", async () => {
+  const { accountColumns, PROTOCOLS, protocolOn, PROTOCOL_WIDTH, FEATURE_WIDTH, CHOOSER_COLUMNS, accountRows, tableMinWidth } = await import("./accounts-table.js");
+  const cols = accountColumns(document);
+  const by = (f) => cols.find((c) => c.field === f);
+  expect(by("account").headerSort).toBe(false);
+  expect(by("account").sorter).toBeUndefined();
+  for (const f of ["jmap", "imap", "smtp"]) {
+    expect(by(f)).toMatchObject({ title: f.toUpperCase(), width: PROTOCOL_WIDTH, sorter: "boolean", resizable: true });
+    expect(by(f).cssClass).toContain("pav-col-check");
+    expect(by(f).titleFormatter).toBeUndefined();
+    expect(by(f).bottomCalc([true, false, true])).toBe(2);
+  }
+  for (const f of ["mail", "contacts", "calendars", "files"]) {
+    expect(by(f)).toMatchObject({ width: FEATURE_WIDTH, sorter: "boolean" });
+    expect(typeof by(f).titleFormatter).toBe("function");
+  }
+  expect(PROTOCOL_WIDTH).toBeGreaterThan(FEATURE_WIDTH);
+  expect(FEATURE_WIDTH).toBeGreaterThan(60);
+  expect(tableMinWidth(cols)).toBe(60 + 44 + 120 + 3 * PROTOCOL_WIDTH + 4 * FEATURE_WIDTH);
+  expect(CHOOSER_COLUMNS.map((c) => c.field)).toEqual(["number", "account", "name", "jmap", "imap", "smtp", "mail", "contacts", "calendars", "files"]);
+  expect(PROTOCOLS.map((p) => protocolOn(p, null))).toEqual([false, false, false]);
+  expect(PROTOCOLS.map((p) => protocolOn(p, ["mail"]))).toEqual([true, false, false]);
+  expect(PROTOCOLS.map((p) => protocolOn(p, ["imap", "smtp"]))).toEqual([true, true, true]);
+  const row = accountRows([{ id: "a", capabilities: ["mail"] }], "UTC")[0];
+  expect([row.jmap, row.imap, row.smtp]).toEqual([true, false, false]);
+  const cell = { getValue: () => true, getRow: () => ({ getData: () => ({ name: "A", checked: "Checked 2026-10-20 12:00:00" }) }) };
+  const out = by("smtp").formatter(cell);
+  expect(out.title).toBe("Checked 2026-10-20 12:00:00");
+  expect(out.querySelector("input").getAttribute("aria-label")).toBe("SMTP for A");
+});
+
+test("resize round: saved widths are cleaned and applied, dividers and fitted fields", async () => {
+  const { accountColumns, cleanWidths, fitTitleFields, WIDTH_FIELDS } = await import("./accounts-table.js");
+  expect(WIDTH_FIELDS).toEqual(["number", "jmap", "imap", "smtp", "mail", "contacts", "calendars", "files"]);
+  expect(cleanWidths({ jmap: 120.4, name: 300, account: 90, mail: 10, files: 5000, smtp: "90", bogus: 80 })).toEqual({ jmap: 120 });
+  expect(cleanWidths(null)).toEqual({});
+  const cols = accountColumns(document, [], { jmap: 130, name: 400 });
+  const by = (f) => cols.find((c) => c.field === f);
+  expect(by("jmap").width).toBe(130);
+  expect(by("name").width).toBeUndefined();
+  expect(by("account").resizable).toBe(false);
+  expect(by("number").resizable).toBe(true);
+  expect(by("name").resizable).toBe(true);
+  for (const f of ["account", "jmap", "mail"]) {
+    expect(by(f).cssClass).toContain("pav-col-divider-left");
+  }
+  for (const f of ["number", "imap", "smtp", "contacts", "calendars", "files", "name"]) {
+    expect(String(by(f).cssClass || "")).not.toContain("pav-col-divider");
+  }
+  expect(fitTitleFields({ jmap: 130 })).toEqual(["imap", "smtp", "mail", "contacts", "calendars", "files"]);
 });

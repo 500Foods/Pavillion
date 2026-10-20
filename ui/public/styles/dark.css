@@ -13,7 +13,7 @@
   --pav-table-header-bg: #0c0505;
   --pav-table-header-fg: #c8c8c8;
   --pav-table-row-bg: transparent;
-  --pav-table-row-alt-bg: rgb(255 255 255 / 3%);
+  --pav-table-row-alt-bg: rgb(255 255 255 / 6%);
   --pav-table-row-hover-bg: #1c0a0a;
   --pav-table-selected-bg: #800000;
   --pav-table-selected-fg: #ffffff;
@@ -27,6 +27,10 @@
   --pav-table-sort-icon: #cc9999;
   --pav-table-group-toggle: #cc9999;
   --pav-table-indicator: #e06666;
+  --pav-table-check-size: 1.35em;
+  --pav-table-divider: #5a3030;
+  --pav-table-header-pad-y: 0.15rem;
+  --pav-table-header-pad-x: 0.4rem;
   --pav-surface-nav: linear-gradient(160deg, #160808 0%, #000 70%);
   --pav-surface-workspace: linear-gradient(160deg, #100606 0%, #000 78%);
   --pav-surface-list: linear-gradient(160deg, #140707 0%, #000 74%);

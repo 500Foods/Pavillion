@@ -248,7 +248,7 @@
   --pav-table-header-bg: #efe2e2;
   --pav-table-header-fg: #3a2a2a;
   --pav-table-row-bg: transparent;
-  --pav-table-row-alt-bg: rgb(28 18 18 / 3%);
+  --pav-table-row-alt-bg: rgb(28 18 18 / 5%);
   --pav-table-row-hover-bg: #f0dede;
   --pav-table-selected-bg: #800000;
   --pav-table-selected-fg: #ffffff;
@@ -262,6 +262,10 @@
   --pav-table-sort-icon: #800000;
   --pav-table-group-toggle: #800000;
   --pav-table-indicator: #800000;
+  --pav-table-check-size: 1.35em;
+  --pav-table-divider: #c9a8a8;
+  --pav-table-header-pad-y: 0.15rem;
+  --pav-table-header-pad-x: 0.4rem;
 }
 
 /*
