@@ -38,10 +38,10 @@ test("checkedTitle shows 24-hour local time in the profile zone (K-Q10)", async 
   expect(checkedTitle(null, "America/Vancouver")).toBe("Not checked yet");
 });
 
-test("serverGroup labels by host and full URL, else (no server) (K-Q11)", async () => {
+test("serverGroup labels by host only, else (no server) (K-Q11)", async () => {
   const { serverGroup, accountCountText, NO_SERVER } = await import("./accounts-table.js");
-  expect(serverGroup("https://mail.500foods.com/jmap/session")).toBe("mail.500foods.com (https://mail.500foods.com/jmap/session)");
-  expect(serverGroup(" https://h.example:8443/x ")).toBe("h.example (https://h.example:8443/x)");
+  expect(serverGroup("https://mail.500foods.com/jmap/session")).toBe("mail.500foods.com");
+  expect(serverGroup(" https://h.example:8443/x ")).toBe("h.example");
   expect(serverGroup("")).toBe(NO_SERVER);
   expect(serverGroup(undefined)).toBe("(no server)");
   expect(serverGroup("not a url")).toBe("(no server)");
@@ -85,4 +85,15 @@ test("CSV columns are number, name, server, features, email only (K-Q12)", async
   expect(columns.find((c) => c.field === "contacts").sorter).toBe("boolean");
   expect(columns.find((c) => c.field === "calendars").bottomCalc([true, false, true])).toBe(2);
   expect(columns.find((c) => c.field === "name").bottomCalc(["a"])).toBe("1 account");
+});
+
+test("chooser columns lock Name and cleanHidden keeps known unlocked fields", async () => {
+  const { CHOOSER_COLUMNS, cleanHidden, accountColumns } = await import("./accounts-table.js");
+  const name = CHOOSER_COLUMNS.find((c) => c.field === "name");
+  expect(name.locked).toBe(true);
+  expect(cleanHidden(["name", "number", "number", "bogus", 7])).toEqual(["number"]);
+  expect(cleanHidden(null)).toEqual([]);
+  const cols = accountColumns(document, ["number"]);
+  expect(cols.find((c) => c.field === "number").visible).toBe(false);
+  expect(cols.find((c) => c.field === "name").visible).not.toBe(false);
 });

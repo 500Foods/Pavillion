@@ -2,7 +2,8 @@
    module that imports Tabulator, loaded on first use as its own chunk, core
    plus the modules a table asks for (never TabulatorFull). Screens call
    createTable(el, {columns, data, rowId, onRowClick, rowClass, groupBy,
-   groupHeader, groupOrder, footerElement, select, onRender, download, filter}).
+   groupHeader, groupOrder, footerElement, select, onRender, download, filter,
+   indicator}).
    The table fills el (height 100%, virtual rows) and ResizeTable redraws it
    on resize and when a hidden panel is shown. The look is .pav-table on
    --pav-* variables in theme.css; no Tabulator stylesheet is loaded.
@@ -39,6 +40,9 @@ export function modulesFor(options) {
   if (options.filter) {
     names.push("FilterModule");
   }
+  if (options.indicator || columns.some((c) => c.frozen)) {
+    names.push("FrozenColumnsModule");
+  }
   return names;
 }
 
@@ -61,6 +65,42 @@ export function sortIcon(dir, documentRef = globalThis.document) {
   return icon;
 }
 
+/* Row indicator column (TABULATOR.md): a frozen narrow first column showing
+   the current row (caret) or a row state set by the page (editing: pen). */
+export const INDICATOR_FIELD = "__pav_indicator";
+export const INDICATOR_WIDTH = 22;
+const INDICATOR_ICONS = { current: "fa-caret-right", editing: "fa-pen" };
+
+function faIcon(name, documentRef) {
+  const icon = documentRef.createElement("i");
+  icon.className = `fa-sharp-duotone fa-solid ${name}`;
+  icon.setAttribute("aria-hidden", "true");
+  return icon;
+}
+
+/* stateOf(id) returns "current", "editing" or null. */
+export function indicatorColumn(stateOf, rowId = "id", documentRef = globalThis.document) {
+  return {
+    field: INDICATOR_FIELD,
+    title: "Row indicator",
+    titleFormatter: () => faIcon("fa-ellipsis-vertical", documentRef),
+    width: INDICATOR_WIDTH,
+    minWidth: INDICATOR_WIDTH,
+    frozen: true,
+    headerSort: false,
+    resizable: false,
+    download: false,
+    hozAlign: "center",
+    headerHozAlign: "center",
+    cssClass: "pav-table-indicator",
+    formatter: (cell) => {
+      const state = stateOf(cell.getRow().getData()[rowId]);
+      const name = INDICATOR_ICONS[state];
+      return name ? faIcon(name, documentRef) : "";
+    },
+  };
+}
+
 /* rowClass(data) names one pav-row-* class (or none) for the row. */
 function markRow(row, rowClass) {
   const el = row.getElement();
@@ -77,10 +117,13 @@ function markRow(row, rowClass) {
 
 /* The Tabulator options for a createTable call (exported for tests). */
 export function tabulatorOptions(options, data, gate, documentRef = globalThis.document) {
+  const columns = options.indicator
+    ? [indicatorColumn(gate.stateOf || (() => null), options.rowId || "id", documentRef), ...(options.columns || [])]
+    : options.columns || [];
   const sortable = (options.columns || []).some((c) => c.headerSort !== false);
   return {
     data,
-    columns: options.columns || [],
+    columns,
     index: options.rowId || "id",
     layout: "fitColumns",
     height: "100%",
@@ -90,7 +133,7 @@ export function tabulatorOptions(options, data, gate, documentRef = globalThis.d
     ...(sortable
       ? { columnDefaults: { headerSortTristate: true }, headerSortElement: (_column, dir) => sortIcon(dir, documentRef) }
       : {}),
-    ...(options.groupBy ? { groupBy: options.groupBy, groupToggleElement: false } : {}),
+    ...(options.groupBy ? { groupBy: options.groupBy, groupStartOpen: true, groupToggleElement: "header" } : {}),
     ...(typeof options.groupHeader === "function"
       ? { groupHeader: (value, count, rows) => options.groupHeader(value, count, rows) }
       : {}),
@@ -113,7 +156,18 @@ export function createTable(el, options) {
   let data = options.data || [];
   let current = null;
   let filterFn = null;
-  const gate = { open: false };
+  const gate = { open: false, stateOf: null };
+  const states = new Map();
+  gate.stateOf = (id) => (states.get(id) || (id === current && current !== null ? "current" : null));
+
+  function reformat(id) {
+    if (built && options.indicator && id !== null && id !== undefined) {
+      const row = table.getRow(id);
+      if (row) {
+        row.reformat();
+      }
+    }
+  }
   const documentRef = el.ownerDocument || globalThis.document;
 
   function applyGroupOrder() {
@@ -183,6 +237,16 @@ export function createTable(el, options) {
         });
       }
     },
+    /* Column chooser (TABULATOR.md): show or hide one column by field. */
+    setColumnVisible(field, on) {
+      if (built) {
+        if (on) {
+          table.showColumn(field);
+        } else {
+          table.hideColumn(field);
+        }
+      }
+    },
     /* D-10: a row predicate (null clears); groups with no match disappear. */
     setFilter(fn) {
       filterFn = typeof fn === "function" ? fn : null;
@@ -197,7 +261,10 @@ export function createTable(el, options) {
     },
     /* Single selection, set only here; scrolls the row into view. */
     select(id) {
+      const previous = current;
       current = id;
+      reformat(previous);
+      reformat(id);
       if (built) {
         markSelected();
         if (id !== null && table.getRow(id)) {
@@ -205,6 +272,16 @@ export function createTable(el, options) {
         }
       }
     },
+    /* Row indicator: set "editing" (or null) on a row; current is automatic. */
+    setRowState(id, state) {
+      if (state) {
+        states.set(id, state);
+      } else {
+        states.delete(id);
+      }
+      reformat(id);
+    },
+    rowState: (id) => gate.stateOf(id),
     /* Row ids in display order: groups as shown, rows sorted within them. */
     ids() {
       if (!built) {

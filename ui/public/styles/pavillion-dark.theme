@@ -243,6 +243,25 @@
 
   /* Help code sample outline. */
   --pav-help-code-border: #333;
+
+  /* Tables (Tabulator): header, rows, selection, group headers, borders, footer, sort and group icons. See TABULATOR.md. */
+  --pav-table-header-bg: #0c0505;
+  --pav-table-header-fg: #c8c8c8;
+  --pav-table-row-bg: transparent;
+  --pav-table-row-alt-bg: rgb(255 255 255 / 3%);
+  --pav-table-row-hover-bg: #1c0a0a;
+  --pav-table-selected-bg: #800000;
+  --pav-table-selected-fg: #ffffff;
+  --pav-table-group-bg: #2a1010;
+  --pav-table-group-fg: #f0f0f0;
+  --pav-table-group-count-bg: #5a2020;
+  --pav-table-group-count-fg: #ffffff;
+  --pav-table-border: #333;
+  --pav-table-footer-bg: #0c0505;
+  --pav-table-footer-fg: #9a9a9a;
+  --pav-table-sort-icon: #cc9999;
+  --pav-table-group-toggle: #cc9999;
+  --pav-table-indicator: #e06666;
 }
 
 /*

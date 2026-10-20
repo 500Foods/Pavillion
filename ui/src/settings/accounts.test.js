@@ -11,7 +11,9 @@ import { mockTransport } from "../transport/mock.js";
    column formatters, and a row click calls onRowClick like Tabulator does. */
 const fakeTables = [];
 vi.mock("../common/table.js", () => ({
+  INDICATOR_WIDTH: 22,
   createTable(el, options) {
+    globalThis.__lastTableOptions = options;
     let current = null;
     let rowsNow = options.data;
     let allRows = options.data;
@@ -94,6 +96,10 @@ vi.mock("../common/table.js", () => ({
       options,
       downloads: [],
       setData: draw,
+      visibility: {},
+      setColumnVisible(field, on) {
+        handle.visibility[field] = on;
+      },
       setFilter(fn) {
         filterFn = fn;
         draw(allRows);
@@ -897,8 +903,8 @@ test("the table orders columns, groups by server, and counts accounts", async ()
     expect(document.querySelector('[data-account-id="one"] [data-field="number"]').textContent).toMatch(/^\d{3}$/);
     const headers = [...document.querySelectorAll("#accounts-tree .tabulator-group")];
     expect(headers.map((h) => h.querySelector(".pav-group-label").textContent)).toEqual([
-      "mail.500foods.com (https://mail.500foods.com/jmap/session)",
-      "mail.example.com (https://mail.example.com/.well-known/jmap)",
+      "mail.500foods.com",
+      "mail.example.com",
     ]);
     expect(headers.map((h) => h.querySelector(".pav-group-count").textContent)).toEqual(["2", "1"]);
     expect(document.querySelector("#accounts-tree .tabulator-calcs-bottom [data-field=\"name\"]").textContent).toBe("3 accounts");
@@ -960,7 +966,7 @@ test("the footer counts checked features, and the navigator and arrows move the 
     expect(write.path).toBe("/tmp/pav-accounts.csv");
     const lines = write.text.split("\r\n");
     expect(lines[0]).toBe("Number,Name,Server,Mail,Calendar,Contacts,Files,Email");
-    expect(lines[1].slice(4)).toBe("Alpha,a.example (https://a.example/jmap),no,no,no,no,alpha@example.com");
+    expect(lines[1].slice(4)).toBe("Alpha,a.example,no,no,no,no,alpha@example.com");
     expect(write.text).not.toContain("pw");
     await vi.waitFor(() => {
       const log = callSpy.mock.calls.filter(([cmd]) => cmd === "log.client").pop();
@@ -991,7 +997,12 @@ test("toolbar Add, Clone and search, and footer Refresh first", async () => {
   await withView(async (callSpy) => {
     const toolbar = document.querySelector("#accounts-toolbar");
     expect(toolbar.querySelector(".pav-module-title").textContent).toBe("Accounts");
-    expect([...toolbar.querySelectorAll("button[data-module-action]")].map((b) => b.dataset.moduleAction)).toEqual(["add", "clone", "delete"]);
+    expect([...toolbar.querySelectorAll("button[data-module-action]")].map((b) => b.dataset.moduleAction)).toEqual(["add", "clone", "delete", "columns"]);
+    const order = [...toolbar.children];
+    const cols = toolbar.querySelector("#accounts-columns");
+    expect(order.indexOf(cols)).toBeGreaterThan(order.indexOf(toolbar.querySelector(".pav-module-spacer")));
+    expect(order.indexOf(cols)).toBeLessThan(order.indexOf(toolbar.querySelector(".pav-module-search")));
+    expect(cols.querySelector("i").className).toContain("fa-table-columns");
     expect(toolbar.lastElementChild.classList.contains("help-jump")).toBe(true);
     expect(document.querySelector("#account-clone").disabled).toBe(true);
     const footerFirst = document.querySelector("#accounts-footer .pav-module-nav button");
@@ -1045,4 +1056,45 @@ test("accountsCsv quotes, guards formulas, and carries only export fields", asyn
   const { accountsCsv } = await import("./accounts-table.js");
   const text = accountsCsv([{ number: "001", name: "A, \"B\"", server: "s", mail: true, calendars: false, contacts: false, files: false, email: "=cmd", account: { username: "u" } }]);
   expect(text).toBe("Number,Name,Server,Mail,Calendar,Contacts,Files,Email\r\n001,\"A, \"\"B\"\"\",s,yes,no,no,no,'=cmd\r\n");
+});
+
+test("the column chooser hides a column and saves it under preferences.ui.tables", async () => {
+  await withView(async (callSpy) => {
+    document.querySelector("#accounts-columns").click();
+    const box = document.querySelector(".pav-column-chooser");
+    expect(box).not.toBeNull();
+    expect(box.querySelector('[data-field="name"]').disabled).toBe(true);
+    const number = box.querySelector('[data-field="number"]');
+    number.checked = false;
+    number.dispatchEvent(new Event("change"));
+    await vi.waitFor(() => {
+      const saved = callSpy.mock.calls.filter((c) => c[0] === "prefs.ui.set").map((c) => c[1]);
+      expect(saved.at(-1)?.tables?.accounts?.hidden).toEqual(["number"]);
+    }, { timeout: 3000 });
+    box.querySelector("[data-reset]").click();
+    await vi.waitFor(() => {
+      const saved = callSpy.mock.calls.filter((c) => c[0] === "prefs.ui.set").map((c) => c[1]);
+      expect(saved.at(-1)?.tables?.accounts?.hidden).toEqual([]);
+    }, { timeout: 3000 });
+  });
+});
+
+test("the accounts table asks for the row indicator, sizes the pane for it, and keeps it out of the chooser", async () => {
+  const { accountColumns, tableMinWidth, CHOOSER_COLUMNS, EXPORT_FIELDS } = await import("./accounts-table.js");
+  await withView(async () => {
+    await addSavedAccount();
+    await vi.waitFor(() => expect(document.querySelector(".accounts-tree-pane").style.minWidth).not.toBe(""));
+    expect(document.querySelector(".accounts-tree-pane").style.minWidth).toBe(`${tableMinWidth(accountColumns(document)) + 22 + 2}px`);
+    document.querySelector("#accounts-columns").click();
+    expect(document.querySelector('.pav-column-chooser [data-field="__pav_indicator"]')).toBeNull();
+  });
+  expect(CHOOSER_COLUMNS.some((c) => c.field === "__pav_indicator")).toBe(false);
+  expect(EXPORT_FIELDS).not.toContain("__pav_indicator");
+});
+
+test("createTable gets indicator:true from the accounts view", async () => {
+  await withView(async () => {
+    await addSavedAccount();
+    await vi.waitFor(() => expect(globalThis.__lastTableOptions?.indicator).toBe(true));
+  });
 });

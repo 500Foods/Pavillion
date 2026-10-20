@@ -68,8 +68,8 @@ export function checkedTitle(iso, timeZone) {
 
 export const NO_SERVER = "(no server)";
 
-/* Group key for an account: the session URL's host, then the whole URL in
-   parentheses; "(no server)" when the URL is empty or does not parse. */
+/* Group key for an account: the session URL's host only (TABULATOR.md
+   Table look); "(no server)" when the URL is empty or does not parse. */
 export function serverGroup(sessionUrl) {
   const text = typeof sessionUrl === "string" ? sessionUrl.trim() : "";
   if (text === "") {
@@ -84,7 +84,7 @@ export function serverGroup(sessionUrl) {
   if (url.hostname === "") {
     return NO_SERVER;
   }
-  return `${url.hostname} (${text})`;
+  return url.hostname;
 }
 
 /* The footer: "1 account", "3 accounts". */
@@ -92,8 +92,15 @@ export function accountCountText(count) {
   return count === 1 ? "1 account" : `${count} accounts`;
 }
 
-/* A group header row: the server label and the count, built with textContent. */
+/* A group header row: chevron toggle, the host, and a count badge, built
+   with textContent. The chevron turns by CSS when the group closes. */
 export function serverGroupHeader(value, count, documentRef = globalThis.document) {
+  const toggle = documentRef.createElement("span");
+  toggle.className = "pav-group-toggle";
+  toggle.setAttribute("aria-hidden", "true");
+  const chevron = documentRef.createElement("i");
+  chevron.className = "icon fa-sharp-duotone fa-solid fa-chevron-down";
+  toggle.append(chevron);
   const span = documentRef.createElement("span");
   span.className = "pav-group-label";
   span.textContent = value;
@@ -103,7 +110,7 @@ export function serverGroupHeader(value, count, documentRef = globalThis.documen
   num.title = accountCountText(count);
   const wrap = documentRef.createElement("span");
   wrap.className = "pav-group";
-  wrap.append(span, num);
+  wrap.append(toggle, span, num);
   return wrap;
 }
 
@@ -169,7 +176,22 @@ export function exportFields(columns) {
 
 const yesNo = (value) => (value === true ? "yes" : "no");
 
-export function accountColumns(documentRef = globalThis.document) {
+/* Columns the chooser lists (TABULATOR.md Column chooser); Name is locked. */
+export const CHOOSER_COLUMNS = [
+  { field: "number", title: "Number" },
+  { field: "account", title: "Icon" },
+  { field: "name", title: "Name", locked: true },
+  ...FEATURES.map((f) => ({ field: f.key, title: f.title })),
+];
+
+/* Stored hidden fields, keeping only known, unlocked chooser fields. */
+export function cleanHidden(hidden) {
+  const allowed = new Set(CHOOSER_COLUMNS.filter((c) => !c.locked).map((c) => c.field));
+  return Array.isArray(hidden) ? [...new Set(hidden.filter((f) => allowed.has(f)))] : [];
+}
+
+export function accountColumns(documentRef = globalThis.document, hidden = []) {
+  const off = new Set(cleanHidden(hidden));
   const columns = [
     {
       title: "#",
@@ -242,6 +264,11 @@ export function accountColumns(documentRef = globalThis.document) {
         return wrap;
       },
     });
+  }
+  for (const column of columns) {
+    if (off.has(column.field)) {
+      column.visible = false;
+    }
   }
   columns.push({ title: "Email", field: "email", visible: false, download: true });
   return columns;

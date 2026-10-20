@@ -28,7 +28,7 @@ vi.mock("tabulator-tables", () => {
       return Promise.resolve();
     }
     getRow(id) {
-      return this.options.data.find((r) => r.id === id) ? { id } : false;
+      return this.options.data.find((r) => r.id === id) ? { id, reformat: () => this.calls.push(["reformat", id]) } : false;
     }
     selectRow(id) {
       if (this.options.selectableRowsCheck && !this.options.selectableRowsCheck()) {
@@ -72,11 +72,13 @@ vi.mock("tabulator-tables", () => {
     SelectRowModule: mod("selectRow"),
     ExportModule: mod("export"),
     DownloadModule: mod("download"),
+    FilterModule: mod("filter"),
+    FrozenColumnsModule: mod("frozenColumns"),
     TabulatorFull: "full",
   };
 });
 
-import { createTable, modulesFor, sortIcon } from "./table.js";
+import { createTable, indicatorColumn, INDICATOR_FIELD, INDICATOR_WIDTH, modulesFor, sortIcon } from "./table.js";
 import { accountColumns } from "../settings/accounts-table.js";
 
 test("a plain table registers only the base modules, fills its element, and loads data once", async () => {
@@ -135,7 +137,8 @@ test("the accounts options: tri-state FA sort, table calcs, single select, group
   expect(t.options.columnCalcs).toBe("table");
   expect(t.options.selectableRows).toBe(1);
   expect(t.options.footerElement).toBe(footer);
-  expect(t.options.groupToggleElement).toBe(false);
+  expect(t.options.groupToggleElement).toBe("header");
+  expect(t.options.groupStartOpen).toBe(true);
   expect(t.options.downloadRowRange).toBe("all");
   expect(t.options.downloadConfig).toEqual({ rowGroups: false, columnCalcs: false });
   expect(el.tabIndex).toBe(0);
@@ -165,4 +168,52 @@ test("the accounts table fills its width with Name and keeps the other columns n
     expect(column.width).toBeLessThanOrEqual(104);
     expect(column.resizable).toBe(false);
   }
+});
+
+test("indicatorColumn: narrow, frozen, unsortable, not exported, no calc; icons by state", () => {
+  const states = { a: "current", b: "editing" };
+  const col = indicatorColumn((id) => states[id] || null);
+  expect(col).toMatchObject({ field: INDICATOR_FIELD, width: INDICATOR_WIDTH, frozen: true, headerSort: false, resizable: false, download: false });
+  expect(col.bottomCalc).toBeUndefined();
+  expect(col.titleFormatter().className).toBe("fa-sharp-duotone fa-solid fa-ellipsis-vertical");
+  const cell = (id) => ({ getRow: () => ({ getData: () => ({ id }) }) });
+  expect(col.formatter(cell("a")).className).toContain("fa-caret-right");
+  expect(col.formatter(cell("b")).className).toContain("fa-pen");
+  expect(col.formatter(cell("c"))).toBe("");
+});
+
+test("the indicator option adds the frozen first column and follows select and setRowState", async () => {
+  expect(modulesFor({ columns: [], indicator: true })).toContain("FrozenColumnsModule");
+  expect(modulesFor({ columns: [{ field: "a", headerSort: false }] })).not.toContain("FrozenColumnsModule");
+  const el = document.createElement("div");
+  const data = [{ id: "a" }, { id: "b" }];
+  const before = made.length;
+  const handle = createTable(el, { indicator: true, select: true, columns: [{ field: "n", headerSort: false }], data });
+  await vi.waitFor(() => expect(made.length).toBe(before + 1));
+  const t = made.at(-1);
+  expect(t.options.columns.map((c) => c.field)).toEqual([INDICATOR_FIELD, "n"]);
+  t.handlers.tableBuilt();
+  const ind = t.options.columns[0];
+  const icon = (id) => {
+    const out = ind.formatter({ getRow: () => ({ getData: () => ({ id }) }) });
+    return out === "" ? "" : out.className.split(" ").at(-1);
+  };
+  expect(icon("a")).toBe("");
+  handle.select("a");
+  expect(icon("a")).toBe("fa-caret-right");
+  handle.select("b");
+  expect(icon("a")).toBe("");
+  expect(icon("b")).toBe("fa-caret-right");
+  expect(t.calls.filter((c) => c[0] === "reformat").map((c) => c[1])).toEqual(["a", "a", "b"]);
+  handle.setRowState("a", "editing");
+  expect(icon("a")).toBe("fa-pen");
+  expect(handle.rowState("a")).toBe("editing");
+  handle.setRowState("a", null);
+  expect(icon("a")).toBe("");
+  handle.destroy();
+});
+
+test("without the option there is no indicator column", () => {
+  const cols = accountColumns(document);
+  expect(cols.some((c) => c.field === INDICATOR_FIELD)).toBe(false);
 });

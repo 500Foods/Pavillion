@@ -38,7 +38,7 @@ export const NAV_BUTTONS = [
   { action: "last", icon: "fa-forward-step", label: "Last" },
 ];
 
-/* options: { title, label, actions: [spec], search: { label, placeholder,
+/* options: { title, label, actions: [spec], tools: [spec] (right side, before search), search: { label, placeholder,
    onInput(value) }, after: [spec] }. Returns the bar element. */
 export function moduleToolbar(options, documentRef = globalThis.document) {
   const bar = documentRef.createElement("div");
@@ -55,6 +55,9 @@ export function moduleToolbar(options, documentRef = globalThis.document) {
   const spacer = documentRef.createElement("span");
   spacer.className = "pav-module-spacer";
   bar.append(spacer);
+  for (const spec of options.tools || []) {
+    bar.append(iconButton(spec, documentRef));
+  }
   if (options.search) {
     const input = documentRef.createElement("input");
     input.type = "search";

@@ -9,6 +9,24 @@
   --pav-font-mono: ui-monospace, monospace;
   --pav-icon-glow: #cc9999;
   --pav-account-icon: #ffffff; /* icon drawn on an account color swatch */
+  /* Tables (Tabulator, TABULATOR.md Table look). */
+  --pav-table-header-bg: #0c0505;
+  --pav-table-header-fg: #c8c8c8;
+  --pav-table-row-bg: transparent;
+  --pav-table-row-alt-bg: rgb(255 255 255 / 3%);
+  --pav-table-row-hover-bg: #1c0a0a;
+  --pav-table-selected-bg: #800000;
+  --pav-table-selected-fg: #ffffff;
+  --pav-table-group-bg: #2a1010;
+  --pav-table-group-fg: #f0f0f0;
+  --pav-table-group-count-bg: #5a2020;
+  --pav-table-group-count-fg: #ffffff;
+  --pav-table-border: #333;
+  --pav-table-footer-bg: #0c0505;
+  --pav-table-footer-fg: #9a9a9a;
+  --pav-table-sort-icon: #cc9999;
+  --pav-table-group-toggle: #cc9999;
+  --pav-table-indicator: #e06666;
   --pav-surface-nav: linear-gradient(160deg, #160808 0%, #000 70%);
   --pav-surface-workspace: linear-gradient(160deg, #100606 0%, #000 78%);
   --pav-surface-list: linear-gradient(160deg, #140707 0%, #000 74%);

@@ -1754,12 +1754,12 @@
   padding-top: 0.2em;
 }
 
-/* N Lock, Shared table component: Tabulator drawn only from --pav-* (no
-   Tabulator stylesheet). The structural rules Tabulator needs come first. */
+/* N Lock, Shared table component: Tabulator drawn only from --pav-table-*
+   (TABULATOR.md Table look; no Tabulator stylesheet). Structure first. */
 .pav-root .pav-table {
   position: relative;
   overflow: hidden;
-  background: transparent;
+  background: var(--pav-table-row-bg);
   color: var(--pav-text);
   font: inherit;
   border: 0;
@@ -1767,8 +1767,9 @@
 .pav-root .pav-table .tabulator-header {
   position: relative;
   overflow: hidden;
-  border-bottom: 1px solid var(--pav-border);
-  color: var(--pav-text-muted);
+  border-bottom: 1px solid var(--pav-table-border);
+  background: var(--pav-table-header-bg);
+  color: var(--pav-table-header-fg);
   white-space: nowrap;
 }
 .pav-root .pav-table .tabulator-header-contents,
@@ -1787,6 +1788,25 @@
   padding: 0.3rem 0.4rem;
   text-align: left;
   user-select: none;
+}
+/* One-line header: the sort icon sits inline after the title. */
+.pav-root .pav-table .tabulator-col-content,
+.pav-root .pav-table .tabulator-col-title-holder {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.pav-root .pav-table .tabulator-col-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pav-root .pav-table .tabulator-col-sorter {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
 }
 .pav-root .pav-table .tabulator-col-resize-handle {
   position: absolute;
@@ -1811,13 +1831,19 @@
   position: relative;
   box-sizing: border-box;
   cursor: pointer;
-  border-bottom: 1px solid var(--pav-border);
+  background: var(--pav-table-row-bg);
+  border-bottom: 1px solid var(--pav-table-border);
+}
+.pav-root .pav-table .tabulator-row.tabulator-row-even {
+  background: var(--pav-table-row-alt-bg);
 }
 .pav-root .pav-table .tabulator-row:hover {
-  background: var(--pav-surface-button);
+  background: var(--pav-table-row-hover-bg);
 }
-.pav-root .pav-table .tabulator-row.pav-row-selected {
-  background: var(--pav-surface-button-active);
+.pav-root .pav-table .tabulator-row.pav-row-selected,
+.pav-root .pav-table .tabulator-row.tabulator-selected {
+  background: var(--pav-table-selected-bg);
+  color: var(--pav-table-selected-fg);
 }
 .pav-root .pav-table .tabulator-cell {
   position: relative;
@@ -1831,67 +1857,134 @@
 }
 .pav-root .pav-table .tabulator-placeholder {
   padding: 0.75rem;
-  color: var(--pav-text-muted);
+  color: var(--pav-table-footer-fg);
 }
 
-/* Group header rows (groupBy) and the table footer. */
+/* Group header rows: host, count badge, chevron toggle (whole row). */
 .pav-root .pav-table .tabulator-row.tabulator-group {
   display: flex;
   align-items: center;
   gap: 0.4rem;
   padding: 0.3rem 0.4rem;
-  cursor: default;
-  color: var(--pav-text-muted);
-  background: var(--pav-surface-button);
+  cursor: pointer;
+  color: var(--pav-table-group-fg);
+  background: var(--pav-table-group-bg);
+  font-weight: 600;
   white-space: nowrap;
+  overflow: hidden;
+}
+.pav-root .pav-table .tabulator-row.tabulator-group:hover {
+  background: var(--pav-table-group-bg);
+}
+.pav-root .pav-table .tabulator-group-toggle {
+  display: none;
+}
+.pav-root .pav-table .pav-group {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.pav-root .pav-table .pav-group-toggle {
+  display: inline-flex;
+  flex: none;
+  color: var(--pav-table-group-toggle);
+  transition: transform 0.12s ease;
+}
+.pav-root .pav-table .tabulator-group:not(.tabulator-group-visible) .pav-group-toggle {
+  transform: rotate(-90deg);
+}
+/* Row indicator column (TABULATOR.md): frozen, centred icon, no padding. */
+.pav-root .pav-table .tabulator-cell.pav-table-indicator,
+.pav-root .pav-table .tabulator-col.pav-table-indicator .tabulator-col-content {
+  padding: 0;
+  text-align: center;
+  justify-content: center;
+}
+.pav-root .pav-table .tabulator-cell.pav-table-indicator {
+  color: var(--pav-table-indicator);
+  background: inherit;
+}
+.pav-root .pav-table .tabulator-row.tabulator-selected .tabulator-cell.pav-table-indicator,
+.pav-root .pav-table .tabulator-row.pav-row-selected .tabulator-cell.pav-table-indicator {
+  color: var(--pav-table-selected-fg);
+}
+.pav-root .pav-table .tabulator-col.pav-table-indicator {
+  color: var(--pav-table-header-fg);
+}
+.pav-root .pav-table .pav-group-label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .pav-root .pav-table .pav-group-count {
   margin-left: auto;
+  flex: none;
+  min-width: 1.4em;
+  padding: 0 0.45em;
+  border-radius: 0.7em;
+  background: var(--pav-table-group-count-bg);
+  color: var(--pav-table-group-count-fg);
+  font-size: 0.8em;
+  font-weight: 400;
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }
 .pav-root .pav-table .pav-table-footer {
   padding: 0.3rem 0.4rem;
-  color: var(--pav-text-muted);
-}
-
-/* K-Q12: selection, sort icons, the calc row, and the navigator footer. */
-.pav-root .pav-table .tabulator-row.tabulator-selected {
-  background: var(--pav-surface-button-active);
+  color: var(--pav-table-footer-fg);
 }
 .pav-root .pav-table:focus-visible {
-  outline: 1px solid var(--pav-border);
+  outline: 1px solid var(--pav-table-border);
   outline-offset: -1px;
-}
-.pav-root .pav-table .tabulator-col-content {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
 }
 .pav-root .pav-table .tabulator-col.tabulator-sortable {
   cursor: pointer;
 }
-.pav-root .pav-table .tabulator-col-sorter {
-  display: inline-flex;
-  align-items: center;
-}
 .pav-root .pav-table .pav-sort-icon {
   font-size: 0.75em;
-  color: var(--pav-text-muted);
+  color: var(--pav-table-sort-icon);
 }
 .pav-root .pav-table .tabulator-footer {
   flex: none;
-  border-top: 1px solid var(--pav-border);
+  border-top: 1px solid var(--pav-table-border);
+  background: var(--pav-table-footer-bg);
 }
 .pav-root .pav-table .tabulator-calcs-holder .tabulator-row {
   cursor: default;
   border-bottom: 0;
-  color: var(--pav-text-muted);
+  background: var(--pav-table-footer-bg);
+  color: var(--pav-table-footer-fg);
   font-variant-numeric: tabular-nums;
 }
 .pav-root .pav-table .tabulator-calcs-holder .tabulator-row:hover {
-  background: transparent;
+  background: var(--pav-table-footer-bg);
+}
+
+/* Column chooser popover (TABULATOR.md). */
+.pav-root .pav-column-chooser {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 11rem;
+  padding: 0.4rem;
+  border: 1px solid var(--pav-table-border);
+  background: var(--pav-table-header-bg);
+  color: var(--pav-table-header-fg);
+}
+.pav-root .pav-column-chooser label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.2rem 0.3rem;
+  cursor: pointer;
+}
+.pav-root .pav-column-chooser button {
+  margin-top: 0.3rem;
+  align-self: flex-start;
 }
 
 /* K-Q8 and K-Q9: account swatch, Mail badges, interim icon chooser. */

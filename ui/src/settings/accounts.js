@@ -1,11 +1,14 @@
-import { createTable } from "../common/table.js";
+import { createTable, INDICATOR_WIDTH } from "../common/table.js";
 import { accountSwatch, ICON_CHOICES, iconChoice, iconSnippet } from "./account-icon.js";
 import { moduleFooter, moduleToolbar, mountBar, paintFooterNav } from "../common/module-bar.js";
+import { openColumnChooser } from "../common/column-chooser.js";
 import {
   accountColumns,
   accountMatches,
   accountRows,
   accountsCsv,
+  CHOOSER_COLUMNS,
+  cleanHidden,
   cloneAccount,
   navTarget,
   serverGroupHeader,
@@ -180,12 +183,10 @@ export function createAccountsView(api, root, options = {}) {
     const rows = accountRows(accounts, timeZone());
     if (!table) {
       treeEl.replaceChildren();
-      const columns = accountColumns(document);
-      const pane = treeEl.closest(".accounts-tree-pane");
-      if (pane) {
-        pane.style.minWidth = `${tableMinWidth(columns) + 2}px`;
-      }
+      const columns = accountColumns(document, hiddenColumns());
+      sizePane(columns);
       table = createTable(treeEl, {
+        indicator: true,
         columns,
         data: rows,
         rowId: "id",
@@ -213,6 +214,40 @@ export function createAccountsView(api, root, options = {}) {
 
   /* D-10: the module footer navigator, Export, and Clone follow the shown
      rows and the selection. */
+  /* Column chooser (TABULATOR.md): hidden fields from preferences.ui.tables.accounts. */
+  function hiddenColumns() {
+    return cleanHidden(typeof options.tableHidden === "function" ? options.tableHidden("accounts") : []);
+  }
+
+  function sizePane(columns) {
+    const pane = root.querySelector(".accounts-tree-pane");
+    if (pane) {
+      pane.style.minWidth = `${tableMinWidth(columns) + INDICATOR_WIDTH + 2}px`;
+    }
+  }
+
+  function chooseColumns(anchor) {
+    openColumnChooser(anchor, {
+      label: "Account columns",
+      columns: CHOOSER_COLUMNS,
+      hidden: hiddenColumns(),
+      onChange(hidden) {
+        const next = cleanHidden(hidden);
+        if (typeof options.saveTableHidden === "function") {
+          options.saveTableHidden("accounts", next);
+        }
+        if (table) {
+          for (const column of CHOOSER_COLUMNS) {
+            if (!column.locked) {
+              table.setColumnVisible(column.field, !next.includes(column.field));
+            }
+          }
+        }
+        sizePane(accountColumns(document, next));
+      },
+    });
+  }
+
   function paintNavState() {
     const ids = table ? table.ids() : [];
     if (footerEl) {
@@ -305,6 +340,7 @@ export function createAccountsView(api, root, options = {}) {
         { id: "account-clone", action: "clone", icon: "fa-clone", text: "Clone", label: "Clone the selected account", onClick: cloneSelected },
         { id: "account-delete", action: "delete", icon: "fa-trash", text: "Delete", label: "Delete the selected account", onClick: () => void removeSelected() },
       ],
+      tools: [{ id: "accounts-columns", action: "columns", icon: "fa-table-columns", label: "Columns", onClick: () => chooseColumns(root.querySelector("#accounts-columns")) }],
       search: { id: "accounts-search", label: "Search accounts", placeholder: "Search accounts", onInput: applySearch },
     }, document));
     footerEl = mountBar(root.querySelector("#accounts-footer"), moduleFooter({

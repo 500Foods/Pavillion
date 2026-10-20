@@ -918,6 +918,7 @@ async function loadPrefs() {
   ui.rail = stored.rail;
   ui.chords = stored.chords;
   ui.trees = stored.trees || {};
+  ui.tables = stored.tables && typeof stored.tables === "object" && !Array.isArray(stored.tables) ? stored.tables : {};
   paintFeatures();
   ui.session = stored.session;
   sessionSnapshot = JSON.stringify(ui.session);
@@ -2718,6 +2719,14 @@ export async function startShell(surface, nextApi, nextHost, result) {
   mountRoot.addEventListener("click", onHelpJump);
   accountsView = createAccountsView(api, mountRoot, {
     host,
+    tableHidden(id) {
+      const entry = ui.tables && ui.tables[id];
+      return entry && Array.isArray(entry.hidden) ? entry.hidden : [];
+    },
+    saveTableHidden(id, hidden) {
+      ui.tables = { ...(ui.tables || {}), [id]: { hidden } };
+      persistLayout();
+    },
     timeZone: () => logTimeZone,
     confirm(text, name) {
       if (!widgets) {
