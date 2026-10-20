@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
+#include "pav_secret.h"
 #include "pav_auth.h"
 #include "pav_cfg.h"
 #include "pavillion.h"
@@ -92,34 +93,36 @@ static int auth_basic_apply(const PavAccount *account, PavReq *req, PavSecret *s
     enc_len = b64_encoded_len(raw_len);
     encoded = malloc(enc_len + 1);
     if (encoded == NULL) {
+        pav_secret_wipe(raw, raw_len);
         free(raw);
         return -1;
     }
     b64_encode(encoded, (const unsigned char *)raw, raw_len);
+    pav_secret_wipe(raw, raw_len);
     free(raw);
 
     header_len = sizeof(k_auth_scheme_basic) + 1 + enc_len;
     header = malloc(header_len);
     if (header == NULL) {
-        free(encoded);
+        pav_secret_free(encoded);
         return -1;
     }
     snprintf(header, header_len, "%s %s", k_auth_scheme_basic, encoded);
-    free(encoded);
+    pav_secret_free(encoded);
 
     if (req->headers == NULL) {
         req->headers = json_object();
         if (req->headers == NULL) {
-            free(header);
+            pav_secret_free(header);
             return -1;
         }
     }
     if (!json_is_object(req->headers) ||
         json_object_set_new(req->headers, "Authorization", json_string(header)) != 0) {
-        free(header);
+        pav_secret_free(header);
         return -1;
     }
-    free(header);
+    pav_secret_free(header);
     return 0;
 }
 

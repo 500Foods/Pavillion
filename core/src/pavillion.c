@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
+#include "account.h"
 #include "dispatch.h"
 #include "pav_logdb.h"
 #include "logring.h"
@@ -290,6 +291,12 @@ static void core_boot(void) {
         return;
     }
     pav_log("core", PAV_INFO, 3, "profile %s attaching (engine %s, timezone %s)", profile->id, profile->engine, profile->timezone);
+    {
+        int filled = pav_account_migrate_email((json_t *)profile->doc);
+        if (filled > 0) {
+            pav_log("account", PAV_INFO, 1, "%d accounts got an email or icon field (K-Q6, K-Q9)", filled);
+        }
+    }
     if (pav_profile_check_engine(profile, err, sizeof(err)) != 0) {
         publish_boot("error", profile->name, profile->id, err);
         return;
@@ -1985,8 +1992,9 @@ static void abs_after_ms(struct timespec *ts, int ms) {
     }
 }
 
-/* stderr gets WARN and ERROR always, and every level only before any
-   workdir exists (H-4 Lock). The test sink keeps stderr quiet. */
+/* stderr only when no database can hold the line: before any workdir exists
+   or after log.db failed to open, every level (H Lock, 2026-10-19: logs go
+   to the database only). The test sink keeps stderr quiet. */
 static int stderr_too_unlocked(int level) {
     if (g_log_dest == LOG_DEST_EXPLICIT) {
         return 0;
@@ -1994,7 +2002,8 @@ static int stderr_too_unlocked(int level) {
     if (g_log_dest == LOG_DEST_NONE) {
         return 1;
     }
-    return level <= PAV_WARN;
+    (void)level;
+    return 0;
 }
 
 static void emit_line_unlocked(int level, const char *line) {

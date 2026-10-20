@@ -1,12 +1,12 @@
-/* The Log view's time range (H-4 Lock, Time range). Presets are 12h (the
-   default), 24h, 7d, and all; Custom is {since, until} in UTC ms. The range
+/* The Log view's time range (H-4 Lock, Time range). Presets are 1h, 3h, 6h,
+   12h (the default), 24h, 7d, and all; Custom is {since, until} in UTC ms. The range
    is kept in preferences.ui.log.range. */
 
-export const RANGE_PRESETS = ["12h", "24h", "7d", "all"];
+export const RANGE_PRESETS = ["1h", "3h", "6h", "12h", "24h", "7d", "all"];
 export const DEFAULT_RANGE = "12h";
 
 const HOUR = 60 * 60 * 1000;
-const SPAN = { "12h": 12 * HOUR, "24h": 24 * HOUR, "7d": 7 * 24 * HOUR };
+const SPAN = { "1h": HOUR, "3h": 3 * HOUR, "6h": 6 * HOUR, "12h": 12 * HOUR, "24h": 24 * HOUR, "7d": 7 * 24 * HOUR };
 
 function msOrNull(value) {
   return Number.isInteger(value) && value >= 0 ? value : null;

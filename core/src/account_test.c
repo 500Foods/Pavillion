@@ -93,39 +93,87 @@ static int resolve_location(const char *base, const char *loc, char *out, size_t
     return (n < 0 || (size_t)n >= len) ? -1 : 0;
 }
 
+/* One request's state, shared by the waiter and the net thread (API Lock,
+   2026-10-19). Freed by whichever lets go last, so a reply that comes after
+   the waiter gave up lands in live memory and is dropped. */
+typedef struct ReqCtx {
+    TestWait w;     /* mu and cv guard everything here */
+    PavReq req;
+    char url[2048];
+    int refs;
+    int abandoned;
+} ReqCtx;
+
+static int g_wait_ms = 30000;
+
+void pav_account_set_wait_ms(int ms) {
+    g_wait_ms = ms > 0 ? ms : 30000;
+}
+
+static void req_ctx_release(ReqCtx *c) {
+    int last;
+
+    pthread_mutex_lock(&c->w.mu);
+    last = --c->refs == 0;
+    pthread_mutex_unlock(&c->w.mu);
+    if (!last) return;
+    if (c->req.headers != NULL) {
+        pav_secret_wipe_json(c->req.headers, "Authorization");
+        json_decref(c->req.headers);
+    }
+    free(c->w.body);
+    pthread_mutex_destroy(&c->w.mu);
+    pthread_cond_destroy(&c->w.cv);
+    free(c);
+}
+
 static void account_test_done(PavReq *req, void *user) {
-    TestWait *w = (TestWait *)user;
+    ReqCtx *c = (ReqCtx *)user;
+    TestWait *w = &c->w;
+    int abandoned;
 
     pthread_mutex_lock(&w->mu);
-    w->done = 1;
-    w->status_code = req->status_code;
-    if (req->body_out != NULL) {
-        w->body = strdup(req->body_out);
-        w->body_len = req->body_out_len;
-    }
-    if (req->resp_headers != NULL) {
-        const char *hkey;
-        json_t *hval;
+    abandoned = c->abandoned;
+    if (!abandoned) {
+        w->done = 1;
+        w->status_code = req->status_code;
+        if (req->body_out != NULL) {
+            w->body = strdup(req->body_out);
+            w->body_len = req->body_out_len;
+        }
+        if (req->resp_headers != NULL) {
+            const char *hkey;
+            json_t *hval;
 
-        json_object_foreach(req->resp_headers, hkey, hval) {
-            if (!json_is_string(hval)) continue;
-            if (strcasecmp(hkey, "Location") == 0) {
-                snprintf(w->location, sizeof(w->location), "%s", json_string_value(hval));
-            } else if (strcasecmp(hkey, "Content-Type") == 0) {
-                snprintf(w->content_type, sizeof(w->content_type), "%s", json_string_value(hval));
+            json_object_foreach(req->resp_headers, hkey, hval) {
+                if (!json_is_string(hval)) continue;
+                if (strcasecmp(hkey, "Location") == 0) {
+                    snprintf(w->location, sizeof(w->location), "%s", json_string_value(hval));
+                } else if (strcasecmp(hkey, "Content-Type") == 0) {
+                    snprintf(w->content_type, sizeof(w->content_type), "%s", json_string_value(hval));
+                }
             }
         }
+        pthread_cond_broadcast(&w->cv);
     }
-    pthread_cond_broadcast(&w->cv);
     pthread_mutex_unlock(&w->mu);
-    pav_log("account", PAV_DEBUG, 1, "test response %d", req->status_code);
+    if (abandoned) {
+        char host[256];
+        pav_account_test_host(c->url, host, sizeof(host));
+        pav_log("account", PAV_DEBUG, 2, "late reply dropped (%d from %s)", req->status_code, host);
+    } else {
+        pav_log("account", PAV_DEBUG, 1, "test response %d", req->status_code);
+    }
 
     if (req->resp_headers != NULL) {
         json_decref(req->resp_headers);
         req->resp_headers = NULL;
     }
     pav_net_free(req->body_out);
+    req->body_out = NULL;
+    req_ctx_release(c);
 }
+
 
 /* "scheme://host:port", lowercased, with the scheme's default port filled in. */
 static void origin_key(const char *url, char *out, size_t len) {
@@ -173,15 +221,14 @@ static int looks_like_web_page(const TestWait *w) {
 
 /* GET the session at initial_url, following up to 3 https redirects. The
    Authorization header (NULL: none) is dropped once a redirect changes scheme,
-   host, or port. final_url gets the URL that answered. Net must be started. */
+   host, or port. final_url gets the URL that answered; *auth_sent (may be NULL)
+   is 1 when that answer was fetched with Authorization. Net must be started. */
 static int fetch_session(const char *initial_url, const char *auth_header, const char *ca_file,
-                         int single_attempt,
+                         int single_attempt, int *auth_sent,
                          char *final_url, size_t final_len, PavJmapSession *session,
                          PavError *err) {
     char current_url[2048];
-    char full_url[2048];
     char errbuf[512];
-    PavReq req;
     TestWait w;
     int rc;
     int ret = -1;
@@ -190,39 +237,45 @@ static int fetch_session(const char *initial_url, const char *auth_header, const
     const int max_requests = 4; /* the first request and at most 3 redirects */
 
     memset(&w, 0, sizeof(w));
-    memset(&req, 0, sizeof(req));
-    pthread_mutex_init(&w.mu, NULL);
-    pthread_cond_init(&w.cv, NULL);
     snprintf(current_url, sizeof(current_url), "%s", initial_url);
 
     for (redirects = 0; redirects < max_requests; redirects++) {
-        w.done = 0;
-        w.status_code = 0;
-        w.location[0] = '\0';
-        w.content_type[0] = '\0';
-        free(w.body);
-        w.body = NULL;
-        w.body_len = 0;
+        ReqCtx *c;
+        int got;
 
-        memset(&req, 0, sizeof(req));
-        req.method = "GET";
-        snprintf(full_url, sizeof(full_url), "%s", current_url);
-        req.url = full_url;
-        req.ca_file = ca_file;
-        req.on_done = account_test_done;
-        req.user = &w;
-        if (single_attempt) req.retry_count = PAV_NET_RETRY_MAX - 1;
-        req.headers = json_object();
-        if (req.headers == NULL) {
+        free(w.body);
+        memset(&w, 0, sizeof(w));
+
+        c = calloc(1, sizeof(*c));
+        if (c == NULL) {
+            pav_error_set(err, "internal", "out of memory", 0);
+            goto done;
+        }
+        pthread_mutex_init(&c->w.mu, NULL);
+        pthread_cond_init(&c->w.cv, NULL);
+        c->refs = 1;
+        snprintf(c->url, sizeof(c->url), "%s", current_url);
+        c->req.method = "GET";
+        c->req.url = c->url;
+        c->req.ca_file = ca_file;
+        c->req.on_done = account_test_done;
+        c->req.user = c;
+        if (single_attempt) c->req.retry_count = PAV_NET_RETRY_MAX - 1;
+        c->req.headers = json_object();
+        if (c->req.headers == NULL) {
+            req_ctx_release(c);
             pav_error_set(err, "internal", "out of memory", 0);
             goto done;
         }
         if (send_auth) {
-            json_object_set_new(req.headers, "Authorization", json_string(auth_header));
+            json_object_set_new(c->req.headers, "Authorization", json_string(auth_header));
         }
 
-        rc = pav_net_request(&req);
+        c->refs = 2; /* this waiter and the net thread */
+        rc = pav_net_request(&c->req);
         if (rc != 0) {
+            c->refs = 1;
+            req_ctx_release(c);
             pav_error_set(err, "internal", "cannot queue request", 0);
             goto done;
         }
@@ -230,20 +283,40 @@ static int fetch_session(const char *initial_url, const char *auth_header, const
         {
             struct timespec ts;
             clock_gettime(CLOCK_REALTIME, &ts);
-            ts.tv_sec += 30;
-            pthread_mutex_lock(&w.mu);
-            while (!w.done) {
-                int r = pthread_cond_timedwait(&w.cv, &w.mu, &ts);
+            ts.tv_sec += g_wait_ms / 1000;
+            ts.tv_nsec += (long)(g_wait_ms % 1000) * 1000000L;
+            if (ts.tv_nsec >= 1000000000L) {
+                ts.tv_sec++;
+                ts.tv_nsec -= 1000000000L;
+            }
+            pthread_mutex_lock(&c->w.mu);
+            while (!c->w.done) {
+                int r = pthread_cond_timedwait(&c->w.cv, &c->w.mu, &ts);
                 if (r == ETIMEDOUT) break;
             }
-            pthread_mutex_unlock(&w.mu);
+            got = c->w.done;
+            if (got) {
+                /* Take the reply; the context keeps nothing the waiter needs. */
+                w.done = 1;
+                w.status_code = c->w.status_code;
+                w.body = c->w.body;
+                w.body_len = c->w.body_len;
+                memcpy(w.location, c->w.location, sizeof(w.location));
+                memcpy(w.content_type, c->w.content_type, sizeof(w.content_type));
+                c->w.body = NULL;
+            } else {
+                /* Give up: the net thread may still answer; it drops the reply. */
+                c->abandoned = 1;
+                c->req.cancelled = 1;
+            }
+            pthread_mutex_unlock(&c->w.mu);
         }
-        json_decref(req.headers);
-        req.headers = NULL;
+        req_ctx_release(c);
 
-        if (!w.done) {
+        if (!got) {
             pav_error_set(err, "network", "the session request timed out", 1);
             goto done;
+
         }
 
         if (w.status_code == 302 || w.status_code == 301 ||
@@ -310,15 +383,13 @@ static int fetch_session(const char *initial_url, const char *auth_header, const
         goto done;
     }
     snprintf(final_url, final_len, "%s", current_url);
+    if (auth_sent != NULL) {
+        *auth_sent = send_auth;
+    }
     ret = 0;
 
 done:
-    if (req.headers != NULL) {
-        json_decref(req.headers);
-    }
     free(w.body);
-    pthread_mutex_destroy(&w.mu);
-    pthread_cond_destroy(&w.cv);
     return ret;
 }
 
@@ -368,6 +439,7 @@ static char *b64_encode_basic(const char *username, const char *password) {
     enc_len = ((raw_len + 2) / 3) * 4;
     encoded = malloc(enc_len + 1);
     if (encoded == NULL) {
+        pav_secret_wipe(raw, raw_len);
         free(raw);
         return NULL;
     }
@@ -397,6 +469,7 @@ static char *b64_encode_basic(const char *username, const char *password) {
         }
     }
     encoded[enc_len] = '\0';
+    pav_secret_wipe(raw, raw_len);
     free(raw);
     return encoded;
 }
@@ -407,6 +480,7 @@ static int do_account_test(const char *initial_url, const char *username,
     char final_url[2048];
     PavJmapSession session;
     char *encoded = NULL;
+    int auth_sent = 0;
     char *auth_header = NULL;
     int started = 0;
     int ret = -1;
@@ -431,7 +505,7 @@ static int do_account_test(const char *initial_url, const char *username,
     }
     snprintf(auth_header, 7 + strlen(encoded) + 1, "Basic %s", encoded);
 
-    if (fetch_session(initial_url, auth_header, ca_file, 0, final_url, sizeof(final_url),
+    if (fetch_session(initial_url, auth_header, ca_file, 0, &auth_sent, final_url, sizeof(final_url),
                       &session, err) != 0) {
         goto done;
     }
@@ -458,6 +532,8 @@ static int do_account_test(const char *initial_url, const char *username,
         }
         json_object_set_new(*data, "ok", json_true());
         json_object_set_new(*data, "capabilities", caps_arr);
+        json_object_set_new(*data, "sessionUrl", json_string(final_url));
+        json_object_set_new(*data, "authSent", json_boolean(auth_sent));
         json_object_set_new(*data, "has_mail", json_boolean(session.has_mail));
         json_object_set_new(*data, "has_submission", json_boolean(session.has_submission));
         json_object_set_new(*data, "has_contacts", json_boolean(session.has_contacts));
@@ -484,8 +560,8 @@ done:
         pav_net_stop();
     }
     pav_jmap_session_free(&session);
-    free(auth_header);
-    free(encoded);
+    pav_secret_free(auth_header);
+    pav_secret_free(encoded);
     if (ret != 0 && err->code[0] == '\0') {
         pav_error_set(err, "internal", "account.test failed", 0);
     }
@@ -581,14 +657,6 @@ int pav_account_test(json_t *args, json_t **data, PavError *err) {
         return -1;
     }
 
-    if (secret == NULL || secret[0] == '\0') {
-        if (pav_account_saved_secret(account_id, &saved, err) != 0) {
-            return -1;
-        }
-        secret = saved;
-        pav_log("account", PAV_DEBUG, 1, "test uses the saved secret of %s", account_id);
-    }
-
     if (ca_file == NULL && pav_ca != NULL && pav_ca[0] != '\0') {
         ca_file = pav_ca;
     }
@@ -602,7 +670,19 @@ int pav_account_test(json_t *args, json_t **data, PavError *err) {
         snprintf(title, sizeof(title), "Test %s", host[0] != '\0' ? host : "account");
         pav_log("account", PAV_DEBUG, 2, "test %s as %s", host, username);
         act = pav_activity_begin("account.test", NULL, title, 0, 0);
-        rc = do_account_test(resolved_url, username, secret, ca_file, data, err);
+        rc = 0;
+        /* The saved-secret lookup can take a second or more (Stronghold
+           unlock), so it runs inside the activity the user sees. */
+        if (secret == NULL || secret[0] == '\0') {
+            rc = pav_account_saved_secret(account_id, &saved, err);
+            secret = saved;
+            if (rc == 0) {
+                pav_log("account", PAV_DEBUG, 1, "test uses the saved secret of %s", account_id);
+            }
+        }
+        if (rc == 0) {
+            rc = do_account_test(resolved_url, username, secret, ca_file, data, err);
+        }
         if (act > 0) {
             pav_activity_end(act, rc == 0 ? PAV_ACT_DONE : PAV_ACT_FAILED, rc == 0 ? NULL : err->message);
         }
@@ -627,7 +707,7 @@ static int discover_try(const char *url, const char *ca_file, char *final_url,
     int rc;
 
     memset(&session, 0, sizeof(session));
-    rc = fetch_session(url, NULL, ca_file, 1, final_url, final_len, &session, err);
+    rc = fetch_session(url, NULL, ca_file, 1, NULL, final_url, final_len, &session, err);
     if (rc == 0 && session.api_url[0] == '\0') {
         pav_error_set(err, "server", "the JMAP session has no apiUrl", 0);
         rc = -1;

@@ -1,14 +1,8 @@
-#define _DEFAULT_SOURCE
 #define _POSIX_C_SOURCE 200809L
 
 #include "platform_internal.h"
 #include "pav_platform.h"
 
-#include <arpa/nameser.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <resolv.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -51,53 +45,6 @@ static void linux_on_network(void (*cb)(void *), void *user) {
     if (g_net == NULL) {
         g_net_user = NULL;
     }
-}
-
-static int linux_srv_lookup(const char *name, char *target, size_t len, int *port) {
-    unsigned char ans[4096];
-    char host[NS_MAXDNAME];
-    ns_msg msg;
-    int n, i, count, found = 0;
-    int best_prio = 65536, best_weight = -1;
-
-    n = res_query(name, ns_c_in, ns_t_srv, ans, sizeof(ans));
-    if (n < 0) {
-        return (h_errno == HOST_NOT_FOUND || h_errno == NO_DATA) ? 1 : -1;
-    }
-    if (ns_initparse(ans, n, &msg) != 0) {
-        return -1;
-    }
-    count = ns_msg_count(msg, ns_s_an);
-    for (i = 0; i < count; i++) {
-        ns_rr rr;
-        const unsigned char *rd;
-        int prio, weight;
-
-        if (ns_parserr(&msg, ns_s_an, i, &rr) != 0 || ns_rr_type(rr) != ns_t_srv ||
-            ns_rr_rdlen(rr) < 7) {
-            continue;
-        }
-        rd = ns_rr_rdata(rr);
-        prio = (int)ns_get16(rd);
-        weight = (int)ns_get16(rd + 2);
-        if (prio > best_prio || (prio == best_prio && weight <= best_weight)) {
-            continue;
-        }
-        if (dn_expand(ns_msg_base(msg), ns_msg_end(msg), rd + 6, host, sizeof(host)) < 0) {
-            continue;
-        }
-        best_prio = prio;
-        best_weight = weight;
-        *port = (int)ns_get16(rd + 4);
-        snprintf(target, len, "%s", host);
-        found = 1;
-    }
-    if (found) {
-        size_t tl = strlen(target);
-        if (tl > 0 && target[tl - 1] == '.') target[tl - 1] = '\0';
-        if (target[0] == '\0') found = 0; /* "." means no service */
-    }
-    return found ? 0 : 1;
 }
 
 static void linux_on_resume(void (*cb)(void *), void *user) {
@@ -168,7 +115,7 @@ static const PavPlatform *linux_platform(void) {
         platform.now_ms = pav_posix_now_ms;
         platform.on_network_change = linux_on_network;
         platform.on_resume = linux_on_resume;
-        platform.srv_lookup = linux_srv_lookup;
+        platform.srv_lookup = pav_os_srv_lookup;
         ready = 1;
     }
     return &platform;

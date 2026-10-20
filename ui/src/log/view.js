@@ -145,7 +145,8 @@ export function createLogView(parent, api, options = {}) {
   let pinning = false;
   let pinTimer = 0;
   let subsystemKey = null;
-  let session = "all";
+  /* Session choice persists in preferences.ui.log.session (H Lock). */
+  let session = filter.session;
   /* UTC stamp of each document line: the document is the local screen line
      (H-4 Lock), the stamp is the hover title. */
   let docStamps = [];
@@ -259,12 +260,12 @@ export function createLogView(parent, api, options = {}) {
   const subsystemItems = document.createElement("div");
   subsystem.panel.append(subsystemAll.label, subsystemNone.label, rule(), subsystemItems);
 
-  /* Time range (H-4 Lock): 12 h, 24 h, 7 d, All, Custom. */
-  const RANGE_LABELS = { "12h": "12 h", "24h": "24 h", "7d": "7 d", all: "All", custom: "Custom" };
+  /* Time range (H-4 Lock): 1 h, 3 h, 6 h, 12 h, 24 h, 7 d, All, Custom. */
+  const RANGE_LABELS = { "1h": "1 h", "3h": "3 h", "6h": "6 h", "12h": "12 h", "24h": "24 h", "7d": "7 d", all: "All", custom: "Custom" };
   const rangeSelect = document.createElement("select");
   rangeSelect.className = "log-range";
   rangeSelect.setAttribute("aria-label", "Time range");
-  for (const value of ["12h", "24h", "7d", "all", "custom"]) {
+  for (const value of ["1h", "3h", "6h", "12h", "24h", "7d", "all", "custom"]) {
     const option = document.createElement("option");
     option.value = value;
     option.textContent = RANGE_LABELS[value];
@@ -341,6 +342,8 @@ export function createLogView(parent, api, options = {}) {
   sessionSelect.value = session;
   sessionSelect.addEventListener("change", () => {
     session = sessionSelect.value;
+    filter.session = session;
+    commit(false);
     if (isOpen) {
       open().catch((err) => report(err));
     }

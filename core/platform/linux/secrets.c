@@ -34,6 +34,7 @@ extern int pav_stronghold_get(const char *path, const unsigned char *password, s
                               const char *user, char **out);
 extern int pav_stronghold_delete(const char *path, const unsigned char *password, size_t password_len,
                                  const char *user);
+extern int pav_stronghold_take_resaved(void);
 
 static int profile_of(const char *user, char *out, size_t len) {
     const char *slash = strchr(user, '/');
@@ -236,4 +237,5 @@ void pav_linux_secret_bind(PavPlatform *platform) {
     platform->secret_get = linux_secret_get;
     platform->secret_set = linux_secret_set;
     platform->secret_delete = linux_secret_delete;
+    platform->secret_resaved = pav_stronghold_take_resaved;
 }

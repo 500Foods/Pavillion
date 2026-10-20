@@ -60,7 +60,10 @@ fn core_data(cmd: &str, args: &Value) -> Result<Value, Value> {
     let c_cmd = CString::new(cmd).map_err(|_| fail("bad_args", "command contains NUL"))?;
     let c_args = CString::new(args_text).map_err(|_| fail("bad_args", "arguments contain NUL"))?;
     let mut result: *mut c_char = std::ptr::null_mut();
-    if unsafe { pavillion_call(c_cmd.as_ptr(), c_args.as_ptr(), &mut result) } != 0 || result.is_null() {
+    let rc = unsafe { pavillion_call(c_cmd.as_ptr(), c_args.as_ptr(), &mut result) };
+    // K Lock: the arguments may carry a typed password; wipe the copy now.
+    zeroize::Zeroize::zeroize(&mut c_args.into_bytes());
+    if rc != 0 || result.is_null() {
         return Err(fail("internal", "core produced no reply"));
     }
     let text = unsafe { CStr::from_ptr(result) }.to_string_lossy().into_owned();

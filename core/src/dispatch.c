@@ -19,6 +19,8 @@
 #include <string.h>
 
 #define PAV_CMD_WORKER 1u
+/* Network-bound (H Lock): slow-command WARN only past PAV_SLOW_NET_COMMAND_MS. */
+#define PAV_CMD_NET 2u
 #define EVENT_QUEUE_CAP 256
 #define EVENT_NAME_MAX 64
 #define EVENT_JSON_MAX 65536
@@ -57,11 +59,11 @@ int pav_cmd_secret_smoke(json_t *args, json_t **data, PavError *err);
 /* strcmp order. bsearch requires it. */
 static const PavCommand k_commands[] = {
     {"account.add", pav_account_add, 0},
-    {"account.discover", pav_account_discover, PAV_CMD_WORKER},
+    {"account.discover", pav_account_discover, PAV_CMD_WORKER | PAV_CMD_NET},
     {"account.list", pav_account_list, 0},
     {"account.remove", pav_account_remove, 0},
     {"account.set_secret", pav_account_set_secret, 0},
-    {"account.test", pav_account_test, PAV_CMD_WORKER},
+    {"account.test", pav_account_test, PAV_CMD_WORKER | PAV_CMD_NET},
     {"account.update", pav_account_update, 0},
     {"activity.cancel", pav_activity_cmd_cancel, 0},
     {"activity.dismiss", pav_activity_cmd_dismiss, 0},
@@ -1081,6 +1083,7 @@ static int cmd_log_tail(json_t *args, json_t **data, PavError *err) {
    the log view's own reads do not feed the log), WARN when slow or unknown,
    INFO outcome for account commands with the account id and error code only. */
 #define PAV_SLOW_COMMAND_MS 250
+#define PAV_SLOW_NET_COMMAND_MS 10000
 
 static int64_t dispatch_mono_ms(void) {
     struct timespec ts;
@@ -1135,8 +1138,13 @@ static void log_command(const char *name, json_t *args, json_t *data, int rc, co
     if (strncmp(name, "log.", 4) == 0) {
         return;
     }
-    if (ms >= PAV_SLOW_COMMAND_MS) {
+    const PavCommand *cmd = command_find(name);
+    int net = cmd != NULL && (cmd->flags & PAV_CMD_NET) != 0;
+
+    if (ms >= (net ? PAV_SLOW_NET_COMMAND_MS : PAV_SLOW_COMMAND_MS)) {
         pav_log("dispatch", PAV_WARN, 2, "slow command %s: %lld ms", name, (long long)ms);
+    } else if (net) {
+        pav_log("dispatch", PAV_DEBUG, 3, "%s %s in %lld ms", name, rc == 0 ? "done" : err->code, (long long)ms);
     } else if (rc != 0) {
         pav_log("dispatch", PAV_DEBUG, 2, "%s failed: %s", name, err->code);
     } else {
@@ -1172,6 +1180,8 @@ char *pav_dispatch_reply(const char *name, json_t *args) {
         pav_error_set(&err, "internal", "command failed", 0);
     }
     log_command(name, args, data, rc, &err, dispatch_mono_ms() - started);
+    /* K Lock: a typed password crosses from the page once; wipe it now. */
+    pav_secret_wipe_json(args, "secret");
     if (rc != 0) {
         json_decref(data);
         if (err.code[0] == '\0') {

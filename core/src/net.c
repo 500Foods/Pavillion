@@ -247,8 +247,7 @@ static int apply_auth_header(PavReq *req) {
     secret.len = secret_val ? strlen(secret_val) : 0;
     rc = auth->apply(&acct, req, &secret);
     if (secret_val) {
-        memset(secret_val, 0, secret.len);
-        pav_secret_free(secret_val);
+        pav_secret_free(secret_val); /* wipes, then frees */
     }
     return rc;
 }
@@ -387,6 +386,7 @@ static int setup_request(PavNetServer *s, NetReqItem *item) {
                 if (n > 0 && n < (int)sizeof(line)) {
                     chunks = curl_slist_append(chunks, line);
                 }
+                pav_secret_wipe(line, sizeof(line)); /* may hold Authorization */
             }
         }
     }
@@ -455,6 +455,11 @@ static void release_item_resources(NetReqItem *item) {
         item->eh = NULL;
     }
     if (item->chunks) {
+        struct curl_slist *s;
+        /* K Lock: header lines may carry Authorization; wipe before free. */
+        for (s = item->chunks; s != NULL; s = s->next) {
+            if (s->data != NULL) pav_secret_wipe(s->data, strlen(s->data));
+        }
         curl_slist_free_all(item->chunks);
         item->chunks = NULL;
     }

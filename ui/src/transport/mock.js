@@ -193,6 +193,7 @@ export function mockTransport() {
          kind: "jmap",
          sessionUrl: input.sessionUrl,
          username: input.username,
+         email: typeof input.email === "string" ? input.email : (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.username) ? input.username : ""),
          auth: "basic",
          color: input.color || "#2a7",
          enabled: input.enabled !== false,
@@ -200,6 +201,7 @@ export function mockTransport() {
          syncContacts: input.syncContacts !== false,
          syncCalendars: input.syncCalendars !== false,
          fetchBodies: input.fetchBodies || "recent",
+         icon: typeof input.icon === "string" ? input.icon : "",
          ...(typeof input.caFile === "string" && input.caFile !== "" ? { caFile: input.caFile } : {}),
        };
        accounts = [...accounts, account];
@@ -224,6 +226,12 @@ export function mockTransport() {
        }
        if (input.patch.username !== undefined) {
          updated.username = input.patch.username;
+       }
+       if (input.patch.email !== undefined) {
+         updated.email = input.patch.email;
+       }
+       if (input.patch.icon !== undefined) {
+         updated.icon = input.patch.icon;
        }
        if (input.patch.color !== undefined) {
          updated.color = input.patch.color;
@@ -295,10 +303,16 @@ export function mockTransport() {
        if (secret === "wrong") {
          throw fail("auth", "The credentials were rejected by the server.");
        }
+       /* K-Q7: https://redirect.<host>/... answers from https://mail.<host>/jmap/session,
+          a cross-host redirect, so Authorization was dropped. */
+       const hop = /^https:\/\/redirect\.([^/]+)\//.exec(input.sessionUrl);
+       const sessionUrl = hop ? `https://mail.${hop[1]}/jmap/session` : input.sessionUrl;
        return {
          ok: true,
          capabilities: ["mail", "submission", "contacts", "calendars"],
-         accounts: [{ id: "test-account", name: "Test Account" }],
+         accounts: hop ? [] : [{ id: "test-account", name: "Test Account" }],
+         sessionUrl,
+         authSent: !hop,
        };
      }
      if (cmd === "debug.activity_demo") {

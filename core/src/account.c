@@ -20,7 +20,9 @@
 #include <string.h>
 
 #define PAV_ACCOUNT_ID_MAX 64
-#define PAV_ACCOUNT_NUMBER_LEN 4
+/* "%03d" of any int: up to 10 digits, a sign, and the NUL. 001-999 print as
+   three digits; a number past 999 keeps all its digits. */
+#define PAV_ACCOUNT_NUMBER_LEN 12
 
 static const char *const k_kind_allowed[] = {"jmap", "imap", NULL};
 static const char *const k_auth_allowed[] = {"basic", NULL};
@@ -338,6 +340,78 @@ static int set_json_str(json_t *obj, const char *key, const char *val) {
     return json_object_set_new(obj, key, json_string(val)) == 0 ? 0 : -1;
 }
 
+/* K-Q6: "" or name@domain.tld-ish, under 256 bytes, no spaces. */
+static int email_is_valid(const char *s) {
+    const char *at;
+    size_t i, n = strlen(s);
+
+    if (n == 0) return 1;
+    if (n >= 256) return 0;
+    for (i = 0; i < n; i++) {
+        if (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n') return 0;
+    }
+    at = strchr(s, '@');
+    return at != NULL && at != s && strchr(at + 1, '@') == NULL && strchr(at + 1, '.') != NULL &&
+           at[1] != '.' && s[n - 1] != '.';
+}
+
+/* The default email of an account: its username when that is an address. */
+static const char *email_default(const char *username) {
+    return (username != NULL && username[0] != '\0' && email_is_valid(username)) ? username : "";
+}
+
+/* K-Q9: "" (the default envelope) or a Font Awesome HTML snippet under 4096
+   bytes. The core only bounds it; the page sanitizes it before drawing. */
+static int icon_is_valid(const char *s) {
+    size_t i, n = strlen(s);
+
+    if (n == 0) return 1;
+    if (n >= 4096 || s[0] != '<') return 0;
+    for (i = 0; i < n; i++) {
+        char lower[12];
+        size_t k;
+        for (k = 0; k < sizeof(lower) - 1 && i + k < n; k++) {
+            char c = s[i + k];
+            lower[k] = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+        }
+        lower[k] = '\0';
+        if (strncmp(lower, "<script", 7) == 0 || strncmp(lower, "javascript:", 11) == 0) return 0;
+        if ((s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '/') && (lower[1] == 'o') && lower[2] == 'n') {
+            size_t j = i + 3;
+            while (j < n && ((s[j] >= 'a' && s[j] <= 'z') || (s[j] >= 'A' && s[j] <= 'Z'))) j++;
+            if (j > i + 3 && j < n && s[j] == '=') return 0;
+        }
+    }
+    return 1;
+}
+
+int pav_account_migrate_email(json_t *doc) {
+    json_t *accounts = json_is_object(doc) ? json_object_get(doc, "accounts") : NULL;
+    json_t *acct;
+    size_t i;
+    int changed = 0;
+
+    if (!json_is_array(accounts)) return 0;
+    json_array_foreach(accounts, i, acct) {
+        json_t *user;
+        if (!json_is_object(acct)) continue;
+        if (!json_is_string(json_object_get(acct, "icon"))) {
+            /* K-Q9: an account from before the icon field gets "" (envelope). */
+            json_object_set_new(acct, "icon", json_string(""));
+            if (json_is_string(json_object_get(acct, "email"))) {
+                changed++;
+                continue;
+            }
+        }
+        if (json_is_string(json_object_get(acct, "email"))) continue;
+        user = json_object_get(acct, "username");
+        json_object_set_new(acct, "email",
+                            json_string(email_default(json_is_string(user) ? json_string_value(user) : NULL)));
+        changed++;
+    }
+    return changed;
+}
+
 static int set_json_bool(json_t *obj, const char *key, int val) {
     return json_object_set_new(obj, key, val ? json_true() : json_false()) == 0 ? 0 : -1;
 }
@@ -347,7 +421,8 @@ static json_t *build_account_json(const char *id, const char *number, const char
                                   const char *username, const char *auth, const char *color,
                                   int enabled, int sync_mail, int sync_contacts,
                                   int sync_calendars, const char *fetch_bodies,
-                                  const char *ca_file) {
+                                  const char *ca_file, const char *email,
+                                  const char *icon) {
     json_t *obj = json_object();
 
     if (obj == NULL) {
@@ -362,6 +437,8 @@ static json_t *build_account_json(const char *id, const char *number, const char
         set_json_str(obj, "kind", kind) != 0 ||
         set_json_str(obj, "sessionUrl", session_url) != 0 ||
         set_json_str(obj, "username", username) != 0 ||
+        set_json_str(obj, "email", email != NULL ? email : email_default(username)) != 0 ||
+        set_json_str(obj, "icon", icon != NULL ? icon : "") != 0 ||
         set_json_str(obj, "auth", auth != NULL ? auth : "basic") != 0) {
         json_decref(obj);
         return NULL;
@@ -421,6 +498,13 @@ int pav_account_list(json_t *args, json_t **data, PavError *err) {
         return -1;
     }
     copy = (accounts != NULL && json_is_array(accounts)) ? json_deep_copy(accounts) : json_array();
+    if (copy != NULL) {
+        json_t *wrap = json_pack("{s:O}", "accounts", copy);
+        if (wrap != NULL) {
+            pav_account_migrate_email(wrap);
+            json_decref(wrap);
+        }
+    }
     if (copy == NULL) {
         json_decref(result);
         pav_error_set(err, "internal", "out of memory", 0);
@@ -447,6 +531,8 @@ int pav_account_add(json_t *args, json_t **data, PavError *err) {
     const char *color = NULL;
     const char *fetch_bodies = NULL;
     const char *ca_file = NULL;
+    const char *email = NULL;
+    const char *icon = NULL;
     int sync_mail = 1;
     int sync_contacts = 1;
     int sync_calendars = 1;
@@ -551,6 +637,18 @@ int pav_account_add(json_t *args, json_t **data, PavError *err) {
                 return -1;
             }
             fetch_bodies = json_string_value(value);
+        } else if (strcmp(key, "email") == 0) {
+            if (!json_is_string(value) || !email_is_valid(json_string_value(value))) {
+                pav_error_set(err, "bad_args", "email must be empty or name@domain under 256 bytes", 0);
+                return -1;
+            }
+            email = json_string_value(value);
+        } else if (strcmp(key, "icon") == 0) {
+            if (!json_is_string(value) || !icon_is_valid(json_string_value(value))) {
+                pav_error_set(err, "bad_args", "icon must be empty or a Font Awesome HTML snippet under 4096 bytes", 0);
+                return -1;
+            }
+            icon = json_string_value(value);
         } else if (strcmp(key, "caFile") == 0) {
             if (!json_is_string(value) || !ca_file_is_valid(json_string_value(value))) {
                 pav_error_set(err, "bad_args", "caFile must be an absolute path", 0);
@@ -647,7 +745,7 @@ int pav_account_add(json_t *args, json_t **data, PavError *err) {
 
         json_t *acct = build_account_json(account_id, number_str, name, kind, session_url,
                                           username, auth_arg, color, enabled, sync_mail,
-                                          sync_contacts, sync_calendars, fetch_bodies, ca_file);
+                                          sync_contacts, sync_calendars, fetch_bodies, ca_file, email, icon);
         if (acct == NULL) {
             pav_secret_delete("pavillion", keyring_user);
             pav_error_set(err, "internal", "out of memory", 0);
@@ -903,6 +1001,16 @@ int pav_account_update(json_t *args, json_t **data, PavError *err) {
                 if (!json_is_string(pval) ||
                     (json_string_value(pval)[0] != '\0' && !ca_file_is_valid(json_string_value(pval)))) {
                     pav_error_set(err, "bad_args", "caFile must be an absolute path or empty", 0);
+                    return -1;
+                }
+            } else if (strcmp(pkey, "email") == 0) {
+                if (!json_is_string(pval) || !email_is_valid(json_string_value(pval))) {
+                    pav_error_set(err, "bad_args", "email must be empty or name@domain under 256 bytes", 0);
+                    return -1;
+                }
+            } else if (strcmp(pkey, "icon") == 0) {
+                if (!json_is_string(pval) || !icon_is_valid(json_string_value(pval))) {
+                    pav_error_set(err, "bad_args", "icon must be empty or a Font Awesome HTML snippet under 4096 bytes", 0);
                     return -1;
                 }
             } else {

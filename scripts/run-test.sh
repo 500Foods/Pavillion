@@ -15,5 +15,11 @@ PAV_FIXTURE_URL="https://127.0.0.1:$port" \
 PAV_FIXTURE_CA="$ca" \
 "$root/build/core_test"
 
+# Stronghold wrapper (K Lock: work factor 0, old snapshots re-saved). One
+# thread: the tests set the library-wide work factor.
+if command -v cargo >/dev/null 2>&1; then
+    (cd "$root/core/platform/stronghold" && cargo test --release --quiet -- --test-threads=1)
+fi
+
 # cd rather than --prefix: Windows npm ignores --prefix for install.
 (cd "$root/ui" && npm install && npm test)

@@ -68,12 +68,12 @@ export const shellMarkup = `<div class="shell">
           </div>
           <div data-nav="settings" hidden>
             <div class="heading-list" role="list">
+              <button type="button" data-heading="accounts">Accounts</button>
               <button type="button" data-heading="features" aria-current="true">Features</button>
               <button type="button" data-heading="theme">Themes</button>
               <button type="button" data-heading="icons">Icons</button>
               <button type="button" data-heading="fonts">Fonts</button>
               <button type="button" data-heading="tabs">Tabs</button>
-              <button type="button" data-heading="accounts">Accounts</button>
               <button type="button" data-heading="zoom">Zooms</button>
               <button type="button" data-heading="log">Logs</button>
             </div>
@@ -439,6 +439,7 @@ export const shellMarkup = `<div class="shell">
                 <div class="accounts-form-pane">
                   <div id="accounts-form" class="accounts-form">
                     <div class="accounts-form-header" id="accounts-form-header">
+                      <span id="account-form-swatch" class="accounts-form-swatch"></span>
                       <h2 class="accounts-form-title" id="account-form-title">Accounts</h2>
                       <span class="accounts-form-number" id="account-form-number"></span>
                     </div>
@@ -448,6 +449,7 @@ export const shellMarkup = `<div class="shell">
                         <label class="accounts-line"><span class="accounts-label">Display name</span>
                           <input id="account-name-input" type="text" spellcheck="true" autocomplete="off" />
                           <input id="account-color-input" type="color" value="#2a7" aria-label="Color" />
+                          <span id="account-icon-choices" class="accounts-icon-choices" role="radiogroup" aria-label="Icon"></span>
                         </label>
                         <label class="accounts-line"><span class="accounts-label">Email</span>
                           <input id="account-email-input" type="email" spellcheck="false" autocomplete="off" placeholder="you@example.com" />
@@ -510,6 +512,7 @@ export const shellMarkup = `<div class="shell">
                         <button type="button" id="account-save" disabled>Save</button>
                         <button type="button" id="account-remove" disabled>Remove</button>
                         <span id="account-test-status" class="accounts-test-status"></span>
+                        <span id="account-url-note" class="accounts-test-status"></span>
                       </div>
                       <p class="accounts-line accounts-result"><span class="accounts-label"></span><span id="account-test-error" class="accounts-error"></span><span id="account-test-capabilities" class="accounts-capabilities"></span></p>
                     </form>

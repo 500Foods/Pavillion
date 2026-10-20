@@ -28,6 +28,14 @@ else
 PLATFORM_TEST_SRC :=
 PLATFORM_TEST_INC :=
 endif
+# srv_lookup (G Lock): libresolv on Linux and macOS, dnsapi on Windows.
+ifeq ($(OS),Windows_NT)
+PLATFORM_TEST_LIBS := -ldnsapi
+else ifneq ($(filter Linux Darwin,$(UNAME_S)),)
+PLATFORM_TEST_LIBS := -lresolv
+else
+PLATFORM_TEST_LIBS :=
+endif
 
 .PHONY: all lib dev build test clean mini it-up it-seed it-down it-reset test-it
 
@@ -66,7 +74,7 @@ $(TEST_BIN): $(LIB) $(TEST_SRC) $(PLATFORM_TEST_SRC) $(UNITY_DIR)/unity.c $(UNIT
 	$(CC) -std=c11 -Wall -Wextra -Wpedantic -pthread -DUNITY_INCLUDE_DOUBLE \
 		-Icore/include -Icore/src -I$(UNITY_DIR) $(PLATFORM_TEST_INC) $(CFLAGS) \
 		-o $@ $(TEST_SRC) $(UNITY_DIR)/unity.c $(PLATFORM_TEST_SRC) $(LIB) \
-		-ljansson -lsqlite3 -lresolv $(LDFLAGS) \
+		-ljansson -lsqlite3 $(PLATFORM_TEST_LIBS) $(LDFLAGS) \
 		$(shell pkg-config --libs libsecret-1 2>/dev/null) \
 		$(shell pkg-config --libs libcurl 2>/dev/null) \
 		$(if $(wildcard core/platform/stronghold/target/release/libpav_stronghold.a),core/platform/stronghold/target/release/libpav_stronghold.a -ldl -lm,)

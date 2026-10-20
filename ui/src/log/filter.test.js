@@ -92,3 +92,9 @@ test("queryArgs is the view filter as log.query and log.export take it", async (
   });
   expect(normalizeFilter({}).range).toBe("12h");
 });
+
+test("the session choice persists and falls back to all", () => {
+  expect(normalizeFilter({ session: "previous" }).session).toBe("previous");
+  expect(normalizeFilter({ session: "nope" }).session).toBe("all");
+  expect(normalizeFilter({}).session).toBe("all");
+});

@@ -19,6 +19,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | D-7 | Theme skin: fonts, icons, mark, and HTML in CSS | Medium | Complete |
 | D-5 | Theme extras: density, gradient tuning, the contrast audit | Medium | Not started |
 | D-8 | Settings → Formats: app-wide display formats through Luxon (before N-3) | Medium | Not started |
+| D-9 | Icon Wizard (DRAFT spec, docs only): up to 3 layered icons or images per icon, stored as an HTML snippet | Medium | Not started |
 
 Kind: **Easy** is the static frame or one function in `api.js`. **Medium** crosses one boundary. **Hard** is unused.
 
@@ -337,6 +338,51 @@ D-1 keeps the five variables in the lock above. A later theme phase follows Lith
 - D-Q3: which kinds beyond date, time, and datetime (relative times, durations, first day of week, number and size formats)?
 - D-Q4: a locale setting separate from the system locale?
 - D-Q5: do exports and copy stay ISO UTC with `Z` (the H-4 choice) or follow the display format?
+
+## D-9: Icon Wizard (DRAFT)
+
+**Kind:** Medium
+**Status:** Not started. DRAFT spec, docs only; no code in this phase until Andrew signs off the open questions. Added 2026-10-19 at Andrew's request (renamed from "icon picker" the same day).
+
+This records Andrew's ideas. It does not decide the look: layout, sizes, spacing, control styles, previews, and animation are his to set (D-Q6 onward).
+
+**Goal:** One popup, the Icon Wizard, that composes an icon and returns it to the caller. Used from Settings → Accounts (the account icon) and from a Settings → Icons page (see D-Q11); later folders and labels.
+
+**What it does (Andrew's ideas):**
+
+- Up to 3 layers, drawn on top of each other.
+- Each layer has its own color, flip horizontal, flip vertical, rotate, scale, and translate.
+- A layer is a Font Awesome icon or an imported image (SVG, PNG, or JPG, for example a headshot), with the same transforms.
+- Choosing a Font Awesome layer opens a search popup inside the wizard: a search field; a family toggle or pull-down (Classic, Sharp, Duotone, Sharp Duotone, Brands, and any other family the installed Font Awesome provides); a style (Solid, Regular, Light, Thin); then a grid of results.
+- The result replaces the interim account icon value (K-Q9), which already reserves the field for a composed icon.
+
+**Decisions (Andrew, 2026-10-19):**
+
+- Output: a Font Awesome composition is a self-contained HTML snippet: Font Awesome layers markup with each layer's classes, color, and transforms inline. That snippet is what is stored and what is rendered.
+- Account storage: the account `icon` field holds the snippet, or a reference to it (K-Q9). The interim chooser already stores a one-element snippet, so its values stay valid.
+- Imported images live in a separate asset store, designed in this phase: likely SQLite blobs per profile, with no files outside the database. This is a new storage element to track beside the profile and the store (B Lock, when it is designed).
+- Color: one better color picker than the native `<input type="color">`, shared by the wizard and the account color. It is bundled from npm with a permissive licence (MIT, ISC, BSD, or Apache-2.0), no CDN.
+
+**What is installed today (checked 2026-10-19):** the Font Awesome Pro Plus 7.3.1 SVG kit `45801522ef`, loaded from `kit.fontawesome.com` (D Lock); no `@fortawesome` npm package and no Pro files in the repo (not vendored, by Lock). The D Lock names Duotone, Sharp, and Thin as the families in use. Which further Pro Plus families the kit enables (for example Chisel, Etch, Jelly, Notdog, Slab, Thumbprint, Whiteboard) is set in the kit's settings on fontawesome.com and was not checked from the box.
+
+**Entry gate:** Andrew answers the open questions below.
+
+**Work items:** none yet (DRAFT).
+
+**Tests:** to be written with the spec.
+
+**Open questions for Andrew:**
+
+- D-Q6: Look and behaviour of the wizard and of the search popup: layout, layer list, transform controls, preview sizes, grid density. Not decided here.
+- D-Q7: Sanitizing the snippet on render: the allowlist of tags (`span`, `i`, image element?), classes (`fa-*` only?), and inline style properties (color, `--fa-*` variables, transform?). The shared icon sanitizer accepts one `<i>` today and will need widening.
+- D-Q7a: How image layers sit in the snippet: likely a reference to a stored asset (for example a `pav-asset:` id) that the renderer resolves, not a `data:` URL.
+- D-Q7b: Color picker candidates to evaluate (licence, size, keyboard and alpha support, theming on `--pav-*`): Pickr (`@simonwep/pickr`, MIT), vanilla-colorful (MIT), iro.js (`@jaames/iro`, MPL-2.0, so check the licence rule), Coloris (`@melloware/coloris`, MIT). None is chosen.
+- D-Q8: Asset store design: table layout, ids, dedupe, how an asset is freed when no icon refers to it, and export or backup.
+- D-Q9: Size limits: bytes per imported image, pixel size, SVG sanitizing rules (F-HARDEN icon sanitizer), and total per profile.
+- D-Q10: Font Awesome licence and availability: the kit is Pro Plus but hosted; the search needs icon metadata (names, families, styles, keywords). Use the kit's API, bundle a metadata file, or get a licensed download? Pro files stay out of the repo unless Andrew changes that Lock.
+- D-Q11: Scope of Settings → Icons: it exists today (Source Theme or Override, kit, icon overrides). Does the wizard's page become part of it, a new section within it, or a separate heading?
+- D-Q12: Rendering at small sizes (16 px in the table and tree): how 3 layers and photos stay legible; whether a simplified fallback is drawn below some size.
+- D-Q13: Recent picks and favourites: wanted, and where kept?
 
 ## Working log
 

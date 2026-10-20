@@ -20,7 +20,7 @@ export function levelsAtOrAbove(name) {
   return LOG_LEVELS.slice(0, (index < 0 ? 2 : index) + 1);
 }
 const LEVEL_SET = new Set(LOG_LEVELS);
-const OWN = ["levels", "subsystems", "text", "follow", "wrap", "range"];
+const OWN = ["levels", "subsystems", "text", "follow", "wrap", "range", "session"];
 
 /* The Log view's session filter (H-4 Lock): This run, Last run, All. */
 export const SESSIONS = [
@@ -72,6 +72,7 @@ export function normalizeFilter(raw) {
     follow: src.follow !== false,
     wrap: src.wrap === true,
     range: normalizeRange(src.range),
+    session: SESSIONS.some((item) => item.value === src.session) ? src.session : "all",
   };
   for (const key of Object.keys(src)) {
     if (!OWN.includes(key)) {

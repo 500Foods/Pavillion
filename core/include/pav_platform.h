@@ -25,6 +25,9 @@ typedef struct PavPlatform {
     int (*secret_get)(const char *service, const char *user, char **out);
     int (*secret_set)(const char *service, const char *user, const char *label, const char *val);
     int (*secret_delete)(const char *service, const char *user);
+    /* 1 once after a secret_get re-saved an older snapshot at the fast work
+       factor (K Lock), else 0. May be NULL. */
+    int (*secret_resaved)(void);
     int64_t (*now_ms)(void); /* UTC unix milliseconds, or -1 */
     void (*on_network_change)(void (*cb)(void *), void *user);
     void (*on_resume)(void (*cb)(void *), void *user);

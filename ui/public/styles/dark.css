@@ -8,6 +8,7 @@
   --pav-font: "Vanadium Sans", system-ui, sans-serif;
   --pav-font-mono: ui-monospace, monospace;
   --pav-icon-glow: #cc9999;
+  --pav-account-icon: #ffffff; /* icon drawn on an account color swatch */
   --pav-surface-nav: linear-gradient(160deg, #160808 0%, #000 70%);
   --pav-surface-workspace: linear-gradient(160deg, #100606 0%, #000 78%);
   --pav-surface-list: linear-gradient(160deg, #140707 0%, #000 74%);

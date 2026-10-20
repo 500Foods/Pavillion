@@ -174,8 +174,13 @@ fn main() {
     println!("cargo:rustc-link-lib=pthread");
     println!("cargo:rustc-link-lib=jansson");
     println!("cargo:rustc-link-lib=sqlite3");
+    // srv_lookup (G Lock): the target OS picks the DNS library.
+    match std::env::var("CARGO_CFG_TARGET_OS").as_deref() {
+        Ok("linux") | Ok("macos") => println!("cargo:rustc-link-lib=resolv"),
+        Ok("windows") => println!("cargo:rustc-link-lib=dnsapi"),
+        _ => {}
+    }
     if cfg!(target_os = "linux") {
-        println!("cargo:rustc-link-lib=resolv");
         if let Ok(libs) = std::process::Command::new("pkg-config")
             .args(["--libs", "libsecret-1"])
             .output()

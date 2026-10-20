@@ -50,12 +50,12 @@ test("suite cells start hidden, and hiding Mail removes that cell and its home",
   expect(root.querySelector('[data-section="files"]').hidden).toBe(false);
   expect(ids()).toContain("mail:home");
   expect([...root.querySelectorAll("[data-heading]")].map((node) => node.textContent)).toEqual([
+    "Accounts",
     "Features",
     "Themes",
     "Icons",
     "Fonts",
     "Tabs",
-    "Accounts",
     "Zooms",
     "Logs",
   ]);

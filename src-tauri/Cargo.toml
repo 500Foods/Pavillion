@@ -20,6 +20,7 @@ default = ["compression"]
 compression = ["tauri/compression"]
 
 [dependencies]
+zeroize = "1"
 tauri = { version = "2", default-features = false, features = [
     "wry",
     "common-controls-v6",

@@ -78,6 +78,7 @@ void pav_platform_install(const PavPlatform *p);
 const PavPlatform *pav_platform(void);
 ```
 
+- `srv_lookup` (K-Q5, Andrew 2026-10-19) is the one OS DNS call. Linux and macOS share `core/platform/posix/srv_resolv.c` (`res_query`, `ns_initparse`, `dn_expand`), linked with `-lresolv` on those two only. Windows uses `core/platform/windows/srv_dnsapi.c` (`DnsQuery_A` with `DNS_TYPE_SRV`, plain MinGW C), linked with `-ldnsapi`. Until G-6 the macOS and Windows host is the fake table with `srv_lookup` replaced by that OS lookup (`core/platform/fake/host.c`). CMake, the Makefile test link, and `build.rs` pick the library per OS.
 - Paths are joined only through `pav_path_join(out, len, a, b)`. Code never contains `/` literals for joining or `~` expansion.
 - The B-4 file-mode code (0600, 0700) moves behind `mkdir_private` and `write_private`. On Windows it becomes an ACL or a no-op.
 - Tests install `pav_platform_fake()`: an in-memory secret store, a temp root for every dir, a settable clock. Tests never touch the real keyring.

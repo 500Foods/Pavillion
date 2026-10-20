@@ -23,6 +23,26 @@ static const char *secret_name(int code) {
     }
 }
 
+void pav_secret_wipe(void *p, size_t n) {
+    volatile unsigned char *q = p;
+
+    if (p == NULL) {
+        return;
+    }
+    while (n-- > 0) {
+        *q++ = 0;
+    }
+}
+
+void pav_secret_wipe_json(json_t *obj, const char *key) {
+    json_t *value = json_is_object(obj) ? json_object_get(obj, key) : NULL;
+
+    if (json_is_string(value)) {
+        /* jansson owns the buffer; writing zeros in place keeps its length. */
+        pav_secret_wipe((void *)json_string_value(value), json_string_length(value));
+    }
+}
+
 void pav_secret_free(char *value) {
     if (value == NULL) {
         return;
@@ -59,6 +79,9 @@ int pav_secret_get(const char *service, const char *user, char **out) {
         pav_log("secret", PAV_WARN, 1, "secret %s", secret_name(code));
     } else {
         pav_log("secret", PAV_DEBUG, 0, "secret get ok");
+        if (platform->secret_resaved != NULL && platform->secret_resaved()) {
+            pav_log("secret", PAV_INFO, 0, "snapshot re-saved with work factor 0");
+        }
     }
     return code;
 }

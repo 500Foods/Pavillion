@@ -1544,6 +1544,15 @@
   max-width: 40%;
   min-height: 0;
   overflow: auto;
+  border-right: 1px solid var(--pav-border);
+}
+
+/* K-Q7: one 1px line like the nav edge; the 6px handle is invisible on it. */
+.pav-root .accounts-split > .split-resize {
+  border: 0;
+  margin: 0 -3px;
+  position: relative;
+  z-index: 2;
 }
 
 .pav-root .accounts-form-pane {
@@ -1715,4 +1724,135 @@
   font-style: italic;
   margin: 0.4em 0 0.2em;
   padding-top: 0.2em;
+}
+
+/* N Lock, Shared table component: Tabulator drawn only from --pav-* (no
+   Tabulator stylesheet). The structural rules Tabulator needs come first. */
+.pav-root .pav-table {
+  position: relative;
+  overflow: hidden;
+  background: transparent;
+  color: var(--pav-text);
+  font: inherit;
+  border: 0;
+}
+.pav-root .pav-table .tabulator-header {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid var(--pav-border);
+  color: var(--pav-text-muted);
+  white-space: nowrap;
+}
+.pav-root .pav-table .tabulator-header-contents,
+.pav-root .pav-table .tabulator-headers {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+}
+.pav-root .pav-table .tabulator-col {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  box-sizing: border-box;
+  vertical-align: bottom;
+  padding: 0.3rem 0.4rem;
+  text-align: left;
+  user-select: none;
+}
+.pav-root .pav-table .tabulator-col-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  cursor: col-resize;
+}
+.pav-root .pav-table .tabulator-tableholder {
+  position: relative;
+  overflow: auto;
+  width: 100%;
+  white-space: nowrap;
+}
+.pav-root .pav-table .tabulator-table {
+  position: relative;
+  display: inline-block;
+  white-space: nowrap;
+}
+.pav-root .pav-table .tabulator-row {
+  position: relative;
+  box-sizing: border-box;
+  cursor: pointer;
+  border-bottom: 1px solid var(--pav-border);
+}
+.pav-root .pav-table .tabulator-row:hover {
+  background: var(--pav-surface-button);
+}
+.pav-root .pav-table .tabulator-row.pav-row-selected {
+  background: var(--pav-surface-button-active);
+}
+.pav-root .pav-table .tabulator-cell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 0.3rem 0.4rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+.pav-root .pav-table .tabulator-placeholder {
+  padding: 0.75rem;
+  color: var(--pav-text-muted);
+}
+
+/* K-Q8 and K-Q9: account swatch, Mail badges, interim icon chooser. */
+.pav-root .account-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5em;
+  height: 1.5em;
+  border-radius: 0.3em;
+  color: var(--pav-account-icon);
+  flex: none;
+}
+.pav-root .accounts-feature-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.pav-root .accounts-badge {
+  display: inline-block;
+  min-width: 1.1em;
+  padding: 0 0.15em;
+  border: 1px solid var(--pav-border);
+  border-radius: 0.2em;
+  font-size: 0.75em;
+  text-align: center;
+  color: var(--pav-text);
+}
+.pav-root .accounts-badge.is-disabled {
+  color: var(--pav-text-muted);
+  opacity: 0.5;
+}
+.pav-root .accounts-icon-choices {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+}
+.pav-root .accounts-icon-choices button {
+  padding: 1px;
+  border: 1px solid transparent;
+  border-radius: 0.35em;
+  background: transparent;
+  cursor: pointer;
+}
+.pav-root .accounts-icon-choices button[aria-checked="true"] {
+  border-color: var(--pav-accent);
+}
+.pav-root .accounts-form-swatch {
+  display: inline-flex;
+  margin-right: 0.4rem;
+  vertical-align: middle;
 }

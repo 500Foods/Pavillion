@@ -47,6 +47,7 @@
 
   /* Drop shadow on a hovered nav icon. */
   --pav-icon-glow: #800000;
+  --pav-account-icon: #ffffff; /* icon drawn on an account color swatch */
 
   /* Navigation column. One 160 degree wash. Dark starts near the roof red and ends on the canvas. Light uses a pale roof tint. */
   --pav-surface-nav: linear-gradient(160deg, #f3e4e4 0%, #f7f4f2 55%);

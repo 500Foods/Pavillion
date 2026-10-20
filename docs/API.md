@@ -51,6 +51,12 @@ Creates an account and stores its secret in the keyring. When `id` is absent it 
 
 Args: `{name?, kind, sessionUrl, username, auth?, secret, color?, syncMail?, syncContacts?, syncCalendars?, fetchBodies?, enabled?, caFile?}`. `caFile` is an absolute path to a PEM CA bundle trusted for this account (B Lock); it is omitted from the account object when unset. `auth` defaults to `basic` and is the only K-2 method. `kind` is `jmap` (imap is accepted but unsupported). `sessionUrl` must be `https://`. `color` is `#rgb` or `#rrggbb`. `fetchBodies` is `none`, `recent`, or `all`. Booleans default true except `enabled` which defaults true. `name` is required when `id` is absent.
 
+From 2026-10-19 (Andrew): `email?` is the account's address, stored on every account as a string. It is `""` or `name@domain` (under 256 bytes); absent, it defaults to `username` when that looks like an address, else `""`.
+
+From 2026-10-19 (Andrew, K-Q9): `icon?` is an HTML snippet of Font Awesome markup, `""` for the default envelope. The interim form writes `<i class="fa-solid fa-name"></i>`; the Icon Wizard (D-9) will write larger snippets in the same key. Accepted: `""`, or under 4096 bytes, starting with `<`, without `<script`, an `on…=` attribute, or `javascript:`; otherwise `bad_args`. The page sanitizes it before drawing. Stored on every account; patchable with `account.update`.
+
+From 2026-10-19 (Andrew): `email?` is the account's address, stored on every account as a string. It is `""` or `name@domain` (under 256 bytes); absent, it defaults to `username` when that looks like an address, else `""`.
+
 Result: the account object (without the secret). Includes `number`.
 
 Errors: `bad_args`, `forbidden` (secret in profile), `failed` (keyring), `internal`. A keyring failure rolls back the profile write and the `account_state` row insertion. A profile write failure deletes the keyring entry.
@@ -67,6 +73,8 @@ Errors: `bad_args` (missing or invalid email), `not_found` (neither SRV nor well
 ### account.list
 
 State: real (K-2)
+
+From 2026-10-19: every account in the result carries `email`; an account saved before the field existed gets the username default (K-Q6).
 
 Lists the accounts on the active profile. Secrets are not included.
 
@@ -102,7 +110,9 @@ State: real (M-2)
 
 From 2026-10-19 (Andrew): any failure, including an early one (bad redirect, queue or memory failure, timeout), returns a not-ok reply with an error code; it never returns `ok` without data. Redirects (301, 302, 307, 308, at most 3) read `Location` case-insensitively and resolve a relative value (`/jmap/session`, `//host/path`, or a bare path) against the request URL; the target must still be `https://`. Each test runs as an activity of kind `account.test` (title `Test <host>`), ended `done` or `failed` with the error message. Log lines name the session host (`account.test ok: localhost:1443`); the username appears only at `DEBUG`, per the H redaction rule for email addresses.
 
-From 2026-10-19 (Andrew): a 200 that is not JSON (an HTML `Content-Type`, or a body whose first non-space byte is `<`) fails with `server`, "the server returned a web page, not a JMAP session (check the URL)". A redirect that changes scheme, host, or port drops the `Authorization` header for the rest of the chain, logged at `DEBUG` with both hosts.
+From 2026-10-19 (Andrew): a 200 that is not JSON (an HTML `Content-Type`, or a body whose first non-space byte is `<`) fails with `server`, "the server returned a web page, not a JMAP session (check the URL)". A redirect that changes scheme, host, or port drops the `Authorization` header for the rest of the chain, logged at `DEBUG` with both hosts. Each request's state (request, headers, URL, reply) is heap-owned and shared by the waiter and the net thread with a reference count: when the 30 s wait gives up, the waiter cancels the request and lets go; a reply that arrives later is dropped and logged at `DEBUG` (`late reply dropped`), never written to freed memory.
+
+From 2026-10-19 (Andrew, K-Q7): the result also carries `sessionUrl`, the URL that answered after redirects, and `authSent` (false when a redirect to another host dropped `Authorization`, so the credentials were not checked).
 
 From 2026-10-19 (Andrew): `id?` names a saved account. When `secret` is absent or empty and `id` is given, the test uses that account's saved secret from the secret store; a typed `secret` still wins. Errors: `not_found` (no such account), `locked`, `bad_args` "no saved password for this account". The secret is never returned or logged.
 
@@ -111,7 +121,7 @@ From 2026-10-19 (Andrew): `id?` names a saved account. When `secret` is absent o
 
 State: real (K-2)
 
-`{id, patch}`. Changes account fields other than the secret. `sessionUrl`, `username`, `color`, `syncMail`, `syncContacts`, `syncCalendars`, `fetchBodies`, `enabled`, `name`, and `caFile` may be patched. `caFile: ""` removes the field. `kind` and `auth` are not patchable.
+`{id, patch}`. Changes account fields other than the secret. `sessionUrl`, `username`, `color`, `syncMail`, `syncContacts`, `syncCalendars`, `fetchBodies`, `enabled`, `name`, `email`, `icon`, and `caFile` may be patched. `caFile: ""` removes the field. `kind` and `auth` are not patchable.
 
 Result: the updated account object (without the secret).
 

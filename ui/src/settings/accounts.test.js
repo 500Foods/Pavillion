@@ -6,6 +6,37 @@ import { createApi } from "../api.js";
 import { mount, unmount } from "../index.js";
 import { mockTransport } from "../transport/mock.js";
 
+/* Tabulator does not lay out rows under jsdom, so the shared table is a small
+   fake here: one button per row (data-account-id), each cell drawn by the real
+   column formatters, and a row click calls onRowClick like Tabulator does. */
+vi.mock("../common/table.js", () => ({
+  createTable(el, options) {
+    const draw = (data) => {
+      el.replaceChildren();
+      for (const row of data) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.dataset.accountId = row.id;
+        if (options.rowClass && options.rowClass(row)) {
+          button.classList.add(options.rowClass(row));
+        }
+        for (const column of options.columns) {
+          const cell = { getValue: () => row[column.field], getRow: () => ({ getData: () => row }) };
+          const out = column.formatter ? column.formatter(cell) : String(row[column.field] ?? "");
+          const span = document.createElement("span");
+          span.dataset.field = column.field;
+          span.append(out);
+          button.append(span);
+        }
+        button.addEventListener("click", () => options.onRowClick(row));
+        el.append(button);
+      }
+    };
+    draw(options.data);
+    return { setData: draw, destroy() { el.replaceChildren(); } };
+  },
+}));
+
 function getTransport() {
   const transport = mockTransport();
   const api = createApi(transport);
@@ -560,4 +591,147 @@ test("the account form groups fields in order", async () => {
     unmount();
     el.remove();
   }
+});
+
+test("the email is saved with the account and read back", async () => {
+  const el = document.createElement("div");
+  document.body.append(el);
+  try {
+    const transport = mockTransport();
+    const callSpy = vi.spyOn(transport, "call");
+    const api = createApi(transport);
+    await mount(el, api, {});
+    openAccountsPanel();
+    typeInto("#account-name-input", "Mail One");
+    typeInto("#account-session-url-input", "https://example.com/.well-known/jmap");
+    typeInto("#account-username-input", "login-name");
+    typeInto("#account-email-input", "me@example.com");
+    typeInto("#account-secret-input", "pw");
+    document.querySelector("#account-add").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-account-id="mail-one"]')).not.toBeNull();
+    });
+    const addCall = callSpy.mock.calls.find(([cmd]) => cmd === "account.add");
+    expect(addCall[1].email).toBe("me@example.com");
+    document.querySelector('[data-account-id="mail-one"]').click();
+    expect(document.querySelector("#account-email-input").value).toBe("me@example.com");
+
+    typeInto("#account-email-input", "new@example.com");
+    document.querySelector("#account-test").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("#account-test-status").textContent).toBe("OK");
+    });
+    document.querySelector("#account-save").click();
+    await vi.waitFor(() => {
+      const upd = callSpy.mock.calls.find(([cmd]) => cmd === "account.update");
+      expect(upd[1].patch.email).toBe("new@example.com");
+    });
+  } finally {
+    unmount();
+    el.remove();
+  }
+});
+
+async function withView(body) {
+  const el = document.createElement("div");
+  document.body.append(el);
+  try {
+    const transport = mockTransport();
+    const callSpy = vi.spyOn(transport, "call");
+    const api = createApi(transport);
+    await mount(el, api, {});
+    openAccountsPanel();
+    await body(callSpy);
+  } finally {
+    unmount();
+    el.remove();
+  }
+}
+
+test("Detect on an existing account saves the session URL at once", async () => {
+  await withView(async (callSpy) => {
+    await addSavedAccount();
+    typeInto("#account-email-input", "me@500foods.com");
+    document.querySelector("#account-detect").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("#account-detect-status").textContent).toBe("Found via SRV · Saved");
+    });
+    const update = callSpy.mock.calls.filter(([cmd]) => cmd === "account.update").pop();
+    expect(update[1]).toEqual({ id: "saved-one", patch: { sessionUrl: "https://mail.500foods.com/jmap/session" } });
+    expect(document.querySelector("#account-session-url-input").value).toBe("https://mail.500foods.com/jmap/session");
+  });
+});
+
+test("Detect on a new account keeps the URL in the form for Add", async () => {
+  await withView(async (callSpy) => {
+    typeInto("#account-email-input", "me@500foods.com");
+    document.querySelector("#account-detect").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("#account-detect-status").textContent).toBe("Found via SRV");
+    });
+    expect(callSpy.mock.calls.some(([cmd]) => cmd === "account.update")).toBe(false);
+    expect(document.querySelector("#account-session-url-input").value).toBe("https://mail.500foods.com/jmap/session");
+  });
+});
+
+test("a Test redirect to another host stores the final URL and tests it again", async () => {
+  await withView(async (callSpy) => {
+    await addSavedAccount();
+    typeInto("#account-session-url-input", "https://redirect.500foods.com/.well-known/jmap");
+    document.querySelector("#account-test").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("#account-test-status").textContent).toBe("OK");
+    });
+    expect(document.querySelector("#account-url-note").textContent).toBe("Session URL updated");
+    expect(document.querySelector("#account-session-url-input").value).toBe("https://mail.500foods.com/jmap/session");
+    const tests = callSpy.mock.calls.filter(([cmd]) => cmd === "account.test");
+    expect(tests.at(-1)[1].sessionUrl).toBe("https://mail.500foods.com/jmap/session");
+    expect(tests.at(-2)[1].sessionUrl).toBe("https://redirect.500foods.com/.well-known/jmap");
+    const update = callSpy.mock.calls.filter(([cmd]) => cmd === "account.update").pop();
+    expect(update[1].patch).toEqual({ sessionUrl: "https://mail.500foods.com/jmap/session" });
+  });
+});
+
+test("the table row shows the swatch, J/I/S badges, and features after a Test", async () => {
+  await withView(async () => {
+    await addSavedAccount();
+    const row = () => document.querySelector('[data-account-id="saved-one"]');
+    expect(row().querySelector(".account-swatch .fa-envelope")).not.toBeNull();
+    const badges = [...row().querySelectorAll(".accounts-badge")].map((b) => [b.textContent, b.classList.contains("is-disabled")]);
+    expect(badges).toEqual([["J", false], ["I", true], ["S", true]]);
+    expect(row().classList.contains("pav-row-selected")).toBe(true);
+    const box = (field) => row().querySelector(`[data-field="${field}"] input[type="checkbox"]`);
+    expect(box("mail").checked).toBe(false);
+    expect(box("mail").disabled).toBe(true);
+    document.querySelector("#account-test").click();
+    await vi.waitFor(() => {
+      expect(box("mail").checked).toBe(true);
+    });
+    expect(box("contacts").checked).toBe(true);
+    expect(box("calendars").checked).toBe(true);
+    expect(box("files").checked).toBe(false);
+  });
+});
+
+test("the icon chooser stores a Font Awesome snippet and Save sends it", async () => {
+  await withView(async (callSpy) => {
+    await addSavedAccount();
+    const choices = document.querySelectorAll("#account-icon-choices button[data-icon]");
+    expect(choices.length).toBeGreaterThan(4);
+    expect(document.querySelector('#account-icon-choices [data-icon="envelope"]').getAttribute("aria-checked")).toBe("true");
+    document.querySelector('#account-icon-choices [data-icon="briefcase"]').click();
+    expect(document.querySelector('#account-icon-choices [data-icon="briefcase"]').getAttribute("aria-checked")).toBe("true");
+    document.querySelector("#account-test").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("#account-save").disabled).toBe(false);
+    });
+    document.querySelector("#account-save").click();
+    await vi.waitFor(() => {
+      const update = callSpy.mock.calls.filter(([cmd]) => cmd === "account.update").pop();
+      expect(update[1].patch.icon).toBe('<i class="fa-solid fa-briefcase"></i>');
+    });
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-account-id="saved-one"] .account-swatch .fa-briefcase')).not.toBeNull();
+    });
+  });
 });

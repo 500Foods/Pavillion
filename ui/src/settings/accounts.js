@@ -1,4 +1,13 @@
+import { createTable } from "../common/table.js";
+import { accountSwatch, ICON_CHOICES, iconChoice, iconSnippet } from "./account-icon.js";
+import { accountColumns, accountRows } from "./accounts-table.js";
+
 export function createAccountsView(api, root) {
+  let table = null;
+  /* K-Q8: capabilities of the last Test of each account in this window. */
+  const testedCaps = new Map();
+  /* K-Q7: the inline note after Detect or Test saved the session URL. */
+  let urlNote = "";
   let accounts = [];
   let selectedId = null;
   let testPending = false;
@@ -14,6 +23,7 @@ export function createAccountsView(api, root) {
     username: "",
     secret: "",
     color: "#2a7",
+    icon: "",
     kind: "jmap",
     auth: "basic",
     syncMail: true,
@@ -39,6 +49,8 @@ export function createAccountsView(api, root) {
     formState.username = "";
     formState.secret = "";
     formState.color = "#2a7";
+    formState.icon = "";
+    urlNote = "";
     formState.kind = "jmap";
     formState.auth = "basic";
     formState.syncMail = true;
@@ -102,43 +114,80 @@ export function createAccountsView(api, root) {
     const selected = selectedAccount();
     textContent(header.querySelector("#account-form-title"), selected ? selected.name || selected.id : "Add account");
     textContent(header.querySelector("#account-form-number"), selected ? selected.number || "" : "");
+    const swatchHost = header.querySelector("#account-form-swatch");
+    if (swatchHost) {
+      swatchHost.replaceChildren(accountSwatch({ icon: formState.icon, color: formState.color }, document));
+    }
   }
 
+  function selectAccount(id) {
+    const selected = accounts.find((a) => a.id === id);
+    if (!selected) {
+      return;
+    }
+    selectedId = id;
+    syncFormState(selected);
+    detectResult = { text: "", error: "" };
+    urlNote = "";
+    clearSecretField();
+    testResult = { ok: false, capabilities: [], error: "" };
+    paintTree();
+    paintHeader();
+    paintForm();
+  }
+
+  /* K-Q8: the accounts table; a row click selects and loads the form. */
   function paintTree() {
     const treeEl = root.querySelector("#accounts-tree");
     if (!treeEl) {
       return;
     }
-    treeEl.replaceChildren();
     if (accounts.length === 0) {
+      if (table) {
+        table.destroy();
+        table = null;
+      }
+      treeEl.replaceChildren();
       const empty = document.createElement("p");
       empty.className = "accounts-empty";
       empty.textContent = "No accounts yet.";
       treeEl.append(empty);
       return;
     }
-    const list = document.createElement("ul");
-    list.className = "accounts-tree-list";
-    list.setAttribute("role", "tree");
-    list.setAttribute("aria-label", "Accounts");
-    for (const account of accounts) {
-      const item = document.createElement("li");
+    const rows = accountRows(accounts, testedCaps);
+    if (!table) {
+      treeEl.replaceChildren();
+      table = createTable(treeEl, {
+        columns: accountColumns(document),
+        data: rows,
+        rowId: "id",
+        onRowClick: (row) => selectAccount(row.id),
+        rowClass: (row) => (row.id === selectedId ? "pav-row-selected" : ""),
+      });
+    } else {
+      table.setData(rows);
+    }
+  }
+
+  /* K-Q9: the interim icon chooser beside Color, drawn on the account color. */
+  function paintIconChoices(formEl) {
+    const host = formEl.querySelector("#account-icon-choices");
+    if (!host) {
+      return;
+    }
+    host.replaceChildren();
+    const current = iconChoice(formState.icon);
+    for (const name of ICON_CHOICES) {
       const button = document.createElement("button");
       button.type = "button";
-      button.setAttribute("role", "treeitem");
-      button.dataset.accountId = account.id;
-      button.setAttribute("aria-current", account.id === selectedId ? "true" : "false");
-      const label = document.createElement("span");
-      label.className = "accounts-tree-label";
-      label.textContent = account.name || account.id;
-      const num = document.createElement("span");
-      num.className = "accounts-tree-number";
-      num.textContent = account.number || "";
-      button.append(label, num);
-      item.append(button);
-      list.append(item);
+      button.dataset.icon = name;
+      button.setAttribute("role", "radio");
+      button.setAttribute("aria-checked", name === current ? "true" : "false");
+      button.setAttribute("aria-label", name);
+      button.title = name;
+      button.append(accountSwatch({ icon: iconSnippet(name), color: formState.color }, document));
+      host.append(button);
     }
-    treeEl.append(list);
   }
 
   function paintForm() {
@@ -230,6 +279,9 @@ export function createAccountsView(api, root) {
     }
     textContent(formEl.querySelector("#account-detect-status"), detectPending ? "Detecting…" : detectResult.text);
     textContent(formEl.querySelector("#account-detect-error"), detectResult.error);
+    textContent(formEl.querySelector("#account-url-note"), urlNote);
+    paintIconChoices(formEl);
+    paintHeader();
   }
 
   function updateFormState() {
@@ -274,6 +326,7 @@ export function createAccountsView(api, root) {
       formState.sessionUrl = selected.sessionUrl;
       formState.username = selected.username;
       formState.color = selected.color || "#2a7";
+      formState.icon = typeof selected.icon === "string" ? selected.icon : "";
       formState.kind = selected.kind || "jmap";
       formState.auth = selected.auth || "basic";
       formState.syncMail = selected.syncMail !== false;
@@ -282,6 +335,8 @@ export function createAccountsView(api, root) {
       formState.fetchBodies = selected.fetchBodies || "recent";
       formState.enabled = selected.enabled !== false;
       formState.caFile = selected.caFile || "";
+      email = selected.email || "";
+      emailTouched = Boolean(selected.email);
     }
   }
 
@@ -306,34 +361,6 @@ export function createAccountsView(api, root) {
     }
   }
 
-  function bindTree() {
-    const treeEl = root.querySelector("#accounts-tree");
-    if (!treeEl) {
-      return;
-    }
-    treeEl.addEventListener("click", (event) => {
-      const button = event.target instanceof Element ? event.target.closest("button[data-account-id]") : null;
-      if (!button || !treeEl.contains(button)) {
-        return;
-      }
-      const id = button.dataset.accountId;
-      const selected = accounts.find((a) => a.id === id);
-      if (!selected) {
-        return;
-      }
-      selectedId = id;
-      syncFormState(selected);
-      email = "";
-      emailTouched = false;
-      detectResult = { text: "", error: "" };
-      clearSecretField();
-      testResult = { ok: false, capabilities: [], error: "" };
-      paintTree();
-      paintHeader();
-      paintForm();
-    });
-  }
-
   function clearSecretField() {
     const input = root.querySelector("#account-secret-input");
     if (input) {
@@ -351,6 +378,7 @@ export function createAccountsView(api, root) {
         updateFormState();
         try {
           const body = { ...formState };
+          body.email = effectiveEmail().trim();
           if (!body.caFile) {
             delete body.caFile;
           }
@@ -379,7 +407,9 @@ export function createAccountsView(api, root) {
           name: formState.name,
           sessionUrl: formState.sessionUrl,
           username: formState.username,
+          email: effectiveEmail().trim(),
           color: formState.color,
+          icon: formState.icon,
           syncMail: formState.syncMail,
           syncContacts: formState.syncContacts,
           syncCalendars: formState.syncCalendars,
@@ -426,27 +456,56 @@ export function createAccountsView(api, root) {
     });
   }
 
+  /* K-Q7: store a new session URL at once on an existing account (a new
+     account keeps it in the form and saves it on Add). */
+  async function storeSessionUrl(url) {
+    formState.sessionUrl = url;
+    if (!selectedId) {
+      return false;
+    }
+    await api.account.update(selectedId, { sessionUrl: url });
+    accounts = accounts.map((a) => (a.id === selectedId ? { ...a, sessionUrl: url } : a));
+    return true;
+  }
+
+  async function testOnce(sessionUrl, secret) {
+    return api.account.test({
+      sessionUrl,
+      username: formState.username,
+      auth: formState.auth,
+      secret,
+      ...(selectedId && !secret ? { id: selectedId } : {}),
+      ...(formState.caFile ? { caFile: formState.caFile } : {}),
+    });
+  }
+
   async function runTest() {
     updateFormState();
-    const sessionUrl = formState.sessionUrl;
-    const username = formState.username;
     const secret = formState.secret;
     if (!isTestReady()) {
       return;
     }
     testPending = true;
+    urlNote = "";
     testResult = { ok: false, capabilities: [], error: "" };
     paintForm();
     try {
-      const result = await api.account.test({
-        sessionUrl,
-        username,
-        auth: formState.auth,
-        secret,
-        ...(selectedId && !secret ? { id: selectedId } : {}),
-        ...(formState.caFile ? { caFile: formState.caFile } : {}),
-      });
+      let result = await testOnce(formState.sessionUrl, secret);
+      /* K-Q7: a redirect ended elsewhere: keep the final URL, and when the
+         hop changed host (Authorization dropped) test it once more so the
+         password is checked. */
+      if (typeof result.sessionUrl === "string" && result.sessionUrl !== "" && result.sessionUrl !== formState.sessionUrl) {
+        const saved = await storeSessionUrl(result.sessionUrl);
+        urlNote = saved ? "Session URL updated" : "Session URL updated; saved on Add";
+        if (result.authSent === false) {
+          result = await testOnce(formState.sessionUrl, secret);
+        }
+      }
       testResult = { ok: true, capabilities: result.capabilities || [], error: "" };
+      if (selectedId) {
+        testedCaps.set(selectedId, testResult.capabilities);
+        paintTree();
+      }
     } catch (err) {
       testResult = { ok: false, capabilities: [], error: err instanceof Error ? err.message : String(err ?? "") };
     } finally {
@@ -463,15 +522,17 @@ export function createAccountsView(api, root) {
     }
     detectPending = true;
     detectResult = { text: "", error: "" };
+    urlNote = "";
     paintForm();
     try {
       const result = await api.account.discover({
         email: address,
         ...(formState.caFile ? { caFile: formState.caFile } : {}),
       });
-      formState.sessionUrl = result.sessionUrl || "";
+      const via = `Found via ${result.via === "srv" ? "SRV" : "well-known"}`;
       testResult = { ok: false, capabilities: [], error: "" };
-      detectResult = { text: `Found via ${result.via === "srv" ? "SRV" : "well-known"}`, error: "" };
+      const saved = await storeSessionUrl(result.sessionUrl || "");
+      detectResult = { text: saved ? `${via} · Saved` : via, error: "" };
     } catch (err) {
       detectResult = { text: "", error: err instanceof Error ? err.message : String(err ?? "") };
     } finally {
@@ -514,6 +575,15 @@ export function createAccountsView(api, root) {
     if (!formEl) {
       return;
     }
+    formEl.addEventListener("click", (event) => {
+      const choice = event.target instanceof Element ? event.target.closest("button[data-icon]") : null;
+      if (!choice || !formEl.contains(choice)) {
+        return;
+      }
+      event.preventDefault();
+      formState.icon = iconSnippet(choice.dataset.icon);
+      paintForm();
+    });
     formEl.addEventListener("input", () => {
       updateFormState();
       paintForm();
@@ -524,7 +594,6 @@ export function createAccountsView(api, root) {
     });
   }
 
-  bindTree();
   bindAdd();
   bindSave();
   bindRemove();
@@ -536,6 +605,10 @@ export function createAccountsView(api, root) {
   return {
     refresh,
     destroy() {
+      if (table) {
+        table.destroy();
+        table = null;
+      }
       clearForm();
     },
   };

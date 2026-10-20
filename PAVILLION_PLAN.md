@@ -137,6 +137,7 @@ Row order decides what is next: the next phase is the first row, top to bottom, 
 | 60 | Q-1 | FTS5 indexing and local search | Medium | |
 | 132 | D-8 | Settings → Formats: app-wide date, time, and datetime formats (Luxon) | Medium | |
 | 61 | N-3 | Message list (Tabulator) | Medium | |
+| 133 | D-9 | Icon Wizard (DRAFT spec; docs only): layered icons for accounts, later folders and labels | Medium | |
 | 62 | Q-2 | Search UI and server search | Medium | |
 | 63 | N-4 | Reading pane: sandbox, remote content, `cid:`, links | Medium | |
 | 64 | M-6 | Mutation queue, conflicts, undo | Hard | |

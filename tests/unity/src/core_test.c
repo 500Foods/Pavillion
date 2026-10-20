@@ -3040,7 +3040,7 @@ void test_logdb_error_flushes_sync(void) {
     pav_log("core", PAV_ERROR, 0, "sync-error-line");
     TEST_ASSERT_EQUAL_INT64(1, db_count(path, "sync-error-line"));
     err = take_stderr();
-    TEST_ASSERT_EQUAL_INT(1, count_text(err, "sync-error-line"));
+    TEST_ASSERT_EQUAL_INT(0, count_text(err, "sync-error-line")); /* DB only (H Lock) */
     free(err);
 }
 
@@ -3103,7 +3103,7 @@ void test_log_seq_continues_across_runs(void) {
     TEST_ASSERT_EQUAL_INT64(2, db_int(path, "SELECT count(*) FROM session"));
 }
 
-void test_log_stderr_warn_error_only(void) {
+void test_log_db_only_no_stderr(void) {
     char path[200];
     char *err;
 
@@ -3120,10 +3120,14 @@ void test_log_stderr_warn_error_only(void) {
     pav_log_flush();
     err = take_stderr();
     TEST_ASSERT_EQUAL_INT(0, count_text(err, "pre-info-h4"));
-    TEST_ASSERT_EQUAL_INT(1, count_text(err, "pre-warn-h4"));
+    /* H Lock 2026-10-19: once a workdir exists nothing reaches stderr. */
+    TEST_ASSERT_EQUAL_INT(0, count_text(err, "pre-warn-h4"));
     TEST_ASSERT_EQUAL_INT(0, count_text(err, "post-debug-h4"));
-    TEST_ASSERT_EQUAL_INT(1, count_text(err, "post-error-h4"));
+    TEST_ASSERT_EQUAL_INT(0, count_text(err, "post-error-h4"));
     free(err);
+    pav_log_thread_shutdown();
+    TEST_ASSERT_EQUAL_INT64(1, db_int(path, "SELECT count(*) FROM log WHERE text='pre-warn-h4'"));
+    TEST_ASSERT_EQUAL_INT64(1, db_int(path, "SELECT count(*) FROM log WHERE text='post-error-h4'"));
 }
 
 void test_log_before_workdir_stderr_only(void) {
@@ -3156,8 +3160,8 @@ void test_log_no_duplicate_after_profile_attach(void) {
     pav_log("core", PAV_WARN, 0, "late-marker-h1");
     pav_log_thread_shutdown();
     err = take_stderr();
-    TEST_ASSERT_EQUAL_INT(1, count_text(err, "early-marker-h1"));
-    TEST_ASSERT_EQUAL_INT(1, count_text(err, "late-marker-h1"));
+    TEST_ASSERT_EQUAL_INT(0, count_text(err, "early-marker-h1"));
+    TEST_ASSERT_EQUAL_INT(0, count_text(err, "late-marker-h1"));
     free(err);
     TEST_ASSERT_EQUAL_INT64(1, db_count(path, "early-marker-h1"));
     TEST_ASSERT_EQUAL_INT64(1, db_count(path, "late-marker-h1"));
@@ -3268,7 +3272,7 @@ void test_log_old_files_delete_failure_warns(void) {
     pavillion_stop();
     pav_log_thread_shutdown();
     err = take_stderr();
-    TEST_ASSERT_NOT_NULL(strstr(err, " WARN  core  cannot remove old log files in "));
+    TEST_ASSERT_NULL(strstr(err, "cannot remove old log files")); /* DB only (H Lock) */
     free(err);
     TEST_ASSERT_TRUE(snprintf(dbpath, sizeof(dbpath), "%s/default.log.db", g_cfg_dir) < (int)sizeof(dbpath));
     TEST_ASSERT_EQUAL_INT64(1, db_count(dbpath, "cannot remove old log files"));
@@ -6326,6 +6330,44 @@ void test_account_discover_errors(void) {
     TEST_ASSERT_NULL(data);
 }
 
+/* K Lock: a password, typed or saved, and its Basic form reach no log line
+   at any level (log.db keeps every level). */
+void test_password_never_logged(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char body[1024];
+    char dbpath[200];
+    json_t *root;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    snprintf(body, sizeof(body),
+             "{\"kind\":\"jmap\",\"sessionUrl\":\"%s/.well-known/jmap\",\"username\":\"u\","
+             "\"secret\":\"Zq9-unique-pw\",\"id\":\"pw\",\"caFile\":\"%s\"}", url, ca);
+    root = call_reply("account.add", body);
+    assert_ok(root);
+    json_decref(root);
+    root = call_reply("account.update", "{\"id\":\"pw\",\"patch\":{\"secret\":\"Zq9-unique-pw\"}}");
+    json_decref(root);
+    snprintf(body, sizeof(body),
+             "{\"sessionUrl\":\"%s/.well-known/jmap\",\"username\":\"u\",\"id\":\"pw\",\"secret\":\"\",\"caFile\":\"%s\"}",
+             url, ca);
+    root = call_reply("account.test", body);
+    json_decref(root);
+    snprintf(body, sizeof(body),
+             "{\"sessionUrl\":\"%s/.well-known/jmap?error=401\",\"username\":\"u\",\"secret\":\"Zq9-unique-pw\",\"caFile\":\"%s\"}",
+             url, ca);
+    root = call_reply("account.test", body);
+    json_decref(root);
+    pavillion_stop();
+    pav_log_thread_shutdown();
+    TEST_ASSERT_TRUE(snprintf(dbpath, sizeof(dbpath), "%s/default.log.db", g_cfg_dir) < (int)sizeof(dbpath));
+    TEST_ASSERT_TRUE(db_count(dbpath, "account.test") > 0);
+    TEST_ASSERT_EQUAL_INT64(0, db_count(dbpath, "Zq9-unique-pw"));
+    TEST_ASSERT_EQUAL_INT64(0, db_count(dbpath, "dTpacTktdW5pcXVlLXB3"));
+}
+
 void test_account_test_uses_saved_secret(void) {
     const char *url = getenv("PAV_FIXTURE_URL");
     const char *ca = getenv("PAV_FIXTURE_CA");
@@ -6368,6 +6410,118 @@ void test_account_test_uses_saved_secret(void) {
     root = call_reply("account.test", body);
     TEST_ASSERT_EQUAL_STRING("bad_args",
         json_string_value(json_object_get(json_object_get(root, "error"), "code")));
+    json_decref(root);
+    pavillion_stop();
+}
+
+void test_account_test_late_reply_is_dropped(void) {
+    json_t *data = NULL;
+    PavError err;
+    int rc;
+
+    /* The fixture holds ?slow=1 for 2 s; the waiter gives up after 300 ms. */
+    pav_account_set_wait_ms(300);
+    rc = fixture_account_test("/jmap/session?slow=1", &data, &err);
+    pav_account_set_wait_ms(0);
+    TEST_ASSERT_NOT_EQUAL_INT(0, rc);
+    TEST_ASSERT_NULL(data);
+    TEST_ASSERT_EQUAL_STRING("network", err.code);
+    TEST_ASSERT_NOT_NULL(strstr(err.message, "timed out"));
+
+    /* The late reply landed in live memory and was dropped; the next test works. */
+    rc = fixture_account_test("/.well-known/jmap", &data, &err);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, rc, err.message);
+    json_decref(data);
+}
+
+static json_t *first_account(json_t *root) {
+    return json_array_get(json_object_get(json_object_get(root, "data"), "accounts"), 0);
+}
+
+void test_account_email_stored(void) {
+    json_t *root;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    root = call_reply("account.add",
+        "{\"kind\":\"jmap\",\"sessionUrl\":\"https://example.com/jmap\",\"username\":\"andrew@500foods.com\","
+        "\"secret\":\"x\",\"id\":\"one\"}");
+    assert_ok(root);
+    TEST_ASSERT_EQUAL_STRING("andrew@500foods.com",
+        json_string_value(json_object_get(json_object_get(root, "data"), "email")));
+    json_decref(root);
+    root = call_reply("account.add",
+        "{\"kind\":\"jmap\",\"sessionUrl\":\"https://example.com/jmap\",\"username\":\"andrew\","
+        "\"secret\":\"x\",\"id\":\"two\"}");
+    assert_ok(root);
+    TEST_ASSERT_EQUAL_STRING("", json_string_value(json_object_get(json_object_get(root, "data"), "email")));
+    json_decref(root);
+    root = call_reply("account.add",
+        "{\"kind\":\"jmap\",\"sessionUrl\":\"https://example.com/jmap\",\"username\":\"u\","
+        "\"secret\":\"x\",\"id\":\"three\",\"email\":\"not an address\"}");
+    TEST_ASSERT_EQUAL_STRING("bad_args",
+        json_string_value(json_object_get(json_object_get(root, "error"), "code")));
+    json_decref(root);
+
+    root = call_reply("account.update", "{\"id\":\"two\",\"patch\":{\"email\":\"a@b.example\"}}");
+    assert_ok(root);
+    json_decref(root);
+    root = call_reply("account.update", "{\"id\":\"two\",\"patch\":{\"email\":\"a@\"}}");
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(root, "ok")));
+    json_decref(root);
+    root = call_reply("account.list", "{}");
+    assert_ok(root);
+    TEST_ASSERT_EQUAL_STRING("a@b.example", json_string_value(json_object_get(
+        json_array_get(json_object_get(json_object_get(root, "data"), "accounts"), 1), "email")));
+    TEST_ASSERT_NOT_NULL(first_account(root));
+    json_decref(root);
+    pavillion_stop();
+}
+
+void test_account_email_migration(void) {
+    json_t *doc = json_loads(
+        "{\"accounts\":[{\"id\":\"a\",\"username\":\"me@x.example\"},{\"id\":\"b\",\"username\":\"me\"},"
+        "{\"id\":\"c\",\"username\":\"me@x.example\",\"email\":\"kept@y.example\"}]}", 0, NULL);
+    json_t *acc;
+
+    TEST_ASSERT_NOT_NULL(doc);
+    TEST_ASSERT_EQUAL_INT(3, pav_account_migrate_email(doc));
+    acc = json_object_get(doc, "accounts");
+    TEST_ASSERT_EQUAL_STRING("", json_string_value(json_object_get(json_array_get(acc, 2), "icon")));
+    TEST_ASSERT_EQUAL_STRING("me@x.example", json_string_value(json_object_get(json_array_get(acc, 0), "email")));
+    TEST_ASSERT_EQUAL_STRING("", json_string_value(json_object_get(json_array_get(acc, 1), "email")));
+    TEST_ASSERT_EQUAL_STRING("kept@y.example", json_string_value(json_object_get(json_array_get(acc, 2), "email")));
+    TEST_ASSERT_EQUAL_INT(0, pav_account_migrate_email(doc));
+    json_decref(doc);
+}
+
+/* K-Q9: icon is "" by default, else a bounded FA HTML snippet, patchable. */
+void test_account_icon_field(void) {
+    json_t *root;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    root = call_reply("account.add",
+        "{\"kind\":\"jmap\",\"sessionUrl\":\"https://example.com/jmap\",\"username\":\"u\","
+        "\"secret\":\"x\",\"id\":\"one\"}");
+    assert_ok(root);
+    TEST_ASSERT_EQUAL_STRING("", json_string_value(json_object_get(json_object_get(root, "data"), "icon")));
+    json_decref(root);
+    root = call_reply("account.add",
+        "{\"kind\":\"jmap\",\"sessionUrl\":\"https://example.com/jmap\",\"username\":\"u\","
+        "\"secret\":\"x\",\"id\":\"two\",\"icon\":\"<script>x</script>\"}");
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(root, "ok")));
+    json_decref(root);
+    root = call_reply("account.update", "{\"id\":\"one\",\"patch\":{\"icon\":\"<i class=\\\"fa-solid fa-briefcase\\\"></i>\"}}");
+    assert_ok(root);
+    json_decref(root);
+    root = call_reply("account.update", "{\"id\":\"one\",\"patch\":{\"icon\":\"<i onclick=\\\"x\\\"></i>\"}}");
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(root, "ok")));
+    json_decref(root);
+    root = call_reply("account.list", "{}");
+    assert_ok(root);
+    TEST_ASSERT_EQUAL_STRING("<i class=\"fa-solid fa-briefcase\"></i>", json_string_value(json_object_get(
+        json_array_get(json_object_get(json_object_get(root, "data"), "accounts"), 0), "icon")));
     json_decref(root);
     pavillion_stop();
 }
@@ -6798,7 +6952,7 @@ int main(void) {
     RUN_TEST(test_logdb_shutdown_flushes);
     RUN_TEST(test_log_pre_attach_written_once);
     RUN_TEST(test_log_seq_continues_across_runs);
-    RUN_TEST(test_log_stderr_warn_error_only);
+    RUN_TEST(test_log_db_only_no_stderr);
     RUN_TEST(test_no_logs_dir_created);
     RUN_TEST(test_log_old_files_deleted);
     RUN_TEST(test_log_old_files_delete_failure_warns);
@@ -6898,6 +7052,11 @@ int main(void) {
     RUN_TEST(test_account_discover_well_known_fallback);
     RUN_TEST(test_account_discover_errors);
     RUN_TEST(test_account_test_uses_saved_secret);
+    RUN_TEST(test_password_never_logged);
+    RUN_TEST(test_account_test_late_reply_is_dropped);
+    RUN_TEST(test_account_email_stored);
+    RUN_TEST(test_account_email_migration);
+    RUN_TEST(test_account_icon_field);
     RUN_TEST(test_remote_accounts_from_session);
     return UNITY_END();
 }

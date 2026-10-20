@@ -21,3 +21,10 @@ test("bounds, membership, and widening", () => {
   expect(rangeWidened("24h", "12h", now)).toBe(false);
   expect(rangeWidened("7d", "all", now)).toBe(true);
 });
+
+test("1h, 3h and 6h are presets with their span", () => {
+  for (const [key, hours] of [["1h", 1], ["3h", 3], ["6h", 6]]) {
+    expect(normalizeRange(key)).toBe(key);
+    expect(rangeBounds(key, 10 * 3600000).since).toBe((10 - hours) * 3600000);
+  }
+});

@@ -10,4 +10,11 @@ int pav_secret_set(const char *service, const char *user, const char *label, con
 int pav_secret_delete(const char *service, const char *user);
 void pav_secret_free(char *value);
 
+/* K Lock (no caching, zeroize after use): wipe n bytes with volatile stores. */
+void pav_secret_wipe(void *p, size_t n);
+/* Wipe the string under key in a jansson object (a typed password in the
+   arguments, an Authorization header) before it is freed. */
+struct json_t;
+void pav_secret_wipe_json(struct json_t *obj, const char *key);
+
 #endif

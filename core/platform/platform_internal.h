@@ -10,4 +10,8 @@ int pav_posix_write_private(const char *path, const void *buf, size_t n);
 int pav_posix_write_abort(const char *path, const void *buf, size_t n);
 int64_t pav_posix_now_ms(void);
 
+/* SRV lookup (K-Q5): posix/srv_resolv.c or windows/srv_dnsapi.c. 0 found,
+   1 no record, -1 lookup failed. */
+int pav_os_srv_lookup(const char *name, char *target, size_t len, int *port);
+
 #endif
