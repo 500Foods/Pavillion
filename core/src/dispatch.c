@@ -40,6 +40,7 @@ typedef struct EventItem {
 } EventItem;
 
 static int cmd_log_client(json_t *args, json_t **data, PavError *err);
+static int cmd_export_write_text(json_t *args, json_t **data, PavError *err);
 static int cmd_log_export(json_t *args, json_t **data, PavError *err);
 static int cmd_log_tail(json_t *args, json_t **data, PavError *err);
 static int cmd_log_query(json_t *args, json_t **data, PavError *err);
@@ -72,6 +73,7 @@ static const PavCommand k_commands[] = {
     {"debug.activity_demo", pav_activity_cmd_demo, PAV_CMD_WORKER},
     {"debug.secret_smoke", pav_cmd_secret_smoke, 0},
 #endif
+    {"export.write_text", cmd_export_write_text, 0},
     {"log.client", cmd_log_client, 0},
     {"log.export", cmd_log_export, 0},
     {"log.query", cmd_log_query, 0},
@@ -832,6 +834,87 @@ static int export_bytes(LogFilter *f, char **out, size_t *out_len, int *lines) {
     return rc == 0 ? 0 : -1;
 }
 
+/* An export target: absolute file path, parent directory exists (log.export,
+   export.write_text). */
+static int out_path_check(const char *path, PavError *err) {
+    char parent[4096];
+
+    if (path[0] == '\0' || strlen(path) >= 4096 || strpbrk(path, "\r\n") != NULL || path[strlen(path) - 1] == '/') {
+        return bad(err, "path must be an absolute file path");
+    }
+    if (!pav_path_is_absolute(path)) {
+        return bad(err, "path must be an absolute file path");
+    }
+    if (pav_is_dir(path)) {
+        return bad(err, "path is a directory");
+    }
+    if (pav_path_parent(parent, sizeof(parent), path) != 0 || !pav_is_dir(parent)) {
+        return bad(err, "directory does not exist");
+    }
+    return 0;
+}
+
+#define EXPORT_TEXT_MAX (8u * 1024u * 1024u)
+
+/* D-10: write page-built export text (Accounts CSV) to a dialog-picked path. */
+static int cmd_export_write_text(json_t *args, json_t **data, PavError *err) {
+    const char *key;
+    json_t *value;
+    const char *path = NULL;
+    const char *text = NULL;
+    size_t len = 0;
+    const char *name;
+    const PavPlatform *platform;
+    char buf[512];
+
+    json_object_foreach(args, key, value) {
+        if (strcmp(key, "path") == 0) {
+            if (!json_is_string(value)) {
+                return bad(err, "path must be a string");
+            }
+            path = json_string_value(value);
+        } else if (strcmp(key, "text") == 0) {
+            if (!json_is_string(value)) {
+                return bad(err, "text must be a string");
+            }
+            text = json_string_value(value);
+            len = json_string_length(value);
+        } else {
+            snprintf(buf, sizeof(buf), "unknown argument %s", key);
+            return bad(err, buf);
+        }
+    }
+    if (path == NULL || text == NULL) {
+        return bad(err, "export.write_text requires path and text");
+    }
+    if (out_path_check(path, err) != 0) {
+        return -1;
+    }
+    if (strlen(text) != len) {
+        return bad(err, "text must not contain NUL");
+    }
+    if (len > EXPORT_TEXT_MAX) {
+        pav_error_set(err, "too_large", "export is too large", 0);
+        return -1;
+    }
+    name = strrchr(path, '/');
+    name = name != NULL ? name + 1 : path;
+    platform = pav_platform();
+    if (platform == NULL || platform->write_private == NULL ||
+        platform->write_private(path, text, len) != 0) {
+        pav_log("export", PAV_WARN, 2, "write failed: %s", name);
+        pav_error_set(err, "internal", "cannot write the file", 0);
+        return -1;
+    }
+    pav_log("export", PAV_INFO, 2, "wrote %zu bytes to %s", len, name);
+    *data = json_pack("{s:I}", "bytes", (json_int_t)len);
+    if (*data == NULL) {
+        pav_error_set(err, "internal", "out of memory", 0);
+        return -1;
+    }
+    return 0;
+}
+
 static int cmd_log_export(json_t *args, json_t **data, PavError *err) {
     const char *key;
     json_t *value;
@@ -842,7 +925,6 @@ static int cmd_log_export(json_t *args, json_t **data, PavError *err) {
     size_t bytes_len = 0;
     int lines = 0;
     int rc;
-    char parent[4096];
     char buf[512];
     const PavPlatform *platform;
 
@@ -867,17 +949,8 @@ static int cmd_log_export(json_t *args, json_t **data, PavError *err) {
     if (path == NULL || filter == NULL) {
         return bad(err, "log.export requires path and filter");
     }
-    if (path[0] == '\0' || strlen(path) >= 4096 || strpbrk(path, "\r\n") != NULL || path[strlen(path) - 1] == '/') {
-        return bad(err, "path must be an absolute file path");
-    }
-    if (!pav_path_is_absolute(path)) {
-        return bad(err, "path must be an absolute file path");
-    }
-    if (pav_is_dir(path)) {
-        return bad(err, "path is a directory");
-    }
-    if (pav_path_parent(parent, sizeof(parent), path) != 0 || !pav_is_dir(parent)) {
-        return bad(err, "directory does not exist");
+    if (out_path_check(path, err) != 0) {
+        return -1;
     }
     json_object_foreach(filter, key, value) {
         rc = filter_key(&f, key, value, err);

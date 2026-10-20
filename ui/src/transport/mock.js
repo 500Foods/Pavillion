@@ -393,6 +393,12 @@ export function mockTransport() {
         oldestTs: kept.length > 0 ? Date.parse(kept[0].ts) : null,
       };
     }
+    if (cmd === "export.write_text") {
+      if (typeof input.path !== "string" || typeof input.text !== "string") {
+        throw fail("bad_args", "export.write_text requires path and text");
+      }
+      return { bytes: new TextEncoder().encode(input.text).length };
+    }
     if (cmd === "log.export") {
       if (typeof input.path !== "string" || !isObject(input.filter)) {
         throw fail("bad_args", "log.export requires path and filter");

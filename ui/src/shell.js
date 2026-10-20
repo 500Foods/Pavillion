@@ -2717,6 +2717,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
   paintHelpBack();
   mountRoot.addEventListener("click", onHelpJump);
   accountsView = createAccountsView(api, mountRoot, {
+    host,
     timeZone: () => logTimeZone,
     confirm(text, name) {
       if (!widgets) {

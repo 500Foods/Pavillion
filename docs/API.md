@@ -336,6 +336,20 @@ State: planned (T-4)
 
 `{event, scope:"this"|"following"|"all", occurrenceStart?}`.
 
+### export.write_text
+
+State: real (D-10, 2026-10-20)
+
+Writes a page-built text export (for example the Accounts CSV) to a file the user picked in the host save dialog (`host.dialog.save`). The page never writes files itself: a WebKitGTK blob download does nothing in the Tauri window, and there is no fs plugin.
+
+Args: `{path, text}`. `path` follows the `log.export` rules: absolute, under 4096 bytes, no CR or LF, not ending in `/`, not a directory, and its parent directory exists. `text` is a UTF-8 string of at most 8 MiB (JSON strings are UTF-8, and an embedded NUL is refused). The file is written whole through the platform private writer (`0600`, replaced if present). Callers must never pass secrets; the accounts export carries no username or password and account rows never hold a secret.
+
+Result: `{bytes}`, the number of bytes written.
+
+Logs one `INFO` line (`export`): `wrote <bytes> bytes to <file name>` (the name only, not the directory). Failures log `WARN` with the code.
+
+Errors: `bad_args`, `too_large`, `internal` (cannot write).
+
 ### files.delete
 
 State: planned (U-2)

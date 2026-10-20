@@ -90,6 +90,12 @@ export function createApi(transport) {
         return call("debug.activity_demo", body ?? {});
       },
     },
+    exports: {
+      /* D-10: write page-built text to a dialog-picked path (API.md). */
+      writeText({ path, text }) {
+        return call("export.write_text", { path, text });
+      },
+    },
     log: {
       client({ subsystem, level, message }) {
         return call("log.client", { subsystem, level: levelName(level), message });

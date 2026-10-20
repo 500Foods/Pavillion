@@ -278,3 +278,24 @@ export function accountMatches(row, query) {
   return [row.name, row.number, row.email, account.username, row.server]
     .some((value) => typeof value === "string" && value.toLowerCase().includes(q));
 }
+
+/* D-10 Export: the CSV text for rows in display order, EXPORT_FIELDS only
+   (no username, no secret). A cell starting with = + - @ gets a leading
+   apostrophe so a spreadsheet does not run it as a formula. */
+export const EXPORT_TITLES = ["Number", "Name", "Server", "Mail", "Calendar", "Contacts", "Files", "Email"];
+
+function csvCell(value) {
+  let text = typeof value === "boolean" ? yesNo(value) : String(value ?? "");
+  if (/^[=+\-@]/.test(text)) {
+    text = `'${text}`;
+  }
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+export function accountsCsv(rows) {
+  const lines = [EXPORT_TITLES.map(csvCell).join(",")];
+  for (const row of rows) {
+    lines.push(EXPORT_FIELDS.map((field) => csvCell(row[field])).join(","));
+  }
+  return `${lines.join("\r\n")}\r\n`;
+}

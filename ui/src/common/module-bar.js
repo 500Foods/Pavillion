@@ -16,7 +16,7 @@ function iconButton(spec, documentRef) {
   button.setAttribute("aria-label", spec.label);
   if (spec.icon) {
     const icon = documentRef.createElement("i");
-    icon.className = `fa-sharp-duotone fa-solid ${spec.icon}`;
+    icon.className = `icon fa-sharp-duotone fa-solid ${spec.icon}`;
     icon.setAttribute("aria-hidden", "true");
     button.append(icon);
   }

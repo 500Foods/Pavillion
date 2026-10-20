@@ -5,6 +5,7 @@ import {
   accountColumns,
   accountMatches,
   accountRows,
+  accountsCsv,
   cloneAccount,
   navTarget,
   serverGroupHeader,
@@ -193,7 +194,6 @@ export function createAccountsView(api, root, options = {}) {
         groupHeader: (value, count) => serverGroupHeader(value, count, document),
         groupOrder: (data) => [...new Set(data.map((row) => row.server))],
         select: true,
-        download: true,
         filter: true,
         onRender: paintNavState,
       });
@@ -312,7 +312,7 @@ export function createAccountsView(api, root, options = {}) {
       noun: "account",
       onRefresh: () => void refresh(),
       onNav: navigate,
-      end: [{ action: "export", icon: "fa-file-export", text: "Export", label: "Export the account list as CSV", onClick: exportCsv }],
+      end: [{ action: "export", icon: "fa-file-export", text: "Export", label: "Export the account list as CSV", onClick: () => void exportCsv() }],
     }, document));
     paintNavState();
   }
@@ -338,11 +338,32 @@ export function createAccountsView(api, root, options = {}) {
   }
 
   /* K-Q12: CSV of the visible columns plus server and email; never secrets. */
-  function exportCsv() {
-    if (!table || !table.download("pavillion-accounts.csv")) {
+  /* D-10: the shown rows in display order, as CSV, to a path from the host
+     save dialog, written by the core (export.write_text). */
+  async function exportCsv() {
+    const host = options.host;
+    if (!table || !host || !host.dialog || typeof host.dialog.save !== "function") {
+      showBanner("Export is not available");
       return;
     }
-    const count = accounts.length;
+    const byId = new Map(accountRows(accounts, timeZone()).map((row) => [row.id, row]));
+    const rows = table.ids().map((id) => byId.get(id)).filter(Boolean);
+    let path;
+    try {
+      path = await host.dialog.save({
+        title: "Export accounts",
+        defaultPath: "pavillion-accounts.csv",
+        filters: [{ name: "CSV", extensions: ["csv"] }],
+      });
+      if (!path) {
+        return;
+      }
+      await api.exports.writeText({ path, text: accountsCsv(rows) });
+    } catch (err) {
+      showBanner(err);
+      return;
+    }
+    const count = rows.length;
     void Promise.resolve(api.log && api.log.client
       ? api.log.client({ subsystem: "accounts", level: "info", message: `exported ${count} ${count === 1 ? "account" : "accounts"} to CSV` })
       : null).catch(() => {});

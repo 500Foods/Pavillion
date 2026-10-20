@@ -1,4 +1,12 @@
 .pav-root {
+  /* D-10: one size set for every bar (nav, tabs, module toolbar and footer).
+     Rem lengths do not follow WebKit zoom, so icons multiply by
+     --pav-bar-zoom and padding stays in rem on every bar alike. */
+  --pav-bar-icon-size: 1.15rem;
+  --pav-bar-font-size: 0.875rem;
+  --pav-bar-pad-y: 0.55rem;
+  --pav-bar-pad-x: 0.9rem;
+  --pav-tab-close-icon-size: 0.7rem;
   height: 100%;
   margin: 0;
   background: var(--pav-surface-canvas);
@@ -73,7 +81,7 @@
   flex: 1;
   display: grid;
   place-items: center;
-  padding: 0.55rem 0;
+  padding: var(--pav-bar-pad-y) 0;
   border: 0;
   background: transparent;
   cursor: grab;
@@ -101,9 +109,9 @@
 
 .pav-root .nav-buttons .icon,
 .pav-root .nav-buttons svg {
-  width: calc(1.15rem * var(--pav-bar-zoom));
-  height: calc(1.15rem * var(--pav-bar-zoom));
-  font-size: calc(1.15rem * var(--pav-bar-zoom));
+  width: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+  height: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+  font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
   line-height: 1;
   object-fit: contain;
 }
@@ -147,9 +155,9 @@
   border: 0;
   border-right: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
   background: transparent;
-  padding: 0.55rem 0.9rem;
+  padding: var(--pav-bar-pad-y) var(--pav-bar-pad-x);
   color: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--pav-bar-font-size);
   line-height: 1.2;
   white-space: nowrap;
   cursor: grab;
@@ -174,9 +182,9 @@
 }
 
 .pav-root .tab-icon :is(i, svg, img) {
-  width: calc(0.875rem * var(--pav-bar-zoom));
-  height: calc(0.875rem * var(--pav-bar-zoom));
-  font-size: calc(0.875rem * var(--pav-bar-zoom));
+  width: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+  height: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+  font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
   object-fit: contain;
 }
 
@@ -184,21 +192,32 @@
   min-width: 0;
 }
 
+.pav-root .tabs [role="tab"]:has(.tab-close) {
+  padding-right: 0;
+}
+
+/* D-10: the close button is the tab's right-most region, full height, with
+   its own hover; the icon is smaller than the bar icons. */
 .pav-root .tab-close {
   display: inline-flex;
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 1rem;
-  height: 1rem;
-  margin: 0;
+  align-self: stretch;
+  width: calc(1.9rem * var(--pav-bar-zoom));
+  margin: calc(-1 * var(--pav-bar-pad-y)) 0;
   padding: 0;
   border: 0;
-  border-radius: 0.2rem;
+  border-radius: 0;
   background: transparent;
   color: inherit;
-  font-size: 0.875rem;
+  font-size: calc(var(--pav-tab-close-icon-size) * var(--pav-bar-zoom));
   line-height: 1;
+}
+
+.pav-root .tab-close :is(i, svg) {
+  width: calc(var(--pav-tab-close-icon-size) * var(--pav-bar-zoom));
+  height: calc(var(--pav-tab-close-icon-size) * var(--pav-bar-zoom));
 }
 
 .pav-root .tab-close:hover {
@@ -667,7 +686,7 @@
   display: flex;
   align-items: center;
   padding: 0 0.9rem;
-  font-size: 1rem;
+  font-size: var(--pav-bar-font-size);
   font-weight: 600;
 }
 
@@ -684,9 +703,9 @@
 
 .pav-root .help-jump .icon,
 .pav-root .help-jump svg {
-  width: calc(1.15rem * var(--pav-bar-zoom));
-  height: calc(1.15rem * var(--pav-bar-zoom));
-  font-size: calc(1.15rem * var(--pav-bar-zoom));
+  width: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+  height: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+  font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
 }
 
 .pav-root .settings [data-settings="theme"] {
@@ -819,8 +838,8 @@
 
 .pav-root .nav-mark.is-shown {
   display: block;
-  width: calc(1.15rem * var(--pav-bar-zoom, 1));
-  height: calc(1.15rem * var(--pav-bar-zoom, 1));
+  width: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom, 1));
+  height: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom, 1));
 }
 
 .pav-root .theme-list {
@@ -900,6 +919,7 @@
 
 .pav-root .button-bar {
   --pav-bar-zoom: 1;
+  font-size: var(--pav-bar-font-size);
   display: flex;
   flex: none;
   align-items: stretch;
@@ -943,7 +963,7 @@
   overflow: hidden;
   visibility: hidden;
   pointer-events: none;
-  padding: 0.55rem 0;
+  padding: var(--pav-bar-pad-y) 0;
 }
 
 .pav-root .log-topbar {
@@ -987,9 +1007,9 @@
 
 .pav-root .log-gear .icon,
 .pav-root .log-gear svg {
-  width: calc(1.15rem * var(--pav-bar-zoom));
-  height: calc(1.15rem * var(--pav-bar-zoom));
-  font-size: calc(1.15rem * var(--pav-bar-zoom));
+  width: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+  height: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+  font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
   color: var(--pav-text);
 }
 
@@ -1078,8 +1098,7 @@
   border-left: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
   background: transparent;
   padding: 0 0.7rem;
-  /* A few points under the 1rem bar face. Toolbar zoom still scales it. */
-  font-size: 0.75rem;
+  font-size: var(--pav-bar-font-size);
 }
 
 .pav-root .pav-module-toolbar > button,
@@ -1933,14 +1952,14 @@
   border-bottom: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
 }
 .pav-root .pav-module-footer {
-  justify-content: space-between;
+  justify-content: flex-start;
   border-top: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
 }
 .pav-root .pav-module-title {
   display: flex;
   align-items: center;
   padding: 0 0.9rem;
-  font-size: 1rem;
+  font-size: var(--pav-bar-font-size);
   font-weight: 600;
 }
 .pav-root .pav-module-spacer {
@@ -1950,7 +1969,38 @@
 .pav-root .pav-module-nav,
 .pav-root .pav-module-footer-end {
   display: inline-flex;
+  flex: none;
   align-items: stretch;
+}
+.pav-root .pav-module-footer-end {
+  margin-left: auto;
+}
+.pav-root .pav-module-toolbar > button,
+.pav-root .pav-module-footer button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 0;
+  background: transparent;
+  padding: var(--pav-bar-pad-y) var(--pav-bar-pad-x);
+  font-size: var(--pav-bar-font-size);
+  line-height: 1.2;
+}
+.pav-root .pav-module-toolbar > button:not(.help-jump) .icon,
+.pav-root .pav-module-toolbar > button:not(.help-jump) svg,
+.pav-root .pav-module-footer .icon,
+.pav-root .pav-module-footer svg {
+  width: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+  height: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+  font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+  flex: none;
+}
+/* D-10: a module fills its area; a split body meets both bars. */
+.pav-root [data-settings="accounts"] > .settings-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
 }
 .pav-root .pav-module-toolbar > button,
 .pav-root .pav-module-footer button {

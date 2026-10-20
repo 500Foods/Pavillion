@@ -130,3 +130,5 @@ A working reference, not a Lock. The Lock for the shared table is N-MAIL ("Share
 - **Tree-shaking trap:** `import("tabulator-tables")` and then `lib[name]` keeps the whole namespace (the chunk went from 166 kB to 458 kB). The modules are re-exported by name from `ui/src/common/tabulator-lib.js`, which `table.js` loads dynamically: 216 kB (53 kB gzip) with ten modules. Adding a module means adding it there too.
 
 **D-10 (2026-10-20):** the navigator and Export left the Tabulator `footerElement` for the module footer (D-UI D-10 convention, `ui/src/common/module-bar.js`); the table keeps only its `bottomCalc` row. Search uses `FilterModule` through `createTable(...).setFilter(fn)`; empty groups disappear. `ids()` returns only shown rows.
+
+**D-10 revision (2026-10-20):** Accounts Export no longer uses Tabulator `download` (a blob download does nothing in WebKitGTK); the page builds the CSV and the core writes it (`export.write_text`). The Export and Download modules are no longer registered by Accounts; the `download` option stays in the wrapper for later tables.

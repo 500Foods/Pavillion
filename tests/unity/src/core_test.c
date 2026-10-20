@@ -3574,6 +3574,51 @@ void test_log_export_filter(void) {
     free(log_text);
 }
 
+/* D-10: export.write_text writes the text whole, 0600, and checks the path. */
+void test_export_write_text(void) {
+    char args[700];
+    char path[160];
+    char *written;
+    json_t *root;
+    struct stat st;
+
+    open_log();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_TRUE(snprintf(path, sizeof(path), "%s/accounts.csv", g_cfg_dir) < (int)sizeof(path));
+    TEST_ASSERT_TRUE(snprintf(args, sizeof(args), "{\"path\":\"%s\",\"text\":\"Number,Name\\n001,Caf\\u00e9\\n\"}", path) <
+                     (int)sizeof(args));
+    root = call_reply("export.write_text", args);
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    TEST_ASSERT_EQUAL_INT(22, (int)json_integer_value(json_object_get(json_object_get(root, "data"), "bytes")));
+    json_decref(root);
+    written = slurp(path);
+    TEST_ASSERT_EQUAL_STRING("Number,Name\n001,Caf\xc3\xa9\n", written);
+    free(written);
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
+    ASSERT_MODE(0600, st);
+
+    root = call_reply("export.write_text", "{\"path\":\"rel.csv\",\"text\":\"x\"}");
+    assert_call_error(root, "bad_args", "absolute");
+    json_decref(root);
+    TEST_ASSERT_TRUE(snprintf(args, sizeof(args), "{\"path\":\"%s/no-such-dir/a.csv\",\"text\":\"x\"}", g_cfg_dir) <
+                     (int)sizeof(args));
+    root = call_reply("export.write_text", args);
+    assert_call_error(root, "bad_args", "directory");
+    json_decref(root);
+    TEST_ASSERT_TRUE(snprintf(args, sizeof(args), "{\"path\":\"%s\",\"text\":\"x\"}", g_cfg_dir) < (int)sizeof(args));
+    root = call_reply("export.write_text", args);
+    assert_call_error(root, "bad_args", "directory");
+    json_decref(root);
+    TEST_ASSERT_TRUE(snprintf(args, sizeof(args), "{\"path\":\"%s\",\"text\":1}", path) < (int)sizeof(args));
+    root = call_reply("export.write_text", args);
+    assert_call_error(root, "bad_args", "text");
+    json_decref(root);
+    root = call_reply("export.write_text", "{\"text\":\"x\"}");
+    assert_call_error(root, "bad_args", "requires");
+    json_decref(root);
+}
+
 void test_prefs_set_log_level(void) {
     char profile_path[160];
     char index_path[160];
@@ -7074,6 +7119,7 @@ int main(void) {
     RUN_TEST(test_log_repeats_flush_at_shutdown);
     RUN_TEST(test_jmap_post_url_outlives_call);
     RUN_TEST(test_log_export_filter);
+    RUN_TEST(test_export_write_text);
     RUN_TEST(test_prefs_set_log_level);
     RUN_TEST(test_activity_begin_progress_end);
     RUN_TEST(test_activity_cancel_is_cooperative);

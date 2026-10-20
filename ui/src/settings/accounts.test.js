@@ -725,9 +725,11 @@ async function withView(body) {
     const transport = mockTransport();
     const callSpy = vi.spyOn(transport, "call");
     const api = createApi(transport);
-    await mount(el, api, {});
+    const saves = [];
+    const host = { dialog: { save: async (opts) => { saves.push(opts); return "/tmp/pav-accounts.csv"; } } };
+    await mount(el, api, { hostServices: host });
     openAccountsPanel();
-    await body(callSpy);
+    await body(callSpy, saves);
   } finally {
     unmount();
     el.remove();
@@ -905,7 +907,7 @@ test("the table orders columns, groups by server, and counts accounts", async ()
 
 /* K-Q12: calcs, the navigator, arrow keys, and Export. */
 test("the footer counts checked features, and the navigator and arrows move the selection", async () => {
-  await withView(async (callSpy) => {
+  await withView(async (callSpy, saves) => {
     const add = async (name, url) => {
       typeInto("#account-name-input", name);
       typeInto("#account-session-url-input", url);
@@ -950,7 +952,16 @@ test("the footer counts checked features, and the navigator and arrows move the 
     expect(document.querySelector('#accounts-tree .tabulator-calcs-bottom [data-field="mail"]').textContent).toBe("0");
 
     document.querySelector('#accounts-footer button[data-module-action="export"]').click();
-    expect(fakeTables.at(-1).downloads).toEqual(["pavillion-accounts.csv"]);
+    await vi.waitFor(() => {
+      expect(callSpy.mock.calls.some(([cmd]) => cmd === "export.write_text")).toBe(true);
+    });
+    expect(saves[0].defaultPath).toBe("pavillion-accounts.csv");
+    const write = callSpy.mock.calls.find(([cmd]) => cmd === "export.write_text")[1];
+    expect(write.path).toBe("/tmp/pav-accounts.csv");
+    const lines = write.text.split("\r\n");
+    expect(lines[0]).toBe("Number,Name,Server,Mail,Calendar,Contacts,Files,Email");
+    expect(lines[1].slice(4)).toBe("Alpha,a.example (https://a.example/jmap),no,no,no,no,alpha@example.com");
+    expect(write.text).not.toContain("pw");
     await vi.waitFor(() => {
       const log = callSpy.mock.calls.filter(([cmd]) => cmd === "log.client").pop();
       expect(log[1]).toEqual({ subsystem: "accounts", level: "info", message: "exported 3 accounts to CSV" });
@@ -1028,4 +1039,10 @@ test("toolbar Add, Clone and search, and footer Refresh first", async () => {
       expect(lists()).toBe(listed + 1);
     });
   });
+});
+
+test("accountsCsv quotes, guards formulas, and carries only export fields", async () => {
+  const { accountsCsv } = await import("./accounts-table.js");
+  const text = accountsCsv([{ number: "001", name: "A, \"B\"", server: "s", mail: true, calendars: false, contacts: false, files: false, email: "=cmd", account: { username: "u" } }]);
+  expect(text).toBe("Number,Name,Server,Mail,Calendar,Contacts,Files,Email\r\n001,\"A, \"\"B\"\"\",s,yes,no,no,no,'=cmd\r\n");
 });
