@@ -43,6 +43,11 @@ int pav_core_set_log_max_mb(int mb, PavError *err);
 
 int pav_ui_log(const char *subsystem, int level, const char *message);
 
+/* K-Q10: from the worker, hand a verified account.test result to the core
+   thread, which stores it before any later command runs. Takes ownership of
+   caps. 0 queued, -1 not (core stopped, queue full). */
+int pav_core_post_capabilities(const char *id, json_t *caps, const char *checked);
+
 int pav_activity_cmd_list(json_t *args, json_t **data, PavError *err);
 int pav_activity_cmd_cancel(json_t *args, json_t **data, PavError *err);
 int pav_activity_cmd_dismiss(json_t *args, json_t **data, PavError *err);

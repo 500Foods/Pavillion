@@ -55,6 +55,8 @@ From 2026-10-19 (Andrew): `email?` is the account's address, stored on every acc
 
 From 2026-10-19 (Andrew, K-Q9): `icon?` is an HTML snippet of Font Awesome markup, `""` for the default envelope. The interim form writes `<i class="fa-solid fa-name"></i>`; the Icon Wizard (D-9) will write larger snippets in the same key. Accepted: `""`, or under 4096 bytes, starting with `<`, without `<script`, an `on…=` attribute, or `javascript:`; otherwise `bad_args`. The page sanitizes it before drawing. Stored on every account; patchable with `account.update`.
 
+From 2026-10-19 (K-Q10): `capabilities?` (array of capability words; others dropped) and `capabilitiesChecked?` (UTC ISO 8601) store a Test made before Add; absent means `[]` and `null`.
+
 From 2026-10-19 (Andrew): `email?` is the account's address, stored on every account as a string. It is `""` or `name@domain` (under 256 bytes); absent, it defaults to `username` when that looks like an address, else `""`.
 
 Result: the account object (without the secret). Includes `number`.
@@ -75,6 +77,8 @@ Errors: `bad_args` (missing or invalid email), `not_found` (neither SRV nor well
 State: real (K-2)
 
 From 2026-10-19: every account in the result carries `email`; an account saved before the field existed gets the username default (K-Q6).
+
+From 2026-10-19 (K-Q10): every account also carries `capabilities` (array of capability words) and `capabilitiesChecked` (UTC ISO 8601 or `null`); older accounts get `[]` and `null`.
 
 Lists the accounts on the active profile. Secrets are not included.
 
@@ -106,13 +110,15 @@ Errors: `bad_args`, `not_found`, `failed` (keyring).
 
 State: real (M-2)
 
-`{sessionUrl | email, username, auth?, secret, caFile?}` returns `{ok, capabilities[], error?}`. `caFile` pins a CA bundle for this test; without it the system store is used (the test build also honours `PAV_FIXTURE_CA`). It does not write the profile.
+`{sessionUrl | email, username, auth?, secret, caFile?}` returns `{ok, capabilities[], error?}`. `caFile` pins a CA bundle for this test; without it the system store is used (the test build also honours `PAV_FIXTURE_CA`). It does not write the profile. `capabilities` holds `mail`, `submission`, `contacts`, `calendars`, `sieve`, `files`, and `websocket` for what the Session advertises: `urn:ietf:params:jmap:mail`, `…:submission`, `…:contacts`, `…:calendars`, `…:sieve`, `…:websocket`, and for `files` `urn:ietf:params:jmap:filenode` (JMAP File Storage, 2026-10-19) or the older aliases `urn:ietf:params:jmap:files`, `urn:ietf:params:jmap:files:0`, and `urn:apache:jmap:files`.
 
 From 2026-10-19 (Andrew): any failure, including an early one (bad redirect, queue or memory failure, timeout), returns a not-ok reply with an error code; it never returns `ok` without data. Redirects (301, 302, 307, 308, at most 3) read `Location` case-insensitively and resolve a relative value (`/jmap/session`, `//host/path`, or a bare path) against the request URL; the target must still be `https://`. Each test runs as an activity of kind `account.test` (title `Test <host>`), ended `done` or `failed` with the error message. Log lines name the session host (`account.test ok: localhost:1443`); the username appears only at `DEBUG`, per the H redaction rule for email addresses.
 
 From 2026-10-19 (Andrew): a 200 that is not JSON (an HTML `Content-Type`, or a body whose first non-space byte is `<`) fails with `server`, "the server returned a web page, not a JMAP session (check the URL)". A redirect that changes scheme, host, or port drops the `Authorization` header for the rest of the chain, logged at `DEBUG` with both hosts. Each request's state (request, headers, URL, reply) is heap-owned and shared by the waiter and the net thread with a reference count: when the 30 s wait gives up, the waiter cancels the request and lets go; a reply that arrives later is dropped and logged at `DEBUG` (`late reply dropped`), never written to freed memory.
 
 From 2026-10-19 (Andrew, K-Q7): the result also carries `sessionUrl`, the URL that answered after redirects, and `authSent` (false when a redirect to another host dropped `Authorization`, so the credentials were not checked).
+
+From 2026-10-19 (K-Q10): when `id` names a saved account and the test succeeds with `authSent` true, the core stores `capabilities` and `capabilitiesChecked` on that account (profile write on the core thread, before the reply). A failure or `authSent` false stores nothing.
 
 From 2026-10-19 (Andrew): `id?` names a saved account. When `secret` is absent or empty and `id` is given, the test uses that account's saved secret from the secret store; a typed `secret` still wins. Errors: `not_found` (no such account), `locked`, `bad_args` "no saved password for this account". The secret is never returned or logged.
 

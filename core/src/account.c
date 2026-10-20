@@ -393,21 +393,31 @@ int pav_account_migrate_email(json_t *doc) {
 
     if (!json_is_array(accounts)) return 0;
     json_array_foreach(accounts, i, acct) {
-        json_t *user;
+        int touched = 0;
         if (!json_is_object(acct)) continue;
-        if (!json_is_string(json_object_get(acct, "icon"))) {
-            /* K-Q9: an account from before the icon field gets "" (envelope). */
-            json_object_set_new(acct, "icon", json_string(""));
-            if (json_is_string(json_object_get(acct, "email"))) {
-                changed++;
-                continue;
-            }
+        if (!json_is_string(json_object_get(acct, "email"))) {
+            /* K-Q6: the username when it is an address, else "". */
+            json_t *user = json_object_get(acct, "username");
+            json_object_set_new(acct, "email",
+                                json_string(email_default(json_is_string(user) ? json_string_value(user) : NULL)));
+            touched = 1;
         }
-        if (json_is_string(json_object_get(acct, "email"))) continue;
-        user = json_object_get(acct, "username");
-        json_object_set_new(acct, "email",
-                            json_string(email_default(json_is_string(user) ? json_string_value(user) : NULL)));
-        changed++;
+        if (!json_is_string(json_object_get(acct, "icon"))) {
+            /* K-Q9: "" is the default envelope. */
+            json_object_set_new(acct, "icon", json_string(""));
+            touched = 1;
+        }
+        if (!json_is_array(json_object_get(acct, "capabilities"))) {
+            /* K-Q10: never checked. */
+            json_object_set_new(acct, "capabilities", json_array());
+            touched = 1;
+        }
+        if (!json_is_string(json_object_get(acct, "capabilitiesChecked")) &&
+            !json_is_null(json_object_get(acct, "capabilitiesChecked"))) {
+            json_object_set_new(acct, "capabilitiesChecked", json_null());
+            touched = 1;
+        }
+        changed += touched;
     }
     return changed;
 }
@@ -422,7 +432,7 @@ static json_t *build_account_json(const char *id, const char *number, const char
                                   int enabled, int sync_mail, int sync_contacts,
                                   int sync_calendars, const char *fetch_bodies,
                                   const char *ca_file, const char *email,
-                                  const char *icon) {
+                                  const char *icon, json_t *caps, const char *checked) {
     json_t *obj = json_object();
 
     if (obj == NULL) {
@@ -462,7 +472,106 @@ static json_t *build_account_json(const char *id, const char *number, const char
         json_decref(obj);
         return NULL;
     }
+    /* K-Q10: what a Test before Add found, or never checked. */
+    json_object_set_new(obj, "capabilities", caps != NULL ? json_incref(caps) : json_array());
+    json_object_set_new(obj, "capabilitiesChecked", checked != NULL ? json_string(checked) : json_null());
     return obj;
+}
+
+/* K-Q10: the capability words account.test returns, in that order. */
+static const char *const k_cap_words[] = {"mail", "submission", "contacts", "calendars", "sieve", "files", "websocket"};
+
+/* A new array of the known words in raw (others and repeats dropped), in
+   k_cap_words order, or NULL when raw is not an array. */
+json_t *pav_account_caps_clean(json_t *raw) {
+    json_t *out;
+    size_t w;
+
+    if (!json_is_array(raw)) return NULL;
+    out = json_array();
+    if (out == NULL) return NULL;
+    for (w = 0; w < sizeof(k_cap_words) / sizeof(k_cap_words[0]); w++) {
+        size_t i;
+        json_t *v;
+        json_array_foreach(raw, i, v) {
+            if (json_is_string(v) && strcmp(json_string_value(v), k_cap_words[w]) == 0) {
+                json_array_append_new(out, json_string(k_cap_words[w]));
+                break;
+            }
+        }
+    }
+    return out;
+}
+
+/* K-Q10: "YYYY-MM-DDTHH:MM:SSZ" or with ".mmm" before the Z. */
+static int checked_is_valid(const char *s) {
+    static const char shape[] = "dddd-dd-ddTdd:dd:dd";
+    size_t n = strlen(s);
+    size_t i;
+
+    if (n != 20 && n != 24) return 0;
+    for (i = 0; i < sizeof(shape) - 1; i++) {
+        if (shape[i] == 'd' ? !(s[i] >= '0' && s[i] <= '9') : s[i] != shape[i]) return 0;
+    }
+    if (n == 24) {
+        if (s[19] != '.' || s[20] < '0' || s[20] > '9' || s[21] < '0' || s[21] > '9' || s[22] < '0' || s[22] > '9') return 0;
+    }
+    return s[n - 1] == 'Z';
+}
+
+static void caps_text(json_t *caps, char *out, size_t len) {
+    size_t i;
+    json_t *v;
+    size_t w = 0;
+
+    out[0] = '\0';
+    json_array_foreach(caps, i, v) {
+        int n = snprintf(out + w, len - w, "%s%s", i > 0 ? ", " : "", json_string_value(v));
+        if (n < 0 || (size_t)n >= len - w) break;
+        w += (size_t)n;
+    }
+    if (w == 0) snprintf(out, len, "none");
+}
+
+/* Core thread only (K-Q10): store a verified test result on account id.
+   Takes ownership of caps. 0 stored (or unchanged), -1 on failure. */
+int pav_account_store_capabilities(const char *id, json_t *caps, const char *checked) {
+    PavConfigLoad *load;
+    json_t *accounts;
+    json_t *acct;
+    json_t *before;
+    char errbuf[256];
+    char text[160];
+    int changed;
+    PavError err;
+
+    memset(&err, 0, sizeof(err));
+    if (caps == NULL || id == NULL || checked == NULL || !profile_is_ready(&err)) {
+        json_decref(caps);
+        return -1;
+    }
+    load = pav_core_load();
+    accounts = json_object_get((json_t *)load->profile->doc, "accounts");
+    acct = json_is_array(accounts) ? account_find(accounts, id) : NULL;
+    if (acct == NULL) {
+        json_decref(caps);
+        pav_log("account", PAV_DEBUG, 1, "capabilities not stored: %s is gone", id);
+        return -1;
+    }
+    before = json_object_get(acct, "capabilities");
+    changed = !json_equal(before, caps);
+    caps_text(caps, text, sizeof(text));
+    json_object_set_new(acct, "capabilities", caps);
+    json_object_set_new(acct, "capabilitiesChecked", json_string(checked));
+    errbuf[0] = '\0';
+    if (pav_profile_store(load->profile_path, load->profile, errbuf, sizeof(errbuf)) != 0) {
+        pav_log("account", PAV_WARN, 1, "cannot store capabilities of %s: %s", id, errbuf);
+        return -1;
+    }
+    if (changed) {
+        pav_log("account", PAV_INFO, 2, "capabilities of %s: %s", id, text);
+    }
+    return 0;
 }
 
 int pav_account_list(json_t *args, json_t **data, PavError *err) {
@@ -533,6 +642,8 @@ int pav_account_add(json_t *args, json_t **data, PavError *err) {
     const char *ca_file = NULL;
     const char *email = NULL;
     const char *icon = NULL;
+    json_t *caps = NULL;
+    const char *checked = NULL;
     int sync_mail = 1;
     int sync_contacts = 1;
     int sync_calendars = 1;
@@ -649,6 +760,18 @@ int pav_account_add(json_t *args, json_t **data, PavError *err) {
                 return -1;
             }
             icon = json_string_value(value);
+        } else if (strcmp(key, "capabilities") == 0) {
+            if (!json_is_array(value)) {
+                pav_error_set(err, "bad_args", "capabilities must be an array", 0);
+                return -1;
+            }
+            caps = value; /* borrowed from args; cleaned when stored */
+        } else if (strcmp(key, "capabilitiesChecked") == 0) {
+            if (!json_is_string(value) || !checked_is_valid(json_string_value(value))) {
+                pav_error_set(err, "bad_args", "capabilitiesChecked must be UTC ISO 8601", 0);
+                return -1;
+            }
+            checked = json_string_value(value);
         } else if (strcmp(key, "caFile") == 0) {
             if (!json_is_string(value) || !ca_file_is_valid(json_string_value(value))) {
                 pav_error_set(err, "bad_args", "caFile must be an absolute path", 0);
@@ -743,9 +866,11 @@ int pav_account_add(json_t *args, json_t **data, PavError *err) {
             return -1;
         }
 
+        json_t *clean_caps = caps != NULL ? pav_account_caps_clean(caps) : NULL;
         json_t *acct = build_account_json(account_id, number_str, name, kind, session_url,
                                           username, auth_arg, color, enabled, sync_mail,
-                                          sync_contacts, sync_calendars, fetch_bodies, ca_file, email, icon);
+                                          sync_contacts, sync_calendars, fetch_bodies, ca_file, email, icon, clean_caps, checked);
+        json_decref(clean_caps);
         if (acct == NULL) {
             pav_secret_delete("pavillion", keyring_user);
             pav_error_set(err, "internal", "out of memory", 0);

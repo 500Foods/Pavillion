@@ -36,6 +36,7 @@
 #define CORE_CMD_KIT 4
 #define CORE_CMD_UI 5
 #define CORE_CMD_CALL 6
+#define CORE_CMD_CAPS 7 /* K-Q10: store a Test result; call->args is the payload */
 #define PAV_CALL_JSON_MAX (2u * 1024u * 1024u)
 
 /* No longer in the FFI. The older Unity tests still call pavillion_status. */
@@ -294,7 +295,7 @@ static void core_boot(void) {
     {
         int filled = pav_account_migrate_email((json_t *)profile->doc);
         if (filled > 0) {
-            pav_log("account", PAV_INFO, 1, "%d accounts got an email or icon field (K-Q6, K-Q9)", filled);
+            pav_log("account", PAV_INFO, 1, "%d accounts got missing fields (email, icon, capabilities: K-Q6, K-Q9, K-Q10)", filled);
         }
     }
     if (pav_profile_check_engine(profile, err, sizeof(err)) != 0) {
@@ -471,6 +472,19 @@ static void *core_thread_main(void *arg) {
             call->reply = reply;
             call->done = 1;
             pthread_cond_broadcast(&g_core_cv);
+            continue;
+        }
+        if (cmd == CORE_CMD_CAPS) {
+            if (call != NULL) {
+                json_t *payload = call->args;
+                pthread_mutex_unlock(&g_core_mu);
+                (void)pav_account_store_capabilities(json_string_value(json_object_get(payload, "id")),
+                                                     json_incref(json_object_get(payload, "capabilities")),
+                                                     json_string_value(json_object_get(payload, "checked")));
+                json_decref(payload);
+                free(call);
+                pthread_mutex_lock(&g_core_mu);
+            }
             continue;
         }
         if (cmd == CORE_CMD_PREFS) {
@@ -2992,5 +3006,32 @@ void pav_log(const char *subsystem, int level, int num_args, const char *fmt, ..
    argument so percent signs in it cannot break the format string. */
 int pav_ui_log(const char *subsystem, int level, const char *message) {
     pav_log(subsystem, level, 1, "%s", message != NULL ? message : "");
+    return 0;
+}
+
+int pav_core_post_capabilities(const char *id, json_t *caps, const char *checked) {
+    PavCall *call;
+    json_t *payload;
+
+    if (id == NULL || caps == NULL || checked == NULL) {
+        json_decref(caps);
+        return -1;
+    }
+    payload = json_pack("{s:s, s:o, s:s}", "id", id, "capabilities", caps, "checked", checked);
+    call = payload != NULL ? calloc(1, sizeof(*call)) : NULL;
+    if (call == NULL) {
+        json_decref(payload);
+        return -1;
+    }
+    snprintf(call->name, sizeof(call->name), "%s", "account.capabilities");
+    call->args = payload;
+    pthread_mutex_lock(&g_core_mu);
+    if (!g_core_alive || g_core_stop || core_queue_push_unlocked(CORE_CMD_CAPS, call) != 0) {
+        pthread_mutex_unlock(&g_core_mu);
+        json_decref(payload);
+        free(call);
+        return -1;
+    }
+    pthread_mutex_unlock(&g_core_mu);
     return 0;
 }

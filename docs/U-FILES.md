@@ -83,7 +83,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 ## Open questions for Andrew
 
-- U-Q1. What file storage does Andrew use on Stalwart today (WebDAV file storage, JMAP FileNode, something else), and which accounts have it?
+- U-Q1. What file storage does Andrew use on Stalwart today (WebDAV file storage, JMAP FileNode, something else), and which accounts have it? Answered 2026-10-19 (checked, not asked): mail.500foods.com advertises `urn:ietf:params:jmap:filenode` (JMAP File Storage, draft-ietf-jmap-filenode) in its Session, and also serves WebDAV under `/dav/file/<account name>` (no autodiscovery). So FileNode is the first backend there, by the decision rule above. Which of his accounts carry it per account (`accountCapabilities`) is still unchecked, because that needs his credentials. Account test now reports `files` for that URN (K-Q8).
 
 ## Working log
 
@@ -92,3 +92,4 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - 2026-10-16 Review: the FileNode-or-WebDAV decision rule is now an explicit Lock line, and WebDAV reuses `dav.c`.
 - 2026-10-16 Files transfers stream under the M Lock. Removed a stale line that kept CalDAV and CardDAV out of the plan.
 - 2026-10-18 The Files tree hides top-level `.pavillion`. Notes (Y) reads `.pavillion/notes` through this sync. U-Q1 is still the protocol question and is not re-asked by Y.
+- 2026-10-19 U-Q1 answered from the live Session: FileNode (`urn:ietf:params:jmap:filenode`) and WebDAV at `/dav/file/<account>` on mail.500foods.com. `jmap.c` maps the URN to `files`; U-1 has not started.

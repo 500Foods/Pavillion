@@ -45,7 +45,8 @@ static void map_capability(const char *urn, PavJmapSession *s) {
         s->has_calendars = 1;
     } else if (strcmp(urn, "urn:ietf:params:jmap:sieve") == 0) {
         s->has_sieve = 1;
-    } else if (strcmp(urn, "urn:ietf:params:jmap:files") == 0 ||
+    } else if (strcmp(urn, "urn:ietf:params:jmap:filenode") == 0 || /* JMAP File Storage draft (Stalwart) */
+               strcmp(urn, "urn:ietf:params:jmap:files") == 0 ||
                strcmp(urn, "urn:apache:jmap:files") == 0 ||
                strcmp(urn, "urn:ietf:params:jmap:files:0") == 0) {
         s->has_files = 1;

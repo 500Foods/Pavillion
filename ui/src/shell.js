@@ -2690,7 +2690,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
   bindMailTree();
   helpView = createHelpView(mountRoot);
   mountRoot.addEventListener("click", onHelpJump);
-  accountsView = createAccountsView(api, mountRoot);
+  accountsView = createAccountsView(api, mountRoot, { timeZone: () => logTimeZone });
   logSettings = createLogSettings(api, mountRoot, {
     timeZone: () => logTimeZone,
     onError(text) {

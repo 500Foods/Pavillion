@@ -9,6 +9,7 @@ function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+const CAP_WORDS = ["mail", "submission", "contacts", "calendars", "sieve", "files", "websocket"];
 const PREF_KEYS = [
   "timezone",
   "weekStart",
@@ -202,11 +203,13 @@ export function mockTransport() {
          syncCalendars: input.syncCalendars !== false,
          fetchBodies: input.fetchBodies || "recent",
          icon: typeof input.icon === "string" ? input.icon : "",
+         capabilities: Array.isArray(input.capabilities) ? input.capabilities.filter((c) => CAP_WORDS.includes(c)) : [],
+         capabilitiesChecked: typeof input.capabilitiesChecked === "string" ? input.capabilitiesChecked : null,
          ...(typeof input.caFile === "string" && input.caFile !== "" ? { caFile: input.caFile } : {}),
        };
        accounts = [...accounts, account];
        savedSecrets.set(id, input.secret);
-       accountTestState = { accountId: id, capabilities: ["mail", "submission", "contacts", "calendars"] };
+       accountTestState = { accountId: id, capabilities: ["mail", "submission", "contacts", "calendars", "files"] };
        return structuredClone(account);
      }
      if (cmd === "account.update") {
@@ -307,9 +310,16 @@ export function mockTransport() {
           a cross-host redirect, so Authorization was dropped. */
        const hop = /^https:\/\/redirect\.([^/]+)\//.exec(input.sessionUrl);
        const sessionUrl = hop ? `https://mail.${hop[1]}/jmap/session` : input.sessionUrl;
+       const caps = ["mail", "submission", "contacts", "calendars", "files"];
+       /* K-Q10: a verified test of a saved account is stored. */
+       const saved = typeof input.id === "string" ? accounts.find((a) => a.id === input.id) : null;
+       if (saved && !hop) {
+         saved.capabilities = [...caps];
+         saved.capabilitiesChecked = new Date().toISOString();
+       }
        return {
          ok: true,
-         capabilities: ["mail", "submission", "contacts", "calendars"],
+         capabilities: caps,
          accounts: hop ? [] : [{ id: "test-account", name: "Test Account" }],
          sessionUrl,
          authSent: !hop,

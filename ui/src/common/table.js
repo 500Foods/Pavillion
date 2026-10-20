@@ -34,6 +34,7 @@ export function createTable(el, options) {
   let table = null;
   let built = false;
   let destroyed = false;
+  let observer = null;
   let data = options.data || [];
 
   void loadTabulator().then((Tabulator) => {
@@ -53,6 +54,16 @@ export function createTable(el, options) {
       built = true;
       void table.replaceData(data);
     });
+    /* N Lock: shared tables fit their panel; redraw when the panel or a
+       divider changes the element's size. */
+    if (typeof ResizeObserver === "function") {
+      observer = new ResizeObserver(() => {
+        if (built && table) {
+          table.redraw();
+        }
+      });
+      observer.observe(el);
+    }
     if (typeof options.onRowClick === "function") {
       table.on("rowClick", (_event, row) => options.onRowClick(row.getData()));
     }
@@ -67,6 +78,10 @@ export function createTable(el, options) {
     },
     destroy() {
       destroyed = true;
+      if (observer) {
+        observer.disconnect();
+        observer = null;
+      }
       if (table) {
         table.destroy();
         table = null;

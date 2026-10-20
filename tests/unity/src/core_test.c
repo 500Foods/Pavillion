@@ -6024,7 +6024,8 @@ void test_session_parse_stalwart(void) {
     TEST_ASSERT_TRUE_MESSAGE(sess.has_contacts, "session must have contacts capability");
     TEST_ASSERT_TRUE_MESSAGE(sess.has_calendars, "session must have calendars capability");
     TEST_ASSERT_TRUE_MESSAGE(sess.has_sieve == 0, "fixture must not advertise sieve");
-    TEST_ASSERT_TRUE_MESSAGE(sess.has_files == 0, "fixture must not advertise files");
+    /* 2026-10-19: Stalwart advertises JMAP File Storage as ...:filenode. */
+    TEST_ASSERT_TRUE_MESSAGE(sess.has_files, "filenode must map to files");
     TEST_ASSERT_TRUE_MESSAGE(sess.has_websocket == 0, "fixture must not advertise websocket");
     TEST_ASSERT_NOT_NULL_MESSAGE(sess.accounts, "session must have accounts array");
     TEST_ASSERT_TRUE_MESSAGE(json_array_size(sess.accounts) > 0, "accounts array must be non-empty");
@@ -6108,7 +6109,7 @@ void test_account_test_reports_caps(void) {
                 size_t n = json_array_size(caps);
                 size_t i;
                 int has_mail = 0, has_submission = 0, has_contacts = 0,
-                    has_calendars = 0, has_tasks = 0, has_github = 0;
+                    has_calendars = 0, has_tasks = 0, has_github = 0, has_files = 0;
                 for (i = 0; i < n; i++) {
                     const char *c = json_string_value(json_array_get(caps, i));
                     if (c != NULL) {
@@ -6118,12 +6119,14 @@ void test_account_test_reports_caps(void) {
                         else if (strcmp(c, "calendars") == 0) has_calendars = 1;
                         else if (strcmp(c, "tasks") == 0) has_tasks = 1;
                         else if (strcmp(c, "github") == 0) has_github = 1;
+                        else if (strcmp(c, "files") == 0) has_files = 1;
                     }
                 }
                 TEST_ASSERT_TRUE_MESSAGE(has_mail, "capabilities must include mail");
                 TEST_ASSERT_TRUE_MESSAGE(has_submission, "capabilities must include submission");
                 TEST_ASSERT_TRUE_MESSAGE(has_contacts, "capabilities must include contacts");
                 TEST_ASSERT_TRUE_MESSAGE(has_calendars, "capabilities must include calendars");
+                TEST_ASSERT_TRUE_MESSAGE(has_files, "filenode must yield files");
                 TEST_ASSERT_FALSE_MESSAGE(has_tasks, "capabilities must NOT include tasks");
                 TEST_ASSERT_FALSE_MESSAGE(has_github, "capabilities must NOT include github");
             }
@@ -6491,6 +6494,8 @@ void test_account_email_migration(void) {
     TEST_ASSERT_EQUAL_STRING("me@x.example", json_string_value(json_object_get(json_array_get(acc, 0), "email")));
     TEST_ASSERT_EQUAL_STRING("", json_string_value(json_object_get(json_array_get(acc, 1), "email")));
     TEST_ASSERT_EQUAL_STRING("kept@y.example", json_string_value(json_object_get(json_array_get(acc, 2), "email")));
+    TEST_ASSERT_EQUAL_size_t(0, json_array_size(json_object_get(json_array_get(acc, 1), "capabilities")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(json_array_get(acc, 1), "capabilitiesChecked")));
     TEST_ASSERT_EQUAL_INT(0, pav_account_migrate_email(doc));
     json_decref(doc);
 }
@@ -6522,6 +6527,89 @@ void test_account_icon_field(void) {
     assert_ok(root);
     TEST_ASSERT_EQUAL_STRING("<i class=\"fa-solid fa-briefcase\"></i>", json_string_value(json_object_get(
         json_array_get(json_object_get(json_object_get(root, "data"), "accounts"), 0), "icon")));
+    json_decref(root);
+    pavillion_stop();
+}
+
+static int caps_has(json_t *acct, const char *word) {
+    size_t i;
+    json_t *v;
+    json_array_foreach(json_object_get(acct, "capabilities"), i, v) {
+        if (strcmp(json_string_value(v), word) == 0) return 1;
+    }
+    return 0;
+}
+
+/* K-Q10: a verified Test of a saved account stores capabilities and the
+   checked time; a failed Test leaves them; Add accepts both. */
+void test_account_capabilities_stored(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char body[1024];
+    char checked[40];
+    json_t *root;
+    json_t *acct;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    snprintf(body, sizeof(body),
+             "{\"kind\":\"jmap\",\"sessionUrl\":\"%s/.well-known/jmap\",\"username\":\"andrew@test-a.local\","
+             "\"secret\":\"testpassword\",\"id\":\"caps\",\"caFile\":\"%s\"}", url, ca);
+    root = call_reply("account.add", body);
+    assert_ok(root);
+    acct = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_size_t(0, json_array_size(json_object_get(acct, "capabilities")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(acct, "capabilitiesChecked")));
+    json_decref(root);
+
+    snprintf(body, sizeof(body),
+             "{\"sessionUrl\":\"%s/.well-known/jmap\",\"username\":\"andrew@test-a.local\","
+             "\"id\":\"caps\",\"secret\":\"\",\"caFile\":\"%s\"}", url, ca);
+    root = call_reply("account.test", body);
+    assert_ok(root);
+    json_decref(root);
+    root = call_reply("account.list", "{}");
+    assert_ok(root);
+    acct = first_account(root);
+    TEST_ASSERT_TRUE(caps_has(acct, "mail"));
+    TEST_ASSERT_TRUE_MESSAGE(caps_has(acct, "files"), "fixture filenode must be stored as files");
+    TEST_ASSERT_TRUE(json_is_string(json_object_get(acct, "capabilitiesChecked")));
+    snprintf(checked, sizeof(checked), "%s", json_string_value(json_object_get(acct, "capabilitiesChecked")));
+    TEST_ASSERT_EQUAL_size_t(24, strlen(checked));
+    TEST_ASSERT_EQUAL_CHAR('Z', checked[23]);
+    json_decref(root);
+
+    /* A failed Test leaves both untouched. */
+    snprintf(body, sizeof(body),
+             "{\"sessionUrl\":\"%s/.well-known/jmap?error=401\",\"username\":\"andrew@test-a.local\","
+             "\"id\":\"caps\",\"secret\":\"typed\",\"caFile\":\"%s\"}", url, ca);
+    root = call_reply("account.test", body);
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(root, "ok")));
+    json_decref(root);
+    root = call_reply("account.list", "{}");
+    acct = first_account(root);
+    TEST_ASSERT_TRUE(caps_has(acct, "files"));
+    TEST_ASSERT_EQUAL_STRING(checked, json_string_value(json_object_get(acct, "capabilitiesChecked")));
+    json_decref(root);
+
+    /* An unsaved Test stores nothing; Add carries the form's values. */
+    root = call_reply("account.add",
+        "{\"kind\":\"jmap\",\"sessionUrl\":\"https://example.com/jmap\",\"username\":\"u\",\"secret\":\"x\","
+        "\"id\":\"form\",\"capabilities\":[\"sieve\",\"mail\",\"bogus\"],"
+        "\"capabilitiesChecked\":\"2026-10-19T17:05:00Z\"}");
+    assert_ok(root);
+    json_decref(root);
+    root = call_reply("account.add",
+        "{\"kind\":\"jmap\",\"sessionUrl\":\"https://example.com/jmap\",\"username\":\"u\",\"secret\":\"x\","
+        "\"id\":\"bad\",\"capabilitiesChecked\":\"yesterday\"}");
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(root, "ok")));
+    json_decref(root);
+    root = call_reply("account.list", "{}");
+    acct = json_array_get(json_object_get(json_object_get(root, "data"), "accounts"), 1);
+    TEST_ASSERT_EQUAL_size_t(2, json_array_size(json_object_get(acct, "capabilities")));
+    TEST_ASSERT_EQUAL_STRING("mail", json_string_value(json_array_get(json_object_get(acct, "capabilities"), 0)));
+    TEST_ASSERT_EQUAL_STRING("2026-10-19T17:05:00Z", json_string_value(json_object_get(acct, "capabilitiesChecked")));
     json_decref(root);
     pavillion_stop();
 }
@@ -7057,6 +7145,7 @@ int main(void) {
     RUN_TEST(test_account_email_stored);
     RUN_TEST(test_account_email_migration);
     RUN_TEST(test_account_icon_field);
+    RUN_TEST(test_account_capabilities_stored);
     RUN_TEST(test_remote_accounts_from_session);
     return UNITY_END();
 }

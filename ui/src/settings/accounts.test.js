@@ -709,7 +709,7 @@ test("the table row shows the swatch, J/I/S badges, and features after a Test", 
     });
     expect(box("contacts").checked).toBe(true);
     expect(box("calendars").checked).toBe(true);
-    expect(box("files").checked).toBe(false);
+    expect(box("files").checked).toBe(true); /* filenode → files (2026-10-19) */
   });
 });
 
@@ -733,5 +733,56 @@ test("the icon chooser stores a Font Awesome snippet and Save sends it", async (
     await vi.waitFor(() => {
       expect(document.querySelector('[data-account-id="saved-one"] .account-swatch .fa-briefcase')).not.toBeNull();
     });
+  });
+});
+
+/* K-Q10: the stored capabilities survive a reload (unmount, mount again on
+   the same core), with the checked time as the feature tooltip. */
+test("the table ticks stored capabilities after a reload", async () => {
+  const el = document.createElement("div");
+  document.body.append(el);
+  const transport = mockTransport();
+  const box = (field) => document.querySelector(`[data-account-id="saved-one"] [data-field="${field}"] input[type="checkbox"]`);
+  const tip = () => document.querySelector('[data-account-id="saved-one"] [data-field="mail"] .accounts-feature-cell').title;
+  try {
+    await mount(el, createApi(transport), {});
+    openAccountsPanel();
+    await addSavedAccount();
+    expect(tip()).toBe("Not checked yet");
+    document.querySelector("#account-test").click();
+    await vi.waitFor(() => {
+      expect(box("mail").checked).toBe(true);
+    });
+    unmount();
+    await mount(el, createApi(transport), {});
+    openAccountsPanel();
+    await vi.waitFor(() => {
+      expect(box("mail").checked).toBe(true);
+    });
+    expect(box("files").checked).toBe(true);
+    expect(tip()).toMatch(/^Checked \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+  } finally {
+    unmount();
+    el.remove();
+  }
+});
+
+test("a Test from an unsaved form sends its capabilities on Add", async () => {
+  await withView(async (callSpy) => {
+    typeInto("#account-name-input", "Fresh");
+    typeInto("#account-session-url-input", "https://example.com/.well-known/jmap");
+    typeInto("#account-username-input", "fresh@example.com");
+    typeInto("#account-secret-input", "pw");
+    document.querySelector("#account-test").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("#account-test-status").textContent).toBe("OK");
+    });
+    document.querySelector("#account-add").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-account-id="fresh"] [data-field="mail"] input').checked).toBe(true);
+    });
+    const add = callSpy.mock.calls.filter(([cmd]) => cmd === "account.add").pop();
+    expect(add[1].capabilities).toContain("files");
+    expect(typeof add[1].capabilitiesChecked).toBe("string");
   });
 });

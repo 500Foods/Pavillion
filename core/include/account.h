@@ -16,6 +16,10 @@ int pav_account_test(json_t *args, json_t **data, PavError *err);
 int pav_account_migrate_email(json_t *doc);
 /* The saved secret of account id (free with pav_secret_free). 0, or -1 with err. */
 int pav_account_saved_secret(const char *id, char **out, PavError *err);
+/* K-Q10: known capability words of raw, or NULL when raw is not an array. */
+json_t *pav_account_caps_clean(json_t *raw);
+/* Core thread only. Stores a verified Test result; takes ownership of caps. */
+int pav_account_store_capabilities(const char *id, json_t *caps, const char *checked);
 /* host[:port] of a URL for log lines, without userinfo; "" when none. */
 void pav_account_test_host(const char *url, char *out, size_t len);
 /* account.discover (K-Q5). */

@@ -2,10 +2,11 @@ import { createTable } from "../common/table.js";
 import { accountSwatch, ICON_CHOICES, iconChoice, iconSnippet } from "./account-icon.js";
 import { accountColumns, accountRows } from "./accounts-table.js";
 
-export function createAccountsView(api, root) {
+export function createAccountsView(api, root, options = {}) {
   let table = null;
-  /* K-Q8: capabilities of the last Test of each account in this window. */
-  const testedCaps = new Map();
+  /* K-Q10: an unsaved form keeps its last verified Test and sends it on Add. */
+  let formCaps = null;
+  const timeZone = () => (typeof options.timeZone === "function" ? options.timeZone() : options.timeZone);
   /* K-Q7: the inline note after Detect or Test saved the session URL. */
   let urlNote = "";
   let accounts = [];
@@ -43,6 +44,7 @@ export function createAccountsView(api, root) {
   function clearForm() {
     email = "";
     emailTouched = false;
+    formCaps = null;
     detectResult = { text: "", error: "" };
     formState.name = "";
     formState.sessionUrl = "";
@@ -121,6 +123,7 @@ export function createAccountsView(api, root) {
   }
 
   function selectAccount(id) {
+    formCaps = null;
     const selected = accounts.find((a) => a.id === id);
     if (!selected) {
       return;
@@ -154,7 +157,7 @@ export function createAccountsView(api, root) {
       treeEl.append(empty);
       return;
     }
-    const rows = accountRows(accounts, testedCaps);
+    const rows = accountRows(accounts, timeZone());
     if (!table) {
       treeEl.replaceChildren();
       table = createTable(treeEl, {
@@ -382,6 +385,10 @@ export function createAccountsView(api, root) {
           if (!body.caFile) {
             delete body.caFile;
           }
+          if (formCaps) {
+            body.capabilities = formCaps.capabilities;
+            body.capabilitiesChecked = formCaps.checked;
+          }
           await api.account.add(body);
           clearForm();
           clearSecretField();
@@ -503,8 +510,12 @@ export function createAccountsView(api, root) {
       }
       testResult = { ok: true, capabilities: result.capabilities || [], error: "" };
       if (selectedId) {
-        testedCaps.set(selectedId, testResult.capabilities);
-        paintTree();
+        /* K-Q10: the core stored a verified result; reload the list. */
+        if (result.authSent !== false) {
+          await refresh();
+        }
+      } else if (result.authSent !== false) {
+        formCaps = { capabilities: testResult.capabilities, checked: new Date().toISOString() };
       }
     } catch (err) {
       testResult = { ok: false, capabilities: [], error: err instanceof Error ? err.message : String(err ?? "") };

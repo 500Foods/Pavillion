@@ -159,7 +159,8 @@ session_json() {
             "urn:ietf:params:jmap:mail": {},
             "urn:ietf:params:jmap:submission": {},
             "urn:ietf:params:jmap:contacts": {},
-            "urn:ietf:params:jmap:calendars": {}
+            "urn:ietf:params:jmap:calendars": {},
+            "urn:ietf:params:jmap:filenode": {}
           }
         })),
         capabilities: {
@@ -172,7 +173,8 @@ session_json() {
           },
           "urn:ietf:params:jmap:submission": {},
           "urn:ietf:params:jmap:contacts": {},
-          "urn:ietf:params:jmap:calendars": {}
+          "urn:ietf:params:jmap:calendars": {},
+          "urn:ietf:params:jmap:filenode": {}
         },
         limits: {
           maxSizeRequest: 10485760, maxSizeUpload: 26214400,

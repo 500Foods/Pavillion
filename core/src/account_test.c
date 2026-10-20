@@ -18,6 +18,7 @@
 #include <strings.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <time.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -682,6 +683,25 @@ int pav_account_test(json_t *args, json_t **data, PavError *err) {
         }
         if (rc == 0) {
             rc = do_account_test(resolved_url, username, secret, ca_file, data, err);
+        }
+        /* K-Q10: a verified test of a saved account is stored (core thread). */
+        if (rc == 0 && account_id != NULL && account_id[0] != '\0' && *data != NULL &&
+            json_is_true(json_object_get(*data, "authSent"))) {
+            char checked[32];
+            int64_t now = pav_platform()->now_ms != NULL ? pav_platform()->now_ms() : -1;
+            time_t secs = (time_t)(now / 1000);
+            struct tm tm;
+            json_t *caps = pav_account_caps_clean(json_object_get(*data, "capabilities"));
+
+            if (now >= 0 && gmtime_r(&secs, &tm) != NULL && caps != NULL) {
+                size_t len = strftime(checked, sizeof(checked), "%Y-%m-%dT%H:%M:%S", &tm);
+                snprintf(checked + len, sizeof(checked) - len, ".%03dZ", (int)(now % 1000));
+                if (pav_core_post_capabilities(account_id, caps, checked) != 0) {
+                    pav_log("account", PAV_DEBUG, 1, "capabilities of %s not queued", account_id);
+                }
+            } else {
+                json_decref(caps);
+            }
         }
         if (act > 0) {
             pav_activity_end(act, rc == 0 ? PAV_ACT_DONE : PAV_ACT_FAILED, rc == 0 ? NULL : err->message);

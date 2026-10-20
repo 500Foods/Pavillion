@@ -1,7 +1,7 @@
 /* K-Q8: Settings → Accounts list, the first Tabulator table. Columns: the
    color swatch with the account icon, Name, then one read-only checkbox per
-   feature with the main nav's icon as its header. A box is on when the last
-   Test in this window reported the capability and the account syncs it.
+   feature with the main nav's icon as its header. A box is on when the
+   stored capabilities (K-Q10) include it and the account syncs it.
    Files has no sync flag yet, so it shows the capability only. */
 import { accountSwatch } from "./account-icon.js";
 
@@ -26,7 +26,7 @@ export function navIconClass(feature, documentRef = globalThis.document) {
   return value || feature.fallback;
 }
 
-/* Whether a feature box is on: capability from the last Test (null: unknown,
+/* Whether a feature box is on: stored capability (K-Q10; null: unknown,
    treated as off) and the account's sync flag. */
 export function featureOn(account, feature, caps) {
   const capable = Array.isArray(caps) && caps.includes(feature.cap);
@@ -36,10 +36,44 @@ export function featureOn(account, feature, caps) {
   return feature.flag ? account[feature.flag] !== false : true;
 }
 
-export function accountRows(accounts, capsById) {
+/* K-Q10: the feature tooltip, `Checked YYYY-MM-DD HH:MM:SS` in 24-hour time
+   in the profile time zone, or `Not checked yet`. */
+export function checkedTitle(iso, timeZone) {
+  const ms = typeof iso === "string" ? Date.parse(iso) : Number.NaN;
+  if (!Number.isFinite(ms)) {
+    return "Not checked yet";
+  }
+  const zone = typeof timeZone === "string" && timeZone !== "" ? timeZone : "America/Vancouver";
+  let parts;
+  try {
+    parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: zone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(new Date(ms));
+  } catch {
+    return "Not checked yet";
+  }
+  const pick = (type) => (parts.find((p) => p.type === type) || { value: "" }).value;
+  const hour = pick("hour") === "24" ? "00" : pick("hour");
+  return `Checked ${pick("year")}-${pick("month")}-${pick("day")} ${hour}:${pick("minute")}:${pick("second")}`;
+}
+
+export function accountRows(accounts, timeZone) {
   return accounts.map((account) => {
-    const caps = capsById.get(account.id) || null;
-    const row = { id: account.id, name: account.name || account.id, number: account.number || "", account };
+    const caps = Array.isArray(account.capabilities) ? account.capabilities : null;
+    const row = {
+      id: account.id,
+      name: account.name || account.id,
+      number: account.number || "",
+      account,
+      checked: checkedTitle(account.capabilitiesChecked, timeZone),
+    };
     for (const feature of FEATURES) {
       row[feature.key] = featureOn(account, feature, caps);
     }
@@ -74,11 +108,14 @@ export function accountColumns(documentRef = globalThis.document) {
       field: "account",
       width: 44,
       headerSort: false,
+      resizable: false,
       formatter: (cell) => accountSwatch(cell.getValue(), documentRef),
     },
     {
       title: "Name",
       field: "name",
+      widthGrow: 1,
+      minWidth: 96,
       formatter: (cell) => {
         const span = documentRef.createElement("span");
         span.className = "accounts-name-cell";
@@ -100,9 +137,11 @@ export function accountColumns(documentRef = globalThis.document) {
       headerHozAlign: "center",
       headerSort: false,
       width: feature.key === "mail" ? 96 : 52,
+      resizable: false,
       formatter: (cell) => {
         const wrap = documentRef.createElement("span");
         wrap.className = "accounts-feature-cell";
+        wrap.title = cell.getRow().getData().checked || "Not checked yet";
         wrap.append(checkbox(cell.getValue() === true, `${feature.title} for ${cell.getRow().getData().name}`, documentRef));
         if (feature.key === "mail") {
           for (const badge of MAIL_BADGES) {
