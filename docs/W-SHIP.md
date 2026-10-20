@@ -44,7 +44,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 ### CI
 
-- `.github/workflows/ci.yml` (beside the existing `main.yml` line-count workflow, which stays): job `fedora` in a `fedora:latest` container runs `dnf install` of the A-INIT package list, `make test`, and `make build`, and uploads `dist/pavillion` as an artifact. Job `macos-core` (added by G-1) builds the core and runs Unity on the fake platform. Job `windows-core` (added 2026-10-19) does the same on `windows-latest` under MSYS2 UCRT64 (gcc, make, cmake with `MSYS Makefiles`): `make test` with `LDFLAGS=-lws2_32` after creating `<drive>:\tmp` for the Unity temp paths, no window, `continue-on-error: true` until G-6. MinGW is the Windows toolchain (G-Q4, resolved 2026-10-19, G Lock). `macos-core` adds `-lcurl` to its `LDFLAGS`. Both catch core portability breaks cheaply.
+- `.github/workflows/ci.yml` (beside the existing `main.yml` line-count workflow, which stays): job `fedora` in a `fedora:latest` container runs `dnf install` of the A-INIT package list, `make test`, and `make build`, and uploads `dist/pavillion` as an artifact. Job `macos-core` (added by G-1) builds the core and runs Unity on the fake platform. Job `windows-core` (added 2026-10-19) does the same on `windows-latest` under MSYS2 UCRT64 (gcc, make, cmake with `MSYS Makefiles`): `make test` with `LDFLAGS=-lws2_32` after creating `<drive>:\tmp` for the Unity temp paths, no window. Both jobs are required (2026-10-20): no `continue-on-error`; a break is fixed in the same round. MinGW is the Windows toolchain (G-Q4, resolved 2026-10-19, G Lock). `macos-core` adds `-lcurl` to its `LDFLAGS`. Both catch core portability breaks cheaply.
 - The CSP-only failure that started F shows up only in `make build`, so CI always runs `make build`, not just `make test`.
 - Integration tests are not in CI until the Stalwart container runs on the runner reliably; then a nightly job runs `test-it`.
 
@@ -183,3 +183,4 @@ Revert green: [run 38962706169](https://github.com/500Foods/Pavillion/actions/ru
 - 2026-10-19 CI portability: `windows-core` links `ws2_32` and creates `<drive>:\tmp`; `macos-core` links `-lcurl`. G-Q4 resolved as MinGW.
 - 2026-10-19 Stalwart test server moved to v0.16 config: `config.toml` replaced by `config.json` (datastore only) and API seeding in `seed.sh`; `make it-up` auto-seeds; data in `build/stalwart-data`; test password `pavtest-pw`.
 - 2026-10-19 Fixture recording is `tests/support/record.sh` (curl and jq), not a `jmapfix.sh` mode; lands in M-3c.
+- 2026-10-20 Policy (Andrew): `macos-core` and `windows-core` are required; `continue-on-error` removed from both. Platform breaks are fixed in the same round, never deferred.

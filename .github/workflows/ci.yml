@@ -56,11 +56,11 @@ jobs:
           name: pavillion-${{ github.sha }}
           path: dist/pavillion
 
-  # G-1. Core and Unity only, on the fake platform. No window. continue-on-error
-  # stays until G-6 has a macOS backend.
+  # G-1. Core and Unity only, on the fake platform. No window. Required
+  # (Andrew, 2026-10-20): every push keeps all three jobs green; a platform
+  # break is fixed in the same round, never deferred.
   macos-core:
     runs-on: macos-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -73,11 +73,10 @@ jobs:
           make test CFLAGS="-I${prefix}/include" LDFLAGS="-L${prefix}/lib -lcurl"
 
   # Core and Unity only, like macos-core, under MSYS2 UCRT64. No window.
-  # MinGW is the Windows toolchain (G-Q4, 2026-10-19). continue-on-error stays until G-6.
+  # MinGW is the Windows toolchain (G-Q4, 2026-10-19). Required like macos-core (2026-10-20).
   # path-type inherit keeps the runner's Node on PATH for the Vitest half of make test.
   windows-core:
     runs-on: windows-latest
-    continue-on-error: true
     defaults:
       run:
         shell: msys2 {0}

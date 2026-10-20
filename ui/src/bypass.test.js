@@ -46,19 +46,25 @@ function stripComments(text, ext) {
   return text;
 }
 
+/* Repo-relative with "/" on every OS (Windows join and relative use "\\"). */
+function posixPath(path) {
+  return path.split("\\").join("/");
+}
+
 function scan() {
   const found = {};
   for (const rule of RULES) {
     for (const dir of rule.dirs) {
-      for (const path of walk(join(ROOT, dir), [])) {
+      for (const nativePath of walk(join(ROOT, dir), [])) {
+        const path = posixPath(nativePath);
         const ext = rule.ext.find((e) => path.endsWith(e));
         if (!ext || (rule.skip && rule.skip.test(path))) {
           continue;
         }
-        const text = stripComments(readFileSync(path, "utf8"), ext);
+        const text = stripComments(readFileSync(nativePath, "utf8"), ext);
         const hits = [...text.matchAll(rule.pattern)].map((m) => m[0].replace(/\s+/g, " "));
         if (hits.length > 0) {
-          found[relative(ROOT, path)] = hits;
+          found[posixPath(relative(ROOT, nativePath))] = hits;
         }
       }
     }

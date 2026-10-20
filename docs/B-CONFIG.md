@@ -172,7 +172,7 @@ An account object in `accounts`:
 
 `kind` is `jmap` or `imap`. An `imap` account uses `host`, `port`, `smtp_host`, and `smtp_port` instead of `session_url`. `auth` is the auth method. In v1 it is `basic`, a username plus a keyring password, used as HTTP Basic for JMAP and DAV and as SASL PLAIN for IMAP and SMTP, always over TLS. `oidc` arrives with K-4, and `bearer` is reserved. See the [K-ACCOUNTS.md](K-ACCOUNTS.md) Authentication Lock. `kind` gains `dav` when S-5 lands. `fetch_bodies` is `none`, `recent`, or `all`.
 
-`caFile` is optional: an absolute path (starts with `/`, under 4096 bytes) to a PEM CA bundle that is trusted for that account in addition to the system store. It is for internal or test endpoints such as the W-2 Stalwart container. It is absent when unset, and it is a path, never certificate content. Added 2026-10-19 before M-3; the sample above is not extended.
+`caFile` is optional: an absolute path (starts with `/`, or on Windows a drive or UNC path per API.md Conventions; under 4096 bytes) to a PEM CA bundle that is trusted for that account in addition to the system store. It is for internal or test endpoints such as the W-2 Stalwart container. It is absent when unset, and it is a path, never certificate content. Added 2026-10-19 before M-3; the sample above is not extended.
 
 No password, token, or connection secret is a JSON field. A profile that contains a key named `password`, `token`, `secret`, or `refresh_token` is rejected. The keyring is service `pavillion`, user `<profile id>/<account id>`. Keyring calls are not part of B. Rejecting the key is.
 
