@@ -29,8 +29,8 @@
   --pav-table-indicator: #e06666;
   --pav-table-check-size: 1.35em;
   --pav-table-divider: #5a3030;
-  --pav-table-header-pad-y: 0.15rem;
-  --pav-table-header-pad-x: 0.4rem;
+  --pav-table-header-pad-y: 0.2em;
+  --pav-table-header-pad-x: 0.4em;
   --pav-surface-nav: linear-gradient(160deg, #160808 0%, #000 70%);
   --pav-surface-workspace: linear-gradient(160deg, #100606 0%, #000 78%);
   --pav-surface-list: linear-gradient(160deg, #140707 0%, #000 74%);

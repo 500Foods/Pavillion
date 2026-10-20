@@ -5,8 +5,8 @@ Status: v0.7 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 **Resume:** each phase's history is in its own document's Working log; this block is only the current state.
 
 - Last finished: E-4 (step 52), 2026-10-19, in [docs/E-TREE.md](docs/E-TREE.md). Andrew accepted the E-1 through E-4 windows on 2026-10-19.
-- Next: H-4 (step 131), in [docs/H-LOGGING.md](docs/H-LOGGING.md). M-3 (step 53) follows; its entry gate runs K-3's exit gate against the W-2 Stalwart container (K-Q1 resolved).
-- Last full `make test`: 120 Unity tests and 253 Vitest tests, exit 0 (2026-10-19).
+- Next: M-3 (step 53), in [docs/M-SYNC.md](docs/M-SYNC.md) (updated 2026-10-20). Its entry gate is K-3 and E-4 complete (done) plus K-3's exit gate run against the W-2 Stalwart container. The server half passed on 2026-10-19; the UI half is Andrew's to run in `make build` (see M-3 "Gate status" and the cold-start handoff there). H-4 (step 131) is code-complete and waiting for Andrew's acceptance; it does not block M-3. D-10 (module bars) is in progress, and the Accounts table (Tabulator) polish is paused with open issues in [docs/TABULATOR.md](docs/TABULATOR.md). Both continue in parallel, and M-3 does not depend on them.
+- Last full `make test`: 173 Unity tests, 2 Rust tests and 342 Vitest tests, exit 0 (2026-10-20).
 - `PAVILLION_API_VERSION` is 3. The phase stamp is `0.56.0` (56 Done rows), release date 2026-10-19.
 
 **Read first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), one page with diagrams of the layers, the threads, and the data flow.

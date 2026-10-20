@@ -213,7 +213,6 @@ function checkColumn(field, title, width, titleFormatter, documentRef, extraClas
     ...(titleFormatter ? { titleFormatter } : {}),
     field,
     hozAlign: "center",
-    headerHozAlign: "center",
     cssClass: extraClass ? `pav-col-check ${extraClass}` : "pav-col-check",
     sorter: "boolean",
     accessorDownload: yesNo,
@@ -263,6 +262,10 @@ export function accountColumns(documentRef = globalThis.document, hidden = [], w
       field: "number",
       width: 60,
       resizable: true,
+      hozAlign: "center",
+      cssClass: "pav-col-center",
+      /* K-Q11: the footer shows the account count under #. */
+      bottomCalc: (values) => values.length,
       sorter: "string",
       formatter: (cell) => {
         const num = documentRef.createElement("span");
@@ -288,7 +291,6 @@ export function accountColumns(documentRef = globalThis.document, hidden = [], w
       minWidth: 120,
       resizable: true,
       sorter: "string",
-      bottomCalc: (values) => accountCountText(values.length),
       formatter: (cell) => {
         const span = documentRef.createElement("span");
         span.className = "accounts-name-cell";

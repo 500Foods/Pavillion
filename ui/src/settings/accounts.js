@@ -210,6 +210,7 @@ export function createAccountsView(api, root, options = {}) {
         onWidths: () => sizePane(currentColumns()),
         onColumnResized,
       });
+      table.setScale(tableScale.width, tableScale.font);
       if (query !== "") {
         table.setFilter((row) => accountMatches(row, query));
       }
@@ -231,6 +232,10 @@ export function createAccountsView(api, root, options = {}) {
     return cleanHidden(typeof options.tableHidden === "function" ? options.tableHidden("accounts") : []);
   }
 
+  /* K-Q14 zoom in place: width scale = Shell x Accounts table, font scale =
+     Accounts table (the root rem already carries Shell). */
+  let tableScale = { width: 1, font: 1 };
+
   function savedWidths() {
     return cleanWidths(typeof options.tableWidths === "function" ? options.tableWidths("accounts") : {});
   }
@@ -245,11 +250,9 @@ export function createAccountsView(api, root, options = {}) {
     }
     const live = table && typeof table.widths === "function" ? table.widths() : {};
     const sized = columns.map((c) => (c.field !== "name" && Number.isFinite(live[c.field]) ? { ...c, width: live[c.field] } : c));
-    /* K-Q14: the table's own zoom scales its columns; the pane is unzoomed. */
-    const treeEl = root.querySelector("#accounts-tree");
-    const zoom = (treeEl && parseFloat(treeEl.style.zoom)) || 1;
+    /* K-Q14: base (100%) widths, so zoom never moves the pane. */
     const bar = table && typeof table.scrollbarWidth === "function" ? table.scrollbarWidth() : 0;
-    pane.style.minWidth = `${Math.ceil((tableMinWidth(sized) + INDICATOR_WIDTH + bar) * zoom) + 2}px`;
+    pane.style.minWidth = `${Math.ceil(tableMinWidth(sized) + INDICATOR_WIDTH + bar) + 2}px`;
   }
 
   function currentColumns() {
@@ -931,6 +934,12 @@ export function createAccountsView(api, root, options = {}) {
 
   return {
     refresh,
+    setZoom(widthScale, fontScale) {
+      tableScale = { width: widthScale, font: fontScale };
+      if (table) {
+        table.setScale(widthScale, fontScale);
+      }
+    },
     /* K-Q14: after a zoom change, redraw and re-measure the table. */
     redraw() {
       if (table && typeof table.redraw === "function") {

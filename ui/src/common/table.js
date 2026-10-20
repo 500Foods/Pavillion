@@ -160,6 +160,32 @@ export function createTable(el, options) {
   let current = null;
   let filterFn = null;
   const gate = { open: false, stateOf: null };
+  /* TABULATOR.md zoom in place: base (100%) widths of the fixed columns, and
+     the current width and font scales. */
+  let widthScale = 1;
+  let fontScale = 1;
+  const base = {};
+  for (const column of options.columns || []) {
+    if (column.field && Number.isFinite(column.width)) {
+      base[column.field] = column.width;
+    }
+  }
+  if (options.indicator) {
+    base[INDICATOR_FIELD] = INDICATOR_WIDTH;
+  }
+
+  function applyScale() {
+    el.style.fontSize = fontScale === 1 ? "" : `${Math.round(fontScale * 1000) / 10}%`;
+    if (!built || typeof table.getColumn !== "function") {
+      return;
+    }
+    for (const [field, width] of Object.entries(base)) {
+      const column = table.getColumn(field);
+      if (column) {
+        column.setWidth(Math.round(width * widthScale));
+      }
+    }
+  }
   const states = new Map();
   gate.stateOf = (id) => (states.get(id) || (id === current && current !== null ? "current" : null));
 
@@ -216,6 +242,7 @@ export function createTable(el, options) {
       const need = Math.ceil(title.scrollWidth + (sorter ? sorter.offsetWidth + 2 : 0) + pad + 2);
       if (title.scrollWidth > 0 && need > column.getWidth()) {
         column.setWidth(need);
+        base[field] = need / widthScale;
       }
     }
   }
@@ -279,6 +306,9 @@ export function createTable(el, options) {
     table = new lib.Tabulator(el, tabulatorOptions(options, initial, gate, documentRef));
     table.on("tableBuilt", () => {
       built = true;
+      if (widthScale !== 1 || fontScale !== 1) {
+        applyScale();
+      }
       if (data !== initial) {
         /* setData arrived while the table was building. */
         void table.replaceData(data).then(() => {
@@ -298,8 +328,11 @@ export function createTable(el, options) {
     table.on("renderComplete", () => relayout());
     table.on("columnVisibilityChanged", () => queueMicrotask(relayout));
     table.on("columnResized", (column) => {
+      if (column.getField() in base) {
+        base[column.getField()] = column.getWidth() / widthScale;
+      }
       if (typeof options.onColumnResized === "function") {
-        options.onColumnResized(column.getField(), Math.round(column.getWidth()));
+        options.onColumnResized(column.getField(), Math.round(column.getWidth() / widthScale));
       }
       relayout();
     });
@@ -319,6 +352,17 @@ export function createTable(el, options) {
         });
       }
     },
+    /* Zoom in place (TABULATOR.md): font scale on the element, fixed columns at
+       base x width scale; the pane is not touched. */
+    setScale(nextWidthScale, nextFontScale = nextWidthScale) {
+      widthScale = Number.isFinite(nextWidthScale) && nextWidthScale > 0 ? nextWidthScale : 1;
+      fontScale = Number.isFinite(nextFontScale) && nextFontScale > 0 ? nextFontScale : 1;
+      applyScale();
+      if (built) {
+        table.redraw(true);
+        relayout();
+      }
+    },
     /* After a zoom change or a pane shown: redraw and re-measure. */
     redraw() {
       if (built) {
@@ -334,8 +378,11 @@ export function createTable(el, options) {
     /* Set one column's width (Reset restores the coded widths). */
     setColumnWidth(field, width) {
       const column = built ? table.getColumn(field) : null;
-      if (column && Number.isFinite(width)) {
-        column.setWidth(width);
+      if (Number.isFinite(width)) {
+        base[field] = width;
+        if (column) {
+          column.setWidth(Math.round(width * widthScale));
+        }
       }
     },
     /* Current widths of the shown columns, by field (pane minimum). */
@@ -345,7 +392,7 @@ export function createTable(el, options) {
         for (const column of table.getColumns()) {
           const field = column.getField();
           if (field && column.isVisible()) {
-            out[field] = Math.round(column.getWidth());
+            out[field] = Math.round(column.getWidth() / widthScale);
           }
         }
       }

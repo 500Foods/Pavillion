@@ -2,6 +2,47 @@
 
 A working reference, not a Lock. The Lock for the shared table is N-MAIL ("Shared table component"); K-Q8 and K-Q11 cover the accounts table. Read 2026-10-20.
 
+## Status and open issues (2026-10-20)
+
+Andrew paused the Tabulator work on 2026-10-20. This section is the current state. The dated sections further down record how it got here, and when they disagree, the later section wins.
+
+**Works (seen in Andrew's real window unless noted):**
+- **Grouping:** rows grouped by host (`(no server)` for an empty or bad URL). The whole group header toggles, with a chevron; groups start open and the open state is not saved.
+- **Sorting:** tri-state sort on every column except the swatch, with Font Awesome arrows pinned to the right edge of the header cell.
+- **Footer counts:** the account count under `#`, and checked counts under JMAP, IMAP, SMTP, Mail, Contacts, Calendars and Files.
+- **Module footer:** Refresh, the navigator (First, Previous, Next, Last, Up and Down) and Export. Export writes CSV through the core's `export.write_text` (API.md).
+- **Row indicator:** a caret on the current row. The `setRowState(id, "editing")` hook exists, but nothing calls it yet.
+- **Column chooser:** a toolbar button, with Name locked. One Reset restores both the shown columns and the original widths.
+- **Column resizing:** user resizing works (Andrew confirmed it). Widths are saved at 100% zoom in `preferences.ui.tables.<id>.widths` and hidden columns in `.hidden`.
+- **Zoom:** Accounts table and Accounts form zoom rows. The table zooms in place by font size and scaled column widths, never CSS zoom. The form uses CSS zoom.
+- **Dividers:** full-height divider lines: cell borders plus a background line on the rows area.
+- **Striping:** zebra striping, with hover and selected rows on top.
+- **Theme variables:** every table colour and size is a `--pav-table-*` variable, in all four theme files.
+
+**Open issues:**
+- **(a) Wrong width:** the table is sometimes drawn at a width that differs from its container: rows or the header end short of, or past, the pane edge. The redraw triggers (a hidden pane being shown, a split drag, zoom, the font scale) or the measurement order need work. Cause not yet found.
+- **(b) Vertical alignment:** the vertical alignment of the header and footer rows is still not right.
+- **(c) Remembering zoom and widths:**
+  - Widths are saved per table (`preferences.ui.tables.<id>.widths`).
+  - The zoom is saved, but per pane key in `preferences.ui.zoom` (`accountsTable`, `accountsForm`), not per table.
+  - Whether the zoom should live under `preferences.ui.tables.<id>` instead is undecided.
+  - It is also unconfirmed in the real window that both the zoom and the widths survive a restart.
+- **(d) Other tables:** how these conventions generalize to other tables (the Mail list, contacts, the log) is undecided. Andrew will think about it. Until then, nothing outside Accounts uses the shared table.
+
+**Lessons learned:**
+- **Imports:** import the core plus named modules through `ui/src/common/tabulator-lib.js` (FormatModule, SortModule, GroupRowsModule, ColumnCalcsModule, SelectRowModule, FilterModule, FrozenColumnsModule, ResizeColumnsModule, Export/Download). Never import TabulatorFull. Register a module only when a column or option needs it.
+- **Never CSS-zoom a Tabulator.** In WebKit, client rects are scaled but offset sizes are not, so the widths, heights, footer and fit go wrong. Scale the table's font size and its fixed column widths (`setScale`) instead, and give all table padding in `em`.
+- **Store widths at 100%,** that is, the pixel width divided by the scale. Scale them when applying, and do not scale the stretch column (Name).
+- **Resize handles** (`.tabulator-col-resize-handle`) are siblings placed after each header and row cell. Style them `position: relative; inline-block` with negative margins. Positioning them absolutely stacks them all at the right edge, and resizing silently stops working.
+- **Striping:** Tabulator's even/odd classes count group header rows too, so a group may start on either shade. Hover and selected rules must come after the stripe rule.
+- **Minimum width:** a pane's minimum width must include the vertical scrollbar width (`offsetWidth - clientWidth` of the rows area), because `fitColumns` subtracts it. Recompute the minimum after fits and resizes, but not on zoom.
+- **Footer:** keep the calc row and footer `white-space: nowrap`. A wrapped calc row shows up as stray numbers under the footer.
+- **Redraw** (`redraw(true)`, then re-fit the titles and repaint the dividers) after the table becomes visible, after a zoom change, and after a column resize or visibility change. Tabulator measures only what is laid out, and a hidden pane measures 0.
+- **Titles:** fit titles by measuring the rendered title, plus the arrow, the gap and the padding. Only ever widen.
+- **Calc cells:** use the column's `cssClass` and `hozAlign`, so alignment classes reach the footer too.
+- **Dividers:** cell borders end at the last row. A full-height line needs a background (or overlay) on `.tabulator-tableholder` at the measured column offsets.
+- **Data flow:** pass data once (constructor, then `replaceData`). After an add, the page must reload and select the new row itself (K-Q13: Save with no selection silently did nothing).
+
 **Doc links.** `https://tabulator.info/docs/6.6/...` URLs fall back to the home page. The real pages are under `https://tabulator.info/docs/6.x/<page>/` (below: `D/<page>`). That site still says "Latest version 6.5.0". The 6.6.0 and 6.6.1 notes are only on GitHub: https://github.com/tabulator-tables/tabulator/releases.
 
 ## Version, install, import
@@ -177,3 +218,22 @@ A reusable option of the shared table, in the style of a classic database grid. 
 - **Compact header.** Header cells use `--pav-table-header-pad-y` and `--pav-table-header-pad-x` (all four theme files), with `line-height: 1.2`. An icon in a header title is `font-size: 1em; line-height: 1`, so a nav icon does not make the row taller than the one-line title plus arrow.
 - **Full-height dividers.** Cell borders stop at the last row. So the wrapper also paints each divider column's line as a 1 px background gradient on `.tabulator-tableholder`. Its x offset is measured from that column's header cell. That covers the empty space below the rows. Row cells keep their own border, so the line is unbroken where rows paint over the background. Offsets are recomputed on render, redraw, column resize, column visibility change and zoom (`redraw()`).
 - **Zoom.** A table inside a zoomed pane is redrawn and re-measured when the zoom changes: the page calls `handle.redraw()`, which runs Tabulator `redraw(true)`, then fits titles and repaints the dividers.
+
+## Zoom in place, footer count, alignment, resize handles (2026-10-20, Andrew; Lock)
+
+This replaces the CSS-zoom parts of the previous section.
+
+- **Zoom by font and scaled widths, not CSS zoom.** CSS `zoom` on the table broke Tabulator's measurements in WebKit. Rows and group headers ended about 90 px short of the header, and the footer calc row was clipped. Tabulator reads client rects (scaled) and offset sizes (not scaled), and the two disagree under zoom. So a table does not get CSS `zoom`. Instead:
+  - `handle.setScale(widthScale, fontScale)` sets the table element's `font-size` to `fontScale × 100%`, sets every fixed column to its base width × `widthScale`, then redraws and re-measures;
+  - every Tabulator length in `theme.css` (cell and header padding) is in `em`, so it follows the font;
+  - the base widths are the coded widths, or the saved ones, at 100%;
+  - Name absorbs the difference. Only when the fixed columns no longer fit at a high zoom can the rows area scroll horizontally (`overflow-x: auto` again);
+  - zoom never changes the pane: its minimum is computed from base widths at 100% and does not move with zoom.
+  - **Two scales:** the shell zoom already reaches the font through the root `rem`, but px widths do not follow it. So Accounts passes width scale = Shell × Accounts table and font scale = Accounts table.
+  - **Saved widths:** saved and reported widths are base widths (px ÷ scale).
+  - **The form:** Accounts form keeps CSS `zoom`, because there is no table in it.
+- **Full width.** With measurements consistent again, `fitColumns` fills the holder: header, group headers, rows and the calc row all end at the right edge.
+- **Footer count.** Accounts shows the account count as a plain number under `#`. Name has no calc. The footer no longer has `overflow: hidden`. The calc row stays on one line with `nowrap`, and its height is the content height, so nothing is cut off.
+- **Alignment.** Cells and calc cells of `#` and the checkbox columns are centred, using the classes `pav-col-center` and `pav-col-check` with `justify-content: center`. Header titles are left-aligned. Header cells, calc cells and cells centre their content vertically (`align-items: center`). The header uses one line height.
+- **Sort arrow pinned right.** In every header the title takes the remaining width (`flex: 1`, ellipsis only when truly needed), and the arrow sits at the right edge (`margin-left: auto`, `flex: none`). It never overlaps the title. The fitted-titles pass still widens a column whose title would clip at its default width.
+- **Resize handles.** Tabulator inserts each `.tabulator-col-resize-handle` as a sibling after its header cell or row cell, not inside it. The old CSS positioned the handles `absolute; right: 0`, which stacked every handle at the far right of the header, so nothing could be dragged. The handle is now what Tabulator expects: `position: relative; display: inline-block; width: 6px; margin: 0 -3px; z-index: 11; vertical-align: middle` (`3px` and no right margin for the last one), with the `col-resize` cursor. `ResizeColumnsModule` is exported by `tabulator-lib.js` and registered when any column sets `resizable: true`.

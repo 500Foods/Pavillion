@@ -57,6 +57,17 @@ test("theme.css only references variables", () => {
 test("K-Q14: the table never wraps its calc row, hides the horizontal bar, and pads the header by variable", () => {
   const css = readFileSync(join(styles, "theme.css"), "utf8");
   expect(css).toMatch(/\.tabulator-calcs-holder \{\n  overflow: hidden;\n  white-space: nowrap;/);
-  expect(css).toMatch(/\.tabulator-tableholder \{[^}]*overflow-x: hidden;/);
+  expect(css).toMatch(/\.tabulator-tableholder \{[^}]*overflow-x: auto;/);
   expect(css).toMatch(/\.tabulator-col \{[^}]*padding: var\(--pav-table-header-pad-y\) var\(--pav-table-header-pad-x\);/);
+});
+
+test("resize handles sit after their cell like Tabulator expects, and arrows pin right", () => {
+  const css = readFileSync(join(styles, "theme.css"), "utf8");
+  const handle = css.match(/\.pav-table \.tabulator-col-resize-handle \{[^}]*\}/)[0];
+  expect(handle).toContain("position: relative;");
+  expect(handle).toContain("display: inline-block;");
+  expect(handle).not.toContain("absolute");
+  expect(css).toMatch(/\.tabulator-col-sorter \{[^}]*margin-left: auto;/);
+  expect(css).toMatch(/\.tabulator-cell\.pav-col-center,\n\.pav-root \.pav-table \.tabulator-cell\.pav-col-check \{\n  justify-content: center;/);
+  expect(css).not.toMatch(/\.tabulator-cell \{[^}]*padding: [0-9.]+rem/);
 });

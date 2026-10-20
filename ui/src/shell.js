@@ -53,7 +53,6 @@ const zoomPanes = {
   mailDetail: "#panel-mail .pane-detail",
   helpIndex: "#help-index",
   helpContent: "#help-article",
-  accountsTable: "#accounts-tree",
   accountsForm: ".accounts-form-pane",
 };
 
@@ -158,8 +157,9 @@ function applyZoom() {
   if (logView) {
     logView.setZoom(ui.zoom.log);
   }
-  if (accountsView && typeof accountsView.redraw === "function") {
-    accountsView.redraw();
+  if (accountsView && typeof accountsView.setZoom === "function") {
+    /* K-Q14: in place, by font and widths; never CSS zoom on a table. */
+    accountsView.setZoom(ui.zoom.shell * ui.zoom.accountsTable, ui.zoom.accountsTable);
   }
 }
 
@@ -2755,6 +2755,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
       return widgets.dialogs.confirm({ title: `Delete ${name}?`, text, okLabel: "Delete", danger: true });
     },
   });
+  accountsView.setZoom(ui.zoom.shell * ui.zoom.accountsTable, ui.zoom.accountsTable);
   logSettings = createLogSettings(api, mountRoot, {
     timeZone: () => logTimeZone,
     onError(text) {

@@ -264,8 +264,8 @@
   --pav-table-indicator: #800000;
   --pav-table-check-size: 1.35em;
   --pav-table-divider: #c9a8a8;
-  --pav-table-header-pad-y: 0.15rem;
-  --pav-table-header-pad-x: 0.4rem;
+  --pav-table-header-pad-y: 0.2em;
+  --pav-table-header-pad-x: 0.4em;
 }
 
 /*

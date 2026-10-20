@@ -84,7 +84,8 @@ test("CSV columns are number, name, server, features, email only (K-Q12)", async
   }
   expect(columns.find((c) => c.field === "contacts").sorter).toBe("boolean");
   expect(columns.find((c) => c.field === "calendars").bottomCalc([true, false, true])).toBe(2);
-  expect(columns.find((c) => c.field === "name").bottomCalc(["a"])).toBe("1 account");
+  expect(columns.find((c) => c.field === "name").bottomCalc).toBeUndefined();
+  expect(columns.find((c) => c.field === "number").bottomCalc(["001", "002"])).toBe(2);
 });
 
 test("chooser columns lock Name and cleanHidden keeps known unlocked fields", async () => {

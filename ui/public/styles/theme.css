@@ -1785,7 +1785,7 @@
   flex-direction: column;
   justify-content: center;
   box-sizing: border-box;
-  vertical-align: bottom;
+  vertical-align: top;
   padding: var(--pav-table-header-pad-y) var(--pav-table-header-pad-x);
   line-height: 1.2;
   text-align: left;
@@ -1811,32 +1811,30 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* Checkbox columns (TABULATOR.md Header row): title and sort icon centred
-   together, 2 px apart, instead of the icon pushed to the edge. */
-.pav-root .pav-table .tabulator-col.pav-col-check .tabulator-col-title-holder {
-  justify-content: center;
-}
-.pav-root .pav-table .tabulator-col.pav-col-check .tabulator-col-title {
-  flex: none;
-  overflow: visible;
-  text-overflow: clip;
-}
 .pav-root .pav-table .tabulator-col-sorter {
   display: inline-flex;
   flex: none;
   align-items: center;
+  margin-left: auto; /* TABULATOR.md: the arrow is pinned to the right edge */
 }
+/* Tabulator puts each handle after its header or row cell (a sibling). */
 .pav-root .pav-table .tabulator-col-resize-handle {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 5px;
+  position: relative;
+  display: inline-block;
+  width: 6px;
+  margin-left: -3px;
+  margin-right: -3px;
+  z-index: 11;
+  vertical-align: middle;
   cursor: col-resize;
+}
+.pav-root .pav-table .tabulator-col-resize-handle:last-of-type {
+  width: 3px;
+  margin-right: 0;
 }
 .pav-root .pav-table .tabulator-tableholder {
   position: relative;
-  overflow-x: hidden; /* TABULATOR.md: backstop; the pane minimum fits the columns */
+  overflow-x: auto; /* TABULATOR.md: only when fixed columns cannot fit at a high zoom */
   overflow-y: auto;
   background-repeat: no-repeat; /* full-height dividers, painted by table.js */
   width: 100%;
@@ -1879,7 +1877,7 @@
   display: inline-flex;
   align-items: center;
   box-sizing: border-box;
-  padding: 0.3rem 0.4rem;
+  padding: 0.3em 0.4em;
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: middle;
@@ -1893,8 +1891,8 @@
 .pav-root .pav-table .tabulator-row.tabulator-group {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.3rem 0.4rem;
+  gap: 0.4em;
+  padding: 0.3em 0.4em;
   cursor: pointer;
   color: var(--pav-table-group-fg);
   background: var(--pav-table-group-bg);
@@ -1961,7 +1959,7 @@
   font-variant-numeric: tabular-nums;
 }
 .pav-root .pav-table .pav-table-footer {
-  padding: 0.3rem 0.4rem;
+  padding: 0.3em 0.4em;
   color: var(--pav-table-footer-fg);
 }
 .pav-root .pav-table:focus-visible {
@@ -1978,7 +1976,6 @@
 .pav-root .pav-table .tabulator-footer {
   flex: none;
   white-space: nowrap; /* the calc row never wraps (stray count) */
-  overflow: hidden;
   border-top: 1px solid var(--pav-table-border);
   background: var(--pav-table-footer-bg);
 }
@@ -2129,4 +2126,11 @@
 .pav-root .pav-module-footer button:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+/* TABULATOR.md alignment: # and check columns centred (cells and calcs). */
+.pav-root .pav-table .tabulator-cell.pav-col-center,
+.pav-root .pav-table .tabulator-cell.pav-col-check {
+  justify-content: center;
+  text-align: center;
 }

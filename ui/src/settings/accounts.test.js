@@ -105,6 +105,11 @@ vi.mock("../common/table.js", () => ({
         handle.widthCalls.push([field, width]);
       },
       widths: () => ({}),
+      scales: [],
+      setScale(w, f) {
+        handle.scales.push([w, f]);
+        globalThis.__lastTableScale = [w, f];
+      },
       setFilter(fn) {
         filterFn = fn;
         draw(allRows);
@@ -902,7 +907,7 @@ test("the table orders columns, groups by server, and counts accounts", async ()
       });
     };
     await add("One", "https://mail.500foods.com/jmap/session");
-    expect(document.querySelector("#accounts-tree .tabulator-calcs-bottom [data-field=\"name\"]").textContent).toBe("1 account");
+    expect(document.querySelector("#accounts-tree .tabulator-calcs-bottom [data-field=\"number\"]").textContent).toBe("1");
     await add("Two", "https://mail.example.com/.well-known/jmap");
     await add("Three", "https://mail.500foods.com/jmap/session");
     const fields = [...document.querySelectorAll('[data-account-id="one"] > span')].map((s) => s.dataset.field);
@@ -914,7 +919,7 @@ test("the table orders columns, groups by server, and counts accounts", async ()
       "mail.example.com",
     ]);
     expect(headers.map((h) => h.querySelector(".pav-group-count").textContent)).toEqual(["2", "1"]);
-    expect(document.querySelector("#accounts-tree .tabulator-calcs-bottom [data-field=\"name\"]").textContent).toBe("3 accounts");
+    expect(document.querySelector("#accounts-tree .tabulator-calcs-bottom [data-field=\"number\"]").textContent).toBe("3");
   });
 });
 
@@ -961,7 +966,7 @@ test("the footer counts checked features, and the navigator and arrows move the 
     nav("first").click();
     expect(formName()).toBe("Alpha");
 
-    expect(document.querySelector('#accounts-tree .tabulator-calcs-bottom [data-field="name"]').textContent).toBe("3 accounts");
+    expect(document.querySelector('#accounts-tree .tabulator-calcs-bottom [data-field="number"]').textContent).toBe("3");
     expect(document.querySelector('#accounts-tree .tabulator-calcs-bottom [data-field="mail"]').textContent).toBe("0");
 
     document.querySelector('#accounts-footer button[data-module-action="export"]').click();
@@ -1229,10 +1234,28 @@ test("K-Q14: the Accounts split ratio is restored from preferences", async () =>
 test("K-Q14: Accounts table and form take their own zoom rows", async () => {
   await withStoredUi({ zoom: { accountsTable: 1.5, accountsForm: 0.75 } }, async () => {
     await vi.waitFor(() => {
-      expect(document.querySelector("#accounts-tree").style.zoom).toBe("1.5");
+      expect(document.querySelector("#accounts-tree").style.zoom).toBe("");
       expect(document.querySelector(".accounts-form-pane").style.zoom).toBe("0.75");
     });
     expect(document.querySelector('[data-zoom="accountsTable"]')).not.toBeNull();
     expect(document.querySelector('[data-zoom="accountsForm"]')).not.toBeNull();
+  });
+});
+
+test("K-Q14 zoom in place: the table gets width and font scales, the pane minimum does not move", async () => {
+  await withStoredUi({ zoom: { shell: 1.2, accountsTable: 1.5 } }, async () => {
+    await vi.waitFor(() => expect(document.querySelector("#account-add")).not.toBeNull());
+    typeInto("#account-name-input", "Zoomed");
+    typeInto("#account-session-url-input", "https://z.example/.well-known/jmap");
+    typeInto("#account-username-input", "z@example.com");
+    typeInto("#account-secret-input", "pw-z");
+    document.querySelector("#account-add").click();
+    await vi.waitFor(() => expect(document.querySelector('[data-account-id="zoomed"]')).not.toBeNull());
+    const [w, f] = globalThis.__lastTableScale;
+    expect(w).toBeCloseTo(1.8);
+    expect(f).toBe(1.5);
+    expect(document.querySelector("#accounts-tree").style.zoom).toBe("");
+    const { accountColumns, tableMinWidth } = await import("./accounts-table.js");
+    expect(document.querySelector(".accounts-tree-pane").style.minWidth).toBe(`${tableMinWidth(accountColumns(document)) + 22 + 2}px`);
   });
 });

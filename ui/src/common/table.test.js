@@ -309,3 +309,47 @@ test("K-Q14: full-height dividers on the holder, onWidths after relayout, redraw
   expect(handle.scrollbarWidth()).toBe(15);
   handle.destroy();
 });
+
+test("zoom in place: setScale sets the font, scales fixed columns from base widths, reports base widths", async () => {
+  const el = document.createElement("div");
+  document.body.append(el);
+  const resized = [];
+  const before = made.length;
+  const handle = createTable(el, {
+    indicator: true,
+    columns: [{ field: "n", width: 60, resizable: true, headerSort: false }, { field: "name", widthGrow: 1, headerSort: false }],
+    data: [{ id: "x" }],
+    onColumnResized: (f, w) => resized.push([f, w]),
+  });
+  handle.setScale(1.5, 1.25); /* before build: kept and applied at build */
+  expect(el.style.fontSize).toBe("125%");
+  await vi.waitFor(() => expect(made.length).toBe(before + 1));
+  const t = made.at(-1);
+  const cols = {};
+  const mk = (field, width) => {
+    const col = { width, getField: () => field, getElement: () => document.createElement("div"), getWidth: () => col.width, setWidth: (w) => { col.width = w; }, isVisible: () => true };
+    cols[field] = col;
+  };
+  mk(INDICATOR_FIELD, 22);
+  mk("n", 60);
+  mk("name", 300);
+  t.getColumn = (f) => cols[f];
+  t.getColumns = () => Object.values(cols);
+  t.redraw = () => {};
+  t.handlers.tableBuilt();
+  expect(cols.n.width).toBe(90);
+  expect(cols[INDICATOR_FIELD].width).toBe(33);
+  expect(cols.name.width).toBe(300); /* Name absorbs; never scaled */
+  cols.n.width = 120;
+  t.handlers.columnResized(cols.n);
+  expect(resized).toEqual([["n", 80]]);
+  handle.setScale(1, 1);
+  expect(el.style.fontSize).toBe("");
+  expect(cols.n.width).toBe(80);
+  expect(handle.widths().n).toBe(80);
+  handle.setColumnWidth("n", 60);
+  handle.setScale(2, 2);
+  expect(cols.n.width).toBe(120);
+  expect(el.style.fontSize).toBe("200%");
+  handle.destroy();
+});

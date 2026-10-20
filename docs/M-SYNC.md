@@ -211,6 +211,31 @@ M-1's net layer is complete and tested. M-2 adds `account.test`, JMAP session pa
 
 The UI half of this gate (the `make build` steps above) is Andrew's to run before M-3a starts. The server half (`make it-up`, each account's Session with `apiUrl` on 1443, 401 on a wrong password) passed on 2026-10-19.
 
+**Gate status (2026-10-20):**
+- K-3 and E-4 are complete, and the server half passed on 2026-10-19.
+- The UI half is still Andrew's to run: add the three test accounts in `make build`, restart, check a wrong password, then `rg -a` the workdir.
+- Since 2026-10-20 the Accounts form adds accounts through Save as well as Add (K-Q13). Before that, Save on a blank form did nothing, so an earlier attempt at this gate may have failed for that reason. Rerun it.
+- H-4 (the log in SQLite) is code-complete and waiting for Andrew's acceptance. It is not in M-3's entry gate.
+- D-10 and the Accounts table (Tabulator) polish continue in parallel. M-3 does not depend on either: it is core sync work (`sync.c`, the store, `mailbox.list`, `identity.list`, `sync.state`), and its only UI is the counts it exposes.
+
+**Handoff for a cold-start agent (2026-10-20):**
+- **Rules:** read [AGENTS.md](../AGENTS.md) first, then this file's Lock and the M-3 section.
+  - Update the Lock docs before the code, in the same round.
+  - Bash tooling only, no Python.
+  - Never stage or commit; Andrew alone commits.
+  - Never commit or touch `PAVILLION_BUILD`.
+  - Logs go to the DB only (`pav_log`), never stderr or files.
+  - Never write to `/fvl/git`.
+  - Secrets are read only through `pav_secret_get`, are never cached unlocked, never logged and never exported.
+- **Gate:** `make test` locally, plus all three CI jobs (`fedora`, `macos-core`, `windows-core`) green on the push. None is `continue-on-error`. A macOS or Windows break is fixed in the same round. Do not rerun or push CI yourself.
+  - **Portability:** paths go through `pav_path_is_absolute` / `pav_path_parent` (Windows drive paths). macOS needs `_DARWIN_C_SOURCE`. Vitest path checks must normalize `\` to `/`.
+- **Stalwart test server:** `tests/stalwart/` holds `compose.yaml`, `config.json`, `VERSION` (pinned v0.16.26) and `seed.sh` ([W-SHIP.md](W-SHIP.md)).
+  - `make it-up` creates the test CA in `build/stalwart-tls`, starts the container on `https://localhost:1443` and seeds two domains and five accounts, all with password `pavtest-pw`.
+  - `make it-seed` reseeds, `make it-down` stops the container, and `make it-reset` also wipes `build/stalwart-data`.
+  - Integration tests: `PAVILLION_IT=1 make test-it`, only against this container.
+  - An account added against it sets `caFile` to `build/stalwart-tls/test-ca.crt`.
+- **Uncommitted:** at hand-off the tree had only the 2026-10-20 docs-only status round uncommitted: `docs/TABULATOR.md`, `docs/D-UI.md`, `docs/M-SYNC.md` and `PAVILLION_PLAN.md`, plus last round's Tabulator fixes if Andrew has not committed them. Check `git status`, and do not build on uncommitted Tabulator work.
+
 **Work items:**
 
 - [ ] `core/src/sync.c`: one `PavSup` per enabled account, started after `core ready`, stopped on remove or disable; account states and `sync.state` events; `sync.now {accountId?}`.
