@@ -1,4 +1,8 @@
 #define _POSIX_C_SOURCE 200809L
+#if defined(__APPLE__)
+/* _POSIX_C_SOURCE hides flock and LOCK_* in <sys/file.h> on macOS. */
+#define _DARWIN_C_SOURCE
+#endif
 
 #include "account.h"
 #include "dispatch.h"
