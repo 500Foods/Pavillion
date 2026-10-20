@@ -9,8 +9,14 @@ import { mockTransport } from "../transport/mock.js";
 /* Tabulator does not lay out rows under jsdom, so the shared table is a small
    fake here: one button per row (data-account-id), each cell drawn by the real
    column formatters, and a row click calls onRowClick like Tabulator does. */
+const fakeTables = [];
 vi.mock("../common/table.js", () => ({
   createTable(el, options) {
+    let current = null;
+    let rowsNow = options.data;
+    let allRows = options.data;
+    let filterFn = null;
+    const columns = options.columns.filter((c) => c.visible !== false);
     const drawRow = (row) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -18,7 +24,7 @@ vi.mock("../common/table.js", () => ({
       if (options.rowClass && options.rowClass(row)) {
         button.classList.add(options.rowClass(row));
       }
-      for (const column of options.columns) {
+      for (const column of columns) {
         const cell = { getValue: () => row[column.field], getRow: () => ({ getData: () => row }) };
         const out = column.formatter ? column.formatter(cell) : String(row[column.field] ?? "");
         const span = document.createElement("span");
@@ -29,9 +35,7 @@ vi.mock("../common/table.js", () => ({
       button.addEventListener("click", () => options.onRowClick(row));
       return button;
     };
-    /* Like Tabulator groupBy: groups in first-seen order, header, rows. */
-    const draw = (data) => {
-      el.replaceChildren();
+    const order = (data) => {
       const groups = new Map();
       for (const row of data) {
         const key = options.groupBy ? row[options.groupBy] : "";
@@ -40,7 +44,21 @@ vi.mock("../common/table.js", () => ({
         }
         groups.get(key).push(row);
       }
-      for (const [key, rows] of groups) {
+      return groups;
+    };
+    const mark = () => {
+      for (const b of el.querySelectorAll("button[data-account-id]")) {
+        b.classList.toggle("tabulator-selected", b.dataset.accountId === current);
+      }
+    };
+    /* Like Tabulator: groups in first-seen order, header, rows, then the
+       bottom calc row and the page's footer element. */
+    const draw = (input) => {
+      allRows = input;
+      const data = filterFn ? input.filter(filterFn) : input;
+      rowsNow = data;
+      el.replaceChildren();
+      for (const [key, rows] of order(data)) {
         if (options.groupBy) {
           const header = document.createElement("div");
           header.className = "tabulator-group";
@@ -52,15 +70,49 @@ vi.mock("../common/table.js", () => ({
           el.append(drawRow(row));
         }
       }
-      if (options.footer) {
-        const footer = document.createElement("div");
-        footer.className = "pav-table-footer";
-        footer.textContent = options.footer(data);
-        el.append(footer);
+      if (columns.some((c) => c.bottomCalc)) {
+        const calcs = document.createElement("div");
+        calcs.className = "tabulator-calcs-bottom";
+        for (const column of columns) {
+          const span = document.createElement("span");
+          span.dataset.field = column.field;
+          span.textContent = column.bottomCalc ? String(column.bottomCalc(data.map((r) => r[column.field]), data)) : "";
+          calcs.append(span);
+        }
+        el.append(calcs);
+      }
+      if (options.footerElement) {
+        el.append(options.footerElement);
+      }
+      mark();
+      if (options.onRender) {
+        options.onRender();
       }
     };
     draw(options.data);
-    return { setData: draw, destroy() { el.replaceChildren(); } };
+    const handle = {
+      options,
+      downloads: [],
+      setData: draw,
+      setFilter(fn) {
+        filterFn = fn;
+        draw(allRows);
+      },
+      select(id) {
+        current = id;
+        mark();
+      },
+      ids: () => [...order(rowsNow).values()].flat().map((r) => r.id),
+      download(name) {
+        handle.downloads.push(name);
+        return true;
+      },
+      destroy() {
+        el.replaceChildren();
+      },
+    };
+    fakeTables.push(handle);
+    return handle;
   },
 }));
 
@@ -320,13 +372,20 @@ test("removing an account deletes it from the tree", async () => {
     document.querySelector('[data-account-id="test-account"]').click();
     expect(document.querySelector("#account-remove")).not.toBeNull();
 
-    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
-    document.querySelector("#account-remove").click();
+    /* D-10: the toolbar Delete asks through the app dialog first. */
+    expect(document.querySelector("#account-delete").disabled).toBe(false);
+    document.querySelector("#account-delete").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector(".pav-dialog-ok")).not.toBeNull();
+    });
+    expect(document.querySelector(".pav-dialog-title").textContent).toBe("Delete Test Account?");
+    document.querySelector(".pav-dialog-ok").click();
 
     await vi.waitFor(() => {
       expect(document.querySelector("#accounts-tree").textContent).toContain("No accounts yet.");
     });
-    confirmMock.mockRestore();
+    expect(document.querySelector("#account-delete").disabled).toBe(true);
+    expect(document.querySelector("#account-clone").disabled).toBe(true);
   } finally {
     unmount();
     el.remove();
@@ -726,7 +785,7 @@ test("the table row shows the swatch, J/I/S badges, and features after a Test", 
     expect(row().querySelector(".account-swatch .fa-envelope")).not.toBeNull();
     const badges = [...row().querySelectorAll(".accounts-badge")].map((b) => [b.textContent, b.classList.contains("is-disabled")]);
     expect(badges).toEqual([["J", false], ["I", true], ["S", true]]);
-    expect(row().classList.contains("pav-row-selected")).toBe(true);
+    expect(row().classList.contains("tabulator-selected")).toBe(true);
     const box = (field) => row().querySelector(`[data-field="${field}"] input[type="checkbox"]`);
     expect(box("mail").checked).toBe(false);
     expect(box("mail").disabled).toBe(true);
@@ -828,7 +887,7 @@ test("the table orders columns, groups by server, and counts accounts", async ()
       });
     };
     await add("One", "https://mail.500foods.com/jmap/session");
-    expect(document.querySelector("#accounts-tree .pav-table-footer").textContent).toBe("1 account");
+    expect(document.querySelector("#accounts-tree .tabulator-calcs-bottom [data-field=\"name\"]").textContent).toBe("1 account");
     await add("Two", "https://mail.example.com/.well-known/jmap");
     await add("Three", "https://mail.500foods.com/jmap/session");
     const fields = [...document.querySelectorAll('[data-account-id="one"] > span')].map((s) => s.dataset.field);
@@ -840,6 +899,133 @@ test("the table orders columns, groups by server, and counts accounts", async ()
       "mail.example.com (https://mail.example.com/.well-known/jmap)",
     ]);
     expect(headers.map((h) => h.querySelector(".pav-group-count").textContent)).toEqual(["2", "1"]);
-    expect(document.querySelector("#accounts-tree .pav-table-footer").textContent).toBe("3 accounts");
+    expect(document.querySelector("#accounts-tree .tabulator-calcs-bottom [data-field=\"name\"]").textContent).toBe("3 accounts");
+  });
+});
+
+/* K-Q12: calcs, the navigator, arrow keys, and Export. */
+test("the footer counts checked features, and the navigator and arrows move the selection", async () => {
+  await withView(async (callSpy) => {
+    const add = async (name, url) => {
+      typeInto("#account-name-input", name);
+      typeInto("#account-session-url-input", url);
+      typeInto("#account-username-input", `${name.toLowerCase()}@example.com`);
+      typeInto("#account-secret-input", "pw");
+      document.querySelector("#account-add").click();
+      await vi.waitFor(() => {
+        expect(document.querySelector(`[data-account-id="${name.toLowerCase()}"]`)).not.toBeNull();
+      });
+    };
+    await add("Alpha", "https://a.example/jmap");
+    await add("Beta", "https://b.example/jmap");
+    await add("Gamma", "https://a.example/jmap");
+    const nav = (action) => document.querySelector(`#accounts-footer button[data-step="${action}"]`);
+    const selected = () => document.querySelector("#accounts-tree .tabulator-selected")?.dataset.accountId;
+    const formName = () => document.querySelector("#account-name-input").value;
+
+    /* Display order is by group: alpha, gamma (a.example), then beta. */
+    document.querySelector('[data-account-id="alpha"]').click();
+    expect(selected()).toBe("alpha");
+    expect(nav("first").disabled).toBe(true);
+    expect(nav("prev").disabled).toBe(true);
+    expect(nav("next").disabled).toBe(false);
+    expect(nav("last").getAttribute("aria-label")).toBe("Last account");
+    expect(nav("first").querySelector("i").className).toContain("fa-backward-step");
+    nav("next").click();
+    expect(selected()).toBe("gamma");
+    expect(formName()).toBe("Gamma");
+    nav("last").click();
+    expect(selected()).toBe("beta");
+    expect(nav("next").disabled).toBe(true);
+    expect(nav("last").disabled).toBe(true);
+    const tree = document.querySelector("#accounts-tree");
+    tree.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+    expect(selected()).toBe("gamma");
+    tree.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    expect(selected()).toBe("beta");
+    nav("first").click();
+    expect(formName()).toBe("Alpha");
+
+    expect(document.querySelector('#accounts-tree .tabulator-calcs-bottom [data-field="name"]').textContent).toBe("3 accounts");
+    expect(document.querySelector('#accounts-tree .tabulator-calcs-bottom [data-field="mail"]').textContent).toBe("0");
+
+    document.querySelector('#accounts-footer button[data-module-action="export"]').click();
+    expect(fakeTables.at(-1).downloads).toEqual(["pavillion-accounts.csv"]);
+    await vi.waitFor(() => {
+      const log = callSpy.mock.calls.filter(([cmd]) => cmd === "log.client").pop();
+      expect(log[1]).toEqual({ subsystem: "accounts", level: "info", message: "exported 3 accounts to CSV" });
+    });
+  });
+});
+
+/* D-10: the module toolbar (Add, Clone, Delete, search) and footer. */
+test("cloneAccount drops username, password, id, number and capabilities", async () => {
+  const { cloneAccount, accountMatches } = await import("./accounts-table.js");
+  const copy = cloneAccount({
+    id: "a", number: "001", name: "Alpha", username: "u@x.example", secret: "s", password: "p",
+    sessionUrl: "https://x.example/jmap", email: "u@x.example", color: "#123", icon: "<i></i>",
+    capabilities: ["mail"], capabilitiesChecked: "2026-10-20T00:00:00Z", syncMail: false,
+  });
+  expect(copy).toEqual({ name: "Alpha (copy)", sessionUrl: "https://x.example/jmap", email: "u@x.example", color: "#123", icon: "<i></i>", syncMail: false });
+  const row = { name: "Alpha", number: "001", email: "a@x.example", server: "x.example (https://x.example/jmap)", account: { username: "login7" } };
+  expect(accountMatches(row, "")).toBe(true);
+  expect(accountMatches(row, "ALP")).toBe(true);
+  expect(accountMatches(row, "001")).toBe(true);
+  expect(accountMatches(row, "login7")).toBe(true);
+  expect(accountMatches(row, "x.example")).toBe(true);
+  expect(accountMatches(row, "nope")).toBe(false);
+});
+
+test("toolbar Add, Clone and search, and footer Refresh first", async () => {
+  await withView(async (callSpy) => {
+    const toolbar = document.querySelector("#accounts-toolbar");
+    expect(toolbar.querySelector(".pav-module-title").textContent).toBe("Accounts");
+    expect([...toolbar.querySelectorAll("button[data-module-action]")].map((b) => b.dataset.moduleAction)).toEqual(["add", "clone", "delete"]);
+    expect(toolbar.lastElementChild.classList.contains("help-jump")).toBe(true);
+    expect(document.querySelector("#account-clone").disabled).toBe(true);
+    const footerFirst = document.querySelector("#accounts-footer .pav-module-nav button");
+    expect(footerFirst.dataset.moduleAction).toBe("refresh");
+    expect(footerFirst.querySelector("i").className).toContain("fa-arrows-rotate");
+
+    typeInto("#account-name-input", "Alpha");
+    typeInto("#account-session-url-input", "https://a.example/jmap");
+    typeInto("#account-username-input", "alpha@example.com");
+    typeInto("#account-secret-input", "pw");
+    document.querySelector("#account-add").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-account-id="alpha"]')).not.toBeNull();
+    });
+    document.querySelector('[data-account-id="alpha"]').click();
+    expect(document.querySelector("#account-clone").disabled).toBe(false);
+
+    const secretReads = () => callSpy.mock.calls.filter(([cmd]) => /secret/.test(cmd)).length;
+    const before = secretReads();
+    document.querySelector("#account-clone").click();
+    expect(document.querySelector("#account-name-input").value).toBe("Alpha (copy)");
+    expect(document.querySelector("#account-session-url-input").value).toBe("https://a.example/jmap");
+    expect(document.querySelector("#account-username-input").value).toBe("");
+    expect(document.querySelector("#account-secret-input").value).toBe("");
+    expect(document.querySelector("#account-clone").disabled).toBe(true);
+    expect(document.querySelector("#accounts-tree .tabulator-selected")).toBeNull();
+    expect(secretReads()).toBe(before);
+
+    document.querySelector('[data-account-id="alpha"]').click();
+    document.querySelector("#account-new").click();
+    expect(document.querySelector("#account-name-input").value).toBe("");
+    expect(document.querySelector("#account-form-title").textContent).toBe("Add account");
+
+    const search = document.querySelector("#accounts-search");
+    search.value = "zzz";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(document.querySelector('[data-account-id="alpha"]')).toBeNull();
+    search.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(document.querySelector('[data-account-id="alpha"]')).not.toBeNull();
+
+    const lists = () => callSpy.mock.calls.filter(([cmd]) => cmd === "account.list").length;
+    const listed = lists();
+    footerFirst.click();
+    await vi.waitFor(() => {
+      expect(lists()).toBe(listed + 1);
+    });
   });
 });

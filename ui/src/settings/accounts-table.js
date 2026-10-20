@@ -115,6 +115,7 @@ export function accountRows(accounts, timeZone) {
       name: account.name || account.id,
       number: account.number || "",
       server: serverGroup(account.sessionUrl),
+      email: typeof account.email === "string" ? account.email : "",
       account,
       checked: checkedTitle(account.capabilitiesChecked, timeZone),
     };
@@ -145,14 +146,38 @@ function checkbox(on, label, documentRef) {
   return box;
 }
 
+const FEATURE_WIDTH = 60;
+const MAIL_WIDTH = 104;
+
+/* K-Q12: the pane is never narrower than the fixed columns plus Name's
+   minimum, so every column stays visible without a horizontal scrollbar. */
+export function tableMinWidth(columns) {
+  return columns
+    .filter((c) => c.visible !== false)
+    .reduce((sum, c) => sum + (Number.isFinite(c.width) ? c.width : c.minWidth || 0), 0);
+}
+
+/* K-Q12: the CSV columns, in order. Nothing else is exported. */
+export const EXPORT_FIELDS = ["number", "name", "server", "mail", "calendars", "contacts", "files", "email"];
+
+/* The fields a Tabulator CSV download takes from these columns. */
+export function exportFields(columns) {
+  return columns
+    .filter((c) => (c.visible === false ? c.download === true : c.download !== false))
+    .map((c) => c.field);
+}
+
+const yesNo = (value) => (value === true ? "yes" : "no");
+
 export function accountColumns(documentRef = globalThis.document) {
   const columns = [
     {
       title: "#",
+      titleDownload: "Number",
       field: "number",
-      width: 52,
-      headerSort: false,
+      width: 60,
       resizable: false,
+      sorter: "string",
       formatter: (cell) => {
         const num = documentRef.createElement("span");
         num.className = "accounts-tree-number";
@@ -164,15 +189,18 @@ export function accountColumns(documentRef = globalThis.document) {
       title: "",
       field: "account",
       width: 44,
-      headerSort: false,
       resizable: false,
+      download: false,
+      sorter: (a, b) => String((a && a.color) || "").localeCompare(String((b && b.color) || "")),
       formatter: (cell) => accountSwatch(cell.getValue(), documentRef),
     },
     {
       title: "Name",
       field: "name",
       widthGrow: 1,
-      minWidth: 96,
+      minWidth: 120,
+      sorter: "string",
+      bottomCalc: (values) => accountCountText(values.length),
       formatter: (cell) => {
         const span = documentRef.createElement("span");
         span.className = "accounts-name-cell";
@@ -180,6 +208,7 @@ export function accountColumns(documentRef = globalThis.document) {
         return span;
       },
     },
+    { title: "Server", field: "server", visible: false, download: true },
   ];
   for (const feature of FEATURES) {
     columns.push({
@@ -188,8 +217,10 @@ export function accountColumns(documentRef = globalThis.document) {
       field: feature.key,
       hozAlign: "center",
       headerHozAlign: "center",
-      headerSort: false,
-      width: feature.key === "mail" ? 96 : 52,
+      sorter: "boolean",
+      accessorDownload: yesNo,
+      bottomCalc: (values) => values.filter((v) => v === true).length,
+      width: feature.key === "mail" ? MAIL_WIDTH : FEATURE_WIDTH,
       resizable: false,
       formatter: (cell) => {
         const wrap = documentRef.createElement("span");
@@ -212,5 +243,38 @@ export function accountColumns(documentRef = globalThis.document) {
       },
     });
   }
+  columns.push({ title: "Email", field: "email", visible: false, download: true });
   return columns;
+}
+
+/* K-Q12 navigator state lives in the shared module footer (D-10). */
+export { navState, navTarget } from "../common/module-bar.js";
+
+/* D-10 Clone: every field except the username, the password, the id and
+   number (Add assigns them), and the capabilities (they belong to the
+   credentials). The account rows never carry a secret. */
+export const CLONE_DROPPED = ["id", "number", "username", "secret", "password", "capabilities", "capabilitiesChecked"];
+
+export function cloneAccount(account) {
+  const copy = {};
+  for (const [key, value] of Object.entries(account || {})) {
+    if (!CLONE_DROPPED.includes(key)) {
+      copy[key] = value;
+    }
+  }
+  const name = typeof copy.name === "string" && copy.name !== "" ? copy.name : (account && account.id) || "";
+  copy.name = name ? `${name} (copy)` : "";
+  return copy;
+}
+
+/* D-10 search: case-insensitive substring over name, number, email,
+   username, and the server label. A blank query keeps every row. */
+export function accountMatches(row, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (q === "") {
+    return true;
+  }
+  const account = row.account || {};
+  return [row.name, row.number, row.email, account.username, row.server]
+    .some((value) => typeof value === "string" && value.toLowerCase().includes(q));
 }

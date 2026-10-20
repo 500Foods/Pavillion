@@ -423,9 +423,7 @@ export const shellMarkup = `<div class="shell">
              </div>
            </div>
           <div data-settings="accounts" hidden>
-            <div class="button-bar settings-bar" role="toolbar" aria-label="Accounts">
-              <span class="settings-bar-title">Accounts</span>
-              <span class="log-bar-spacer"></span>
+            <div class="button-bar pav-module-toolbar" id="accounts-toolbar" role="toolbar" aria-label="Accounts">
               <button type="button" class="help-jump" data-help-page="settings" data-help-section="accounts" aria-label="Help for Accounts">
                 <i class="icon fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
               </button>
@@ -521,6 +519,7 @@ export const shellMarkup = `<div class="shell">
                 </div>
               </div>
             </div>
+            <div class="button-bar pav-module-footer" id="accounts-footer" role="toolbar" aria-label="Account actions"></div>
           </div>
         </div>
         <div class="panel" id="panel-activity" role="tabpanel" hidden>
@@ -535,9 +534,7 @@ export const shellMarkup = `<div class="shell">
           <div class="button-bar log-bottombar" role="toolbar" aria-label="Log actions"></div>
         </div>
         <div class="panel help-panel" id="panel-help" role="tabpanel" hidden>
-          <div class="button-bar help-bar" role="toolbar" aria-label="Help">
-            <input id="help-search" class="search" type="search" aria-label="Search help" placeholder="Search help" />
-            <span class="log-bar-spacer"></span>
+          <div class="button-bar help-bar pav-module-toolbar" id="help-toolbar" role="toolbar" aria-label="Help">
             <button type="button" id="isolation-test" hidden>Show isolation test</button>
             <button type="button" id="demo-activity" hidden>Run demo activity</button>
             <button type="button" id="open-test-tab" hidden>Open test tab</button>

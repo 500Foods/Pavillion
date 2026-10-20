@@ -1,9 +1,22 @@
 import { createTable } from "../common/table.js";
 import { accountSwatch, ICON_CHOICES, iconChoice, iconSnippet } from "./account-icon.js";
-import { accountColumns, accountCountText, accountRows, serverGroupHeader } from "./accounts-table.js";
+import { moduleFooter, moduleToolbar, mountBar, paintFooterNav } from "../common/module-bar.js";
+import {
+  accountColumns,
+  accountMatches,
+  accountRows,
+  cloneAccount,
+  navTarget,
+  serverGroupHeader,
+  tableMinWidth,
+} from "./accounts-table.js";
 
 export function createAccountsView(api, root, options = {}) {
   let table = null;
+  let footerEl = null;
+  let toolbarEl = null;
+  /* D-10: the toolbar search text. */
+  let query = "";
   /* K-Q10: an unsaved form keeps its last verified Test and sends it on Add. */
   let formCaps = null;
   const timeZone = () => (typeof options.timeZone === "function" ? options.timeZone() : options.timeZone);
@@ -134,12 +147,18 @@ export function createAccountsView(api, root, options = {}) {
     urlNote = "";
     clearSecretField();
     testResult = { ok: false, capabilities: [], error: "" };
-    paintTree();
+    if (table) {
+      table.select(id);
+      paintNavState();
+    } else {
+      paintTree();
+    }
     paintHeader();
     paintForm();
   }
 
-  /* K-Q8: the accounts table; a row click selects and loads the form. */
+  /* K-Q8, K-Q12: the accounts table; a row click, the navigator, or Up and
+     Down select a row and load the form. */
   function paintTree() {
     const treeEl = root.querySelector("#accounts-tree");
     if (!treeEl) {
@@ -160,19 +179,173 @@ export function createAccountsView(api, root, options = {}) {
     const rows = accountRows(accounts, timeZone());
     if (!table) {
       treeEl.replaceChildren();
+      const columns = accountColumns(document);
+      const pane = treeEl.closest(".accounts-tree-pane");
+      if (pane) {
+        pane.style.minWidth = `${tableMinWidth(columns) + 2}px`;
+      }
       table = createTable(treeEl, {
-        columns: accountColumns(document),
+        columns,
         data: rows,
         rowId: "id",
         onRowClick: (row) => selectAccount(row.id),
         groupBy: "server",
         groupHeader: (value, count) => serverGroupHeader(value, count, document),
-        footer: (data) => accountCountText(data.length),
-        rowClass: (row) => (row.id === selectedId ? "pav-row-selected" : ""),
+        groupOrder: (data) => [...new Set(data.map((row) => row.server))],
+        select: true,
+        download: true,
+        filter: true,
+        onRender: paintNavState,
       });
+      if (query !== "") {
+        table.setFilter((row) => accountMatches(row, query));
+      }
+      if (!treeEl.dataset.keys) {
+        treeEl.dataset.keys = "1";
+        treeEl.addEventListener("keydown", onTreeKey);
+      }
     } else {
       table.setData(rows);
     }
+    table.select(selectedId);
+    paintNavState();
+  }
+
+  /* D-10: the module footer navigator, Export, and Clone follow the shown
+     rows and the selection. */
+  function paintNavState() {
+    const ids = table ? table.ids() : [];
+    if (footerEl) {
+      paintFooterNav(footerEl, ids, selectedId);
+      const exportButton = footerEl.querySelector('button[data-module-action="export"]');
+      if (exportButton) {
+        exportButton.disabled = ids.length === 0;
+      }
+    }
+    for (const id of ["#account-clone", "#account-delete"]) {
+      const button = toolbarEl && toolbarEl.querySelector(id);
+      if (button) {
+        button.disabled = !selectedAccount();
+      }
+    }
+  }
+
+  function applySearch(value) {
+    query = String(value || "");
+    if (table) {
+      table.setFilter(query.trim() === "" ? null : (row) => accountMatches(row, query));
+    }
+  }
+
+  /* D-10 Clone: the selected account minus username, password, id, number,
+     and capabilities, opened unsaved in the form for Add. Nothing secret is
+     read: account rows never carry the password. */
+  function cloneSelected() {
+    const selected = selectedAccount();
+    if (!selected) {
+      return;
+    }
+    const copy = cloneAccount(selected);
+    clearForm();
+    clearSecretField();
+    syncFormState({ ...copy, username: "" });
+    if (table) {
+      table.select(null);
+    }
+    paintHeader();
+    paintForm();
+    paintNavState();
+  }
+
+  /* D-10 (D-Q21) Add: a blank unsaved form; the form's Add creates it. */
+  function newAccount() {
+    clearForm();
+    clearSecretField();
+    if (table) {
+      table.select(null);
+    }
+    paintHeader();
+    paintForm();
+    paintNavState();
+    const name = root.querySelector("#account-name-input");
+    if (name && typeof name.focus === "function") {
+      name.focus();
+    }
+  }
+
+  /* D-10 (D-Q21) Delete: confirm, then account.remove with purgeLocal; the
+     core deletes the stored secret with the account. */
+  async function removeSelected() {
+    const selected = selectedAccount();
+    if (!selected) {
+      return;
+    }
+    const name = selected.name || selected.id;
+    const ask = typeof options.confirm === "function"
+      ? options.confirm
+      : (text) => Promise.resolve(typeof window.confirm === "function" ? window.confirm(text) : true);
+    const ok = await ask(`Delete ${name}? Its saved password and local mail and data are deleted.`, name);
+    if (!ok) {
+      return;
+    }
+    try {
+      await api.account.remove(selected.id, true);
+      clearForm();
+      await refresh();
+    } catch (err) {
+      showBanner(err);
+    }
+  }
+
+  function bindBars() {
+    toolbarEl = mountBar(root.querySelector("#accounts-toolbar"), moduleToolbar({
+      title: "Accounts",
+      actions: [
+        { id: "account-new", action: "add", icon: "fa-plus", text: "Add", label: "Add an account", onClick: newAccount },
+        { id: "account-clone", action: "clone", icon: "fa-clone", text: "Clone", label: "Clone the selected account", onClick: cloneSelected },
+        { id: "account-delete", action: "delete", icon: "fa-trash", text: "Delete", label: "Delete the selected account", onClick: () => void removeSelected() },
+      ],
+      search: { id: "accounts-search", label: "Search accounts", placeholder: "Search accounts", onInput: applySearch },
+    }, document));
+    footerEl = mountBar(root.querySelector("#accounts-footer"), moduleFooter({
+      label: "Account actions",
+      noun: "account",
+      onRefresh: () => void refresh(),
+      onNav: navigate,
+      end: [{ action: "export", icon: "fa-file-export", text: "Export", label: "Export the account list as CSV", onClick: exportCsv }],
+    }, document));
+    paintNavState();
+  }
+
+  function navigate(action) {
+    if (!table) {
+      return;
+    }
+    const id = navTarget(table.ids(), selectedId, action);
+    if (id !== null && id !== selectedId) {
+      selectAccount(id);
+    }
+  }
+
+  function onTreeKey(event) {
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLButtonElement) {
+      return;
+    }
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      event.preventDefault();
+      navigate(event.key === "ArrowUp" ? "prev" : "next");
+    }
+  }
+
+  /* K-Q12: CSV of the visible columns plus server and email; never secrets. */
+  function exportCsv() {
+    if (!table || !table.download("pavillion-accounts.csv")) {
+      return;
+    }
+    const count = accounts.length;
+    void Promise.resolve(api.log && api.log.client
+      ? api.log.client({ subsystem: "accounts", level: "info", message: `exported ${count} ${count === 1 ? "account" : "accounts"} to CSV` })
+      : null).catch(() => {});
   }
 
   /* K-Q9: the interim icon chooser beside Color, drawn on the account color. */
@@ -359,9 +532,13 @@ export function createAccountsView(api, root, options = {}) {
       if (!selectedId && accounts.length > 0) {
         selectedId = accounts[0].id;
         syncFormState(accounts[0]);
+        if (table) {
+          table.select(selectedId);
+        }
         paintHeader();
         paintForm();
       }
+      paintNavState();
     } catch (err) {
       showBanner(err);
     }
@@ -446,24 +623,7 @@ export function createAccountsView(api, root, options = {}) {
     if (!removeBtn) {
       return;
     }
-    removeBtn.addEventListener("click", async () => {
-      if (!selectedId) {
-        return;
-      }
-      if (typeof window.confirm === "function") {
-        const confirmed = window.confirm("Remove this account? Local mail and data will be deleted.");
-        if (!confirmed) {
-          return;
-        }
-      }
-      try {
-        await api.account.remove(selectedId, true);
-        clearForm();
-        await refresh();
-      } catch (err) {
-        showBanner(err);
-      }
-    });
+    removeBtn.addEventListener("click", () => void removeSelected());
   }
 
   /* K-Q7: store a new session URL at once on an existing account (a new
@@ -608,6 +768,7 @@ export function createAccountsView(api, root, options = {}) {
     });
   }
 
+  bindBars();
   bindAdd();
   bindSave();
   bindRemove();

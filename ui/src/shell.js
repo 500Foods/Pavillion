@@ -13,6 +13,7 @@ import { createActivityView } from "./activity/view.js";
 import { createAccountsView } from "./settings/accounts.js";
 import { createLogSettings } from "./settings/log.js";
 import { createHelpView } from "./help/view.js";
+import { createBackTracker } from "./help/back.js";
 import { createLogView } from "./log/view.js";
 import { createTreeController } from "./tree/tree.js";
 import { renderRow } from "./tree/render.js";
@@ -1182,6 +1183,7 @@ let navSection = "mail";
 let logView = null;
 let activityView = null;
 let helpView = null;
+let helpBack = createBackTracker();
 let accountsView = null;
 let logSettings = null;
 let logTimeZone = "America/Vancouver";
@@ -1391,6 +1393,26 @@ function onHelpJump(event) {
   helpView.open(button.dataset.helpPage || "", button.dataset.helpSection || "");
   showNav("help");
   openHome("help");
+}
+
+/* D-10 (D-Q18): Back on the Help toolbar. */
+function paintHelpBack() {
+  if (helpView && tabCtl) {
+    helpView.setBackEnabled(helpBack.target(tabCtl.list()) !== null);
+  }
+}
+
+function helpGoBack() {
+  if (!tabCtl) {
+    return;
+  }
+  const target = helpBack.target(tabCtl.list());
+  if (!target) {
+    paintHelpBack();
+    return;
+  }
+  showNav(target.section);
+  tabCtl.activate(target.id);
 }
 
 function showNav(section) {
@@ -2155,6 +2177,7 @@ export function stopShell() {
   if (helpView) {
     helpView.destroy();
     helpView = null;
+    helpBack = createBackTracker();
   }
   if (accountsView) {
     accountsView.destroy();
@@ -2283,7 +2306,9 @@ export async function startShell(surface, nextApi, nextHost, result) {
     if (change.type === "activate" || change.type === "open" || change.type === "context") {
       const active = tabCtl.list().find((item) => item.active);
       applyHomeContext(active);
+      helpBack.note(active);
     }
+    paintHelpBack();
     if (!restoring && change.type !== "limit") {
       noteSession();
     }
@@ -2688,9 +2713,18 @@ export async function startShell(surface, nextApi, nextHost, result) {
   forwarder = createForwarder(log);
   unforward = forwardEvents(mountRoot, forwarder);
   bindMailTree();
-  helpView = createHelpView(mountRoot);
+  helpView = createHelpView(mountRoot, undefined, { onBack: helpGoBack });
+  paintHelpBack();
   mountRoot.addEventListener("click", onHelpJump);
-  accountsView = createAccountsView(api, mountRoot, { timeZone: () => logTimeZone });
+  accountsView = createAccountsView(api, mountRoot, {
+    timeZone: () => logTimeZone,
+    confirm(text, name) {
+      if (!widgets) {
+        return Promise.resolve(false);
+      }
+      return widgets.dialogs.confirm({ title: `Delete ${name}?`, text, okLabel: "Delete", danger: true });
+    },
+  });
   logSettings = createLogSettings(api, mountRoot, {
     timeZone: () => logTimeZone,
     onError(text) {

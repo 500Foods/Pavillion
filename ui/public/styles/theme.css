@@ -1069,19 +1069,21 @@
   white-space: pre;
 }
 
-.pav-root .help-bar .search {
+.pav-root .pav-module-toolbar .pav-module-search {
   width: 16rem;
   flex: 0 1 16rem;
   margin: 0;
   border: 0;
-  border-right: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
+  color: inherit;
+  border-left: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
   background: transparent;
   padding: 0 0.7rem;
   /* A few points under the 1rem bar face. Toolbar zoom still scales it. */
   font-size: 0.75rem;
 }
 
-.pav-root .help-bar > button {
+.pav-root .pav-module-toolbar > button,
+.pav-root .pav-module-footer button {
   border: 0;
   background: transparent;
   padding: 0.55rem 0.75rem;
@@ -1540,10 +1542,12 @@
 
 .pav-root .accounts-tree-pane {
   flex: 0 0 35%;
-  min-width: 18rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 18rem; /* K-Q12: raised to the table minimum by the page */
   max-width: 40%;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   border-right: 1px solid var(--pav-border);
 }
 
@@ -1562,6 +1566,12 @@
 }
 
 .pav-root .accounts-tree {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.pav-root .accounts-tree .accounts-empty {
   padding: 0.75rem;
 }
 
@@ -1824,8 +1834,45 @@
 }
 .pav-root .pav-table .pav-table-footer {
   padding: 0.3rem 0.4rem;
-  border-top: 1px solid var(--pav-border);
   color: var(--pav-text-muted);
+}
+
+/* K-Q12: selection, sort icons, the calc row, and the navigator footer. */
+.pav-root .pav-table .tabulator-row.tabulator-selected {
+  background: var(--pav-surface-button-active);
+}
+.pav-root .pav-table:focus-visible {
+  outline: 1px solid var(--pav-border);
+  outline-offset: -1px;
+}
+.pav-root .pav-table .tabulator-col-content {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.pav-root .pav-table .tabulator-col.tabulator-sortable {
+  cursor: pointer;
+}
+.pav-root .pav-table .tabulator-col-sorter {
+  display: inline-flex;
+  align-items: center;
+}
+.pav-root .pav-table .pav-sort-icon {
+  font-size: 0.75em;
+  color: var(--pav-text-muted);
+}
+.pav-root .pav-table .tabulator-footer {
+  flex: none;
+  border-top: 1px solid var(--pav-border);
+}
+.pav-root .pav-table .tabulator-calcs-holder .tabulator-row {
+  cursor: default;
+  border-bottom: 0;
+  color: var(--pav-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.pav-root .pav-table .tabulator-calcs-holder .tabulator-row:hover {
+  background: transparent;
 }
 
 /* K-Q8 and K-Q9: account swatch, Mail badges, interim icon chooser. */
@@ -1877,4 +1924,40 @@
   display: inline-flex;
   margin-right: 0.4rem;
   vertical-align: middle;
+}
+
+/* D-10 module bars (D-UI.md): toolbar on top (title, actions, spacer,
+   search, buttons after search), footer at the bottom (navigator with
+   Refresh first on the left, list actions on the right). */
+.pav-root .pav-module-toolbar {
+  border-bottom: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
+}
+.pav-root .pav-module-footer {
+  justify-content: space-between;
+  border-top: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
+}
+.pav-root .pav-module-title {
+  display: flex;
+  align-items: center;
+  padding: 0 0.9rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.pav-root .pav-module-spacer {
+  flex: 1;
+  min-width: 0.5rem;
+}
+.pav-root .pav-module-nav,
+.pav-root .pav-module-footer-end {
+  display: inline-flex;
+  align-items: stretch;
+}
+.pav-root .pav-module-toolbar > button,
+.pav-root .pav-module-footer button {
+  color: inherit;
+}
+.pav-root .pav-module-toolbar > button:disabled,
+.pav-root .pav-module-footer button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }

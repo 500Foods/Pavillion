@@ -20,7 +20,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | D-5 | Theme extras: density, gradient tuning, the contrast audit | Medium | Not started |
 | D-8 | Settings → Formats: app-wide display formats through Luxon (before N-3) | Medium | Not started |
 | D-9 | Icon Wizard (DRAFT spec, docs only): up to 3 layered icons or images per icon, stored as an HTML snippet | Medium | Not started |
-| D-10 | Module top bars (DRAFT spec, docs only): Accounts Clone and search, the Help bar with search and Back | Medium | Not started |
+| D-10 | Module bars (toolbar and footer convention): Accounts Clone and search, the Help bar with search and Back | Medium | In progress |
 
 Kind: **Easy** is the static frame or one function in `api.js`. **Medium** crosses one boundary. **Hard** is unused.
 
@@ -385,35 +385,42 @@ This records Andrew's ideas. It does not decide the look: layout, sizes, spacing
 - D-Q12: Rendering at small sizes (16 px in the table and tree): how 3 layers and photos stay legible; whether a simplified fallback is drawn below some size.
 - D-Q13: Recent picks and favourites: wanted, and where kept?
 
-## D-10: Module top bars: Accounts Clone and search, Help bar (DRAFT)
+## D-10: Module bars: toolbar and footer, Accounts Clone and search, Help bar
 
 **Kind:** Medium
-**Status:** Not started. DRAFT spec, docs only; no code in this phase until Andrew answers the open questions. Added 2026-10-19 at Andrew's request.
+**Status:** In progress. Spec answered 2026-10-20 (Andrew: "Let's implement D-10"); code in the tree, window check open.
 
-**Goal:** The Accounts module and the Help panel get a top bar like the Logs panel's: a title on the left, a search field on the right, and module buttons.
+**Goal:** One convention for the bars of every module, and its first users: Accounts and Help.
 
-**What it does (Andrew's ideas, 2026-10-19):**
+### Module bar convention (Lock, 2026-10-20)
 
-- Accounts top bar: a **Clone** button. It copies the selected account into a new unsaved form: every field except the username, the password, and the id. A new id and number come from Add as usual. Clone needs a selected row, so the table gets row selection (optionally single-select through Tabulator's SelectRow module); Clone is disabled when nothing is selected.
-- Accounts top bar: a **search** field like the Logs panel (H-3) that filters the table as you type.
-- Help bar reworked to match: the title `Help` on the left, search on the right, and a **Back** button to the right of search. Back returns to the panel that opened Help, or, when Help was opened from the nav Help button, to the last panel shown before it.
+- **Scope.** These rules apply to every module in the app, present and future (Settings modules, Help, Logs, and later Mail, Contacts, Calendar lists). A new module uses the shared builders; it does not draw its own bars. A module without search, a list, or Export simply omits those parts; Refresh is always present in the footer when the module shows data that can be reloaded.
+- **Terms.** A *module* is one self-contained section of a view, for example Accounts or Themes inside Settings, or Help. *Panel* stays the layout area and *view* a whole screen (Mail, Settings).
+- **Module toolbar** (top, `.pav-module-toolbar`, built by `moduleToolbar()` in `ui/src/common/module-bar.js`): the title on the left (`.pav-module-title`), a spacer, then the search field (`.pav-module-search`, `type="search"`, like the Logs bar) when the module has one, then the module's action buttons to the right of search (for example Back on Help), then the Help jump last. Module buttons that act on a selection (Clone) sit left of the search, after the title.
+- **Module footer** (bottom, `.pav-module-footer`, built by `moduleFooter()`): the navigator at the bottom left (`.pav-module-nav`). Its **first button is always Refresh** (`fa-arrows-rotate`, the Update nav icon, title `Refresh`), which reloads the module's data the way the Themes Refresh button reloads the theme list. After it, for a module with a record list, First, Previous, Next, Last. Export and other list actions sit on the right (`.pav-module-footer-end`).
+- Both bars are `.button-bar` rows on `--pav-*` variables (border `--pav-border`, 1px divided by `--pav-bar-zoom`), so Button bars zoom applies. Buttons are icon buttons with a `title` and `aria-label`; text, where shown, is `textContent`.
+- A Tabulator table inside a module keeps its own header and `bottomCalc` row; the navigator is no longer in the Tabulator `footerElement`.
 
-**Entry gate:** Andrew answers the open questions below.
+### Decisions (D-Q14 to D-Q20, answered 2026-10-20)
 
-**Work items:** none yet (DRAFT).
+- D-Q14: Clone copies every account field except the username, the password, and the id/number (new ones come from Add). The name becomes `<name> (copy)`. The email is copied. Capabilities are not copied (`[]`/not checked until the clone's first Test), because they belong to the credentials. No secret is read, copied, or sent to JS.
+- D-Q15: Clone opens the copy in the form, unsaved, with no row selected, ready for Add; nothing is added at once. Unsaved edits on the previous row are dropped, as when another row is clicked.
+- D-Q16: the existing single-row selection (K-Q12) is the selection; Clone is disabled when no row is selected (including while a clone or a new account is in the form).
+- D-Q17: Accounts search is a plain, case-insensitive substring over name, number, email, username, and the server label. Tabulator `FilterModule` `setFilter(fn)`; a server group with no match disappears. Escape clears it. The navigator walks only the shown rows.
+- D-Q18: Back returns to the last tab shown before Help (one step), which is the module that opened Help through a help jump, or the last panel when Help came from the nav. Back is disabled when there is no such tab or it was closed.
+- D-Q19: Help search keeps its behaviour (titles, text, samples); it only moves to the right of the bar.
+- D-Q20: one shared widget in `ui/src/common/module-bar.js`.
+- D-Q21 (Andrew, 2026-10-20): the Accounts toolbar has **Add**, **Clone**, and **Delete**, in that order after the title. Add clears the selection and opens a blank form (name focused) for a new account; it is created when the form's Add is pressed with the session URL, username, and password filled, because `account.add` requires `kind`, `sessionUrl`, `username`, and `secret` (no blank account on the core side; a core-side draft account is an open item, D-Q22). Delete needs a selected row, asks for confirmation (`Delete <name>? Its saved password and local mail and data are deleted.`), then calls `account.remove {id, purgeLocal:true}`, which deletes the stored secret (`pav_secret_delete`), the profile entry, and the account rows. Delete is disabled without a selection.
+- D-Q22 (open, core): should `account.add` accept a draft account without URL, username, or secret so toolbar Add can create and select a real row at once? Today it cannot. Also: `account.remove` ignores the result of `pav_secret_delete`; should a failed secret delete fail the call or log `WARN`?
 
-**Tests:** to be written with the spec (Vitest: Clone copies all but username, password, and id; Clone disabled without a selection; search filters rows and groups; Back returns to the opener).
+**Work items:**
 
-**Open questions for Andrew:**
+1. `module-bar.js` (`moduleToolbar`, `moduleFooter`, `paintFooterNav`) and the `.pav-module-*` rules in `theme.css`.
+2. Accounts: toolbar with Add, Clone, Delete, and search; footer with Refresh, First, Previous, Next, Last, and Export; the table loses its footer element.
+3. Help: toolbar with title `Help`, search, Back.
+4. Themes: Refresh moves to a module footer (first button) if cheap.
 
-- D-Q14: Clone and the copied values: are `capabilities` and `capabilitiesChecked` (K-Q10) copied, or reset to `[]` and `null` until the clone's first Test? Is the email copied (it usually matches the username), and is the name copied as is or as `<name> (copy)`?
-- D-Q15: Clone with an unsaved form: does it ask before discarding edits, and does the clone open in the form ready for Add, or is it added at once?
-- D-Q16: Selection: the table today highlights the selected row (`pav-row-selected`) from the form. Is Tabulator's SelectRow module (single row) wanted, or is the existing highlight enough as the selection? Keyboard up and down?
-- D-Q17: Accounts search: which columns does it match (name, number, username, email, server), is it plain substring or the Logs query syntax, and does it hide whole server groups that have no match?
-- D-Q18: Help Back: what counts as "the panel that opened Help" (section, Settings heading, a tab), how far back the history goes (one step or a stack), and what Back does when there is no earlier panel (hidden or disabled).
-- D-Q19: Help search moves from where it is today to the bar's right side: same behaviour, or does it also search topic bodies?
-- D-Q20: A shared top-bar widget (title, search, buttons) for Logs, Accounts, and Help, in `ui/src/common/`, or each module draws its own?
-
+**Tests (Vitest):** `cloneAccount` drops username, password, id, number, and capabilities; Clone disabled without a selection; `accountMatches` over the searched fields; footer Refresh first and navigator state; Help Back tracker returns to the opener and is empty with no earlier tab.
 ## Working log
 
 - 2026-10-14 D-1: Dark frame. `theme.css` has the five variables. Title row shows Pavillion. Profile slot and body are empty.

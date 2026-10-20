@@ -1,4 +1,5 @@
 import { helpPages } from "./pages.js";
+import { moduleToolbar, mountBar } from "../common/module-bar.js";
 
 /* A blank query keeps every page. A hit on the page title keeps every section.
    Otherwise only the sections whose title, text, or sample match are kept. */
@@ -31,7 +32,21 @@ export function filterHelp(pages, query) {
   return out;
 }
 
-export function createHelpView(root, pages = helpPages) {
+/* options.onBack: Back pressed (D-10). The toolbar is built into #help-toolbar
+   by the shared module bar: title Help, search right, Back right of search. */
+export function createHelpView(root, pages = helpPages, options = {}) {
+  const toolbarHost = root.querySelector("#help-toolbar");
+  if (toolbarHost && !toolbarHost.querySelector("#help-search")) {
+    mountBar(toolbarHost, moduleToolbar({
+      title: "Help",
+      search: { id: "help-search", label: "Search help", placeholder: "Search help" },
+      after: [{ id: "help-back", action: "back", icon: "fa-arrow-left", text: "Back", label: "Back", onClick: () => typeof options.onBack === "function" && options.onBack() }],
+    }, root.ownerDocument || document));
+  }
+  const backButton = root.querySelector("#help-back");
+  if (backButton) {
+    backButton.disabled = true;
+  }
   const search = root.querySelector("#help-search");
   const index = root.querySelector("#help-index");
   const article = root.querySelector("#help-article");
@@ -205,6 +220,11 @@ export function createHelpView(root, pages = helpPages) {
 
   return {
     open,
+    setBackEnabled(on) {
+      if (backButton) {
+        backButton.disabled = !on;
+      }
+    },
     destroy() {
       if (search) {
         search.removeEventListener("input", onInput);

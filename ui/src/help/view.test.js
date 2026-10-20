@@ -120,3 +120,27 @@ test("dragging the help bar resizes the index and saves the ratio", async () => 
     el.remove();
   }
 });
+
+test("D-10: the Help toolbar has the title, search, then Back to the opener", async () => {
+  const el = document.createElement("div");
+  document.body.append(el);
+  try {
+    await mount(el, createApi(mockTransport()));
+    const bar = document.querySelector("#help-toolbar");
+    expect(bar.querySelector(".pav-module-title").textContent).toBe("Help");
+    const order = [...bar.children].filter((c) => !c.hidden).map((c) => c.id || c.className);
+    expect(order.indexOf("help-search")).toBeLessThan(order.indexOf("help-back"));
+    document.querySelector('[data-section="settings"]').click();
+    document.querySelector('[data-heading="accounts"]').click();
+    document.querySelector('.help-jump[data-help-section="accounts"]').click();
+    expect(document.querySelector("#panel-help").hidden).toBe(false);
+    const back = document.querySelector("#help-back");
+    expect(back.disabled).toBe(false);
+    back.click();
+    expect(document.querySelector("#panel-help").hidden).toBe(true);
+    expect(document.querySelector('[data-settings="accounts"]').hidden).toBe(false);
+  } finally {
+    unmount();
+    el.remove();
+  }
+});

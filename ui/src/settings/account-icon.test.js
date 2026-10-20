@@ -49,3 +49,40 @@ test("serverGroup labels by host and full URL, else (no server) (K-Q11)", async 
   expect(accountCountText(1)).toBe("1 account");
   expect(accountCountText(3)).toBe("3 accounts");
 });
+
+test("navigator state and targets at the ends (K-Q12)", async () => {
+  const { navState, navTarget } = await import("./accounts-table.js");
+  const ids = ["a", "b", "c"];
+  expect(navState(ids, "a")).toEqual({ first: false, prev: false, next: true, last: true });
+  expect(navState(ids, "b")).toEqual({ first: true, prev: true, next: true, last: true });
+  expect(navState(ids, "c")).toEqual({ first: true, prev: true, next: false, last: false });
+  expect(navState([], null)).toEqual({ first: false, prev: false, next: false, last: false });
+  expect(navState(["a"], "a")).toEqual({ first: false, prev: false, next: false, last: false });
+  expect(navTarget(ids, "b", "prev")).toBe("a");
+  expect(navTarget(ids, "c", "next")).toBe("c");
+  expect(navTarget(ids, "a", "last")).toBe("c");
+  expect(navTarget(ids, null, "next")).toBe("a");
+  expect(navTarget([], null, "first")).toBeNull();
+});
+
+test("CSV columns are number, name, server, features, email only (K-Q12)", async () => {
+  const { accountColumns, exportFields, EXPORT_FIELDS, tableMinWidth, accountRows } = await import("./accounts-table.js");
+  const columns = accountColumns(document);
+  expect(exportFields(columns)).toEqual(EXPORT_FIELDS);
+  expect(EXPORT_FIELDS).toEqual(["number", "name", "server", "mail", "calendars", "contacts", "files", "email"]);
+  expect(columns.find((c) => c.field === "mail").accessorDownload(true)).toBe("yes");
+  expect(columns.find((c) => c.field === "files").accessorDownload(false)).toBe("no");
+  const row = accountRows([{ id: "x", name: "X", sessionUrl: "https://h.example/j", username: "u", email: "e@h.example", secret: "s" }], "UTC")[0];
+  for (const field of Object.keys(row)) {
+    expect(["secret", "username", "password"]).not.toContain(field);
+  }
+  expect(tableMinWidth(columns)).toBe(60 + 44 + 120 + 104 + 60 * 3);
+  /* Every visible column sorts; feature columns by checked state. */
+  for (const column of columns.filter((c) => c.visible !== false)) {
+    expect(column.headerSort).not.toBe(false);
+    expect(column.sorter).toBeDefined();
+  }
+  expect(columns.find((c) => c.field === "contacts").sorter).toBe("boolean");
+  expect(columns.find((c) => c.field === "calendars").bottomCalc([true, false, true])).toBe(2);
+  expect(columns.find((c) => c.field === "name").bottomCalc(["a"])).toBe("1 account");
+});
