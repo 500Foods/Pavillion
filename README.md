@@ -114,27 +114,27 @@ The license is [MIT](LICENSE.md).
 [![Count Lines of Code](https://github.com/500Foods/Pavillion/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/main.yml)
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-20 00:51:02 UTC
+Last updated at 2026-10-20 02:17:53 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C                               32           2384            367          22062
-JavaScript                      87           1360            301          18434
-Markdown                        33           2558              2           5283
-JSON                             9              0              0           2654
-CSS                              7            423              6           2590
-C/C++ Header                    23            420            483           2109
-Rust                             4             59             44            968
-Bourne Shell                     8             76            105            704
-CMake                            2             10              1            152
+C                               34           2423            398          22460
+JavaScript                      92           1399            344          18974
+Markdown                        33           2577              2           5332
+CSS                              7            426             10           2725
+JSON                             9              0              0           2662
+C/C++ Header                    23            422            494           2116
+Rust                             4             72             62           1070
+Bourne Shell                     8             77            107            707
+CMake                            2             10              2            159
 YAML                             4             24             26            138
-make                             1             19             17            117
+make                             1             19             18            124
 SQL                              2              0              0             91
 HTML                             3              4              0             84
 Text                             2              8              0             57
-TOML                             2              8              5             53
+TOML                             2              8              5             54
 -------------------------------------------------------------------------------
-SUM:                           219           7353           1357          55496
+SUM:                           226           7469           1468          56753
 -------------------------------------------------------------------------------
 27 Files were skipped (duplicate, binary, or without source code):
   png: 17
