@@ -53,8 +53,24 @@ int pav_path_join(char *out, size_t len, const char *a, const char *b) {
     return 0;
 }
 
+/* API.md Conventions: "/x"; on Windows also "C:\x", "C:/x", and UNC "\\\\h\\s". */
 int pav_path_is_absolute(const char *path) {
-    return path != NULL && path[0] == '/';
+    if (path == NULL) {
+        return 0;
+    }
+    if (path[0] == '/') {
+        return 1;
+    }
+#ifdef _WIN32
+    if (((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) && path[1] == ':' &&
+        (path[2] == '/' || path[2] == '\\')) {
+        return 1;
+    }
+    if (path[0] == '\\' && path[1] == '\\') {
+        return 1;
+    }
+#endif
+    return 0;
 }
 
 int pav_path_parent(char *out, size_t len, const char *path) {
@@ -65,6 +81,24 @@ int pav_path_parent(char *out, size_t len, const char *path) {
         return -1;
     }
     slash = strrchr(path, '/');
+#ifdef _WIN32
+    {
+        const char *back = strrchr(path, '\\');
+
+        if (back != NULL && (slash == NULL || back > slash)) {
+            slash = back;
+        }
+        /* "C:\x" or "C:/x": the parent is the drive root "C:\". */
+        if (slash == path + 2 && path[1] == ':') {
+            if (len < 4) {
+                return -1;
+            }
+            memcpy(out, path, 3);
+            out[3] = '\0';
+            return 0;
+        }
+    }
+#endif
     if (slash == NULL) {
         return -1;
     }

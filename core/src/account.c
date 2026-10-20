@@ -117,8 +117,9 @@ static int color_is_valid(const char *color) {
 }
 
 /* caFile is an optional absolute path to a PEM CA bundle, under 4096 bytes. */
+/* API.md Conventions: absolute per platform (Windows drive and UNC paths too). */
 static int ca_file_is_valid(const char *path) {
-    return path != NULL && path[0] == '/' && strlen(path) < 4096;
+    return path != NULL && pav_path_is_absolute(path) && strlen(path) < 4096;
 }
 
 static int profile_is_ready(PavError *err) {

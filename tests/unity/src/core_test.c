@@ -3574,6 +3574,30 @@ void test_log_export_filter(void) {
     free(log_text);
 }
 
+/* API.md Conventions: absolute paths per platform. */
+void test_path_is_absolute_per_platform(void) {
+    char parent[64];
+
+    TEST_ASSERT_TRUE(pav_path_is_absolute("/tmp/a.pem"));
+    TEST_ASSERT_FALSE(pav_path_is_absolute("rel/a.pem"));
+    TEST_ASSERT_FALSE(pav_path_is_absolute(""));
+    TEST_ASSERT_FALSE(pav_path_is_absolute(NULL));
+#ifdef _WIN32
+    TEST_ASSERT_TRUE(pav_path_is_absolute("C:/a/ca.pem"));
+    TEST_ASSERT_TRUE(pav_path_is_absolute("d:\\a\\ca.pem"));
+    TEST_ASSERT_TRUE(pav_path_is_absolute("\\\\host\\share\\ca.pem"));
+    TEST_ASSERT_FALSE(pav_path_is_absolute("C:ca.pem"));
+    TEST_ASSERT_EQUAL_INT(0, pav_path_parent(parent, sizeof(parent), "D:\\a\\b.csv"));
+    TEST_ASSERT_EQUAL_STRING("D:\\a", parent);
+    TEST_ASSERT_EQUAL_INT(0, pav_path_parent(parent, sizeof(parent), "D:/b.csv"));
+    TEST_ASSERT_EQUAL_STRING("D:/", parent);
+#else
+    TEST_ASSERT_FALSE(pav_path_is_absolute("C:/a/ca.pem"));
+    TEST_ASSERT_EQUAL_INT(0, pav_path_parent(parent, sizeof(parent), "/a/b.csv"));
+    TEST_ASSERT_EQUAL_STRING("/a", parent);
+#endif
+}
+
 /* D-10: export.write_text writes the text whole, 0600, and checks the path. */
 void test_export_write_text(void) {
     char args[700];
@@ -7120,6 +7144,7 @@ int main(void) {
     RUN_TEST(test_jmap_post_url_outlives_call);
     RUN_TEST(test_log_export_filter);
     RUN_TEST(test_export_write_text);
+    RUN_TEST(test_path_is_absolute_per_platform);
     RUN_TEST(test_prefs_set_log_level);
     RUN_TEST(test_activity_begin_progress_end);
     RUN_TEST(test_activity_cancel_is_cooperative);

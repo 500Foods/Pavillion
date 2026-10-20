@@ -17,6 +17,8 @@ Commands are `noun.verb` in lowercase with dots (`mailbox.list`). Events are `no
 {"ok": false, "error": {"code": "bad_args", "message": "unknown command no.such", "retryable": false}}
 ```
 
+An "absolute path" argument (`caFile`, `log.export` and `export.write_text` `path`, the themes folder) is one that starts with `/`; on Windows (2026-10-20, G-6 CI) it may also be a drive path (`C:\x` or `C:/x`) or a UNC path (`\\server\share`), and both `/` and `\` separate folders. Before this, Windows drive paths were refused as `bad_args`.
+
 `retryable` is true only for `network` and for some `server` errors. A full command queue is `internal` and returns at once.
 
 Commands run on the core thread unless the dispatcher marks them `worker`. `debug.activity_demo` is the worker command. Bulk bodies and attachments do not cross this boundary as JSON; they use a file path or the `pav-cid` and `pav-blob` schemes.
