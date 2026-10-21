@@ -329,7 +329,7 @@ export const helpPages = [
           "tests/support/record.sh stores a scrubbed Session, Mailbox/get, and Identity/get from the Stalwart container. The fixture serves one of those files when the method and the arguments match. Every other call still uses the scripted mailboxes.",
           "A Session account id is the object key, and mail is under accountCapabilities. The suite parses the recorded Session and requires account b to keep the mail capability. The fixture Session uses that same shape, so mailbox sync runs against it.",
           "Identity/get is sent with the submission capability. Stalwart rejects the method without it. A mail account that does not advertise submission syncs mailboxes only.",
-          "Mailbox sync asks Mailbox/query for a page of ids, then Mailbox/get for those ids, and repeats until the server's total is stored. The page size is the Session's maxObjectsInGet, and at most 500. A list that comes back at that cap is not the end of the tree.",
+          "Mailbox sync asks Mailbox/query for a page of ids, then Mailbox/get for those ids, and repeats until the server's total is stored. The page size is the Session's maxObjectsInGet, and at most 500. A stored tree that already has that many mailboxes is checked against the server total, and a larger total walks the list again.",
         ],
       },
       {

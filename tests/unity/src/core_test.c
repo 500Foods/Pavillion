@@ -6693,6 +6693,49 @@ void test_sync_mailboxes_paged(void) {
     TEST_ASSERT_TRUE(trace_count("Mailbox/get") >= gets + 2);
 }
 
+/* The cap is 2 and the state is already saved. Deleting Sent and Drafts
+   locally must not stick: the server total is still 4, so the next sync
+   walks the list again. */
+void test_sync_mailboxes_refill(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char session_url[512];
+    char path[160];
+    char got[192];
+    json_t *root;
+    int n;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_sync_set_poll_ms(3600000);
+    snprintf(session_url, sizeof(session_url), "%s/jmap/session?maxObjectsInGet=2", url);
+    add_fixture_account("refill", session_url, ca);
+    db_path_for_cfg(path, sizeof(path));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM mailbox m JOIN account_state a ON a.account_id='refill' "
+        "WHERE m.ra_id='refill/a1' AND m.id='sent' AND a.state='idle'",
+        1, "refill", got, sizeof(got)), got);
+    TEST_ASSERT_EQUAL_INT(4, scalar_int(path, "SELECT count(*) FROM mailbox WHERE ra_id='refill/a1'"));
+    TEST_ASSERT_TRUE(exec_sql(path,
+        "DELETE FROM mailbox WHERE ra_id='refill/a1' AND id IN ('sent','drafts')") >= 2);
+    TEST_ASSERT_EQUAL_INT(2, scalar_int(path, "SELECT count(*) FROM mailbox WHERE ra_id='refill/a1'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM sync_state WHERE ra_id='refill/a1' AND type='Mailbox' AND state='mbx-1'"));
+    n = pav_sync_attempt_count("refill");
+    root = call_reply("sync.now", "{\"accountId\":\"refill\"}");
+    assert_ok(root);
+    json_decref(root);
+    TEST_ASSERT_EQUAL_INT(n + 1, pav_sync_attempt_count("refill"));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM mailbox m JOIN account_state a ON a.account_id='refill' "
+        "WHERE m.ra_id='refill/a1' AND m.id IN ('sent','drafts') AND a.state='idle'",
+        2, "refill", got, sizeof(got)), got);
+    TEST_ASSERT_EQUAL_INT(4, scalar_int(path, "SELECT count(*) FROM mailbox WHERE ra_id='refill/a1'"));
+    TEST_ASSERT_EQUAL_INT(2, scalar_int(path, "SELECT count(*) FROM mailbox WHERE ra_id='refill/a2'"));
+}
+
 void test_sync_mailboxes_delta_rename(void) {
     const char *url = getenv("PAV_FIXTURE_URL");
     const char *ca = getenv("PAV_FIXTURE_CA");
@@ -8158,6 +8201,7 @@ int main(void) {
     RUN_TEST(test_sync_locked_keyring_no_retry);
     RUN_TEST(test_sync_mailboxes_initial);
     RUN_TEST(test_sync_mailboxes_paged);
+    RUN_TEST(test_sync_mailboxes_refill);
     RUN_TEST(test_mailbox_list_tree_shape);
     RUN_TEST(test_sync_mailboxes_cannot_calculate);
     RUN_TEST(test_sync_mailboxes_delta_rename);

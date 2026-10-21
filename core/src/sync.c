@@ -72,6 +72,8 @@ typedef struct SupRemote {
     int mbx_list_pages;
     int mbx_restarts;
     char mbx_anchor[128];
+    int mbx_probe;
+    int mbx_stored;
 } SupRemote;
 
 typedef struct PavSup {
@@ -1429,6 +1431,8 @@ static void reset_sup_remote(SupRemote *remote) {
     remote->mbx_list_pages = 0;
     remote->mbx_restarts = 0;
     remote->mbx_anchor[0] = '\0';
+    remote->mbx_probe = 0;
+    remote->mbx_stored = 0;
 }
 
 /* A new mailbox walk. The page cap and the one restart belong to this walk. */
@@ -1440,6 +1444,7 @@ static void begin_mbx_walk(SupRemote *remote) {
     remote->mbx_list_pages = 0;
     remote->mbx_restarts = 0;
     remote->mbx_anchor[0] = '\0';
+    remote->mbx_probe = 0;
 }
 
 /* Reuse a supervisor node when the JMAP account id is unchanged, and zero its
@@ -1606,6 +1611,28 @@ static int session_get_limit(const char *account_id) {
     sqlite3_finalize(stmt);
     pav_db_read_end(read);
     return limit;
+}
+
+static int mailbox_count(const char *ra_id) {
+    PavDbRead *read = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int n = 0;
+
+    if (ra_id == NULL || ra_id[0] == '\0' || pav_db_read_begin(&read) != 0) {
+        return 0;
+    }
+    if (sqlite3_prepare_v2(pav_db_read_handle(read), "SELECT count(*) FROM mailbox WHERE ra_id = ?", -1, &stmt, NULL) !=
+        SQLITE_OK) {
+        pav_db_read_end(read);
+        return 0;
+    }
+    sqlite3_bind_text(stmt, 1, ra_id, -1, SQLITE_TRANSIENT);
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        n = sqlite3_column_int(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+    pav_db_read_end(read);
+    return n;
 }
 
 static SupRemote *find_remote(PavSup *s, const char *ra_id) {
@@ -1968,7 +1995,7 @@ static char *build_type_body(SupRemote *remote, int mbx_mode, int idn_mode, cons
         const char *cid = mbx_mode == TYPE_QUERY ? "mq" : (mbx_mode == TYPE_GET_IDS ? "mf" : "m");
         const char *name = mbx_mode == TYPE_QUERY ? "Mailbox/query"
                            : (mbx_mode == TYPE_CHANGES ? "Mailbox/changes" : "Mailbox/get");
-        int lim = remote->mbx_limit > 0 ? remote->mbx_limit : PAV_SYNC_MBX_PAGE;
+        int lim = remote->mbx_probe ? 1 : (remote->mbx_limit > 0 ? remote->mbx_limit : PAV_SYNC_MBX_PAGE);
         json_t *args = method_args(remote->jmap_id, mbx_mode, mbx_since, mbx_ids, mbx_n, remote->mbx_pos, lim);
 
         if (append_method(calls, name, args, cid) != 0) {
@@ -2156,7 +2183,23 @@ static void begin_remote(PavSup *s, SupRemote *remote) {
         remote->force_mbx_get = 0;
         begin_mbx_walk(remote);
     } else {
-        mbx_mode = TYPE_CHANGES;
+        int stored;
+
+        if (remote->mbx_limit <= 0) {
+            remote->mbx_limit = session_get_limit(s->account_id);
+        }
+        stored = mailbox_count(remote->ra_id);
+        /* A tree saved by the old ids-null get stops at the cap and still has
+           a state, so changes never fetch the mailboxes that were left out. */
+        if (remote->mbx_limit > 0 && stored >= remote->mbx_limit) {
+            mbx_mode = TYPE_QUERY;
+            remote->mbx_probe = 1;
+            remote->mbx_stored = stored;
+            remote->mbx_pos = 0;
+            remote->mbx_paging = 0;
+        } else {
+            mbx_mode = TYPE_CHANGES;
+        }
     }
     if (remote->force_idn_get || idn_state[0] == '\0') {
         idn_mode = TYPE_GET;
@@ -2248,6 +2291,19 @@ static void apply_one_type(TypeResult *t, SupRemote *remote, int mailbox, TypeWr
     }
     *next_mode = TYPE_SKIP;
     if (mode == TYPE_SKIP) {
+        return;
+    }
+    if (mode == TYPE_QUERY && mailbox && remote->mbx_probe) {
+        int total = t->mbx_total;
+        int stored = remote->mbx_stored;
+
+        remote->mbx_probe = 0;
+        if (total > stored) {
+            begin_mbx_walk(remote);
+            *next_mode = TYPE_QUERY;
+            return;
+        }
+        *next_mode = TYPE_CHANGES;
         return;
     }
     if (mode == TYPE_QUERY && mailbox) {
