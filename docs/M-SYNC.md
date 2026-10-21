@@ -1,6 +1,6 @@
 # M — SYNC
 
-**Status:** M-1 and M-2 complete (2026-10-19). M-3 is in progress (2026-10-21): M-3g is the last finished work item (a saved mailbox tree already at `maxObjectsInGet` is rechecked with `Mailbox/query` `total`, and a larger total walks the list again). The phase exit gate against the container has not been run. M-4 through M-8 are not started. The index names the next phase.
+**Status:** M-1, M-2, and M-3 complete (M-3 on 2026-10-21). M-4 through M-8 are not started. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The network and the sync engine: HTTP through libcurl, JMAP session discovery, initial and delta sync, the mutation queue, and push. Mail first; contacts, calendars, and files reuse the same engine with their own types ([S-CONTACTS.md](S-CONTACTS.md), [T-CALENDAR.md](T-CALENDAR.md), [U-FILES.md](U-FILES.md)). Tasks ([X-TASKS.md](X-TASKS.md)) sync over CalDAV after T-7, on that DAV client, not as a JMAP tasks capability. Notes ([Y-NOTES.md](Y-NOTES.md)) reuse the files sync of one account. Sending is [O-COMPOSE.md](O-COMPOSE.md).
@@ -13,7 +13,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | --- | --- | --- | --- |
 | M-1 | Per-server network threads, a curl multi handle each, caps, retries, redaction | Hard | Complete |
 | M-2 | JMAP session discovery, `account.test`, remote accounts, capabilities | Medium | Complete |
-| M-3 | Sync supervisor, Identity and Mailbox sync, `mailbox.list`, `sync.state` | Medium | In progress |
+| M-3 | Sync supervisor, Identity and Mailbox sync, `mailbox.list`, `sync.state` | Medium | Complete |
 | M-4 | Email initial sync: headers, first page, background backfill, threads | Medium | Not started |
 | M-5 | Delta sync: `/changes`, `cannotCalculateChanges`, deletes | Medium | Not started |
 | M-6 | Mutation queue: optimistic apply, `ifInState`, conflicts, coalescing, undo | Hard | Not started |
@@ -203,7 +203,7 @@ M-1's net layer is complete and tested. M-2 adds `account.test`, JMAP session pa
 ## M-3: Supervisor, Identity and Mailbox sync
 
 **Kind:** Medium
-**Status:** In progress (2026-10-21). Last finished work item: M-3g (a saved mailbox tree already at `maxObjectsInGet` is rechecked with `Mailbox/query` `total`, and a larger total walks the list again). The phase exit gate against the container has not been run. The window was not launched.
+**Status:** Complete (2026-10-21, step 53). Andrew accepted the window the same day. The container exit gate passed the same day. `make test`: 184 Unity, 2 Rust, 349 Vitest, exit 0.
 
 **Goal:** Every enabled account keeps its identities and mailboxes in the store, and the UI can list them with counts.
 
@@ -326,9 +326,18 @@ The UI half of this gate (the `make build` steps above) is Andrew's to run befor
 
 **Acceptance:** `make test` exits 0. Passed 2026-10-21: 184 Unity, 2 Rust, 349 Vitest.
 
+### Accomplished
+
+- One supervisor per enabled JMAP account stores the Session, upserts every mail remote account, and reports `sync.state`. `sync.now` refetches the Session. `ra_id` is `<accountId>/<jmapAccountId>`. The account id is the `accounts` object key. Mail is read from `accountCapabilities`.
+- Identity methods include `urn:ietf:params:jmap:submission` when the account advertises it. A method error is read from `type`, then from `code`.
+- Mailbox sync pages at the Session's `maxObjectsInGet`, and at most 500. A tree already saved at that cap asks `Mailbox/query` for `total` and walks again when the total is larger. `Mailbox/changes` uses that page size as `maxChanges`. The poll is 2 minutes.
+- `mailbox.list` and `identity.list` are real. A tree change emits `mail.mailboxes_changed`. `record.sh` stores a scrubbed Session, `Mailbox/get`, and `Identity/get`. `seed.sh` creates a missing role mailbox and Later. `make test` stays on the fixture.
+- Andrew's two accounts stayed idle after the 11:41 walk (foods 537 mailboxes, courses 5) and after the 11:52 restart (foods still 537, emails 58241 to 58244, courses unchanged).
+- The container exit gate passed on 2026-10-21. A temporary workdir added `andrew@test-a.local` as account `m3gate` against `https://localhost:1443`. The first sync went idle with 7 mailboxes. `Mailbox/set` created one mailbox. `mail.mailboxes_changed` fired and `mailbox.list` showed it 119 seconds later, inside one poll. The mailbox was destroyed, `account.remove` deleted the keyring entry, and the temporary workdir was removed. The live profile was not opened.
+
 ### Lessons learned
 
-Sitting notes from 2026-10-21. M-3 is still in progress. There is no Accomplished section until Andrew accepts the window.
+Sitting notes from 2026-10-21.
 
 - A sync job must not open its own transaction. The writer already wraps the batch in `BEGIN IMMEDIATE`. A nested `BEGIN` fails and rolls the update back. This showed up in M-3a: the state write reported success in memory and left the database row at `idle`.
 - Jansson 2.14 steals on failure. `json_array_append_new` and `json_object_set_new` decref the value even when the call fails. Do not `json_decref` after either call. A NULL value is not stolen.
@@ -370,15 +379,17 @@ M-3g: a tree already saved at the cap still has Mailbox state, so the next start
 
 The 11:41:06 restart walked foods. The traced posts were 2656 bytes, then 183341, then 369, then 13790, and one `mailboxes changed` at 11:41:08. Courses went idle with no `mailboxes changed`. Update at 11:41:32 fetched both Sessions (4980 and 4994 bytes). Courses posted 328 bytes. Foods posted 331 then 193 and did not log `mailboxes changed`. A read-only look after that poll's `sync_state` write (11:43:07): foods 537 mailboxes, 511 with a parent, the same five roles, 58241 emails, 4 identities; courses 5 role mailboxes, 1 email, 3 identities; both idle. The 13790-byte get is the 37 mailboxes past 500. The Update's two small posts are the total check and then changes. The server total was not larger than 537.
 
-### Remaining for M-3
+The 11:52 restart kept foods at 537 mailboxes and moved the email count from 58241 to 58244. Courses stayed at 5 mailboxes and 1 email. Both ended idle. Startup logged one `mailboxes changed` for foods after two traced posts (282 then 864 bytes). Update fetched both Sessions, posted 328 bytes for courses, and posted 331 then 193 for foods. It did not walk again.
 
-M-3g is finished (2026-10-21). Row 53 stays in progress. Do not mark it Done, do not bump the stamp, and do not write Accomplished until Andrew accepts the window.
+The exit gate waited on the poll timer and did not call `sync.now`. A fresh workdir still uses profile id `default`, so the temporary account id was `m3gate` and the keyring user was `default/m3gate`. `account.remove` deleted that entry before stop. The live profile is a different workdir and was not opened. The first sync stored 7 mailboxes, under the page cap, so that account took the changes path. The new mailbox was in `mailbox.list` 119 seconds later. It was destroyed after the check, and the temporary workdir was removed. The container was left up.
 
-The 11:41 restart walked foods past the cap and left both accounts idle. The store after that, read once the 11:43 poll had written `sync_state`, has courses at 5 mailboxes and foods at 537 (511 with a parent, 58241 emails, 4 identities). Update at 11:41:32 checked the total and stayed on changes. The foods folder count in this store is 537.
+### Handoff
 
-The phase exit gate is still open: `Mailbox/set` as `andrew@test-a.local` against `https://localhost:1443/jmap/`, then within one poll `mail.mailboxes_changed` and `mailbox.list`. The implementer drives the container. Andrew does not. It was not run this sitting. The window was not launched.
+M-3 is complete (2026-10-21, step 53). Andrew accepted the window the same day. The container exit gate passed the same day: one new mailbox was in `mailbox.list` 119 seconds after `Mailbox/set`, and `mail.mailboxes_changed` fired, inside the 2-minute poll.
 
-E-7 starts after M-3 is accepted. The corpus messages stay in M-4. `make test` keeps using the fixture with the container down. The recorded JSON is what CI replays.
+The index names E-7 next (step 54, [E-TREE.md](E-TREE.md)). Mail nav becomes the tree from `mailbox.list`, patched by `mail.mailboxes_changed`. Its entry gate is M-3 and E-4, both complete. E-7 was not started here. The on-screen tree is still the placeholder.
+
+M-4 stays after L-2. Corpus messages stay in M-4. The poll stays 2 minutes until M-7. `curl_multi_wakeup` stays deferred. `make test` keeps the fixture with the container down. The container was left up. CI for this close-out waits on Andrew's push.
 
 ## M-4: Email initial sync
 
@@ -515,3 +526,4 @@ E-7 starts after M-3 is accepted. The corpus messages stay in M-4. `make test` k
 - 2026-10-21 M-3 in progress. M-3f finished: initial mailbox sync walks `Mailbox/query` and `Mailbox/get` at the Session's `maxObjectsInGet`, at most 500 per page, until `total`. The fixture caps an `ids: null` get the same way. Unity: `test_sync_mailboxes_paged` (cap 2, Sent and Drafts still stored). `make test`: 183 Unity, 2 Rust, 349 Vitest, exit 0. The phase exit gate was not run. The window was not launched. Help was not opened in the window.
 - 2026-10-21 M-3 in progress. M-3g finished: a saved tree already at the page cap asks `Mailbox/query` for `total` (one id) and walks again when that total is larger. The 11:28 rebuild only did changes (courses POST 328, foods POST 425 then 490, then `mailboxes changed`). The store was still foods 500 and courses 5. Unity: `test_sync_mailboxes_refill`. `make test`: 184 Unity, 2 Rust, 349 Vitest, exit 0. The phase exit gate was not run. The window was not launched. Help was not opened in the window.
 - 2026-10-21 M-3 in progress. The 11:41 restart walked foods: posts of 2656, 183341, 369, and 13790 bytes, then one `mailboxes changed`. Courses went idle without that line. Update at 11:41:32 posted courses 328 and foods 331 then 193, with no further walk. Read-only store after the 11:43 poll: foods 537 mailboxes, 511 with a parent, 58241 emails, 4 identities; courses 5 mailboxes, 1 email, 3 identities; both idle. The phase exit gate was not run.
+- 2026-10-21 M-3 complete, step 53. Andrew accepted the window the same day. The 11:52 restart kept foods at 537 mailboxes and courses at 5; foods emails moved from 58241 to 58244; Update stayed on changes. The container exit gate added `andrew@test-a.local` as `m3gate` in a temporary workdir. The first sync went idle with 7 mailboxes. `Mailbox/set` created one mailbox. `mail.mailboxes_changed` fired and `mailbox.list` showed it in 119 seconds, inside one poll. The mailbox and the temporary account were removed. The live profile was not opened. Stamp `0.59.0`. `make test`: 184 Unity, 2 Rust, 349 Vitest, exit 0. E-7 was not started. The container was left up.

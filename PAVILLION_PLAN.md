@@ -4,10 +4,10 @@ Status: v0.7 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 
 **Resume:** each phase's history is in its own document's Working log; this block is only the current state.
 
-- Last finished: H-4 (step 131) and D-10 (step 134), 2026-10-21, in [docs/H-LOGGING.md](docs/H-LOGGING.md) and [docs/D-UI.md](docs/D-UI.md). Andrew accepted both windows the same day. E-4 (step 52) was the previous sequenced finish, 2026-10-19.
-- Next: M-3 (step 53), in [docs/M-SYNC.md](docs/M-SYNC.md). In progress. Last finished work item is M-3g (a saved mailbox tree already at `maxObjectsInGet` is rechecked with `Mailbox/query` `total`, and a larger total walks the list again). The phase exit gate against the container has not been run. Andrew's live-account report is the UI half of the entry gate (2026-10-21). Automated tests use the fixture. The Accounts table (Tabulator) polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md) and does not block M-3.
-- Last full `make test`: 184 Unity tests, 2 Rust tests and 349 Vitest tests, exit 0 (2026-10-21).
-- `PAVILLION_API_VERSION` is 3. The phase stamp is `0.58.0` (58 Done rows), release date 2026-10-21.
+- Last finished: M-3 (step 53), 2026-10-21, in [docs/M-SYNC.md](docs/M-SYNC.md). Andrew accepted the window the same day. The container exit gate passed the same day: a mailbox created on the test server was in `mailbox.list` within one poll, and `mail.mailboxes_changed` fired. H-4 (step 131) and D-10 (step 134) were accepted earlier the same day.
+- Next: E-7 (step 54), in [docs/E-TREE.md](docs/E-TREE.md). Not started. Mail nav becomes the tree from `mailbox.list`, patched by `mail.mailboxes_changed`. The on-screen tree is still the placeholder. The Accounts table (Tabulator) polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md) and does not block E-7.
+- Last full `make test`: 184 Unity tests, 2 Rust tests and 349 Vitest tests, exit 0 (2026-10-21, after the stamp move to `0.59.0`).
+- `PAVILLION_API_VERSION` is 3. The phase stamp is `0.59.0` (59 Done rows), release date 2026-10-21.
 
 **Read first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), one page with diagrams of the layers, the threads, and the data flow.
 
@@ -126,7 +126,7 @@ Row order decides what is next: the next phase is the first row, top to bottom, 
 | 51 | E-3 | Tree renderer states, badges, hover, menus | Medium | Done |
 | 52 | E-4 | Tree animation and the height test | Easy | Done |
 | 131 | H-4 | The log in SQLite (`log.db`), history, session filter, size cap | Hard | Done |
-| 53 | M-3 | Sync supervisor, Identity and Mailbox sync, `mailbox.list` | Medium | In progress |
+| 53 | M-3 | Sync supervisor, Identity and Mailbox sync, `mailbox.list` | Medium | Done |
 | 54 | E-7 | Real mailbox tree from `mailbox.list` | Hard | |
 | | | *Milestone 2: real accounts and mailbox trees (old P0)* | | |
 | 55 | L-2 | Mail schema and the blob store | Medium | |
