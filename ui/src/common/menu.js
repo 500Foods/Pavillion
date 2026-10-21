@@ -124,9 +124,9 @@ export function createMenu(root) {
     return menu;
   }
 
-  function itemsFor(anchor) {
+  function itemsFor(anchor, origin) {
     const getItems = hosts.get(anchor);
-    return typeof getItems === "function" ? getItems() : [];
+    return typeof getItems === "function" ? getItems(origin) : [];
   }
 
   function onContextMenu(event) {
@@ -135,7 +135,7 @@ export function createMenu(root) {
       return;
     }
     event.preventDefault();
-    open(host, itemsFor(host), { x: event.clientX, y: event.clientY });
+    open(host, itemsFor(host, event.target), { x: event.clientX, y: event.clientY });
   }
 
   function onPointerDown(event) {
@@ -189,7 +189,7 @@ export function createMenu(root) {
       return;
     }
     event.preventDefault();
-    open(host, itemsFor(host), null);
+    open(host, itemsFor(host, root.ownerDocument.activeElement), null);
   }
 
   function bind(anchor, getItems) {

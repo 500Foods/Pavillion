@@ -1,9 +1,9 @@
 # E — TREE
 
-**Status:** E-1, E-2, E-3, and E-4 complete (2026-10-19). Andrew accepted each window on 2026-10-19. E-5, E-6, and E-7 are not started. The index names the next phase.
+**Status:** E-1, E-2, E-3, E-4, and E-7 complete. Andrew accepted E-1 through E-4 on 2026-10-19 and E-7 on 2026-10-21. E-5 and E-6 are not started. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
-The one tree engine behind the section navs. Mail's mailbox tree comes first; files, calendars, contacts, and the Settings → Accounts tree reuse the row renderer and the view state. E-1 delivered the tokens, the static skeleton, and the row renderer with placeholder nodes; the Mail nav shows a placeholder tree (Inbox, Drafts, Sent, Archive) drawn by the renderer, scaled by shell and nav-body zoom. The Help index uses this engine once it exists. Until then Help keeps the plain list in `ui/src/help/view.js`. Andrew set that on 2026-10-17. Do not switch Help in J-8.
+The one tree engine behind the section navs. Mail's mailbox tree comes first; files, calendars, contacts, and the Settings → Accounts tree reuse the row renderer and the view state. E-1 delivered the tokens, the static skeleton, and the row renderer. E-7 feeds the Mail nav from `mailbox.list`. The Help index uses this engine once it exists. Until then Help keeps the plain list in `ui/src/help/view.js`. Andrew set that on 2026-10-17. Do not switch Help in J-8.
 
 The tree is a configurable navigation system, not a list widget. It describes what the user sees and how it behaves, and it does not own the underlying mail, contact, or file data. Nodes arrive from `mailbox_list` and the other list commands through `api.js`; the tree renders them.
 
@@ -271,7 +271,7 @@ Container-level, interruptible transitions for collapse/expand and preset switch
 
 In the sequence in [PAVILLION_PLAN.md](../PAVILLION_PLAN.md) from 2026-10-16. E-1 to E-4 come before mailbox sync (they need no backend). E-7 follows M-3, when `mailbox.list` has data. E-5 and E-6 come after the initial working copy.
 
-Entry gates: E-1 needs J-6 and K-3. E-2 needs E-1. E-3 needs E-2 and J-1 (menus, tooltips). E-4 needs E-3. E-7 needs M-3 and E-4; it also moves the Settings → Accounts list onto the engine ([K-ACCOUNTS.md](K-ACCOUNTS.md)) and wires the Files and Calendars navs' row renderer as each section lands. E-5 needs the initial working copy. E-6 needs E-5 and N-5 (the move actions).
+Entry gates: E-1 needs J-6 and K-3. E-2 needs E-1. E-3 needs E-2 and J-1 (menus, tooltips). E-4 needs E-3. E-7 needs M-3 and E-4. Settings → Accounts stays the Tabulator table (Andrew, 2026-10-21; [K-ACCOUNTS.md](K-ACCOUNTS.md) K-Q8). Files and Calendars use this row renderer as each section lands. E-5 needs the initial working copy. E-6 needs E-5 and N-5 (the move actions).
 
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
@@ -281,7 +281,7 @@ Entry gates: E-1 needs J-6 and K-3. E-2 needs E-1. E-3 needs E-2 and J-1 (menus,
 | E-4 | Animation: interruptible transitions, reduced motion, the height test | Easy | Complete |
 | E-5 | Presets: named snapshots, switching, saving, the toolbar | Medium | Not started |
 | E-6 | Drag and drop: handle, indicator, auto-expand, auto-scroll, keyboard moves | Hard | Not started |
-| E-7 | Wiring to a backend, mail first, with incremental updates from events | Hard | Not started |
+| E-7 | Wiring to a backend, mail first, with incremental updates from events | Hard | Complete |
 
 E-1 needs no backend and can start against placeholder nodes once the sheet opens it. E-7 is the phase that replaces the placeholder buttons in `ui/index.html` with a real tree fed by `mailbox_list`, driven by the events in the node contract.
 
@@ -521,7 +521,7 @@ The Brainstorming section is not binding. A phase that adopts an idea from it sa
 ## E-7: Wiring to the backend, mail first
 
 **Kind:** Hard
-**Status:** Not started.
+**Status:** Complete (2026-10-21). Andrew accepted the window the same day.
 
 **Goal:** The Mail nav is the real mailbox tree from `mailbox.list`, patched by events.
 
@@ -529,14 +529,45 @@ The Brainstorming section is not binding. A phase that adopts an idea from it sa
 
 **Work items:**
 
-- [ ] `ui/src/mail/nav.js`: accounts as roots (number and name), mailboxes nested by `parentId`, role icons, unread counts, sync state per account from `sync.state`.
-- [ ] `mail.mailboxes_changed` patches nodes; selection opens the mailbox in the home tab (J-2).
-- [ ] Move the Settings → Accounts list onto the engine (K Lock).
-- [ ] Account order and hidden accounts in view state.
+- [x] `ui/src/mail/nav.js`: accounts as roots (number and name), mailboxes nested by `parentId`, role icons, unread counts, sync state per account from `sync.state`.
+- [x] `mail.mailboxes_changed` patches nodes; selection opens the mailbox in the home tab (J-2).
+- [~] Settings → Accounts stays the Tabulator table. Andrew, 2026-10-21. It does not move onto the tree engine. K lock updated the same day.
+- [~] Account order stays the `mailbox.list` order. Andrew, 2026-10-21: the accounts table sorts on its own, and a second order is not stored. Drag reorder stays E-6.
+- [x] Hiding an account writes `hiddenRoots` into `preferences.ui.trees.mail`. The view state already holds the set.
 
 **Done means:** Mailbox trees and unread counts match the server for every account (old plan P0 acceptance).
 
 **Exit gate:** `make test` exits 0; in `make build` with Andrew's three first accounts, trees and counts match the server, and a mailbox created elsewhere appears without a restart.
+
+### Accomplished
+
+- `ui/src/mail/nav.js` loads `mailbox.list`, prefixes each account with its number from `account.list`, and nests mailboxes by `parentId`. Role icons and the account color come from the node. Unread and total stay the server numbers. `mail.mailboxes_changed` refetches that account. `sync.state` paints the account root. `accounts.changed` reloads the whole tree.
+- The shell awaits the first load. An account click expands or collapses that root. A mailbox click opens Mail with that mailbox. The arrow on a mailbox that has children expands or collapses the branch. The disclosure icon does not take pointer events, so the hit is the arrow's box.
+- Expanded groups use `max-height: none`. A 1000px cap clipped a real tree. Collapse still goes to 0.
+- `preferences.ui.trees` survives the clamp. Hide account writes `hiddenRoots` for the mail tree. Right-click and Shift+F10 open that menu from the tree element.
+- Andrew accepted the window on 2026-10-21. The container profile showed 001 Andrew, 002 Alice, and 003 Bob. E7 Elsewhere appeared under Andrew about 90 seconds after it was created on the server. The live profile showed 001 Andrew - Foods, unread 32, with nested folders. Foods holds 537 mailboxes and Courses holds 5.
+
+### Lessons learned
+
+- `mailbox.list` does not carry the account number. The page joins `account.list`. The event `mail.mailboxes_changed` is only `{accountId}`, so a change refetches that account.
+- `clampUi` listed `trees` as known and then dropped it. A known key is kept only when the clamp copies it. `tables` survived because it was unknown.
+- The disclosure icon has `pointer-events: none`, so a click on the arrow is not a click on `.tree-row-disclosure`. The row hit-tests the arrow's box.
+- `setRowMenu` stored the provider and nothing opened it. The menu binds the tree element and asks for the row under the pointer or the focused row.
+- The first mailbox load is async. The shell has to await it, or a test that clicks a row sees an empty tree.
+- An expanded group capped at 1000px hides most of a 537-mailbox account. `max-height: none` does not animate the expand. The collapse to 0 still does. Do not switch to `grid-template-rows`.
+
+### Handoff
+
+E-7 is complete (2026-10-21, step 54). Andrew accepted the window the same day. The phase stamp is `0.60.0`. `PAVILLION_API_VERSION` stays 3.
+
+L-2 is next (step 55, [L-STORE.md](L-STORE.md)). Its entry gate is M-3, which is met. Do not start it in this sitting. It adds `002_mail.sql`, the blob helpers, and `preferences.cache`. M-4 stays after L-2.
+
+Settings → Accounts stays the Tabulator table. The mail tree uses the `mailbox.list` order. Drag reorder stays E-6. The poll stays 2 minutes until M-7. CI for this close-out waits on Andrew's push.
+
+### Working log
+
+- 2026-10-21 E-7 in progress. `make test`: 184 Unity, 2 Rust, 356 Vitest, exit 0. Build `0.59.227`. The container window on `/tmp/pav-e7-mail` shows 001 Andrew, 002 Alice, and 003 Bob. A mailbox named E7 Elsewhere, created on the container while that window was open, was in the store 90 seconds later and is on the Andrew row. The Inbox arrow opens Later. The live profile shows 001 Andrew - Foods (537 mailboxes, unread 32 on the root) with role icons and nested folders. Courses (5 mailboxes) is the second root.
+- 2026-10-21 Andrew accepted the window. Hide account is checked: the menu is bound on the tree, and the saved blob keeps `hiddenRoots`. Stamp `0.60.0`. `make test`: 184 Unity, 2 Rust, 357 Vitest, exit 0. E7 Elsewhere was destroyed, the temporary accounts were removed, and `/tmp/pav-e7-mail` was deleted. The container was left up.
 
 ## E-5: Presets
 

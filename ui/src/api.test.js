@@ -80,6 +80,16 @@ describe("createApi over the mock transport", () => {
     expect(sent.args.level).toBe("error");
   });
 
+  test("mailbox.list sends the account id only when one is given", async () => {
+    const transport = mockTransport();
+    const api = createApi(transport);
+    const listed = await api.mailbox.list();
+    expect(listed.nodes.map((node) => node.id)).toEqual(["inbox", "drafts", "sent", "archive"]);
+    expect(transport.seen.at(-1)).toEqual({ cmd: "mailbox.list", args: {} });
+    await expect(api.mailbox.list({ accountId: "foods" })).resolves.toEqual({ nodes: [] });
+    expect(transport.seen.at(-1)).toEqual({ cmd: "mailbox.list", args: { accountId: "foods" } });
+  });
+
   test("an unknown command is bad_args", async () => {
     const transport = mockTransport();
     await expect(transport.call("no.such", {})).rejects.toMatchObject({

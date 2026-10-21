@@ -72,18 +72,25 @@ function buildDisclosure(node) {
   return icon;
 }
 
+const HEX_COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
 function buildSwatch(node) {
   if (!node.swatch) {
     return null;
   }
-  const className = SWATCH_MAP[node.swatch];
-  if (!className) {
-    return null;
-  }
   const span = document.createElement("span");
-  span.className = className;
   span.setAttribute("aria-hidden", "true");
-  return span;
+  const className = SWATCH_MAP[node.swatch];
+  if (className) {
+    span.className = className;
+    return span;
+  }
+  if (typeof node.swatch === "string" && HEX_COLOR.test(node.swatch)) {
+    span.className = "tree-row-swatch tree-row-swatch-color";
+    span.style.backgroundColor = node.swatch;
+    return span;
+  }
+  return null;
 }
 
 function buildLabel(node) {
@@ -93,13 +100,24 @@ function buildLabel(node) {
   return span;
 }
 
+function isErrorState(state) {
+  return (
+    state === "error" ||
+    state === "offline" ||
+    state === "locked" ||
+    (typeof state === "string" && state.startsWith("error:"))
+  );
+}
+
 function buildStatusIcon(node) {
   const state = node.state || "idle";
   const iconClass = node.stateIcon || STATE_ICONS[state];
   if (!iconClass) {
     return null;
   }
-  return createIcon(iconClass, state);
+  const icon = createIcon(iconClass, state);
+  icon.classList.add("icon");
+  return icon;
 }
 
 /* Unread count badge (primary). Always visible when nonzero. */
@@ -218,6 +236,40 @@ function buildRegion(kind, node) {
   return null;
 }
 
+const REGION_ORDER = ["leading", "label", "status", "count", "hover", "trailing"];
+
+function placeRegion(row, kind, region) {
+  const order = REGION_ORDER.indexOf(kind);
+  const regions = row.querySelectorAll("[data-region]");
+  for (const existing of regions) {
+    const at = REGION_ORDER.indexOf(existing.getAttribute("data-region"));
+    if (at > order) {
+      existing.before(region);
+      return;
+    }
+  }
+  row.append(region);
+}
+
+function syncStatus(row, node) {
+  const icon = buildStatusIcon(node);
+  const region = row.querySelector("[data-region='status']");
+  if (!icon) {
+    if (region) {
+      region.remove();
+    }
+  } else if (!region) {
+    placeRegion(row, "status", regionEl("status", node, icon));
+  } else {
+    region.replaceChildren(icon);
+  }
+  if (node.state === "syncing") {
+    row.setAttribute("aria-busy", "true");
+  } else {
+    row.removeAttribute("aria-busy");
+  }
+}
+
 /* Patch a single rendered row to update badges/metadata without a full
    re-render. row is the DOM <button role="treeitem">. Returns true if the
    row was patched. */
@@ -225,23 +277,52 @@ export function patchRow(node, row) {
   if (!(row instanceof Element)) {
     return false;
   }
-  const countRegion = row.querySelector("[data-region='count']");
   const hoverRegion = row.querySelector("[data-region='hover']");
 
-  /* Count badge: unread only. */
-  const unread = node.unread;
-  if (countRegion) {
-    if (unread && unread > 0) {
-      let badge = countRegion.querySelector(".tree-row-badge-unread");
-      if (!badge) {
-        badge = buildUnreadBadge(node);
-        countRegion.replaceChildren(badge);
-      } else {
-        badge.textContent = String(unread);
-        badge.setAttribute("aria-label", `${unread} unread`);
+  if (typeof node.label === "string") {
+    const textEl = row.querySelector(".tree-row-text");
+    if (textEl) {
+      textEl.textContent = node.label;
+    }
+  }
+
+  if (typeof node.icon === "string" && node.icon !== "") {
+    const icons = row.querySelectorAll("[data-region='leading'] i");
+    for (const icon of icons) {
+      if (icon.classList.contains("tree-row-disclosure")) {
+        continue;
       }
-    } else if (!countRegion.querySelector(".tree-row-badge-unread")) {
-      /* No unread badge and none to show — keep region empty. */
+      icon.className = node.icon;
+      break;
+    }
+  }
+
+  /* Count badge: unread only. A patch that omits unread leaves the badge. */
+  const unread = node.unread;
+  if (typeof unread === "number") {
+    let countRegion = row.querySelector("[data-region='count']");
+    if (unread > 0) {
+      if (!countRegion) {
+        countRegion = regionEl("count", node, buildUnreadBadge(node));
+        placeRegion(row, "count", countRegion);
+      } else {
+        let badge = countRegion.querySelector(".tree-row-badge-unread");
+        if (!badge) {
+          badge = buildUnreadBadge(node);
+          countRegion.replaceChildren(badge);
+        } else {
+          badge.textContent = String(unread);
+          badge.setAttribute("aria-label", `${unread} unread`);
+        }
+      }
+    } else if (countRegion) {
+      const badge = countRegion.querySelector(".tree-row-badge-unread");
+      if (badge) {
+        badge.remove();
+      }
+      if (countRegion.childElementCount === 0) {
+        countRegion.remove();
+      }
     }
   }
 
@@ -283,13 +364,15 @@ export function patchRow(node, row) {
     }
   }
 
-  /* State classes. */
-  const wasUnread = row.classList.contains("tree-row-unread");
-  const isUnread = Boolean(unread && unread > 0);
-  if (isUnread && !wasUnread) {
-    row.classList.add("tree-row-unread");
-  } else if (!isUnread && wasUnread) {
-    row.classList.remove("tree-row-unread");
+  /* State classes. A patch that omits unread leaves the unread mark. */
+  if (typeof unread === "number") {
+    const wasUnread = row.classList.contains("tree-row-unread");
+    const isUnread = unread > 0;
+    if (isUnread && !wasUnread) {
+      row.classList.add("tree-row-unread");
+    } else if (!isUnread && wasUnread) {
+      row.classList.remove("tree-row-unread");
+    }
   }
 
   const wasFavorite = row.classList.contains("tree-row-favorite");
@@ -301,13 +384,15 @@ export function patchRow(node, row) {
     row.classList.remove("tree-row-favorite");
   }
 
-  const wasError = row.classList.contains("tree-row-error");
-  if (node.state === "error") {
-    if (!wasError) {
+  if (node.state !== undefined) {
+    syncStatus(row, node);
+    const wasError = row.classList.contains("tree-row-error");
+    const isError = isErrorState(node.state);
+    if (isError && !wasError) {
       row.classList.add("tree-row-error");
+    } else if (!isError && wasError) {
+      row.classList.remove("tree-row-error");
     }
-  } else if (wasError && node.state !== "error") {
-    row.classList.remove("tree-row-error");
   }
 
   if (node.hasChildren) {
@@ -354,7 +439,7 @@ export function renderRow(node, regions = DEFAULT_REGIONS) {
   if (node.favorite) {
     row.classList.add("tree-row-favorite");
   }
-  if (node.state === "error") {
+  if (isErrorState(node.state)) {
     row.classList.add("tree-row-error");
   }
   if (node.state === "syncing") {

@@ -50,6 +50,16 @@ function defaultUi() {
   };
 }
 
+/* Shell tests open these four mailboxes by id. A real profile has none of
+   them; mailbox.list on the mock is this stand-in, and a scoped account id
+   matches nothing here. */
+const SAMPLE_MAILBOXES = [
+  { id: "inbox", parentId: null, kind: "mailbox", label: "Inbox", role: "inbox", order: 0, unread: 3, total: 3, hasChildren: false, swatch: null },
+  { id: "drafts", parentId: null, kind: "mailbox", label: "Drafts", role: "drafts", order: 1, unread: 0, total: 0, hasChildren: false, swatch: null },
+  { id: "sent", parentId: null, kind: "mailbox", label: "Sent", role: "sent", order: 2, unread: 0, total: 0, hasChildren: false, swatch: null },
+  { id: "archive", parentId: null, kind: "mailbox", label: "Archive", role: "archive", order: 3, unread: 12, total: 12, hasChildren: false, swatch: null },
+];
+
 /* In-memory stand-in for the real commands. emit() is for Vitest and the
    G-4 harness. It is not part of the transport the screens call. */
 export function mockTransport() {
@@ -158,6 +168,15 @@ export function mockTransport() {
         throw fail("bad_args", "id is required");
       }
       throw fail("not_found", "unknown activity");
+    }
+    if (cmd === "mailbox.list") {
+      if (input.accountId !== undefined && (typeof input.accountId !== "string" || input.accountId === "")) {
+        throw fail("bad_args", "accountId must be a non-empty string");
+      }
+      if (typeof input.accountId === "string") {
+        return { nodes: [] };
+      }
+      return { nodes: structuredClone(SAMPLE_MAILBOXES) };
     }
      if (cmd === "sync.now") {
        if (input.accountId !== undefined && (typeof input.accountId !== "string" || input.accountId === "")) {

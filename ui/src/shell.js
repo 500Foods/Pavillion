@@ -15,7 +15,7 @@ import { createLogSettings } from "./settings/log.js";
 import { createHelpView } from "./help/view.js";
 import { createBackTracker } from "./help/back.js";
 import { createLogView } from "./log/view.js";
-import { createTreeController } from "./tree/tree.js";
+import { createMailNav } from "./mail/nav.js";
 import { renderRow } from "./tree/render.js";
 import { DEFAULT_UI, FEATURE_KEYS, RAIL_KEYS, chordsOf, clampUi, railOf, snapZoom } from "./prefs.js";
 import {
@@ -1201,6 +1201,7 @@ let accountsView = null;
 let logSettings = null;
 let logTimeZone = "America/Vancouver";
 let mailTree = null;
+let mailNav = null;
 let syncing = 0;
 let motionQuery = null;
 let onMotion = null;
@@ -2200,7 +2201,11 @@ export function stopShell() {
     logSettings.destroy();
     logSettings = null;
   }
-  if (mailTree) {
+  if (mailNav) {
+    mailNav.stop();
+    mailNav = null;
+    mailTree = null;
+  } else if (mailTree) {
     mailTree.destroy();
     mailTree = null;
   }
@@ -2465,23 +2470,15 @@ export async function startShell(surface, nextApi, nextHost, result) {
     },
   });
 
-  const PLACEHOLDER_MAIL_NODES = [
-    { id: "inbox", parentId: null, kind: "mailbox", label: "Inbox", role: "inbox", unread: 3, total: 47, sizeBytes: 20971520, sizeLabel: "recursive", selected: true, hasChildren: false, swatch: 2 },
-    { id: "drafts", parentId: null, kind: "mailbox", label: "Drafts", role: "drafts", unread: 0, total: 2, hasChildren: false, swatch: 1 },
-    { id: "sent", parentId: null, kind: "mailbox", label: "Sent", role: "sent", unread: 0, total: 1854, sizeBytes: 52428800, sizeLabel: "recursive", hasChildren: false, swatch: 1 },
-    { id: "archive", parentId: null, kind: "mailbox", label: "Archive", role: "archive", unread: 12, total: 2481, sizeBytes: 1932735283, sizeLabel: "recursive", hasChildren: false, swatch: 2 },
-  ];
-
-  const mailNav = mountRoot.querySelector('[data-nav="mail"]');
-  if (mailNav) {
-    const mailTreeContainer = mailNav.querySelector("#mail-tree");
+  const mailNavEl = mountRoot.querySelector('[data-nav="mail"]');
+  if (mailNavEl) {
+    const mailTreeContainer = mailNavEl.querySelector("#mail-tree");
     if (mailTreeContainer) {
-      mailTree = createTreeController(mailTreeContainer, {
+      mailNav = createMailNav(api, mailTreeContainer, {
         id: "mail",
         label: "Mail",
-        nodes: PLACEHOLDER_MAIL_NODES,
         state: ui.trees && ui.trees.mail,
-        regions: ["leading", "label", "count", "hover"],
+        regions: ["leading", "label", "status", "count", "hover"],
         onPersist(treeId, patch) {
           ui.trees = ui.trees || {};
           ui.trees[treeId] = { ...ui.trees[treeId], ...patch };
@@ -2493,7 +2490,11 @@ export async function startShell(surface, nextApi, nextHost, result) {
           persistLayout();
         },
       });
+      mailTree = mailNav.tree;
     }
+  }
+  if (mailNav) {
+    await mailNav.ready;
   }
 
   function bindMailTree() {
@@ -2501,6 +2502,17 @@ export async function startShell(surface, nextApi, nextHost, result) {
       return;
     }
     const treeEl = mailTree.container;
+    if (keys) {
+      treeEl.addEventListener("focusin", () => {
+        keys.setScope("tree");
+      });
+      treeEl.addEventListener("focusout", (event) => {
+        const next = event.relatedTarget;
+        if (!(next instanceof Node) || !treeEl.contains(next)) {
+          keys.setScope("workspace");
+        }
+      });
+    }
     treeEl.addEventListener("click", (event) => {
       const button = event.target instanceof Element ? event.target.closest('[role="treeitem"]') : null;
       if (!button || !treeEl.contains(button)) {
@@ -2518,10 +2530,41 @@ export async function startShell(surface, nextApi, nextHost, result) {
         }
         return;
       }
+      /* The arrow opens the branch. It has pointer-events: none so a drag
+         cannot grab the icon, and the hit is the row underneath. */
+      const disclosure = button.querySelector(".tree-row-disclosure");
+      if (disclosure) {
+        const box = disclosure.getBoundingClientRect();
+        const onArrow = event.clientX >= box.left && event.clientX <= box.right
+          && event.clientY >= box.top && event.clientY <= box.bottom;
+        if (onArrow) {
+          if (mailTree.isExpanded(nodeId)) {
+            mailTree.collapse(nodeId);
+          } else {
+            mailTree.expand(nodeId);
+          }
+          return;
+        }
+      }
+      const node = mailTree.getNode(nodeId);
       mailTree.select(nodeId);
+      if (node && node.kind === "account") {
+        if (mailTree.isExpanded(nodeId)) {
+          mailTree.collapse(nodeId);
+        } else {
+          mailTree.expand(nodeId);
+        }
+        return;
+      }
       showNav("mail");
       openHome("mail", { mailboxId: nodeId });
     });
+
+    function rememberHiddenRoots() {
+      ui.trees = ui.trees || {};
+      ui.trees.mail = { ...(ui.trees.mail || {}), hiddenRoots: [...mailTree.viewState.hiddenRoots] };
+      persistLayout();
+    }
 
     function mailTreeMenu(nodeId) {
       const node = mailTree.getNode(nodeId);
@@ -2544,6 +2587,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
             onSelect() {
               mailTree.viewState.hideRoot(nodeId);
               mailTree.render();
+              rememberHiddenRoots();
             },
           },
         );
@@ -2564,6 +2608,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
             mailTree.viewState.toggleInfrequent(nodeId);
             mailTree.viewState.hideRoot(nodeId);
             mailTree.render();
+            rememberHiddenRoots();
           },
         });
       }
@@ -2573,6 +2618,14 @@ export async function startShell(surface, nextApi, nextHost, result) {
 
     if (widgets && widgets.menus) {
       mailTree.setRowMenu((nodeId) => mailTreeMenu(nodeId));
+      widgets.menus.bind(treeEl, (origin) => {
+        const row = origin instanceof Element ? origin.closest("[role='treeitem']") : null;
+        if (!row || !treeEl.contains(row)) {
+          return [];
+        }
+        const nodeId = row.dataset.nodeId;
+        return nodeId ? mailTreeMenu(nodeId) : [];
+      });
     }
 
     const toolbar = mountRoot.querySelector("#mail-tree-toolbar");

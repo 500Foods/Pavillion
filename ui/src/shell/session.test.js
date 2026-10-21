@@ -552,6 +552,37 @@ test("quitting saves the open tabs, and the switch turns restore off", async () 
   expect(switched.session.shutdown).toBe("open");
 });
 
+test("hiding an account stores hiddenRoots and drops the row", async () => {
+  const transport = mockTransport();
+  const call = transport.call;
+  transport.call = async (cmd, args) => {
+    if (cmd === "mailbox.list" && !(args && args.accountId)) {
+      return {
+        nodes: [
+          { id: "e7-andrew", parentId: null, kind: "account", label: "Andrew", role: null, order: 0, unread: 0, total: 0, hasChildren: true, swatch: null },
+          { id: "mbx-in", parentId: "e7-andrew", kind: "mailbox", label: "Inbox", role: "inbox", order: 0, unread: 0, total: 0, hasChildren: false, swatch: null },
+        ],
+      };
+    }
+    return call(cmd, args);
+  };
+  const el = document.createElement("div");
+  document.body.append(el);
+  const api = createApi(transport);
+  await mount(el, api);
+  const row = document.querySelector('[data-nav="mail"] [role="treeitem"][data-node-id="e7-andrew"]');
+  row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 20, clientY: 20 }));
+  const hide = [...document.querySelectorAll("[role='menuitem']")].find((item) => item.textContent === "Hide account");
+  hide.click();
+  expect(document.querySelector('[data-nav="mail"] [role="treeitem"][data-node-id="e7-andrew"]')).toBeNull();
+  expect(document.querySelector('[data-nav="mail"] [role="treeitem"][data-node-id="mbx-in"]')).toBeNull();
+  await new Promise((resolve) => {
+    setTimeout(resolve, 400);
+  });
+  const saved = await api.prefs.ui.get();
+  expect(saved.trees.mail.hiddenRoots).toEqual(["e7-andrew"]);
+});
+
 test("a tab change is written on the session interval", async () => {
   vi.useFakeTimers();
   const { api } = await boot();

@@ -85,6 +85,15 @@ export function createApi(transport) {
         return call("sync.now", body ?? {});
       },
     },
+    mailbox: {
+      list(body) {
+        const args = {};
+        if (body && typeof body.accountId === "string" && body.accountId !== "") {
+          args.accountId = body.accountId;
+        }
+        return call("mailbox.list", args);
+      },
+    },
     debug: {
       activityDemo(body) {
         return call("debug.activity_demo", body ?? {});

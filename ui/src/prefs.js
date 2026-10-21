@@ -114,6 +114,21 @@ function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+/* Tree view state is opaque to the core. Keep one plain object per tree id
+   so expansion and hidden roots survive a save. Drop anything else. */
+function treesOf(raw) {
+  if (!isObject(raw)) {
+    return {};
+  }
+  const out = {};
+  for (const key of Object.keys(raw)) {
+    if (isObject(raw[key])) {
+      out[key] = { ...raw[key] };
+    }
+  }
+  return out;
+}
+
 function finite(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
@@ -325,6 +340,7 @@ export function clampUi(raw) {
   copyUnknown(zoom, zoomSrc, [...ZOOM_KEYS, "wheel"]);
   const out = {
     nav: panePx(src.nav, DEFAULT_UI.nav),
+    trees: treesOf(src.trees),
     mail: paneSplit(src.mail, DEFAULT_UI.mail),
     contacts: paneSplit(src.contacts, DEFAULT_UI.contacts),
     files: paneSplit(src.files, DEFAULT_UI.files),

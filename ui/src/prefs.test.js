@@ -191,6 +191,18 @@ test("K-Q12 resize round: the accounts split bounds come from code (0.15 to 0.85
   expect(clampUi({ accounts: { split: 0.99 } }).accounts.split).toBe(0.85);
 });
 
+test("tree view state survives the clamp, and a non-object tree is dropped", () => {
+  const stored = clampUi({
+    trees: {
+      mail: { expanded: ["foods"], hiddenRoots: ["courses"], selected: "mbx:1" },
+      bad: "nope",
+    },
+  });
+  expect(stored.trees.mail).toEqual({ expanded: ["foods"], hiddenRoots: ["courses"], selected: "mbx:1" });
+  expect(stored.trees.bad).toBeUndefined();
+  expect(clampUi({}).trees).toEqual({});
+});
+
 test("K-Q14: Accounts table and form zoom keys default to 1 and clamp like panes", () => {
   const z = clampUi({}).zoom;
   expect(z.accountsTable).toBe(1);
