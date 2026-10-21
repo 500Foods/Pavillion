@@ -5,7 +5,7 @@ Status: v0.7 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 **Resume:** each phase's history is in its own document's Working log; this block is only the current state.
 
 - Last finished: H-4 (step 131) and D-10 (step 134), 2026-10-21, in [docs/H-LOGGING.md](docs/H-LOGGING.md) and [docs/D-UI.md](docs/D-UI.md). Andrew accepted both windows the same day. E-4 (step 52) was the previous sequenced finish, 2026-10-19.
-- Next: M-3 (step 53), in [docs/M-SYNC.md](docs/M-SYNC.md). In progress. Last finished work item is M-3e (`Identity/get` includes the submission capability, and a method error reads `type`). The phase exit gate against the container has not been run. Andrew's live-account report is the UI half of the entry gate (2026-10-21). Automated tests use the fixture. The Accounts table (Tabulator) polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md) and does not block M-3.
+- Next: M-3 (step 53), in [docs/M-SYNC.md](docs/M-SYNC.md). In progress. Last finished work item is M-3e (`Identity/get` includes the submission capability, and a method error reads `type`). A 10:36 restart of that binary stored both live mailbox trees and left both accounts idle. Foods stored 500 mailboxes, equal to the server's `maxObjectsInGet`; paging was not started. The phase exit gate against the container has not been run. Andrew's live-account report is the UI half of the entry gate (2026-10-21). Automated tests use the fixture. The Accounts table (Tabulator) polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md) and does not block M-3.
 - Last full `make test`: 182 Unity tests, 2 Rust tests and 349 Vitest tests, exit 0 (2026-10-21).
 - `PAVILLION_API_VERSION` is 3. The phase stamp is `0.58.0` (58 Done rows), release date 2026-10-21.
 

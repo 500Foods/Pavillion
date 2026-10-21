@@ -32,6 +32,11 @@
 #define PAV_SYNC_TYPE_MAX (1024u * 1024u)
 #define PAV_SYNC_REDIRECTS 3
 #define PAV_SYNC_PAGE_MAX 8
+/* One Mailbox/get page. A foods-sized mailbox object is a few hundred bytes,
+   and a type response is capped at 1 MB. The Session's maxObjectsInGet can
+   be lower. The walk repeats until every mailbox is stored. */
+#define PAV_SYNC_MBX_PAGE 500
+#define PAV_SYNC_LIST_MAX 256
 #define PAV_MAIL_URN "urn:ietf:params:jmap:mail"
 #define PAV_SUBMISSION_URN "urn:ietf:params:jmap:submission"
 #define SYNC_KIND_SESSION 0
@@ -40,6 +45,7 @@
 #define TYPE_GET 1
 #define TYPE_CHANGES 2
 #define TYPE_GET_IDS 3
+#define TYPE_QUERY 4
 
 typedef struct SyncReq SyncReq;
 
@@ -58,6 +64,14 @@ typedef struct SupRemote {
     char pending_mbx_state[128];
     char pending_idn_state[128];
     int has_submission;
+    int mbx_limit;
+    int mbx_pos;
+    int mbx_total;
+    int mbx_last_n;
+    int mbx_paging;
+    int mbx_list_pages;
+    int mbx_restarts;
+    char mbx_anchor[128];
 } SupRemote;
 
 typedef struct PavSup {
@@ -152,6 +166,7 @@ typedef struct TypeResult {
     int mbx_more;
     int idn_more;
     int method_error;
+    int mbx_total;
     char mbx_state[128];
     char idn_state[128];
     MbxRow *mailboxes;
@@ -1063,7 +1078,19 @@ static int reduce_types(const char *body, TypeResult *out) {
         if (name == NULL || !json_is_object(args)) {
             continue;
         }
-        if (strcmp(name, "Mailbox/get") == 0) {
+        if (strcmp(name, "Mailbox/query") == 0) {
+            json_t *total = json_object_get(args, "total");
+
+            if (json_is_integer(total)) {
+                json_int_t ntotal = json_integer_value(total);
+
+                out->mbx_total = ntotal > 0 ? (int)ntotal : 0;
+            }
+            if (append_id_array(&out->mbx_fetch, &out->mbx_fetch_n, json_object_get(args, "ids")) != 0) {
+                json_decref(root);
+                return -1;
+            }
+        } else if (strcmp(name, "Mailbox/get") == 0) {
             size_t k;
             json_t *list = json_object_get(args, "list");
 
@@ -1183,6 +1210,7 @@ static void type_on_done(SyncReq *owned, int stopped) {
     result->auth_rc = owned->req.auth_rc;
     result->mbx_mode = owned->mbx_mode;
     result->idn_mode = owned->idn_mode;
+    result->mbx_total = -1;
     if (result->status == 200 && owned->req.body_out != NULL && owned->req.body_out_len > 0 &&
         owned->req.body_out_len <= PAV_SYNC_TYPE_MAX) {
         if (reduce_types(owned->req.body_out, result) != 0 && !result->method_error) {
@@ -1393,6 +1421,25 @@ static void reset_sup_remote(SupRemote *remote) {
     remote->pending_idn_more = 0;
     remote->pending_mbx_state[0] = '\0';
     remote->pending_idn_state[0] = '\0';
+    remote->mbx_limit = 0;
+    remote->mbx_pos = 0;
+    remote->mbx_total = -1;
+    remote->mbx_last_n = 0;
+    remote->mbx_paging = 0;
+    remote->mbx_list_pages = 0;
+    remote->mbx_restarts = 0;
+    remote->mbx_anchor[0] = '\0';
+}
+
+/* A new mailbox walk. The page cap and the one restart belong to this walk. */
+static void begin_mbx_walk(SupRemote *remote) {
+    remote->mbx_pos = 0;
+    remote->mbx_total = -1;
+    remote->mbx_last_n = 0;
+    remote->mbx_paging = 1;
+    remote->mbx_list_pages = 0;
+    remote->mbx_restarts = 0;
+    remote->mbx_anchor[0] = '\0';
 }
 
 /* Reuse a supervisor node when the JMAP account id is unchanged, and zero its
@@ -1520,6 +1567,45 @@ static void load_states(const char *ra_id, char *mbx, size_t mbx_n, char *idn, s
     sqlite3_finalize(stmt);
     pav_db_read_end(read);
     (void)rc;
+}
+
+/* Page size for this account. The core capability is the RFC field. A missing
+   or larger value stays at PAV_SYNC_MBX_PAGE. */
+static int session_get_limit(const char *account_id) {
+    PavDbRead *read = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int limit = PAV_SYNC_MBX_PAGE;
+    int rc;
+
+    if (account_id == NULL || account_id[0] == '\0' || pav_db_read_begin(&read) != 0) {
+        return limit;
+    }
+    if (sqlite3_prepare_v2(pav_db_read_handle(read), "SELECT session_json FROM account_state WHERE account_id = ?", -1,
+                           &stmt, NULL) != SQLITE_OK) {
+        pav_db_read_end(read);
+        return limit;
+    }
+    sqlite3_bind_text(stmt, 1, account_id, -1, SQLITE_TRANSIENT);
+    rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+        const char *text = (const char *)sqlite3_column_text(stmt, 0);
+        json_t *root = text != NULL ? json_loads(text, 0, NULL) : NULL;
+        json_t *caps = json_object_get(root, "capabilities");
+        json_t *core = json_is_object(caps) ? json_object_get(caps, "urn:ietf:params:jmap:core") : NULL;
+        json_t *n = json_is_object(core) ? json_object_get(core, "maxObjectsInGet") : NULL;
+
+        if (json_is_integer(n)) {
+            json_int_t v = json_integer_value(n);
+
+            if (v > 0 && v < PAV_SYNC_MBX_PAGE) {
+                limit = (int)v;
+            }
+        }
+        json_decref(root);
+    }
+    sqlite3_finalize(stmt);
+    pav_db_read_end(read);
+    return limit;
 }
 
 static SupRemote *find_remote(PavSup *s, const char *ra_id) {
@@ -1748,7 +1834,8 @@ static json_t *ids_array(const SyncId *ids, int n) {
     return arr;
 }
 
-static json_t *method_args(const char *account, int mode, const char *since, const SyncId *ids, int n) {
+static json_t *method_args(const char *account, int mode, const char *since, const SyncId *ids, int n, int pos,
+                           int limit) {
     json_t *args = json_object();
     json_t *account_id = json_string(account);
 
@@ -1759,7 +1846,31 @@ static json_t *method_args(const char *account, int mode, const char *since, con
         }
         return NULL;
     }
-    if (mode == TYPE_GET) {
+    if (mode == TYPE_QUERY) {
+        json_t *position = json_integer(pos > 0 ? pos : 0);
+        json_t *lim = json_integer(limit > 0 ? limit : PAV_SYNC_MBX_PAGE);
+        json_t *calc = json_true();
+
+        if (position == NULL || lim == NULL || calc == NULL) {
+            json_decref(position);
+            json_decref(lim);
+            json_decref(args);
+            return NULL;
+        }
+        if (put_json(args, "position", position) != 0) {
+            json_decref(lim);
+            json_decref(args);
+            return NULL;
+        }
+        if (put_json(args, "limit", lim) != 0) {
+            json_decref(args);
+            return NULL;
+        }
+        if (put_json(args, "calculateTotal", calc) != 0) {
+            json_decref(args);
+            return NULL;
+        }
+    } else if (mode == TYPE_GET) {
         if (put_json(args, "ids", json_null()) != 0) {
             json_decref(args);
             return NULL;
@@ -1773,7 +1884,7 @@ static json_t *method_args(const char *account, int mode, const char *since, con
         }
     } else if (mode == TYPE_CHANGES) {
         json_t *state = json_string(since != NULL ? since : "");
-        json_t *max = json_integer(500);
+        json_t *max = json_integer(limit > 0 ? limit : PAV_SYNC_MBX_PAGE);
 
         if (state == NULL || max == NULL) {
             json_decref(state);
@@ -1845,7 +1956,7 @@ static char *build_type_body(SupRemote *remote, int mbx_mode, int idn_mode, cons
     if (idn_mode != TYPE_SKIP) {
         const char *cid = idn_mode == TYPE_GET_IDS ? "if" : "i";
         const char *name = idn_mode == TYPE_CHANGES ? "Identity/changes" : "Identity/get";
-        json_t *args = method_args(remote->jmap_id, idn_mode, idn_since, idn_ids, idn_n);
+        json_t *args = method_args(remote->jmap_id, idn_mode, idn_since, idn_ids, idn_n, 0, PAV_SYNC_MBX_PAGE);
 
         if (append_method(calls, name, args, cid) != 0) {
             json_decref(calls);
@@ -1854,9 +1965,11 @@ static char *build_type_body(SupRemote *remote, int mbx_mode, int idn_mode, cons
         }
     }
     if (mbx_mode != TYPE_SKIP) {
-        const char *cid = mbx_mode == TYPE_GET_IDS ? "mf" : "m";
-        const char *name = mbx_mode == TYPE_CHANGES ? "Mailbox/changes" : "Mailbox/get";
-        json_t *args = method_args(remote->jmap_id, mbx_mode, mbx_since, mbx_ids, mbx_n);
+        const char *cid = mbx_mode == TYPE_QUERY ? "mq" : (mbx_mode == TYPE_GET_IDS ? "mf" : "m");
+        const char *name = mbx_mode == TYPE_QUERY ? "Mailbox/query"
+                           : (mbx_mode == TYPE_CHANGES ? "Mailbox/changes" : "Mailbox/get");
+        int lim = remote->mbx_limit > 0 ? remote->mbx_limit : PAV_SYNC_MBX_PAGE;
+        json_t *args = method_args(remote->jmap_id, mbx_mode, mbx_since, mbx_ids, mbx_n, remote->mbx_pos, lim);
 
         if (append_method(calls, name, args, cid) != 0) {
             json_decref(calls);
@@ -1914,24 +2027,31 @@ static SyncReq *make_type_req(PavSup *s, SupRemote *remote, int mbx_mode, int id
     return req;
 }
 
+/* 1 ok, 0 too many changes, -1 too many mailbox pages. */
 static int pages_ok(SupRemote *remote, int mbx_mode, int idn_mode) {
-    int ok = 1;
+    int code = 1;
 
     pthread_mutex_lock(&g_sync_mu);
-    if (mbx_mode == TYPE_CHANGES) {
-        remote->mbx_pages++;
-        if (remote->mbx_pages > PAV_SYNC_PAGE_MAX) {
-            ok = 0;
+    if (mbx_mode == TYPE_QUERY) {
+        remote->mbx_list_pages++;
+        if (remote->mbx_list_pages > PAV_SYNC_LIST_MAX) {
+            code = -1;
         }
     }
-    if (ok && idn_mode == TYPE_CHANGES) {
+    if (code == 1 && mbx_mode == TYPE_CHANGES) {
+        remote->mbx_pages++;
+        if (remote->mbx_pages > PAV_SYNC_PAGE_MAX) {
+            code = 0;
+        }
+    }
+    if (code == 1 && idn_mode == TYPE_CHANGES) {
         remote->idn_pages++;
         if (remote->idn_pages > PAV_SYNC_PAGE_MAX) {
-            ok = 0;
+            code = 0;
         }
     }
     pthread_mutex_unlock(&g_sync_mu);
-    return ok;
+    return code;
 }
 
 /* One POST for this remote. Does not increment the session attempt counter. */
@@ -1946,7 +2066,7 @@ static void start_type_request(PavSup *s, SupRemote *remote, int mbx_mode, int i
         finish_sync_ok(s);
         return;
     }
-    if (mbx_mode == TYPE_GET_IDS && mbx_n <= 0) {
+    if (mbx_mode == TYPE_GET_IDS && mbx_n <= 0 && !remote->mbx_paging) {
         mbx_mode = TYPE_SKIP;
     }
     if (idn_mode == TYPE_GET_IDS && idn_n <= 0) {
@@ -1960,7 +2080,8 @@ static void start_type_request(PavSup *s, SupRemote *remote, int mbx_mode, int i
     if (mbx_mode == TYPE_CHANGES || idn_mode == TYPE_CHANGES) {
         load_states(remote->ra_id, mbx_since, sizeof(mbx_since), idn_since, sizeof(idn_since));
         if (mbx_mode == TYPE_CHANGES && mbx_since[0] == '\0') {
-            mbx_mode = TYPE_GET;
+            mbx_mode = TYPE_QUERY;
+            begin_mbx_walk(remote);
         }
         if (idn_mode == TYPE_CHANGES && idn_since[0] == '\0') {
             idn_mode = TYPE_GET;
@@ -1970,9 +2091,19 @@ static void start_type_request(PavSup *s, SupRemote *remote, int mbx_mode, int i
         begin_remote(s, remote->next);
         return;
     }
-    if (!pages_ok(remote, mbx_mode, idn_mode)) {
-        publish_state(s, "error:server", "too many changes", 0, PAV_ACT_FAILED);
-        return;
+    if (mbx_mode == TYPE_QUERY && remote->mbx_limit <= 0) {
+        remote->mbx_limit = session_get_limit(s->account_id);
+    }
+    if (mbx_mode == TYPE_CHANGES && remote->mbx_limit <= 0) {
+        remote->mbx_limit = session_get_limit(s->account_id);
+    }
+    {
+        int pages = pages_ok(remote, mbx_mode, idn_mode);
+
+        if (pages != 1) {
+            publish_state(s, "error:server", pages < 0 ? "too many mailboxes" : "too many changes", 0, PAV_ACT_FAILED);
+            return;
+        }
     }
     body = build_type_body(remote, mbx_mode, idn_mode, mbx_since, idn_since, mbx_ids, mbx_n, idn_ids, idn_n);
     if (body == NULL) {
@@ -2021,8 +2152,9 @@ static void begin_remote(PavSup *s, SupRemote *remote) {
     }
     load_states(remote->ra_id, mbx_state, sizeof(mbx_state), idn_state, sizeof(idn_state));
     if (remote->force_mbx_get || mbx_state[0] == '\0') {
-        mbx_mode = TYPE_GET;
+        mbx_mode = TYPE_QUERY;
         remote->force_mbx_get = 0;
+        begin_mbx_walk(remote);
     } else {
         mbx_mode = TYPE_CHANGES;
     }
@@ -2110,12 +2242,28 @@ static void apply_one_type(TypeResult *t, SupRemote *remote, int mailbox, TypeWr
     int row_n = mailbox ? t->mailbox_n : t->identity_n;
     int fetch_count = mailbox ? t->mbx_fetch_n : t->idn_fetch_n;
 
-    /* A cannotCalculateChanges resync already chose TYPE_GET. Leave it. */
+    /* A cannotCalculateChanges resync already chose the next mode. Leave it. */
     if (resync) {
         return;
     }
     *next_mode = TYPE_SKIP;
     if (mode == TYPE_SKIP) {
+        return;
+    }
+    if (mode == TYPE_QUERY && mailbox) {
+        int n = fetch_count;
+
+        if (remote->mbx_limit > 0 && n > remote->mbx_limit) {
+            n = remote->mbx_limit;
+        }
+        remote->mbx_last_n = n;
+        if (t->mbx_total >= 0) {
+            remote->mbx_total = t->mbx_total;
+        }
+        remote->mbx_paging = 1;
+        *fetch = t->mbx_fetch;
+        *fetch_n = n;
+        *next_mode = TYPE_GET_IDS;
         return;
     }
     if (mode == TYPE_CHANGES && fetch_count > 0) {
@@ -2149,6 +2297,45 @@ static void apply_one_type(TypeResult *t, SupRemote *remote, int mailbox, TypeWr
             w->identity_n = row_n;
             w->idn_state = state;
         }
+        return;
+    }
+    if (mode == TYPE_GET_IDS && mailbox && remote->mbx_paging) {
+        int keep;
+
+        if (state[0] != '\0' && remote->mbx_anchor[0] != '\0' && strcmp(remote->mbx_anchor, state) != 0) {
+            if (remote->mbx_restarts < 1) {
+                begin_mbx_walk(remote);
+                remote->mbx_restarts = 1;
+                w->clear_mbx = 1;
+                *next_mode = TYPE_QUERY;
+                return;
+            }
+            w->mailboxes = t->mailboxes;
+            w->mailbox_n = row_n;
+            w->mbx_state = state;
+            remote->mbx_paging = 0;
+            *emit = 1;
+            return;
+        }
+        if (state[0] != '\0' && remote->mbx_anchor[0] == '\0') {
+            copy_fit(remote->mbx_anchor, sizeof(remote->mbx_anchor), state);
+        }
+        if (remote->mbx_pos == 0) {
+            w->replace_mbx = 1;
+        }
+        w->mailboxes = t->mailboxes;
+        w->mailbox_n = row_n;
+        remote->mbx_pos += remote->mbx_last_n;
+        keep = remote->mbx_last_n > 0 &&
+               ((remote->mbx_total >= 0 && remote->mbx_pos < remote->mbx_total) ||
+                (remote->mbx_total < 0 && remote->mbx_limit > 0 && remote->mbx_last_n >= remote->mbx_limit));
+        if (keep) {
+            *next_mode = TYPE_QUERY;
+            return;
+        }
+        w->mbx_state = state[0] != '\0' ? state : remote->mbx_anchor;
+        remote->mbx_paging = 0;
+        *emit = 1;
         return;
     }
     if (mode == TYPE_GET_IDS) {
@@ -2240,7 +2427,8 @@ static void apply_types(PavSup *s, TypeResult *t) {
         remote->pending_mbx_more = 0;
         remote->pending_mbx_state[0] = '\0';
         remote->force_mbx_get = 1;
-        next_mbx = TYPE_GET;
+        begin_mbx_walk(remote);
+        next_mbx = TYPE_QUERY;
     }
     if (t->idn_resync && !fatal_idn) {
         remote->idn_resyncs++;

@@ -6646,6 +6646,53 @@ void test_sync_mailboxes_initial(void) {
     json_decref(rows);
 }
 
+/* Session maxObjectsInGet is 2. The fixture cuts an ids-null get at that cap.
+   a1 has four mailboxes, so the walk has to query a second page to store Sent. */
+void test_sync_mailboxes_paged(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char session_url[512];
+    char path[160];
+    char got[320];
+    int queries;
+    int gets;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_sync_set_poll_ms(3600000);
+    queries = trace_count("Mailbox/query");
+    gets = trace_count("Mailbox/get");
+    TEST_ASSERT_TRUE(queries >= 0);
+    TEST_ASSERT_TRUE(gets >= 0);
+    snprintf(session_url, sizeof(session_url), "%s/jmap/session?maxObjectsInGet=2", url);
+    add_fixture_account("page", session_url, ca);
+    db_path_for_cfg(path, sizeof(path));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM mailbox WHERE ra_id='page/a1' AND id='sent' AND name='Sent'",
+        1, "page", got, sizeof(got)), got);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM account_state WHERE account_id='page' AND state='idle' "
+        "AND session_json LIKE '%\"maxObjectsInGet\":2%'",
+        1, "page", got, sizeof(got)), got);
+    snprintf(got, sizeof(got), "queries %d->%d gets %d->%d boxes %d", queries, trace_count("Mailbox/query"), gets,
+             trace_count("Mailbox/get"), scalar_int(path, "SELECT count(*) FROM mailbox WHERE ra_id='page/a1'"));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(4, scalar_int(path, "SELECT count(*) FROM mailbox WHERE ra_id='page/a1'"), got);
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM mailbox WHERE ra_id='page/a1' AND id='drafts'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM mailbox WHERE ra_id='page/a1' AND id='later' AND parent_id='in'"));
+    TEST_ASSERT_EQUAL_INT(2, scalar_int(path, "SELECT count(*) FROM mailbox WHERE ra_id='page/a2'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM sync_state WHERE ra_id='page/a1' AND type='Mailbox' AND state='mbx-1'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM sync_state WHERE ra_id='page/a2' AND type='Mailbox' AND state='mbx-1'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM identity WHERE ra_id='page/a1' AND email='andrew@test-a.local'"));
+    TEST_ASSERT_TRUE(trace_count("Mailbox/query") >= queries + 2);
+    TEST_ASSERT_TRUE(trace_count("Mailbox/get") >= gets + 2);
+}
+
 void test_sync_mailboxes_delta_rename(void) {
     const char *url = getenv("PAV_FIXTURE_URL");
     const char *ca = getenv("PAV_FIXTURE_CA");
@@ -8110,6 +8157,7 @@ int main(void) {
     RUN_TEST(test_sync_401_stops_account);
     RUN_TEST(test_sync_locked_keyring_no_retry);
     RUN_TEST(test_sync_mailboxes_initial);
+    RUN_TEST(test_sync_mailboxes_paged);
     RUN_TEST(test_mailbox_list_tree_shape);
     RUN_TEST(test_sync_mailboxes_cannot_calculate);
     RUN_TEST(test_sync_mailboxes_delta_rename);

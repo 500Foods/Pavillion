@@ -402,7 +402,7 @@ EOF
 }
 
 serve_api() {
-  local tmp out qerr domain d statef rec
+  local tmp out qerr domain d statef rec mbxcap
   tmp=$(mktemp "$run/api.XXXXXX")
   read_body "$tmp"
   qerr=$(qget error || true)
@@ -421,7 +421,16 @@ serve_api() {
   fi
   rec=$(mktemp "$run/rec.XXXXXX")
   load_recorded "$root/tests/support/fixtures" "$rec"
-  out=$(jq -c -s --arg qerr "$qerr" --arg domain "$d" --slurpfile st "$statef" --slurpfile recorded "$rec" "$JQ_LIB"'
+  # ids:null is capped at the Session's maxObjectsInGet. The session handler
+  # writes that number. Explicit ids are not capped.
+  mbxcap=500
+  if [ -f "$run/mbx-cap" ]; then
+    read -r mbxcap < "$run/mbx-cap" || mbxcap=500
+    case "$mbxcap" in
+      ''|*[!0-9]*) mbxcap=500 ;;
+    esac
+  fi
+  out=$(jq -c -s --arg qerr "$qerr" --arg domain "$d" --argjson mbxcap "$mbxcap" --slurpfile st "$statef" --slurpfile recorded "$rec" "$JQ_LIB"'
     def errbody($c):
       if $c == "cannotCalculateChanges" then {code: "cannotCalculateChanges", description: "server cannot calculate changes"}
       else {code: "stateMismatch", description: "state has changed"} end;
@@ -481,18 +490,31 @@ serve_api() {
     def one($state; $m; $a):
       acct_of($a) as $aid
       | ($state[$domain][$aid] // null) as $acct
-      | if $m == "Mailbox/get" or $m == "Identity/get" or $m == "Mailbox/changes" or $m == "Identity/changes" or $m == "Mailbox/set" then
+      | if $m == "Mailbox/get" or $m == "Identity/get" or $m == "Mailbox/changes" or $m == "Identity/changes" or $m == "Mailbox/set" or $m == "Mailbox/query" then
           if $acct == null then
             if $m == "Mailbox/set" then
               [$state, ["error", {code: "accountNotFound", description: "unknown account"}]]
+            elif $m == "Mailbox/query" then
+              [$state, [$m, {accountId:$aid, queryState:"mbx-1", canCalculateChanges:false,
+                             position:0, ids:[], total:0}]]
             elif $m == "Mailbox/changes" or $m == "Identity/changes" then
               [$state, [$m, {accountId:$aid, oldState:($a.sinceState // ""), newState:"mbx-1",
                              hasMoreChanges:false, created:[], updated:[], destroyed:[]}]]
             else
               [$state, [$m, {accountId:$aid, state:"mbx-1", list:[], notFound:[]}]]
             end
+          elif $m == "Mailbox/query" then
+            (($a.position // 0) | if . < 0 then 0 else . end) as $pos
+            | (($a.limit // 500) | if . < 1 then 1 else . end) as $lim
+            | ($acct.mailboxes | map(.id)) as $ids
+            | ($ids | length) as $total
+            | [note($state; "Mailbox/query"),
+               [$m, {accountId:$aid, queryState:$acct.mbxState, canCalculateChanges:false,
+                     position:$pos, ids:$ids[$pos:$pos+$lim],
+                     total:(if $a.calculateTotal == true then $total else null end)}]]
           elif $m == "Mailbox/get" then
-            (pick($acct.mailboxes; (if $a | has("ids") then $a.ids else null end))) as $p
+            (if ($a | has("ids")) and ($a.ids != null) then $acct.mailboxes else $acct.mailboxes[0:$mbxcap] end) as $boxes
+            | (pick($boxes; (if $a | has("ids") then $a.ids else null end))) as $p
             | [note($state; "Mailbox/get"),
                [$m, {accountId:$aid, state:$acct.mbxState, list:$p.list, notFound:$p.notFound}]]
           elif $m == "Identity/get" then
@@ -646,13 +668,30 @@ do_get() {
       domain=${domain%%:*}
       d=test-a.local
       case " $DOMAINS " in *" $domain "*) d=$domain ;; esac
+      cap=500
+      if qcap=$(qget maxObjectsInGet || true); then
+        case "$qcap" in
+          ''|*[!0-9]*) cap=500 ;;
+          *) cap=$qcap ;;
+        esac
+      fi
+      if [ "$cap" -lt 1 ] || [ "$cap" -gt 500 ]; then cap=500; fi
+      printf '%s\n' "$cap" > "$run/mbx-cap"
       # The file names apiUrl after the fixture domain. That name does not
       # resolve. Serve the host the client actually connected to, port included.
-      send_json 200 "$(jq -c --arg host "${host:-localhost}" \
+      # maxObjectsInGet lives on the core capability. A query argument can
+      # lower it so a test can force a second mailbox page.
+      send_json 200 "$(jq -c --arg host "${host:-localhost}" --argjson cap "$cap" \
         '.apiUrl = "https://\($host)/jmap/api"
          | .downloadUrl = "https://\($host)/jmap/download"
          | .uploadUrl = "https://\($host)/jmap/upload"
-         | .eventSourceUrl = "https://\($host)/jmap/events"' \
+         | .eventSourceUrl = "https://\($host)/jmap/events"
+         | .capabilities["urn:ietf:params:jmap:core"] = {
+             maxSizeUpload: 50000000, maxConcurrentUpload: 4,
+             maxSizeRequest: 10000000, maxConcurrentRequests: 4,
+             maxCallsInRequest: 16, maxObjectsInGet: $cap,
+             maxObjectsInSet: 500, collationAlgorithms: []
+           }' \
         "$run/session-$d.json")"
       ;;
     /jmap/events) serve_events ;;
