@@ -1,10 +1,10 @@
 #define _POSIX_C_SOURCE 200809L
 
-/* M-3a supervisor. PavSup stays on the core thread. The net thread only
-   reads a SyncReq. It parses the Session there and posts the rows. The
-   request stays allocated until the callback and the supervisor have each
-   released it, so a cancel cannot free it while the callback still runs.
-   The net callback never takes the core lock while it holds g_sync_mu. */
+/* M-3 supervisor. PavSup stays on the core thread. The net thread only
+   reads a SyncReq. It parses the Session or a type response there and posts
+   the rows. The request stays allocated until the callback and the supervisor
+   have each released it, so a cancel cannot free it while the callback still
+   runs. The net callback never takes the core lock while it holds g_sync_mu. */
 
 #include "pav_sync.h"
 
@@ -29,10 +29,34 @@
 #define PAV_SYNC_POLL_MS (120 * 1000)
 #define PAV_SYNC_POLL_MIN_MS 1000
 #define PAV_SYNC_SESSION_MAX (256u * 1024u)
+#define PAV_SYNC_TYPE_MAX (1024u * 1024u)
 #define PAV_SYNC_REDIRECTS 3
+#define PAV_SYNC_PAGE_MAX 8
 #define PAV_MAIL_URN "urn:ietf:params:jmap:mail"
+#define SYNC_KIND_SESSION 0
+#define SYNC_KIND_TYPES 1
+#define TYPE_SKIP 0
+#define TYPE_GET 1
+#define TYPE_CHANGES 2
+#define TYPE_GET_IDS 3
 
 typedef struct SyncReq SyncReq;
+
+typedef struct SupRemote {
+    struct SupRemote *next;
+    char ra_id[256];
+    char jmap_id[128];
+    int mbx_pages;
+    int idn_pages;
+    int mbx_resyncs;
+    int idn_resyncs;
+    int force_mbx_get;
+    int force_idn_get;
+    int pending_mbx_more;
+    int pending_idn_more;
+    char pending_mbx_state[128];
+    char pending_idn_state[128];
+} SupRemote;
 
 typedef struct PavSup {
     struct PavSup *next;
@@ -40,6 +64,7 @@ typedef struct PavSup {
     char name[200];
     char session_url[2048];
     char current_url[2048];
+    char api_url[2048];
     char username[256];
     char auth[32];
     char ca_file[1024];
@@ -49,9 +74,11 @@ typedef struct PavSup {
     int auto_retry;
     int redirects;
     int attempts;
+    int saw_mailbox;
     uint64_t generation;
     int64_t activity_id;
     SyncReq *inflight;
+    SupRemote *remotes;
 } PavSup;
 
 typedef struct SyncRemote {
@@ -63,12 +90,14 @@ typedef struct SyncRemote {
 } SyncRemote;
 
 typedef struct SyncResult {
+    int kind;
     char account_id[64];
+    uint64_t generation;
     char url[2048];
+    char api_url[2048];
     char location[2048];
     char detail[160];
     char session_state[128];
-    uint64_t generation;
     int status;
     int auth_rc;
     int parsed;
@@ -77,15 +106,81 @@ typedef struct SyncResult {
     int remote_count;
 } SyncResult;
 
+typedef struct SyncId {
+    char id[128];
+} SyncId;
+
+typedef struct MbxRow {
+    char id[128];
+    char parent_id[128];
+    char name[256];
+    char role[64];
+    int sort_order;
+    int total;
+    int unread;
+    int total_threads;
+    int unread_threads;
+    char *my_rights;
+    int is_subscribed;
+} MbxRow;
+
+typedef struct IdnRow {
+    char id[128];
+    char name[256];
+    char email[320];
+    char *reply_to;
+    char *bcc;
+    char *sig_html;
+    char *sig_text;
+    int may_delete;
+} IdnRow;
+
+typedef struct TypeResult {
+    int kind;
+    char account_id[64];
+    uint64_t generation;
+    char ra_id[256];
+    char detail[160];
+    int status;
+    int auth_rc;
+    int mbx_mode;
+    int idn_mode;
+    int mbx_resync;
+    int idn_resync;
+    int mbx_more;
+    int idn_more;
+    int method_error;
+    char mbx_state[128];
+    char idn_state[128];
+    MbxRow *mailboxes;
+    int mailbox_n;
+    IdnRow *identities;
+    int identity_n;
+    SyncId *mbx_destroyed;
+    int mbx_destroyed_n;
+    SyncId *idn_destroyed;
+    int idn_destroyed_n;
+    SyncId *mbx_fetch;
+    int mbx_fetch_n;
+    SyncId *idn_fetch;
+    int idn_fetch_n;
+} TypeResult;
+
 struct SyncReq {
     atomic_int refs;
     uint64_t generation;
+    int kind;
     char account_id[64];
     char url[2048];
     char ca_file[1024];
     char keyring_user[192];
     char username[256];
     char auth_method[32];
+    char ra_id[256];
+    char jmap_id[128];
+    int mbx_mode;
+    int idn_mode;
+    char *body;
     PavReq req;
 };
 
@@ -159,6 +254,10 @@ static void sync_req_release(SyncReq *req) {
         return;
     }
     if (atomic_fetch_sub(&req->refs, 1) == 1) {
+        free(req->body);
+        if (req->req.headers != NULL) {
+            json_decref(req->req.headers);
+        }
         free(req);
     }
 }
@@ -237,28 +336,107 @@ static int write_state_job(void *ctx, sqlite3 *db) {
     if (w->session_json == NULL) {
         return 0;
     }
-    if (pav_db_prepare(db, "sync.remote_clear",
-                       "DELETE FROM remote_account WHERE account_id = ?", &stmt) != 0 ||
-        pav_db_bind_text(stmt, 1, w->account_id) != 0 || step_done(stmt) != 0) {
-        return -1;
-    }
-    for (i = 0; i < w->remote_count; i++) {
-        SyncRemote *row = &w->remotes[i];
+    /* Keep a remote row whose id is still in the Session. Deleting it would
+       cascade mailbox, identity, and sync_state, and the next poll would have
+       no sinceState. Drop only remotes the Session no longer lists. */
+    {
+        typedef struct HaveId {
+            char id[256];
+        } HaveId;
+        HaveId *have = NULL;
+        int have_n = 0;
+        int have_cap = 0;
+        int rc;
+        int h;
 
-        if (pav_db_prepare(db, "sync.remote_insert",
-                           "INSERT INTO remote_account "
-                           "(id, account_id, jmap_account_id, name, is_personal, caps) "
-                           "VALUES (?, ?, ?, ?, ?, ?)",
-                           &stmt) != 0 ||
-            pav_db_bind_text(stmt, 1, row->ra_id) != 0 ||
-            pav_db_bind_text(stmt, 2, w->account_id) != 0 ||
-            pav_db_bind_text(stmt, 3, row->jmap_id) != 0 ||
-            pav_db_bind_text(stmt, 4, row->name) != 0 ||
-            pav_db_bind_int(stmt, 5, row->is_personal) != 0 ||
-            pav_db_bind_text(stmt, 6, row->caps != NULL ? row->caps : "[]") != 0 ||
-            step_done(stmt) != 0) {
+        if (pav_db_prepare(db, "sync.remote_ids",
+                           "SELECT id FROM remote_account WHERE account_id = ?", &stmt) != 0 ||
+            pav_db_bind_text(stmt, 1, w->account_id) != 0) {
             return -1;
         }
+        while ((rc = pav_db_step(stmt)) == SQLITE_ROW) {
+            const char *id = (const char *)sqlite3_column_text(stmt, 0);
+            HaveId *grown;
+
+            if (id == NULL) {
+                continue;
+            }
+            if (have_n == have_cap) {
+                have_cap = have_cap == 0 ? 8 : have_cap * 2;
+                grown = realloc(have, (size_t)have_cap * sizeof(*have));
+                if (grown == NULL) {
+                    free(have);
+                    return -1;
+                }
+                have = grown;
+            }
+            if (!copy_fit(have[have_n].id, sizeof(have[have_n].id), id)) {
+                free(have);
+                return -1;
+            }
+            have_n++;
+        }
+        if (rc != SQLITE_DONE) {
+            free(have);
+            return -1;
+        }
+        for (h = 0; h < have_n; h++) {
+            int found = 0;
+
+            for (i = 0; i < w->remote_count; i++) {
+                if (strcmp(have[h].id, w->remotes[i].ra_id) == 0) {
+                    found = 1;
+                    break;
+                }
+            }
+            if (!found) {
+                if (pav_db_prepare(db, "sync.remote_delete",
+                                   "DELETE FROM remote_account WHERE id = ?", &stmt) != 0 ||
+                    pav_db_bind_text(stmt, 1, have[h].id) != 0 || step_done(stmt) != 0) {
+                    free(have);
+                    return -1;
+                }
+            }
+        }
+        for (i = 0; i < w->remote_count; i++) {
+            SyncRemote *row = &w->remotes[i];
+            int exists = 0;
+
+            for (h = 0; h < have_n; h++) {
+                if (strcmp(have[h].id, row->ra_id) == 0) {
+                    exists = 1;
+                    break;
+                }
+            }
+            if (exists) {
+                if (pav_db_prepare(db, "sync.remote_update",
+                                   "UPDATE remote_account SET name = ?, is_personal = ?, caps = ? "
+                                   "WHERE id = ?",
+                                   &stmt) != 0 ||
+                    pav_db_bind_text(stmt, 1, row->name) != 0 ||
+                    pav_db_bind_int(stmt, 2, row->is_personal) != 0 ||
+                    pav_db_bind_text(stmt, 3, row->caps != NULL ? row->caps : "[]") != 0 ||
+                    pav_db_bind_text(stmt, 4, row->ra_id) != 0 || step_done(stmt) != 0) {
+                    free(have);
+                    return -1;
+                }
+            } else if (pav_db_prepare(db, "sync.remote_insert",
+                                      "INSERT INTO remote_account "
+                                      "(id, account_id, jmap_account_id, name, is_personal, caps) "
+                                      "VALUES (?, ?, ?, ?, ?, ?)",
+                                      &stmt) != 0 ||
+                       pav_db_bind_text(stmt, 1, row->ra_id) != 0 ||
+                       pav_db_bind_text(stmt, 2, w->account_id) != 0 ||
+                       pav_db_bind_text(stmt, 3, row->jmap_id) != 0 ||
+                       pav_db_bind_text(stmt, 4, row->name) != 0 ||
+                       pav_db_bind_int(stmt, 5, row->is_personal) != 0 ||
+                       pav_db_bind_text(stmt, 6, row->caps != NULL ? row->caps : "[]") != 0 ||
+                       step_done(stmt) != 0) {
+                free(have);
+                return -1;
+            }
+        }
+        free(have);
     }
     return 0;
 }
@@ -401,6 +579,7 @@ static void start_connect(PavSup *s, int follow) {
     if (!follow) {
         s->generation++;
         s->redirects = 0;
+        s->saw_mailbox = 0;
         copy_fit(s->current_url, sizeof(s->current_url), s->session_url);
         drop_inflight(s);
         replaced = s->activity_id;
@@ -617,10 +796,317 @@ static void free_remotes(SyncRemote *rows, int n) {
     free(rows);
 }
 
+static char *dup_capped(const char *text, size_t max) {
+    char *copy;
+    size_t n;
+
+    if (text == NULL || text[0] == '\0') {
+        return NULL;
+    }
+    n = strlen(text);
+    if (n > max) {
+        return NULL;
+    }
+    copy = malloc(n + 1);
+    if (copy == NULL) {
+        return NULL;
+    }
+    memcpy(copy, text, n + 1);
+    return copy;
+}
+
+static char *dump_capped(json_t *value, size_t max) {
+    char *text;
+
+    if (value == NULL || json_is_null(value)) {
+        return NULL;
+    }
+    text = json_dumps(value, JSON_COMPACT);
+    if (text == NULL) {
+        return NULL;
+    }
+    if (strlen(text) > max) {
+        free(text);
+        return NULL;
+    }
+    return text;
+}
+
+static int json_int_field(const json_t *obj, const char *key) {
+    json_t *value = json_object_get(obj, key);
+
+    if (!json_is_integer(value)) {
+        return 0;
+    }
+    return (int)json_integer_value(value);
+}
+
+static void copy_json_string(char *dst, size_t n, const json_t *obj, const char *key) {
+    const char *text = json_string_value(json_object_get(obj, key));
+
+    if (n == 0) {
+        return;
+    }
+    snprintf(dst, n, "%s", text != NULL ? text : "");
+}
+
+static int append_id(SyncId **list, int *n, const char *id) {
+    SyncId *grown;
+
+    if (id == NULL || id[0] == '\0' || strlen(id) >= sizeof((*list)->id)) {
+        return 0;
+    }
+    grown = realloc(*list, (size_t)(*n + 1) * sizeof(**list));
+    if (grown == NULL) {
+        return -1;
+    }
+    *list = grown;
+    memset(&(*list)[*n], 0, sizeof((*list)[*n]));
+    copy_fit((*list)[*n].id, sizeof((*list)[*n].id), id);
+    (*n)++;
+    return 0;
+}
+
+static int append_id_array(SyncId **list, int *n, const json_t *arr) {
+    size_t i;
+
+    if (!json_is_array(arr)) {
+        return 0;
+    }
+    for (i = 0; i < json_array_size(arr); i++) {
+        if (append_id(list, n, json_string_value(json_array_get(arr, i))) != 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static int append_mailbox(TypeResult *out, const json_t *obj) {
+    MbxRow *grown;
+    MbxRow *row;
+    const char *id = json_string_value(json_object_get(obj, "id"));
+
+    if (!json_is_object(obj) || id == NULL || id[0] == '\0' || strlen(id) >= sizeof(row->id)) {
+        return 0;
+    }
+    grown = realloc(out->mailboxes, (size_t)(out->mailbox_n + 1) * sizeof(*grown));
+    if (grown == NULL) {
+        return -1;
+    }
+    out->mailboxes = grown;
+    row = &out->mailboxes[out->mailbox_n];
+    memset(row, 0, sizeof(*row));
+    copy_fit(row->id, sizeof(row->id), id);
+    copy_json_string(row->parent_id, sizeof(row->parent_id), obj, "parentId");
+    copy_json_string(row->name, sizeof(row->name), obj, "name");
+    copy_json_string(row->role, sizeof(row->role), obj, "role");
+    row->sort_order = json_int_field(obj, "sortOrder");
+    row->total = json_int_field(obj, "totalEmails");
+    row->unread = json_int_field(obj, "unreadEmails");
+    row->total_threads = json_int_field(obj, "totalThreads");
+    row->unread_threads = json_int_field(obj, "unreadThreads");
+    row->my_rights = dump_capped(json_object_get(obj, "myRights"), 4096);
+    row->is_subscribed = json_is_true(json_object_get(obj, "isSubscribed")) ? 1 : 0;
+    out->mailbox_n++;
+    return 0;
+}
+
+static int append_identity(TypeResult *out, const json_t *obj) {
+    IdnRow *grown;
+    IdnRow *row;
+    const char *id = json_string_value(json_object_get(obj, "id"));
+
+    if (!json_is_object(obj) || id == NULL || id[0] == '\0' || strlen(id) >= sizeof(row->id)) {
+        return 0;
+    }
+    grown = realloc(out->identities, (size_t)(out->identity_n + 1) * sizeof(*grown));
+    if (grown == NULL) {
+        return -1;
+    }
+    out->identities = grown;
+    row = &out->identities[out->identity_n];
+    memset(row, 0, sizeof(*row));
+    copy_fit(row->id, sizeof(row->id), id);
+    copy_json_string(row->name, sizeof(row->name), obj, "name");
+    copy_json_string(row->email, sizeof(row->email), obj, "email");
+    row->reply_to = dump_capped(json_object_get(obj, "replyTo"), 8192);
+    row->bcc = dump_capped(json_object_get(obj, "bcc"), 8192);
+    row->sig_html = dup_capped(json_string_value(json_object_get(obj, "htmlSignature")), 65536);
+    row->sig_text = dup_capped(json_string_value(json_object_get(obj, "textSignature")), 65536);
+    row->may_delete = json_is_true(json_object_get(obj, "mayDelete")) ? 1 : 0;
+    out->identity_n++;
+    return 0;
+}
+
+/* 1 mailbox, 2 identity, 0 unknown. Call ids from this file start with m or i. */
+static int call_side(const json_t *entry) {
+    const char *id = json_string_value(json_array_get(entry, 2));
+
+    if (id == NULL || id[0] == '\0') {
+        return 0;
+    }
+    if (id[0] == 'm') {
+        return 1;
+    }
+    if (id[0] == 'i') {
+        return 2;
+    }
+    return 0;
+}
+
+static const char *method_error_code(const json_t *entry) {
+    const char *name = json_string_value(json_array_get(entry, 0));
+    const json_t *args;
+    const char *code;
+    const json_t *inner;
+
+    if (name == NULL || strcmp(name, "error") != 0) {
+        return NULL;
+    }
+    args = json_array_get(entry, 1);
+    if (!json_is_object(args)) {
+        return "";
+    }
+    code = json_string_value(json_object_get(args, "code"));
+    if (code != NULL) {
+        return code;
+    }
+    inner = json_object_get(args, "error");
+    code = json_is_object(inner) ? json_string_value(json_object_get(inner, "code")) : NULL;
+    return code != NULL ? code : "";
+}
+
+static int reduce_types(const char *body, TypeResult *out) {
+    json_t *root;
+    json_t *responses;
+    size_t i;
+    size_t n;
+
+    root = json_loads(body, 0, NULL);
+    if (!json_is_object(root)) {
+        json_decref(root);
+        copy_fit(out->detail, sizeof(out->detail), "not a jmap response");
+        out->method_error = 1;
+        return -1;
+    }
+    responses = json_object_get(root, "methodResponses");
+    if (!json_is_array(responses)) {
+        json_decref(root);
+        copy_fit(out->detail, sizeof(out->detail), "not a jmap response");
+        out->method_error = 1;
+        return -1;
+    }
+    n = json_array_size(responses);
+    for (i = 0; i < n; i++) {
+        json_t *entry = json_array_get(responses, i);
+        const char *name;
+        const char *code;
+        json_t *args;
+        int side;
+
+        if (!json_is_array(entry) || json_array_size(entry) < 2) {
+            continue;
+        }
+        name = json_string_value(json_array_get(entry, 0));
+        args = json_array_get(entry, 1);
+        side = call_side(entry);
+        code = method_error_code(entry);
+        if (code != NULL) {
+            if (strcmp(code, "cannotCalculateChanges") == 0 && side == 1) {
+                out->mbx_resync = 1;
+            } else if (strcmp(code, "cannotCalculateChanges") == 0 && side == 2) {
+                out->idn_resync = 1;
+            } else {
+                out->method_error = 1;
+                copy_fit(out->detail, sizeof(out->detail), code[0] != '\0' ? code : "request rejected");
+            }
+            continue;
+        }
+        if (name == NULL || !json_is_object(args)) {
+            continue;
+        }
+        if (strcmp(name, "Mailbox/get") == 0) {
+            size_t k;
+            json_t *list = json_object_get(args, "list");
+
+            copy_json_string(out->mbx_state, sizeof(out->mbx_state), args, "state");
+            if (json_is_array(list)) {
+                for (k = 0; k < json_array_size(list); k++) {
+                    if (append_mailbox(out, json_array_get(list, k)) != 0) {
+                        json_decref(root);
+                        return -1;
+                    }
+                }
+            }
+        } else if (strcmp(name, "Identity/get") == 0) {
+            size_t k;
+            json_t *list = json_object_get(args, "list");
+
+            copy_json_string(out->idn_state, sizeof(out->idn_state), args, "state");
+            if (json_is_array(list)) {
+                for (k = 0; k < json_array_size(list); k++) {
+                    if (append_identity(out, json_array_get(list, k)) != 0) {
+                        json_decref(root);
+                        return -1;
+                    }
+                }
+            }
+        } else if (strcmp(name, "Mailbox/changes") == 0) {
+            copy_json_string(out->mbx_state, sizeof(out->mbx_state), args, "newState");
+            out->mbx_more = json_is_true(json_object_get(args, "hasMoreChanges")) ? 1 : 0;
+            if (append_id_array(&out->mbx_destroyed, &out->mbx_destroyed_n, json_object_get(args, "destroyed")) != 0 ||
+                append_id_array(&out->mbx_fetch, &out->mbx_fetch_n, json_object_get(args, "created")) != 0 ||
+                append_id_array(&out->mbx_fetch, &out->mbx_fetch_n, json_object_get(args, "updated")) != 0) {
+                json_decref(root);
+                return -1;
+            }
+        } else if (strcmp(name, "Identity/changes") == 0) {
+            copy_json_string(out->idn_state, sizeof(out->idn_state), args, "newState");
+            out->idn_more = json_is_true(json_object_get(args, "hasMoreChanges")) ? 1 : 0;
+            if (append_id_array(&out->idn_destroyed, &out->idn_destroyed_n, json_object_get(args, "destroyed")) != 0 ||
+                append_id_array(&out->idn_fetch, &out->idn_fetch_n, json_object_get(args, "created")) != 0 ||
+                append_id_array(&out->idn_fetch, &out->idn_fetch_n, json_object_get(args, "updated")) != 0) {
+                json_decref(root);
+                return -1;
+            }
+        }
+    }
+    json_decref(root);
+    return 0;
+}
+
+static void free_type_result(TypeResult *t) {
+    int i;
+
+    if (t == NULL) {
+        return;
+    }
+    for (i = 0; i < t->mailbox_n; i++) {
+        free(t->mailboxes[i].my_rights);
+    }
+    for (i = 0; i < t->identity_n; i++) {
+        free(t->identities[i].reply_to);
+        free(t->identities[i].bcc);
+        free(t->identities[i].sig_html);
+        free(t->identities[i].sig_text);
+    }
+    free(t->mailboxes);
+    free(t->identities);
+    free(t->mbx_destroyed);
+    free(t->idn_destroyed);
+    free(t->mbx_fetch);
+    free(t->idn_fetch);
+    free(t);
+}
+
 void pav_sync_result_free(void *result) {
     SyncResult *r = result;
 
     if (r == NULL) {
+        return;
+    }
+    if (r->kind == SYNC_KIND_TYPES) {
+        free_type_result(result);
         return;
     }
     free(r->session_json);
@@ -637,6 +1123,46 @@ static void release_outputs(PavReq *req) {
     req->body_out = NULL;
 }
 
+static void type_on_done(SyncReq *owned, int stopped) {
+    TypeResult *result;
+
+    if (stopped) {
+        release_outputs(&owned->req);
+        sync_req_release(owned);
+        return;
+    }
+    result = calloc(1, sizeof(*result));
+    if (result == NULL) {
+        release_outputs(&owned->req);
+        sync_req_release(owned);
+        return;
+    }
+    result->kind = SYNC_KIND_TYPES;
+    copy_fit(result->account_id, sizeof(result->account_id), owned->account_id);
+    copy_fit(result->ra_id, sizeof(result->ra_id), owned->ra_id);
+    result->generation = owned->generation;
+    result->status = owned->req.status_code;
+    result->auth_rc = owned->req.auth_rc;
+    result->mbx_mode = owned->mbx_mode;
+    result->idn_mode = owned->idn_mode;
+    if (result->status == 200 && owned->req.body_out != NULL && owned->req.body_out_len > 0 &&
+        owned->req.body_out_len <= PAV_SYNC_TYPE_MAX) {
+        if (reduce_types(owned->req.body_out, result) != 0 && !result->method_error) {
+            result->method_error = 1;
+            copy_fit(result->detail, sizeof(result->detail), "not a jmap response");
+        }
+    } else if (result->status == 200) {
+        result->method_error = 1;
+        copy_fit(result->detail, sizeof(result->detail),
+                 owned->req.body_out_len > PAV_SYNC_TYPE_MAX ? "response too large" : "not a jmap response");
+    }
+    if (sync_stopped() || pav_core_post_sync(result) != 0) {
+        pav_sync_result_free(result);
+    }
+    release_outputs(&owned->req);
+    sync_req_release(owned);
+}
+
 static void sync_on_done(PavReq *req, void *user) {
     SyncReq *owned = user;
     SyncResult *result;
@@ -644,6 +1170,10 @@ static void sync_on_done(PavReq *req, void *user) {
 
     (void)req;
     stopped = sync_stopped();
+    if (owned->kind == SYNC_KIND_TYPES) {
+        type_on_done(owned, stopped);
+        return;
+    }
     if (stopped) {
         release_outputs(&owned->req);
         sync_req_release(owned);
@@ -677,6 +1207,7 @@ static void sync_on_done(PavReq *req, void *user) {
                 memcpy(result->session_json, owned->req.body_out, owned->req.body_out_len);
                 result->session_json[owned->req.body_out_len] = '\0';
                 copy_fit(result->session_state, sizeof(result->session_state), sess.session_state);
+                copy_fit(result->api_url, sizeof(result->api_url), sess.api_url);
                 if (collect_remotes(owned->account_id, &sess, &result->remotes, &result->remote_count) == 0) {
                     result->parsed = 1;
                 } else {
@@ -701,6 +1232,9 @@ static void sync_on_done(PavReq *req, void *user) {
     release_outputs(&owned->req);
     sync_req_release(owned);
 }
+
+static void apply_session_ok(PavSup *s, SyncResult *r);
+static void apply_types(PavSup *s, TypeResult *t);
 
 static int is_redirect(int status) {
     return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
@@ -750,21 +1284,35 @@ static void apply_result(PavSup *s, SyncResult *r) {
         publish_state(s, "error:server", r->detail[0] != '\0' ? r->detail : "request rejected", 0, PAV_ACT_FAILED);
         return;
     }
-    publish_session(s, r);
+    apply_session_ok(s, r);
 }
 
 void pav_sync_on_result(void *result) {
-    SyncResult *r = result;
+    int kind;
+    const char *account_id;
+    uint64_t generation;
     PavSup *s;
 
-    if (r == NULL) {
+    if (result == NULL) {
         return;
     }
+    kind = *(int *)result;
+    if (kind == SYNC_KIND_TYPES) {
+        TypeResult *t = result;
+
+        account_id = t->account_id;
+        generation = t->generation;
+    } else {
+        SyncResult *r = result;
+
+        account_id = r->account_id;
+        generation = r->generation;
+    }
     pthread_mutex_lock(&g_sync_mu);
-    s = find_sup(r->account_id);
-    if (g_sync_stop || s == NULL || s->generation != r->generation) {
+    s = find_sup(account_id);
+    if (g_sync_stop || s == NULL || s->generation != generation) {
         pthread_mutex_unlock(&g_sync_mu);
-        pav_sync_result_free(r);
+        pav_sync_result_free(result);
         return;
     }
     if (s->inflight != NULL) {
@@ -774,8 +1322,937 @@ void pav_sync_on_result(void *result) {
         sync_req_release(req);
     }
     pthread_mutex_unlock(&g_sync_mu);
-    apply_result(s, r);
-    pav_sync_result_free(r);
+    if (kind == SYNC_KIND_TYPES) {
+        apply_types(s, result);
+    } else {
+        apply_result(s, result);
+    }
+    pav_sync_result_free(result);
+}
+
+static void finish_sync_ok(PavSup *s);
+static void begin_remote(PavSup *s, SupRemote *remote);
+static void start_type_request(PavSup *s, SupRemote *remote, int mbx_mode, int idn_mode, const SyncId *mbx_ids,
+                               int mbx_n, const SyncId *idn_ids, int idn_n);
+
+static void free_sup_remote_list(SupRemote *list) {
+    while (list != NULL) {
+        SupRemote *next = list->next;
+
+        free(list);
+        list = next;
+    }
+}
+
+static void reset_sup_remote(SupRemote *remote) {
+    remote->mbx_pages = 0;
+    remote->idn_pages = 0;
+    remote->mbx_resyncs = 0;
+    remote->idn_resyncs = 0;
+    remote->force_mbx_get = 0;
+    remote->force_idn_get = 0;
+    remote->pending_mbx_more = 0;
+    remote->pending_idn_more = 0;
+    remote->pending_mbx_state[0] = '\0';
+    remote->pending_idn_state[0] = '\0';
+}
+
+/* Reuse a supervisor node when the JMAP account id is unchanged, and zero its
+   page counters. A new Session must not drop the node out from under a cycle,
+   and a new cycle must not inherit the previous page cap. */
+static void merge_sup_remotes(PavSup *s, const SyncResult *r) {
+    SupRemote *old;
+    SupRemote *keep = NULL;
+    SupRemote *tail = NULL;
+    int i;
+
+    pthread_mutex_lock(&g_sync_mu);
+    old = s->remotes;
+    s->remotes = NULL;
+    pthread_mutex_unlock(&g_sync_mu);
+    for (i = 0; i < r->remote_count; i++) {
+        SupRemote *prev = NULL;
+        SupRemote *cur;
+        SupRemote *node = NULL;
+
+        for (cur = old; cur != NULL; prev = cur, cur = cur->next) {
+            if (strcmp(cur->jmap_id, r->remotes[i].jmap_id) == 0) {
+                node = cur;
+                if (prev == NULL) {
+                    old = cur->next;
+                } else {
+                    prev->next = cur->next;
+                }
+                node->next = NULL;
+                break;
+            }
+        }
+        if (node == NULL) {
+            node = calloc(1, sizeof(*node));
+            if (node == NULL) {
+                continue;
+            }
+            copy_fit(node->jmap_id, sizeof(node->jmap_id), r->remotes[i].jmap_id);
+        }
+        copy_fit(node->ra_id, sizeof(node->ra_id), r->remotes[i].ra_id);
+        reset_sup_remote(node);
+        if (keep == NULL) {
+            keep = node;
+        } else {
+            tail->next = node;
+        }
+        tail = node;
+    }
+    free_sup_remote_list(old);
+    pthread_mutex_lock(&g_sync_mu);
+    s->remotes = keep;
+    pthread_mutex_unlock(&g_sync_mu);
+}
+
+static void finish_sync_ok(PavSup *s) {
+    if (s->saw_mailbox && s->activity_id > 0) {
+        pav_activity_progress(s->activity_id, 0, -1, NULL, "Mailboxes");
+    }
+    publish_state(s, "idle", "", 0, PAV_ACT_DONE);
+}
+
+static void emit_mailboxes(const char *id) {
+    json_t *obj = json_pack("{s:s}", "accountId", id);
+    char *text;
+
+    if (obj == NULL) {
+        return;
+    }
+    text = json_dumps(obj, JSON_COMPACT);
+    json_decref(obj);
+    if (text == NULL) {
+        return;
+    }
+    pav_event_post("mail.mailboxes_changed", text);
+    free(text);
+    pav_log("sync", PAV_INFO, 1, "mailboxes changed %s", id);
+}
+
+static int store_session(PavSup *s, SyncResult *r, const char *state) {
+    StateWrite w;
+    int64_t now;
+
+    memset(&w, 0, sizeof(w));
+    copy_fit(w.account_id, sizeof(w.account_id), s->account_id);
+    copy_fit(w.state, sizeof(w.state), state);
+    copy_fit(w.session_state, sizeof(w.session_state), r->session_state);
+    w.session_json = r->session_json;
+    w.remotes = r->remotes;
+    w.remote_count = r->remote_count;
+    now = pav_now_ms();
+    w.now_ms = now > 0 ? now : 0;
+    return pav_db_call(write_state_job, &w);
+}
+
+static void load_states(const char *ra_id, char *mbx, size_t mbx_n, char *idn, size_t idn_n) {
+    PavDbRead *read = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int rc;
+
+    mbx[0] = '\0';
+    idn[0] = '\0';
+    if (pav_db_read_begin(&read) != 0) {
+        return;
+    }
+    if (sqlite3_prepare_v2(pav_db_read_handle(read), "SELECT type, state FROM sync_state WHERE ra_id = ?", -1, &stmt,
+                           NULL) != SQLITE_OK) {
+        pav_db_read_end(read);
+        return;
+    }
+    sqlite3_bind_text(stmt, 1, ra_id, -1, SQLITE_TRANSIENT);
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        const char *type = (const char *)sqlite3_column_text(stmt, 0);
+        const char *state = (const char *)sqlite3_column_text(stmt, 1);
+
+        if (type == NULL || state == NULL) {
+            continue;
+        }
+        if (strcmp(type, "Mailbox") == 0) {
+            copy_fit(mbx, mbx_n, state);
+        } else if (strcmp(type, "Identity") == 0) {
+            copy_fit(idn, idn_n, state);
+        }
+    }
+    sqlite3_finalize(stmt);
+    pav_db_read_end(read);
+    (void)rc;
+}
+
+static SupRemote *find_remote(PavSup *s, const char *ra_id) {
+    SupRemote *cur;
+
+    for (cur = s->remotes; cur != NULL; cur = cur->next) {
+        if (strcmp(cur->ra_id, ra_id) == 0) {
+            return cur;
+        }
+    }
+    return NULL;
+}
+
+typedef struct TypeWrite {
+    char ra_id[256];
+    int clear_mbx;
+    int clear_idn;
+    int replace_mbx;
+    int replace_idn;
+    const MbxRow *mailboxes;
+    int mailbox_n;
+    const IdnRow *identities;
+    int identity_n;
+    const SyncId *mbx_del;
+    int mbx_del_n;
+    const SyncId *idn_del;
+    int idn_del_n;
+    const char *mbx_state;
+    const char *idn_state;
+    int64_t now_ms;
+    int missing;
+} TypeWrite;
+
+static int bind_empty_null(sqlite3_stmt *stmt, int index, const char *text) {
+    if (text == NULL || text[0] == '\0') {
+        return pav_db_bind_null(stmt, index);
+    }
+    return pav_db_bind_text(stmt, index, text);
+}
+
+/* The writer already wraps this job. A nested BEGIN would roll the rows back. */
+static int write_type_job(void *ctx, sqlite3 *db) {
+    TypeWrite *w = ctx;
+    sqlite3_stmt *stmt = NULL;
+    int i;
+
+    if (pav_db_prepare(db, "sync.remote_one", "SELECT 1 FROM remote_account WHERE id = ?", &stmt) != 0 ||
+        pav_db_bind_text(stmt, 1, w->ra_id) != 0) {
+        return -1;
+    }
+    i = pav_db_step(stmt);
+    if (i == SQLITE_DONE) {
+        w->missing = 1;
+        return 0;
+    }
+    if (i != SQLITE_ROW) {
+        return -1;
+    }
+    if (w->clear_mbx || w->replace_mbx) {
+        if (pav_db_prepare(db, "sync.mbx_clear", "DELETE FROM mailbox WHERE ra_id = ?", &stmt) != 0 ||
+            pav_db_bind_text(stmt, 1, w->ra_id) != 0 || step_done(stmt) != 0) {
+            return -1;
+        }
+    }
+    if (w->clear_mbx) {
+        if (pav_db_prepare(db, "sync.state_del", "DELETE FROM sync_state WHERE ra_id = ? AND type = ?", &stmt) != 0 ||
+            pav_db_bind_text(stmt, 1, w->ra_id) != 0 || pav_db_bind_text(stmt, 2, "Mailbox") != 0 ||
+            step_done(stmt) != 0) {
+            return -1;
+        }
+    }
+    if (w->clear_idn || w->replace_idn) {
+        if (pav_db_prepare(db, "sync.idn_clear", "DELETE FROM identity WHERE ra_id = ?", &stmt) != 0 ||
+            pav_db_bind_text(stmt, 1, w->ra_id) != 0 || step_done(stmt) != 0) {
+            return -1;
+        }
+    }
+    if (w->clear_idn) {
+        if (pav_db_prepare(db, "sync.state_del", "DELETE FROM sync_state WHERE ra_id = ? AND type = ?", &stmt) != 0 ||
+            pav_db_bind_text(stmt, 1, w->ra_id) != 0 || pav_db_bind_text(stmt, 2, "Identity") != 0 ||
+            step_done(stmt) != 0) {
+            return -1;
+        }
+    }
+    for (i = 0; i < w->mbx_del_n; i++) {
+        if (pav_db_prepare(db, "sync.mbx_del", "DELETE FROM mailbox WHERE ra_id = ? AND id = ?", &stmt) != 0 ||
+            pav_db_bind_text(stmt, 1, w->ra_id) != 0 || pav_db_bind_text(stmt, 2, w->mbx_del[i].id) != 0 ||
+            step_done(stmt) != 0) {
+            return -1;
+        }
+    }
+    for (i = 0; i < w->idn_del_n; i++) {
+        if (pav_db_prepare(db, "sync.idn_del", "DELETE FROM identity WHERE ra_id = ? AND id = ?", &stmt) != 0 ||
+            pav_db_bind_text(stmt, 1, w->ra_id) != 0 || pav_db_bind_text(stmt, 2, w->idn_del[i].id) != 0 ||
+            step_done(stmt) != 0) {
+            return -1;
+        }
+    }
+    if (!w->clear_mbx) {
+        for (i = 0; i < w->mailbox_n; i++) {
+            const MbxRow *row = &w->mailboxes[i];
+
+            if (pav_db_prepare(db, "sync.mbx_upsert",
+                               "INSERT INTO mailbox (ra_id, id, parent_id, name, role, sort_order, total, unread, "
+                               "total_threads, unread_threads, my_rights, is_subscribed) "
+                               "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                               "ON CONFLICT(ra_id, id) DO UPDATE SET parent_id = excluded.parent_id, "
+                               "name = excluded.name, role = excluded.role, sort_order = excluded.sort_order, "
+                               "total = excluded.total, unread = excluded.unread, "
+                               "total_threads = excluded.total_threads, unread_threads = excluded.unread_threads, "
+                               "my_rights = excluded.my_rights, is_subscribed = excluded.is_subscribed",
+                               &stmt) != 0 ||
+                pav_db_bind_text(stmt, 1, w->ra_id) != 0 || pav_db_bind_text(stmt, 2, row->id) != 0 ||
+                bind_empty_null(stmt, 3, row->parent_id) != 0 || pav_db_bind_text(stmt, 4, row->name) != 0 ||
+                bind_empty_null(stmt, 5, row->role) != 0 || pav_db_bind_int(stmt, 6, row->sort_order) != 0 ||
+                pav_db_bind_int(stmt, 7, row->total) != 0 || pav_db_bind_int(stmt, 8, row->unread) != 0 ||
+                pav_db_bind_int(stmt, 9, row->total_threads) != 0 ||
+                pav_db_bind_int(stmt, 10, row->unread_threads) != 0 ||
+                pav_db_bind_text(stmt, 11, row->my_rights) != 0 || pav_db_bind_int(stmt, 12, row->is_subscribed) != 0 ||
+                step_done(stmt) != 0) {
+                return -1;
+            }
+        }
+    }
+    if (!w->clear_idn) {
+        for (i = 0; i < w->identity_n; i++) {
+            const IdnRow *row = &w->identities[i];
+
+            if (pav_db_prepare(db, "sync.idn_upsert",
+                               "INSERT INTO identity (ra_id, id, name, email, reply_to, bcc, sig_html, sig_text, "
+                               "may_delete) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                               "ON CONFLICT(ra_id, id) DO UPDATE SET name = excluded.name, email = excluded.email, "
+                               "reply_to = excluded.reply_to, bcc = excluded.bcc, sig_html = excluded.sig_html, "
+                               "sig_text = excluded.sig_text, may_delete = excluded.may_delete",
+                               &stmt) != 0 ||
+                pav_db_bind_text(stmt, 1, w->ra_id) != 0 || pav_db_bind_text(stmt, 2, row->id) != 0 ||
+                pav_db_bind_text(stmt, 3, row->name) != 0 || pav_db_bind_text(stmt, 4, row->email) != 0 ||
+                pav_db_bind_text(stmt, 5, row->reply_to) != 0 || pav_db_bind_text(stmt, 6, row->bcc) != 0 ||
+                pav_db_bind_text(stmt, 7, row->sig_html) != 0 || pav_db_bind_text(stmt, 8, row->sig_text) != 0 ||
+                pav_db_bind_int(stmt, 9, row->may_delete) != 0 || step_done(stmt) != 0) {
+                return -1;
+            }
+        }
+    }
+    if (w->mbx_state != NULL && w->mbx_state[0] != '\0' && !w->clear_mbx) {
+        if (pav_db_prepare(db, "sync.state_upsert",
+                           "INSERT INTO sync_state (ra_id, type, state, updated) VALUES (?, ?, ?, ?) "
+                           "ON CONFLICT(ra_id, type) DO UPDATE SET state = excluded.state, updated = excluded.updated",
+                           &stmt) != 0 ||
+            pav_db_bind_text(stmt, 1, w->ra_id) != 0 || pav_db_bind_text(stmt, 2, "Mailbox") != 0 ||
+            pav_db_bind_text(stmt, 3, w->mbx_state) != 0 || pav_db_bind_int64(stmt, 4, w->now_ms) != 0 ||
+            step_done(stmt) != 0) {
+            return -1;
+        }
+    }
+    if (w->idn_state != NULL && w->idn_state[0] != '\0' && !w->clear_idn) {
+        if (pav_db_prepare(db, "sync.state_upsert",
+                           "INSERT INTO sync_state (ra_id, type, state, updated) VALUES (?, ?, ?, ?) "
+                           "ON CONFLICT(ra_id, type) DO UPDATE SET state = excluded.state, updated = excluded.updated",
+                           &stmt) != 0 ||
+            pav_db_bind_text(stmt, 1, w->ra_id) != 0 || pav_db_bind_text(stmt, 2, "Identity") != 0 ||
+            pav_db_bind_text(stmt, 3, w->idn_state) != 0 || pav_db_bind_int64(stmt, 4, w->now_ms) != 0 ||
+            step_done(stmt) != 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static int put_json(json_t *obj, const char *key, json_t *value) {
+    if (value == NULL) {
+        return -1;
+    }
+    /* set_new frees value on failure. */
+    return json_object_set_new(obj, key, value);
+}
+
+static int append_method(json_t *calls, const char *name, json_t *args, const char *cid) {
+    json_t *call = json_array();
+    json_t *method = json_string(name);
+    json_t *id = json_string(cid);
+
+    if (call == NULL || method == NULL || id == NULL || args == NULL) {
+        json_decref(call);
+        json_decref(method);
+        json_decref(id);
+        json_decref(args);
+        return -1;
+    }
+    if (json_array_append_new(call, method) != 0) {
+        json_decref(id);
+        json_decref(args);
+        json_decref(call);
+        return -1;
+    }
+    if (json_array_append_new(call, args) != 0) {
+        json_decref(id);
+        json_decref(call);
+        return -1;
+    }
+    if (json_array_append_new(call, id) != 0) {
+        json_decref(call);
+        return -1;
+    }
+    if (json_array_append_new(calls, call) != 0) {
+        return -1;
+    }
+    return 0;
+}
+
+static json_t *ids_array(const SyncId *ids, int n) {
+    json_t *arr = json_array();
+    int i;
+
+    if (arr == NULL) {
+        return NULL;
+    }
+    for (i = 0; i < n; i++) {
+        json_t *id = json_string(ids[i].id);
+
+        if (id == NULL || json_array_append_new(arr, id) != 0) {
+            json_decref(arr);
+            return NULL;
+        }
+    }
+    return arr;
+}
+
+static json_t *method_args(const char *account, int mode, const char *since, const SyncId *ids, int n) {
+    json_t *args = json_object();
+    json_t *account_id = json_string(account);
+
+    if (args == NULL || account_id == NULL || put_json(args, "accountId", account_id) != 0) {
+        json_decref(args);
+        if (account_id != NULL && args == NULL) {
+            json_decref(account_id);
+        }
+        return NULL;
+    }
+    if (mode == TYPE_GET) {
+        if (put_json(args, "ids", json_null()) != 0) {
+            json_decref(args);
+            return NULL;
+        }
+    } else if (mode == TYPE_GET_IDS) {
+        json_t *arr = ids_array(ids, n);
+
+        if (arr == NULL || put_json(args, "ids", arr) != 0) {
+            json_decref(args);
+            return NULL;
+        }
+    } else if (mode == TYPE_CHANGES) {
+        json_t *state = json_string(since != NULL ? since : "");
+        json_t *max = json_integer(500);
+
+        if (state == NULL || max == NULL) {
+            json_decref(state);
+            json_decref(max);
+            json_decref(args);
+            return NULL;
+        }
+        if (put_json(args, "sinceState", state) != 0) {
+            json_decref(max);
+            json_decref(args);
+            return NULL;
+        }
+        if (put_json(args, "maxChanges", max) != 0) {
+            json_decref(args);
+            return NULL;
+        }
+    }
+    return args;
+}
+
+static char *build_type_body(SupRemote *remote, int mbx_mode, int idn_mode, const char *mbx_since,
+                             const char *idn_since, const SyncId *mbx_ids, int mbx_n, const SyncId *idn_ids,
+                             int idn_n) {
+    json_t *root = json_object();
+    json_t *using = json_array();
+    json_t *calls = json_array();
+    json_t *core = json_string("urn:ietf:params:jmap:core");
+    json_t *mail = json_string("urn:ietf:params:jmap:mail");
+    char *text = NULL;
+
+    if (root == NULL || using == NULL || calls == NULL || core == NULL || mail == NULL) {
+        json_decref(root);
+        json_decref(using);
+        json_decref(calls);
+        json_decref(core);
+        json_decref(mail);
+        return NULL;
+    }
+    if (json_array_append_new(using, core) != 0) {
+        json_decref(mail);
+        json_decref(using);
+        json_decref(calls);
+        json_decref(root);
+        return NULL;
+    }
+    if (json_array_append_new(using, mail) != 0) {
+        json_decref(using);
+        json_decref(calls);
+        json_decref(root);
+        return NULL;
+    }
+    if (put_json(root, "using", using) != 0) {
+        json_decref(calls);
+        json_decref(root);
+        return NULL;
+    }
+    if (idn_mode != TYPE_SKIP) {
+        const char *cid = idn_mode == TYPE_GET_IDS ? "if" : "i";
+        const char *name = idn_mode == TYPE_CHANGES ? "Identity/changes" : "Identity/get";
+        json_t *args = method_args(remote->jmap_id, idn_mode, idn_since, idn_ids, idn_n);
+
+        if (append_method(calls, name, args, cid) != 0) {
+            json_decref(calls);
+            json_decref(root);
+            return NULL;
+        }
+    }
+    if (mbx_mode != TYPE_SKIP) {
+        const char *cid = mbx_mode == TYPE_GET_IDS ? "mf" : "m";
+        const char *name = mbx_mode == TYPE_CHANGES ? "Mailbox/changes" : "Mailbox/get";
+        json_t *args = method_args(remote->jmap_id, mbx_mode, mbx_since, mbx_ids, mbx_n);
+
+        if (append_method(calls, name, args, cid) != 0) {
+            json_decref(calls);
+            json_decref(root);
+            return NULL;
+        }
+    }
+    if (put_json(root, "methodCalls", calls) != 0 || put_json(root, "RequestId", json_string("pav-m3")) != 0) {
+        json_decref(root);
+        return NULL;
+    }
+    text = json_dumps(root, JSON_COMPACT);
+    json_decref(root);
+    return text;
+}
+
+static SyncReq *make_type_req(PavSup *s, SupRemote *remote, int mbx_mode, int idn_mode, char *body) {
+    SyncReq *req = calloc(1, sizeof(*req));
+
+    if (req == NULL) {
+        free(body);
+        return NULL;
+    }
+    atomic_init(&req->refs, 2);
+    req->kind = SYNC_KIND_TYPES;
+    req->generation = s->generation;
+    req->mbx_mode = mbx_mode;
+    req->idn_mode = idn_mode;
+    req->body = body;
+    copy_fit(req->account_id, sizeof(req->account_id), s->account_id);
+    copy_fit(req->url, sizeof(req->url), s->api_url);
+    copy_fit(req->ca_file, sizeof(req->ca_file), s->ca_file);
+    copy_fit(req->keyring_user, sizeof(req->keyring_user), s->keyring_user);
+    copy_fit(req->username, sizeof(req->username), s->username);
+    copy_fit(req->auth_method, sizeof(req->auth_method), s->auth);
+    copy_fit(req->ra_id, sizeof(req->ra_id), remote->ra_id);
+    copy_fit(req->jmap_id, sizeof(req->jmap_id), remote->jmap_id);
+    req->req.method = "POST";
+    req->req.url = req->url;
+    req->req.account_id = req->account_id;
+    req->req.keyring_user = req->keyring_user;
+    req->req.username = req->username;
+    req->req.auth_method = req->auth_method;
+    req->req.ca_file = req->ca_file[0] != '\0' ? req->ca_file : NULL;
+    req->req.body = req->body;
+    req->req.body_len = body != NULL ? strlen(body) : 0;
+    req->req.headers = json_pack("{s:s}", "Content-Type", "application/json");
+    req->req.on_done = sync_on_done;
+    req->req.user = req;
+    if (req->req.headers == NULL) {
+        free(req->body);
+        free(req);
+        return NULL;
+    }
+    return req;
+}
+
+static int pages_ok(SupRemote *remote, int mbx_mode, int idn_mode) {
+    int ok = 1;
+
+    pthread_mutex_lock(&g_sync_mu);
+    if (mbx_mode == TYPE_CHANGES) {
+        remote->mbx_pages++;
+        if (remote->mbx_pages > PAV_SYNC_PAGE_MAX) {
+            ok = 0;
+        }
+    }
+    if (ok && idn_mode == TYPE_CHANGES) {
+        remote->idn_pages++;
+        if (remote->idn_pages > PAV_SYNC_PAGE_MAX) {
+            ok = 0;
+        }
+    }
+    pthread_mutex_unlock(&g_sync_mu);
+    return ok;
+}
+
+/* One POST for this remote. Does not increment the session attempt counter. */
+static void start_type_request(PavSup *s, SupRemote *remote, int mbx_mode, int idn_mode, const SyncId *mbx_ids,
+                               int mbx_n, const SyncId *idn_ids, int idn_n) {
+    char mbx_since[128];
+    char idn_since[128];
+    char *body;
+    SyncReq *req;
+
+    if (remote == NULL) {
+        finish_sync_ok(s);
+        return;
+    }
+    if (mbx_mode == TYPE_GET_IDS && mbx_n <= 0) {
+        mbx_mode = TYPE_SKIP;
+    }
+    if (idn_mode == TYPE_GET_IDS && idn_n <= 0) {
+        idn_mode = TYPE_SKIP;
+    }
+    mbx_since[0] = '\0';
+    idn_since[0] = '\0';
+    if (mbx_mode == TYPE_CHANGES || idn_mode == TYPE_CHANGES) {
+        load_states(remote->ra_id, mbx_since, sizeof(mbx_since), idn_since, sizeof(idn_since));
+        if (mbx_mode == TYPE_CHANGES && mbx_since[0] == '\0') {
+            mbx_mode = TYPE_GET;
+        }
+        if (idn_mode == TYPE_CHANGES && idn_since[0] == '\0') {
+            idn_mode = TYPE_GET;
+        }
+    }
+    if (mbx_mode == TYPE_SKIP && idn_mode == TYPE_SKIP) {
+        begin_remote(s, remote->next);
+        return;
+    }
+    if (!pages_ok(remote, mbx_mode, idn_mode)) {
+        publish_state(s, "error:server", "too many changes", 0, PAV_ACT_FAILED);
+        return;
+    }
+    body = build_type_body(remote, mbx_mode, idn_mode, mbx_since, idn_since, mbx_ids, mbx_n, idn_ids, idn_n);
+    if (body == NULL) {
+        publish_state(s, "offline", "offline", 1, PAV_ACT_FAILED);
+        return;
+    }
+    req = make_type_req(s, remote, mbx_mode, idn_mode, body);
+    if (req == NULL) {
+        publish_state(s, "offline", "offline", 1, PAV_ACT_FAILED);
+        return;
+    }
+    pthread_mutex_lock(&g_sync_mu);
+    if (g_sync_stop || !s->enabled) {
+        pthread_mutex_unlock(&g_sync_mu);
+        sync_req_release(req);
+        sync_req_release(req);
+        return;
+    }
+    drop_inflight(s);
+    req->generation = s->generation;
+    s->inflight = req;
+    pthread_mutex_unlock(&g_sync_mu);
+    if (idn_mode != TYPE_SKIP && s->activity_id > 0) {
+        pav_activity_progress(s->activity_id, 0, -1, NULL, "Identities");
+    }
+    if (mbx_mode != TYPE_SKIP) {
+        s->saw_mailbox = 1;
+        if (idn_mode == TYPE_SKIP && s->activity_id > 0) {
+            pav_activity_progress(s->activity_id, 0, -1, NULL, "Mailboxes");
+        }
+    }
+    if (pav_net_request(&req->req) != 0) {
+        fail_submit(s, req);
+    }
+}
+
+static void begin_remote(PavSup *s, SupRemote *remote) {
+    char mbx_state[128];
+    char idn_state[128];
+    int mbx_mode;
+    int idn_mode;
+
+    if (remote == NULL) {
+        finish_sync_ok(s);
+        return;
+    }
+    load_states(remote->ra_id, mbx_state, sizeof(mbx_state), idn_state, sizeof(idn_state));
+    if (remote->force_mbx_get || mbx_state[0] == '\0') {
+        mbx_mode = TYPE_GET;
+        remote->force_mbx_get = 0;
+    } else {
+        mbx_mode = TYPE_CHANGES;
+    }
+    if (remote->force_idn_get || idn_state[0] == '\0') {
+        idn_mode = TYPE_GET;
+        remote->force_idn_get = 0;
+    } else {
+        idn_mode = TYPE_CHANGES;
+    }
+    start_type_request(s, remote, mbx_mode, idn_mode, NULL, 0, NULL, 0);
+}
+
+static void apply_session_ok(PavSup *s, SyncResult *r) {
+    int https;
+
+    if (r->remote_count <= 0) {
+        publish_session(s, r);
+        return;
+    }
+    https = strncmp(r->api_url, "https://", 8) == 0;
+    pthread_mutex_lock(&g_sync_mu);
+    copy_fit(s->state, sizeof(s->state), "syncing");
+    s->auto_retry = 0;
+    s->saw_mailbox = 0;
+    if (https) {
+        copy_fit(s->api_url, sizeof(s->api_url), r->api_url);
+    }
+    pthread_mutex_unlock(&g_sync_mu);
+    if (store_session(s, r, "syncing") != 0) {
+        pav_log("sync", PAV_ERROR, 1, "cannot store session for %s", s->account_id);
+        publish_state(s, "error:server", "cannot store session", 0, PAV_ACT_FAILED);
+        return;
+    }
+    if (!https) {
+        publish_state(s, "error:server", "invalid session", 0, PAV_ACT_FAILED);
+        return;
+    }
+    merge_sup_remotes(s, r);
+    if (s->remotes == NULL) {
+        finish_sync_ok(s);
+        return;
+    }
+    if (s->activity_id > 0) {
+        pav_activity_progress(s->activity_id, 0, -1, NULL, "Identities");
+    }
+    emit_state(s->account_id, "syncing", "Identities");
+    begin_remote(s, s->remotes);
+}
+
+static int fail_type_transport(PavSup *s, int auth_rc, int status, const char *detail) {
+    if (auth_rc == PAV_SECRET_LOCKED) {
+        publish_state(s, "locked", "keyring is locked", 1, PAV_ACT_FAILED);
+        return 1;
+    }
+    if (auth_rc == PAV_SECRET_MISSING || auth_rc == PAV_SECRET_FAILED || status == 401) {
+        publish_state(s, "error:auth", "authentication failed", 0, PAV_ACT_FAILED);
+        return 1;
+    }
+    if (status == 0) {
+        publish_state(s, "offline", "offline", 1, PAV_ACT_FAILED);
+        return 1;
+    }
+    if (status >= 500) {
+        publish_state(s, "error:server", "server error", 1, PAV_ACT_FAILED);
+        return 1;
+    }
+    if (status != 200) {
+        publish_state(s, "error:server", detail != NULL && detail[0] != '\0' ? detail : "request rejected", 0,
+                      PAV_ACT_FAILED);
+        return 1;
+    }
+    return 0;
+}
+
+static void apply_one_type(TypeResult *t, SupRemote *remote, int mailbox, TypeWrite *w, int *next_mode, int *emit,
+                           const SyncId **fetch, int *fetch_n) {
+    int mode = mailbox ? t->mbx_mode : t->idn_mode;
+    int resync = mailbox ? t->mbx_resync : t->idn_resync;
+    int *pending_more = mailbox ? &remote->pending_mbx_more : &remote->pending_idn_more;
+    char *pending_state = mailbox ? remote->pending_mbx_state : remote->pending_idn_state;
+    size_t pending_n = sizeof(remote->pending_mbx_state);
+    const char *state = mailbox ? t->mbx_state : t->idn_state;
+    int more = mailbox ? t->mbx_more : t->idn_more;
+    int destroyed_n = mailbox ? t->mbx_destroyed_n : t->idn_destroyed_n;
+    int row_n = mailbox ? t->mailbox_n : t->identity_n;
+    int fetch_count = mailbox ? t->mbx_fetch_n : t->idn_fetch_n;
+
+    /* A cannotCalculateChanges resync already chose TYPE_GET. Leave it. */
+    if (resync) {
+        return;
+    }
+    *next_mode = TYPE_SKIP;
+    if (mode == TYPE_SKIP) {
+        return;
+    }
+    if (mode == TYPE_CHANGES && fetch_count > 0) {
+        if (mailbox) {
+            w->mbx_del = t->mbx_destroyed;
+            w->mbx_del_n = destroyed_n;
+            if (destroyed_n > 0) {
+                *emit = 1;
+            }
+        } else {
+            w->idn_del = t->idn_destroyed;
+            w->idn_del_n = destroyed_n;
+        }
+        *fetch = mailbox ? t->mbx_fetch : t->idn_fetch;
+        *fetch_n = fetch_count;
+        copy_fit(pending_state, pending_n, state);
+        *pending_more = more;
+        *next_mode = TYPE_GET_IDS;
+        return;
+    }
+    if (mode == TYPE_GET) {
+        if (mailbox) {
+            w->replace_mbx = 1;
+            w->mailboxes = t->mailboxes;
+            w->mailbox_n = row_n;
+            w->mbx_state = state;
+            *emit = 1;
+        } else {
+            w->replace_idn = 1;
+            w->identities = t->identities;
+            w->identity_n = row_n;
+            w->idn_state = state;
+        }
+        return;
+    }
+    if (mode == TYPE_GET_IDS) {
+        char saved[128];
+        int again = *pending_more;
+        const char *use = state;
+
+        copy_fit(saved, sizeof(saved), pending_state);
+        *pending_more = 0;
+        pending_state[0] = '\0';
+        if (saved[0] != '\0') {
+            if (mailbox) {
+                copy_fit(t->mbx_state, sizeof(t->mbx_state), saved);
+                use = t->mbx_state;
+            } else {
+                copy_fit(t->idn_state, sizeof(t->idn_state), saved);
+                use = t->idn_state;
+            }
+        }
+        if (mailbox) {
+            w->mailboxes = t->mailboxes;
+            w->mailbox_n = row_n;
+            w->mbx_state = use;
+            if (row_n > 0) {
+                *emit = 1;
+            }
+        } else {
+            w->identities = t->identities;
+            w->identity_n = row_n;
+            w->idn_state = use;
+        }
+        if (again) {
+            *next_mode = TYPE_CHANGES;
+        }
+        return;
+    }
+    if (mailbox) {
+        w->mbx_del = t->mbx_destroyed;
+        w->mbx_del_n = destroyed_n;
+        w->mbx_state = state;
+        if (destroyed_n > 0) {
+            *emit = 1;
+        }
+    } else {
+        w->idn_del = t->idn_destroyed;
+        w->idn_del_n = destroyed_n;
+        w->idn_state = state;
+    }
+    if (more) {
+        *next_mode = TYPE_CHANGES;
+    }
+}
+
+static void apply_types(PavSup *s, TypeResult *t) {
+    SupRemote *remote;
+    TypeWrite w;
+    int64_t now;
+    int next_mbx = TYPE_SKIP;
+    int next_idn = TYPE_SKIP;
+    int emit = 0;
+    int fatal_mbx;
+    int fatal_idn;
+    const SyncId *mbx_fetch = NULL;
+    const SyncId *idn_fetch = NULL;
+    int mbx_fetch_n = 0;
+    int idn_fetch_n = 0;
+
+    remote = find_remote(s, t->ra_id);
+    if (remote == NULL) {
+        publish_state(s, "error:server", "request rejected", 0, PAV_ACT_FAILED);
+        return;
+    }
+    if (fail_type_transport(s, t->auth_rc, t->status, t->detail)) {
+        return;
+    }
+    if (t->method_error) {
+        publish_state(s, "error:server", t->detail[0] != '\0' ? t->detail : "request rejected", 0, PAV_ACT_FAILED);
+        return;
+    }
+    fatal_mbx = t->mbx_resync && remote->mbx_resyncs >= 1;
+    fatal_idn = t->idn_resync && remote->idn_resyncs >= 1;
+    memset(&w, 0, sizeof(w));
+    copy_fit(w.ra_id, sizeof(w.ra_id), remote->ra_id);
+    now = pav_now_ms();
+    w.now_ms = now > 0 ? now : 0;
+    if (t->mbx_resync && !fatal_mbx) {
+        remote->mbx_resyncs++;
+        w.clear_mbx = 1;
+        remote->pending_mbx_more = 0;
+        remote->pending_mbx_state[0] = '\0';
+        remote->force_mbx_get = 1;
+        next_mbx = TYPE_GET;
+    }
+    if (t->idn_resync && !fatal_idn) {
+        remote->idn_resyncs++;
+        w.clear_idn = 1;
+        remote->pending_idn_more = 0;
+        remote->pending_idn_state[0] = '\0';
+        remote->force_idn_get = 1;
+        next_idn = TYPE_GET;
+    }
+    apply_one_type(t, remote, 1, &w, &next_mbx, &emit, &mbx_fetch, &mbx_fetch_n);
+    apply_one_type(t, remote, 0, &w, &next_idn, &emit, &idn_fetch, &idn_fetch_n);
+    if (pav_db_call(write_type_job, &w) != 0) {
+        pav_log("sync", PAV_ERROR, 1, "cannot store mailboxes for %s", s->account_id);
+        publish_state(s, "error:server", "cannot store mailboxes", 0, PAV_ACT_FAILED);
+        return;
+    }
+    if (w.missing) {
+        publish_state(s, "error:server", "request rejected", 0, PAV_ACT_FAILED);
+        return;
+    }
+    if (emit) {
+        emit_mailboxes(s->account_id);
+    }
+    if (fatal_mbx || fatal_idn) {
+        publish_state(s, "error:server", "cannot calculate changes", 0, PAV_ACT_FAILED);
+        return;
+    }
+    if (next_mbx == TYPE_SKIP && next_idn == TYPE_SKIP) {
+        begin_remote(s, remote->next);
+        return;
+    }
+    start_type_request(s, remote, next_mbx, next_idn, mbx_fetch, mbx_fetch_n, idn_fetch, idn_fetch_n);
+}
+
+static void start_delta(PavSup *s) {
+    int64_t replaced = 0;
+    SupRemote *remote;
+    SupRemote *cur;
+
+    pthread_mutex_lock(&g_sync_mu);
+    if (g_sync_stop || !s->enabled || s->inflight != NULL || strcmp(s->state, "idle") != 0 || s->api_url[0] == '\0' ||
+        strncmp(s->api_url, "https://", 8) != 0 || s->remotes == NULL) {
+        pthread_mutex_unlock(&g_sync_mu);
+        return;
+    }
+    s->generation++;
+    drop_inflight(s);
+    replaced = s->activity_id;
+    s->activity_id = 0;
+    s->saw_mailbox = 0;
+    s->auto_retry = 0;
+    copy_fit(s->state, sizeof(s->state), "syncing");
+    for (cur = s->remotes; cur != NULL; cur = cur->next) {
+        reset_sup_remote(cur);
+    }
+    remote = s->remotes;
+    pthread_mutex_unlock(&g_sync_mu);
+    if (replaced > 0) {
+        pav_activity_end(replaced, PAV_ACT_CANCELLED, NULL);
+    }
+    begin_activity(s);
+    if (s->activity_id > 0) {
+        pav_activity_progress(s->activity_id, 0, -1, NULL, "Identities");
+    }
+    publish_state(s, "syncing", "Identities", 0, 0);
+    begin_remote(s, remote);
 }
 
 static void read_account(json_t *account, int *is_jmap, int *enabled, char *id, size_t id_n, char *name, size_t name_n,
@@ -905,6 +2382,7 @@ void pav_sync_note_removed(const char *account_id) {
     if (act > 0) {
         pav_activity_end(act, PAV_ACT_CANCELLED, NULL);
     }
+    free_sup_remote_list(s->remotes);
     free(s);
 }
 
@@ -1013,6 +2491,7 @@ void pav_sync_shutdown(void) {
         if (act > 0) {
             pav_activity_end(act, PAV_ACT_CANCELLED, NULL);
         }
+        free_sup_remote_list(s->remotes);
         free(s);
         s = next;
     }
@@ -1047,13 +2526,18 @@ void pav_sync_on_wake(void) {
     s = g_sup;
     pthread_mutex_unlock(&g_sync_mu);
     for (; s != NULL; s = s->next) {
-        int go = 0;
+        int retry = 0;
+        int delta = 0;
 
         pthread_mutex_lock(&g_sync_mu);
-        go = s->enabled && s->auto_retry && s->inflight == NULL && !g_sync_stop;
+        retry = s->enabled && s->auto_retry && s->inflight == NULL && !g_sync_stop;
+        delta = !retry && s->enabled && s->inflight == NULL && !g_sync_stop && strcmp(s->state, "idle") == 0 &&
+                s->api_url[0] != '\0' && s->remotes != NULL;
         pthread_mutex_unlock(&g_sync_mu);
-        if (go) {
+        if (retry) {
             start_connect(s, 0);
+        } else if (delta) {
+            start_delta(s);
         }
     }
 }
@@ -1079,4 +2563,540 @@ int pav_sync_attempt_count(const char *account_id) {
     }
     pthread_mutex_unlock(&g_sync_mu);
     return n;
+}
+
+static int list_account_arg(json_t *args, const char **account_id, PavError *err) {
+    const char *key;
+    json_t *value;
+
+    *account_id = NULL;
+    if (!json_is_object(args)) {
+        pav_error_set(err, "bad_args", "arguments must be an object", 0);
+        return -1;
+    }
+    json_object_foreach(args, key, value) {
+        if (strcmp(key, "accountId") == 0) {
+            if (!json_is_string(value) || json_string_value(value)[0] == '\0') {
+                pav_error_set(err, "bad_args", "accountId must be a non-empty string", 0);
+                return -1;
+            }
+            *account_id = json_string_value(value);
+        } else {
+            char buf[128];
+
+            snprintf(buf, sizeof(buf), "unknown argument %s", key);
+            pav_error_set(err, "bad_args", buf, 0);
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static int list_ready(PavError *err) {
+    PavConfigLoad *load = pav_core_load();
+
+    if (load == NULL || load->profile == NULL || strcmp(load->state, "ready") != 0) {
+        pav_error_set(err, "not_ready", "profile is not ready", 0);
+        return 0;
+    }
+    return 1;
+}
+
+static int put_text(json_t *obj, const char *key, const char *value) {
+    json_t *v = json_string(value != NULL ? value : "");
+
+    if (v == NULL || json_object_set_new(obj, key, v) != 0) {
+        return -1;
+    }
+    return 0;
+}
+
+static int put_int_field(json_t *obj, const char *key, int value) {
+    json_t *v = json_integer(value);
+
+    if (v == NULL || json_object_set_new(obj, key, v) != 0) {
+        return -1;
+    }
+    return 0;
+}
+
+static json_t *parse_or_null(const char *text) {
+    json_t *parsed;
+
+    if (text == NULL || text[0] == '\0') {
+        return json_null();
+    }
+    parsed = json_loads(text, 0, NULL);
+    return parsed != NULL ? parsed : json_null();
+}
+
+int pav_cmd_identity_list(json_t *args, json_t **data, PavError *err) {
+    const char *filter = NULL;
+    PavDbRead *read = NULL;
+    sqlite3_stmt *stmt = NULL;
+    json_t *rows;
+    json_t *root;
+    int rc;
+
+    if (data == NULL) {
+        pav_error_set(err, "internal", "missing data", 0);
+        return -1;
+    }
+    *data = NULL;
+    if (list_account_arg(args, &filter, err) != 0 || !list_ready(err)) {
+        return -1;
+    }
+    rows = json_array();
+    root = json_object();
+    if (rows == NULL || root == NULL || put_json(root, "identities", rows) != 0) {
+        json_decref(rows);
+        json_decref(root);
+        pav_error_set(err, "internal", "out of memory", 0);
+        return -1;
+    }
+    if (pav_db_read_begin(&read) != 0) {
+        json_decref(root);
+        pav_error_set(err, "internal", "cannot read identities", 0);
+        return -1;
+    }
+    rc = sqlite3_prepare_v2(pav_db_read_handle(read),
+                            "SELECT r.account_id, i.ra_id, i.id, i.name, i.email, i.reply_to, i.bcc, i.may_delete "
+                            "FROM identity i JOIN remote_account r ON r.id = i.ra_id "
+                            "ORDER BY r.account_id, i.email, i.id",
+                            -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        pav_db_read_end(read);
+        json_decref(root);
+        pav_error_set(err, "internal", "cannot read identities", 0);
+        return -1;
+    }
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        const char *account_id = (const char *)sqlite3_column_text(stmt, 0);
+        const char *ra_id = (const char *)sqlite3_column_text(stmt, 1);
+        const char *id = (const char *)sqlite3_column_text(stmt, 2);
+        const char *name = (const char *)sqlite3_column_text(stmt, 3);
+        const char *email = (const char *)sqlite3_column_text(stmt, 4);
+        const char *reply = sqlite3_column_type(stmt, 5) == SQLITE_NULL ? NULL : (const char *)sqlite3_column_text(stmt, 5);
+        const char *bcc = sqlite3_column_type(stmt, 6) == SQLITE_NULL ? NULL : (const char *)sqlite3_column_text(stmt, 6);
+        json_t *obj;
+        json_t *reply_json;
+        json_t *bcc_json;
+
+        if (account_id == NULL || id == NULL) {
+            continue;
+        }
+        if (filter != NULL && strcmp(filter, account_id) != 0) {
+            continue;
+        }
+        obj = json_object();
+        reply_json = parse_or_null(reply);
+        bcc_json = parse_or_null(bcc);
+        if (obj == NULL || reply_json == NULL || bcc_json == NULL || put_text(obj, "accountId", account_id) != 0 ||
+            put_text(obj, "raId", ra_id != NULL ? ra_id : "") != 0 || put_text(obj, "id", id) != 0 ||
+            put_text(obj, "name", name != NULL ? name : "") != 0 ||
+            put_text(obj, "email", email != NULL ? email : "") != 0 || put_json(obj, "replyTo", reply_json) != 0 ||
+            put_json(obj, "bcc", bcc_json) != 0 ||
+            put_json(obj, "mayDelete", json_boolean(sqlite3_column_int(stmt, 7) ? 1 : 0)) != 0 ||
+            json_array_append_new(rows, obj) != 0) {
+            json_decref(reply_json);
+            json_decref(bcc_json);
+            json_decref(obj);
+            sqlite3_finalize(stmt);
+            pav_db_read_end(read);
+            json_decref(root);
+            pav_error_set(err, "internal", "out of memory", 0);
+            return -1;
+        }
+    }
+    sqlite3_finalize(stmt);
+    pav_db_read_end(read);
+    if (rc != SQLITE_DONE) {
+        json_decref(root);
+        pav_error_set(err, "internal", "cannot read identities", 0);
+        return -1;
+    }
+    *data = root;
+    return 0;
+}
+
+typedef struct MbxLoad {
+    char account_id[64];
+    char ra_id[256];
+    char id[128];
+    char parent_id[128];
+    char name[256];
+    char role[64];
+    int sort_order;
+    int total;
+    int unread;
+} MbxLoad;
+
+typedef struct TreeNode {
+    char id[640];
+    char parent_id[640];
+    char kind[16];
+    char label[256];
+    char role[64];
+    int role_set;
+    int order;
+    int unread;
+    int total;
+    int has_children;
+    char swatch[64];
+    int swatch_set;
+    int sort_order;
+    char sort_name[256];
+    char sort_id[128];
+    char raw_parent[128];
+    char ra_id[256];
+    char account_id[64];
+} TreeNode;
+
+static int add_node(TreeNode **nodes, int *n, const TreeNode *src) {
+    TreeNode *grown = realloc(*nodes, (size_t)(*n + 1) * sizeof(*grown));
+
+    if (grown == NULL) {
+        return -1;
+    }
+    *nodes = grown;
+    (*nodes)[*n] = *src;
+    (*n)++;
+    return 0;
+}
+
+static int role_rank(const char *role) {
+    static const char *names[] = {"inbox", "drafts", "sent", "archive", "junk", "trash"};
+    int i;
+
+    if (role == NULL || role[0] == '\0') {
+        return 7;
+    }
+    for (i = 0; i < 6; i++) {
+        if (strcmp(role, names[i]) == 0) {
+            return i;
+        }
+    }
+    return 6;
+}
+
+static int mailbox_before(const TreeNode *a, const TreeNode *b) {
+    int ra = role_rank(a->role_set ? a->role : "");
+    int rb = role_rank(b->role_set ? b->role : "");
+    int cmp;
+
+    if (a->sort_order != b->sort_order) {
+        return a->sort_order < b->sort_order;
+    }
+    if (ra != rb) {
+        return ra < rb;
+    }
+    if (ra == 6) {
+        cmp = strcmp(a->role, b->role);
+        if (cmp != 0) {
+            return cmp < 0;
+        }
+    }
+    cmp = strcmp(a->sort_name, b->sort_name);
+    if (cmp != 0) {
+        return cmp < 0;
+    }
+    cmp = strcmp(a->sort_id, b->sort_id);
+    if (cmp != 0) {
+        return cmp < 0;
+    }
+    return strcmp(a->id, b->id) < 0;
+}
+
+static int order_siblings(TreeNode *nodes, int n) {
+    int *idx = malloc((size_t)n * sizeof(*idx));
+    int i;
+    int j;
+
+    if (n == 0) {
+        free(idx);
+        return 0;
+    }
+    if (idx == NULL) {
+        return -1;
+    }
+    for (i = 0; i < n; i++) {
+        int seen = 0;
+        int count = 0;
+
+        if (strcmp(nodes[i].kind, "mailbox") != 0) {
+            continue;
+        }
+        for (j = 0; j < i; j++) {
+            if (strcmp(nodes[j].kind, "mailbox") == 0 && strcmp(nodes[j].parent_id, nodes[i].parent_id) == 0) {
+                seen = 1;
+                break;
+            }
+        }
+        if (seen) {
+            continue;
+        }
+        for (j = 0; j < n; j++) {
+            int at;
+
+            if (strcmp(nodes[j].kind, "mailbox") != 0 || strcmp(nodes[j].parent_id, nodes[i].parent_id) != 0) {
+                continue;
+            }
+            at = count;
+            while (at > 0 && mailbox_before(&nodes[j], &nodes[idx[at - 1]])) {
+                idx[at] = idx[at - 1];
+                at--;
+            }
+            idx[at] = j;
+            count++;
+        }
+        for (j = 0; j < count; j++) {
+            nodes[idx[j]].order = j;
+        }
+    }
+    free(idx);
+    return 0;
+}
+
+static int account_listed(const TreeNode *nodes, int n, const char *account_id) {
+    int i;
+
+    for (i = 0; i < n; i++) {
+        if (strcmp(nodes[i].kind, "account") == 0 && strcmp(nodes[i].id, account_id) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static json_t *node_json(const TreeNode *node) {
+    json_t *obj = json_object();
+
+    if (obj == NULL) {
+        return NULL;
+    }
+    if (put_text(obj, "id", node->id) != 0 ||
+        (node->parent_id[0] == '\0' ? put_json(obj, "parentId", json_null()) : put_text(obj, "parentId", node->parent_id)) !=
+            0 ||
+        put_text(obj, "kind", node->kind) != 0 || put_text(obj, "label", node->label) != 0 ||
+        (node->role_set ? put_text(obj, "role", node->role) : put_json(obj, "role", json_null())) != 0 ||
+        put_int_field(obj, "order", node->order) != 0 || put_int_field(obj, "unread", node->unread) != 0 ||
+        put_int_field(obj, "total", node->total) != 0 ||
+        put_json(obj, "hasChildren", json_boolean(node->has_children ? 1 : 0)) != 0 ||
+        (node->swatch_set ? put_text(obj, "swatch", node->swatch) : put_json(obj, "swatch", json_null())) != 0) {
+        json_decref(obj);
+        return NULL;
+    }
+    return obj;
+}
+
+int pav_cmd_mailbox_list(json_t *args, json_t **data, PavError *err) {
+    const char *filter = NULL;
+    PavConfigLoad *load;
+    json_t *accounts;
+    PavDbRead *read = NULL;
+    sqlite3_stmt *stmt = NULL;
+    MbxLoad *loaded = NULL;
+    TreeNode *nodes = NULL;
+    json_t *rows = NULL;
+    json_t *root = NULL;
+    int loaded_n = 0;
+    int node_n = 0;
+    int i;
+    int j;
+    int rc;
+    size_t ai;
+
+    if (data == NULL) {
+        pav_error_set(err, "internal", "missing data", 0);
+        return -1;
+    }
+    *data = NULL;
+    if (list_account_arg(args, &filter, err) != 0 || !list_ready(err)) {
+        return -1;
+    }
+    load = pav_core_load();
+    accounts = json_object_get((json_t *)load->profile->doc, "accounts");
+    if (json_is_array(accounts)) {
+        for (ai = 0; ai < json_array_size(accounts); ai++) {
+            json_t *acct = json_array_get(accounts, ai);
+            const char *id = json_string_value(json_object_get(acct, "id"));
+            const char *name = json_string_value(json_object_get(acct, "name"));
+            const char *color = json_string_value(json_object_get(acct, "color"));
+            TreeNode node;
+
+            if (id == NULL || id[0] == '\0') {
+                continue;
+            }
+            if (filter != NULL && strcmp(filter, id) != 0) {
+                continue;
+            }
+            memset(&node, 0, sizeof(node));
+            if (!copy_fit(node.id, sizeof(node.id), id) || !copy_fit(node.kind, sizeof(node.kind), "account") ||
+                !copy_fit(node.label, sizeof(node.label), name != NULL && name[0] != '\0' ? name : id) ||
+                !copy_fit(node.account_id, sizeof(node.account_id), id)) {
+                continue;
+            }
+            node.order = (int)ai;
+            if (color != NULL && color[0] != '\0' && copy_fit(node.swatch, sizeof(node.swatch), color)) {
+                node.swatch_set = 1;
+            }
+            if (add_node(&nodes, &node_n, &node) != 0) {
+                free(nodes);
+                pav_error_set(err, "internal", "out of memory", 0);
+                return -1;
+            }
+        }
+    }
+    if (pav_db_read_begin(&read) != 0) {
+        free(nodes);
+        pav_error_set(err, "internal", "cannot read mailboxes", 0);
+        return -1;
+    }
+    rc = sqlite3_prepare_v2(pav_db_read_handle(read),
+                            "SELECT r.account_id, m.ra_id, m.id, IFNULL(m.parent_id, ''), IFNULL(m.name, ''), "
+                            "IFNULL(m.role, ''), IFNULL(m.sort_order, 0), IFNULL(m.total, 0), IFNULL(m.unread, 0) "
+                            "FROM mailbox m JOIN remote_account r ON r.id = m.ra_id",
+                            -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        pav_db_read_end(read);
+        free(nodes);
+        pav_error_set(err, "internal", "cannot read mailboxes", 0);
+        return -1;
+    }
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        MbxLoad row;
+        MbxLoad *grown;
+        const char *account_id = (const char *)sqlite3_column_text(stmt, 0);
+
+        memset(&row, 0, sizeof(row));
+        if (account_id == NULL || !account_listed(nodes, node_n, account_id)) {
+            continue;
+        }
+        if (!copy_fit(row.account_id, sizeof(row.account_id), account_id) ||
+            !copy_fit(row.ra_id, sizeof(row.ra_id), (const char *)sqlite3_column_text(stmt, 1)) ||
+            !copy_fit(row.id, sizeof(row.id), (const char *)sqlite3_column_text(stmt, 2)) || row.id[0] == '\0') {
+            continue;
+        }
+        copy_fit(row.parent_id, sizeof(row.parent_id), (const char *)sqlite3_column_text(stmt, 3));
+        copy_fit(row.name, sizeof(row.name), (const char *)sqlite3_column_text(stmt, 4));
+        copy_fit(row.role, sizeof(row.role), (const char *)sqlite3_column_text(stmt, 5));
+        row.sort_order = sqlite3_column_int(stmt, 6);
+        row.total = sqlite3_column_int(stmt, 7);
+        row.unread = sqlite3_column_int(stmt, 8);
+        grown = realloc(loaded, (size_t)(loaded_n + 1) * sizeof(*loaded));
+        if (grown == NULL) {
+            free(loaded);
+            sqlite3_finalize(stmt);
+            pav_db_read_end(read);
+            free(nodes);
+            pav_error_set(err, "internal", "out of memory", 0);
+            return -1;
+        }
+        loaded = grown;
+        loaded[loaded_n++] = row;
+    }
+    sqlite3_finalize(stmt);
+    pav_db_read_end(read);
+    if (rc != SQLITE_DONE) {
+        free(loaded);
+        free(nodes);
+        pav_error_set(err, "internal", "cannot read mailboxes", 0);
+        return -1;
+    }
+    for (i = 0; i < loaded_n; i++) {
+        TreeNode node;
+        int wrote;
+
+        memset(&node, 0, sizeof(node));
+        wrote = snprintf(node.id, sizeof(node.id), "mbx:%s:%s", loaded[i].ra_id, loaded[i].id);
+        if (wrote < 0 || (size_t)wrote >= sizeof(node.id) || !copy_fit(node.kind, sizeof(node.kind), "mailbox") ||
+            !copy_fit(node.label, sizeof(node.label), loaded[i].name[0] != '\0' ? loaded[i].name : loaded[i].id) ||
+            !copy_fit(node.sort_name, sizeof(node.sort_name), loaded[i].name) ||
+            !copy_fit(node.sort_id, sizeof(node.sort_id), loaded[i].id) ||
+            !copy_fit(node.raw_parent, sizeof(node.raw_parent), loaded[i].parent_id) ||
+            !copy_fit(node.ra_id, sizeof(node.ra_id), loaded[i].ra_id) ||
+            !copy_fit(node.account_id, sizeof(node.account_id), loaded[i].account_id)) {
+            continue;
+        }
+        if (loaded[i].role[0] != '\0' && copy_fit(node.role, sizeof(node.role), loaded[i].role)) {
+            node.role_set = 1;
+        }
+        node.sort_order = loaded[i].sort_order;
+        node.total = loaded[i].total;
+        node.unread = loaded[i].unread;
+        if (add_node(&nodes, &node_n, &node) != 0) {
+            free(loaded);
+            free(nodes);
+            pav_error_set(err, "internal", "out of memory", 0);
+            return -1;
+        }
+    }
+    free(loaded);
+    loaded = NULL;
+    for (i = 0; i < node_n; i++) {
+        int found = 0;
+
+        if (strcmp(nodes[i].kind, "mailbox") != 0) {
+            continue;
+        }
+        if (nodes[i].raw_parent[0] != '\0') {
+            for (j = 0; j < node_n; j++) {
+                if (strcmp(nodes[j].kind, "mailbox") == 0 && strcmp(nodes[j].ra_id, nodes[i].ra_id) == 0 &&
+                    strcmp(nodes[j].sort_id, nodes[i].raw_parent) == 0) {
+                    copy_fit(nodes[i].parent_id, sizeof(nodes[i].parent_id), nodes[j].id);
+                    found = 1;
+                    break;
+                }
+            }
+        }
+        if (!found) {
+            copy_fit(nodes[i].parent_id, sizeof(nodes[i].parent_id), nodes[i].account_id);
+        }
+        for (j = 0; j < node_n; j++) {
+            if (strcmp(nodes[j].kind, "account") == 0 && strcmp(nodes[j].id, nodes[i].account_id) == 0) {
+                nodes[j].unread += nodes[i].unread;
+                nodes[j].total += nodes[i].total;
+                break;
+            }
+        }
+    }
+    for (i = 0; i < node_n; i++) {
+        if (nodes[i].parent_id[0] == '\0') {
+            continue;
+        }
+        for (j = 0; j < node_n; j++) {
+            if (strcmp(nodes[j].id, nodes[i].parent_id) == 0) {
+                nodes[j].has_children = 1;
+                break;
+            }
+        }
+    }
+    if (order_siblings(nodes, node_n) != 0) {
+        free(nodes);
+        pav_error_set(err, "internal", "out of memory", 0);
+        return -1;
+    }
+    rows = json_array();
+    root = json_object();
+    if (rows == NULL || root == NULL || put_json(root, "nodes", rows) != 0) {
+        json_decref(rows);
+        json_decref(root);
+        free(nodes);
+        pav_error_set(err, "internal", "out of memory", 0);
+        return -1;
+    }
+    for (i = 0; i < node_n; i++) {
+        json_t *obj = node_json(&nodes[i]);
+
+        if (obj == NULL || json_array_append_new(rows, obj) != 0) {
+            json_decref(obj);
+            json_decref(root);
+            free(nodes);
+            pav_error_set(err, "internal", "out of memory", 0);
+            return -1;
+        }
+    }
+    free(nodes);
+    *data = root;
+    return 0;
 }

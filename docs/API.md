@@ -396,9 +396,13 @@ Streams a local file into a folder. The bytes are not part of the JSON arguments
 
 ### identity.list
 
-State: planned (M-3)
+State: real (M-3)
 
-`{accountId?}`. Lists identities synced for those accounts.
+Args: `{accountId?}`. Omitted lists every account. An unknown id returns an empty list.
+
+Result: `{identities:[{accountId, raId, id, name, email, replyTo, bcc, mayDelete}]}`. `replyTo` and `bcc` are the stored JSON or null. `mayDelete` is a boolean. Signatures are stored and are not returned.
+
+Errors: `bad_args`, `not_ready`, `internal`.
 
 ### link.open
 
@@ -498,9 +502,13 @@ Deletes a mailbox through `Mailbox/set`.
 
 ### mailbox.list
 
-State: planned (M-3)
+State: real (M-3)
 
-`{accountId?}`. Returns tree nodes (`id`, `parentId`, `kind`, `label`, `role`, `order`, `unread`, `total`, `hasChildren`, `swatch`).
+Args: `{accountId?}`. Omitted lists every profile account. An unknown id returns `{nodes:[]}`.
+
+Result: `{nodes:[{id, parentId, kind, label, role, order, unread, total, hasChildren, swatch}]}`. One root per profile account (`kind` `account`, `id` the account id, `swatch` the account color or null, `order` the account's index). `unread` and `total` on that root are the sums of that account's mailbox counts. Mailbox `id` is `mbx:<accountId>/<jmapAccountId>:<mailboxId>`, `kind` `mailbox`, `swatch` null, `role` null when the mailbox has none. A mailbox whose parent is missing hangs off the account root. `order` is the sibling index after `sortOrder`, then role (inbox, drafts, sent, archive, junk, trash, then any other role, then none), then name, then id.
+
+Errors: `bad_args`, `not_ready`, `internal`.
 
 ### mailbox.move
 
@@ -906,9 +914,9 @@ State: real (H-4)
 ### mail.mailboxes_changed
 
 Kind: event
-State: planned (M-3)
+State: real (M-3)
 
-The mailbox tree changed.
+`{accountId}`. Emitted when a sync writes or destroys mailbox rows. A changes page that only advances state does not emit it.
 
 ### mail.messages_changed
 

@@ -52,6 +52,9 @@ int pav_core_post_capabilities(const char *id, json_t *caps, const char *checked
    pav_sync_result_free. 0 queued, -1 not (caller frees). */
 int pav_core_post_sync(void *result);
 
+int pav_cmd_identity_list(json_t *args, json_t **data, PavError *err);
+int pav_cmd_mailbox_list(json_t *args, json_t **data, PavError *err);
+
 int pav_activity_cmd_list(json_t *args, json_t **data, PavError *err);
 int pav_activity_cmd_cancel(json_t *args, json_t **data, PavError *err);
 int pav_activity_cmd_dismiss(json_t *args, json_t **data, PavError *err);

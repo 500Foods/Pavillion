@@ -172,6 +172,19 @@ int pav_db_tx_rollback(sqlite3 *db) {
     return sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL) == SQLITE_OK ? 0 : -1;
 }
 
+void pav_db_cache_reset(sqlite3 *db) {
+    StmtNode *node;
+
+    pthread_mutex_lock(&g_cache_mu);
+    for (node = g_cache; node != NULL; node = node->next) {
+        if (db == NULL || node->db == db) {
+            sqlite3_reset(node->stmt);
+            sqlite3_clear_bindings(node->stmt);
+        }
+    }
+    pthread_mutex_unlock(&g_cache_mu);
+}
+
 void pav_db_cache_clear(sqlite3 *db) {
     StmtNode *prev = NULL;
     StmtNode *node;

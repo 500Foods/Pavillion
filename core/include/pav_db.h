@@ -35,6 +35,7 @@ int pav_db_tx_begin(sqlite3 *db);
 int pav_db_tx_commit(sqlite3 *db);
 int pav_db_tx_rollback(sqlite3 *db);
 void pav_db_cache_clear(sqlite3 *db);
+void pav_db_cache_reset(sqlite3 *db);
 
 int pav_db_readpool_open(const char *path);
 void pav_db_readpool_close(void);

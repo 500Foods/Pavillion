@@ -88,10 +88,32 @@ static DbJob *take_unlocked(void) {
     return job;
 }
 
+/* A stepped statement keeps this connection's WAL snapshot. Another
+   connection's commit then makes BEGIN IMMEDIATE fail with
+   SQLITE_BUSY_SNAPSHOT until those statements are reset. The extended
+   code has been 517 since SQLite 3.7; define it if the header is older. */
+#ifndef SQLITE_BUSY_SNAPSHOT
+#define SQLITE_BUSY_SNAPSHOT (SQLITE_BUSY | (2 << 8))
+#endif
+static int begin_write(sqlite3 *db) {
+    pav_db_cache_reset(db);
+    if (pav_db_tx_begin(db) == 0) {
+        return 0;
+    }
+    if (sqlite3_extended_errcode(db) == SQLITE_BUSY_SNAPSHOT || sqlite3_errcode(db) == SQLITE_BUSY) {
+        pav_db_cache_reset(db);
+        if (pav_db_tx_begin(db) == 0) {
+            return 0;
+        }
+    }
+    pav_log("store", PAV_ERROR, 1, "write begin failed %d", sqlite3_extended_errcode(db));
+    return -1;
+}
+
 static int run_one(sqlite3 *db, DbJob *job) {
     int rc;
 
-    if (pav_db_tx_begin(db) != 0) {
+    if (begin_write(db) != 0) {
         return -1;
     }
     rc = job->fn(job->ctx, db);
@@ -99,7 +121,7 @@ static int run_one(sqlite3 *db, DbJob *job) {
         pav_log("store", PAV_DEBUG, 0, "write busy, checkpoint and retry");
         pav_db_tx_rollback(db);
         checkpoint_passive(db);
-        if (pav_db_tx_begin(db) != 0) {
+        if (begin_write(db) != 0) {
             return -1;
         }
         rc = job->fn(job->ctx, db);
@@ -131,7 +153,7 @@ static void run_batch(DbJob **jobs, int n) {
     if (g_batch_gen <= 0) {
         g_batch_gen = 1;
     }
-    if (pav_db_tx_begin(db) != 0) {
+    if (begin_write(db) != 0) {
         for (i = 0; i < n; i++) {
             jobs[i]->rc = -1;
         }
@@ -161,7 +183,7 @@ static void run_batch(DbJob **jobs, int n) {
     }
     if (n == 1 && jobs[0]->rc == SQLITE_BUSY) {
         checkpoint_passive(db);
-        if (pav_db_tx_begin(db) != 0) {
+        if (begin_write(db) != 0) {
             jobs[0]->rc = -1;
             return;
         }

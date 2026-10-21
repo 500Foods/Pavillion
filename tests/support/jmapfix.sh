@@ -9,7 +9,10 @@
 # socat terminates TLS and forks one `jmapfix.sh --handle` per connection.
 # Each connection carries one request and is closed after the response.
 # State shared across requests lives in build/fixture-run/ and is reset on
-# every start: proxy-cut (flag file), events.count, blobs/<blobId>.
+# every start: proxy-cut (flag file), events.count, blobs/<blobId>, and
+# mailstate.json (Identity and Mailbox objects, changed by Mailbox/set).
+# A directory lock covers the read-modify-write. socat forks one process
+# per connection, so the lock cannot live in memory.
 #
 # Scripted cases (query parameters on the request URL):
 #
@@ -38,7 +41,8 @@
 #   GET  /authcheck           -> Session only when no Authorization header came; else 400
 #   GET  /jmap/session         -> Session for the Host's domain (test-a.local
 #                                 when the Host is not a fixture domain)
-#   POST /jmap/api             -> canned method responses
+#   POST /jmap/api             -> Identity/Mailbox get, changes, and set
+#                                 (other methods stay canned)
 #   GET  /jmap/events          -> `event: StateChange` lines with drops
 #   POST /jmap/upload          -> store the body, return a blobId
 #   GET  /jmap/download/<id>   -> the stored blob bytes
@@ -208,6 +212,7 @@ serve() {
 
   rm -rf "$run"
   mkdir -p "$run/blobs"
+  seed_mailstate > "$run/mailstate.json" || { echo "jmapfix: mail state failed" >&2; exit 1; }
   for d in $DOMAINS; do
     session_json "$d" > "$run/session-$d.json" || { echo "jmapfix: session JSON failed" >&2; exit 1; }
   done
@@ -316,55 +321,227 @@ serve_upload() {
   send_json 200 "{\"blobId\": \"$id\", \"size\": $size, \"type\": \"application/octet-stream\"}"
 }
 
+# One directory lock shared by every forked handler. A dead holder is cleared.
+lock_mailstate() {
+  local d="$run/mailstate.lockd" i pid
+  for i in $(seq 1 100); do
+    if mkdir "$d" 2>/dev/null; then
+      echo $$ > "$d/pid"
+      return 0
+    fi
+    pid=$(cat "$d/pid" 2>/dev/null || true)
+    if [ -n "${pid:-}" ] && ! kill -0 "$pid" 2>/dev/null; then
+      rm -rf "$d"
+      continue
+    fi
+    sleep 0.05
+  done
+  return 1
+}
+
+unlock_mailstate() {
+  rm -rf "$run/mailstate.lockd"
+}
+
+seed_mailstate() {
+  jq -n -c '
+    def box($id; $name; $parent; $role; $order; $total; $unread):
+      {id:$id, name:$name, parentId:$parent, role:$role, sortOrder:$order,
+       totalEmails:$total, unreadEmails:$unread, totalThreads:$total,
+       unreadThreads:$unread, isSubscribed:true};
+    def ident($id; $name; $email):
+      {id:$id, name:$name, email:$email, replyTo:null, bcc:null,
+       textSignature:"", htmlSignature:"", mayDelete:false};
+    def acct($boxes; $idents):
+      {mbxState:"mbx-1", idnState:"idn-1", mbxSeq:1,
+       mailboxes:$boxes, identities:$idents,
+       mbxRevs:[{state:"mbx-1", created:[], updated:[], destroyed:[]}]};
+    {
+      trace: [],
+      "test-a.local": {
+        a1: acct(
+          [box("in";"Inbox";null;"inbox";10;0;0),
+           box("later";"Later";"in";null;20;3;1),
+           box("sent";"Sent";null;"sent";30;0;0),
+           box("drafts";"Drafts";null;"drafts";40;0;0)];
+          [ident("idn-andrew";"Andrew";"andrew@test-a.local")]),
+        a2: acct(
+          [box("in";"Inbox";null;"inbox";10;0;0),
+           box("sent";"Sent";null;"sent";20;0;0)];
+          [ident("idn-alice";"Alice";"alice@test-a.local")])
+      },
+      "test-b.local": {
+        b1: acct([box("in";"Inbox";null;"inbox";10;0;0)];
+                 [ident("idn-bob";"Bob";"bob@test-b.local")]),
+        b2: acct([box("in";"Inbox";null;"inbox";10;0;0)];
+                 [ident("idn-carol";"Carol";"carol@test-b.local")]),
+        b3: acct([box("in";"Inbox";null;"inbox";10;0;0)];
+                 [ident("idn-dave";"Dave";"dave@test-b.local")])
+      }
+    }'
+}
+
 serve_api() {
-  local tmp out qerr
+  local tmp out qerr domain d statef
   tmp=$(mktemp "$run/api.XXXXXX")
   read_body "$tmp"
   qerr=$(qget error || true)
-  out=$(jq -r -s --arg qerr "$qerr" "$JQ_LIB"'
+  domain=${host:-localhost}
+  domain=${domain%%:*}
+  d=test-a.local
+  case " $DOMAINS " in *" $domain "*) d=$domain ;; esac
+  statef="$run/mailstate.json"
+  if ! lock_mailstate; then
+    rm -f "$tmp"
+    send_json 503 '{"error": {"code": "serverFail", "description": "state lock"}}'
+    return
+  fi
+  if [ ! -f "$statef" ]; then
+    seed_mailstate > "$statef" || { unlock_mailstate; rm -f "$tmp"; send_json 500 '{"error":{"code":"serverFail"}}'; return; }
+  fi
+  out=$(jq -c -s --arg qerr "$qerr" --arg domain "$d" --slurpfile st "$statef" "$JQ_LIB"'
     def errbody($c):
-      if $c == "cannotCalculateChanges" then {error: {code: "cannotCalculateChanges", description: "server cannot calculate changes"}}
-      else {error: {code: "stateMismatch", description: "state has changed"}} end;
-    def acct: if has("accountId") then .accountId else "" end;
+      if $c == "cannotCalculateChanges" then {code: "cannotCalculateChanges", description: "server cannot calculate changes"}
+      else {code: "stateMismatch", description: "state has changed"} end;
+    def acct_of($a): if ($a | type) == "object" and ($a | has("accountId")) then $a.accountId else "" end;
     def pystr: if type == "string" then . elif . == null then "None"
       elif . == true then "True" elif . == false then "False" else tojson end;
-    def handle($m; $a0):
-      ($a0 | if type == "object" then . else {} end) as $a
-      | if $m == "Identity/get" or $m == "Mailbox/get" or $m == "Email/get" then
-          [$m, {accountId: ($a | acct), list: [], notFound: [], state: "state-1"}]
-        elif $m == "Email/query" then
-          [$m, {accountId: ($a | acct), queryState: "qs-1", ids: [], total: 0, canCalculateChanges: true}]
-        elif $m == "Mailbox/changes" or $m == "Email/changes" then
-          [$m, {accountId: ($a | acct), hasMoreChanges: false, sinceState: "state-1"}]
-        elif $m == "Account/set" or $m == "Account/subscribe" then
-          [$m, {accountId: ($a | acct), created: {}, updated: {}, destroyed: {}, notFound: {}, state: "state-1"}]
-        elif $m == "Capability/get" then [$m, {}]
-        else ["error", {code: "unknownMethod", description: ("unknown method " + ($m | pystr))}, null]
+    def note($state; $name):
+      $state | .trace = (((.trace // []) + [$name])[-40:]);
+    def changes_since($revs; $since):
+      ($revs | to_entries | map(select(.value.state == $since)) | .[0].key) as $idx
+      | if $idx == null then null
+        else reduce ($revs | to_entries[] | select(.key > $idx)) as $e
+          ({created:[], updated:[], destroyed:[]};
+           .created += $e.value.created
+           | .updated += $e.value.updated
+           | .destroyed += $e.value.destroyed)
         end;
-    if length != 1 then "400"
-    else .[0]
-      | if type != "object" then "DROP"
-        elif has("methodCalls") and (.methodCalls | type) != "array" then "DROP"
+    def pick($items; $ids):
+      if $ids == null then {list:$items, notFound:[]}
+      elif ($ids | type) != "array" then {list:$items, notFound:[]}
+      else
+        {list:[ $items[] | select(.id as $id | $ids | index($id)) ],
+         notFound:[ $ids[] | select(. as $id | [$items[].id] | index($id) | not) ]}
+      end;
+    def apply_mbx_set($acct; $a):
+      ($a.update // {}) as $upd
+      | ($a.destroy // []) as $des
+      | reduce ($upd | keys_unsorted[]) as $id
+          ({acct:$acct, updated:[], notFound:[]};
+           if (.acct.mailboxes | map(.id) | index($id)) == null then .notFound += [$id]
+           else .acct.mailboxes |= map(if .id == $id then . + ($upd[$id] | del(.id)) else . end)
+                | .updated += [$id]
+           end)
+      | . as $mid
+      | reduce $des[] as $id ($mid;
+          if (.acct.mailboxes | map(.id) | index($id)) == null then .notFound += [$id]
+          else .acct.mailboxes |= map(select(.id != $id)) | .destroyed = ((.destroyed // []) + [$id])
+          end)
+      | if ((.updated | length) > 0) or ((.destroyed // []) | length) > 0 then
+          .acct.mbxSeq += 1
+          | .acct.mbxState = ("mbx-" + (.acct.mbxSeq | tostring))
+          | .acct.mbxRevs += [{state:.acct.mbxState, created:[], updated:.updated, destroyed:(.destroyed // [])}]
+        else . end;
+    def canned($m; $a):
+      if $m == "Email/get" then
+        [$m, {accountId: acct_of($a), list: [], notFound: [], state: "state-1"}]
+      elif $m == "Email/query" then
+        [$m, {accountId: acct_of($a), queryState: "qs-1", ids: [], total: 0, canCalculateChanges: true}]
+      elif $m == "Email/changes" then
+        [$m, {accountId: acct_of($a), hasMoreChanges: false, sinceState: "state-1",
+              created: [], updated: [], destroyed: []}]
+      elif $m == "Account/set" or $m == "Account/subscribe" then
+        [$m, {accountId: acct_of($a), created: {}, updated: {}, destroyed: {}, notFound: {}, state: "state-1"}]
+      elif $m == "Capability/get" then [$m, {}]
+      else ["error", {code: "unknownMethod", description: ("unknown method " + ($m | pystr))}]
+      end;
+    def one($state; $m; $a):
+      acct_of($a) as $aid
+      | ($state[$domain][$aid] // null) as $acct
+      | if $m == "Mailbox/get" or $m == "Identity/get" or $m == "Mailbox/changes" or $m == "Identity/changes" or $m == "Mailbox/set" then
+          if $acct == null then
+            if $m == "Mailbox/set" then
+              [$state, ["error", {code: "accountNotFound", description: "unknown account"}]]
+            elif $m == "Mailbox/changes" or $m == "Identity/changes" then
+              [$state, [$m, {accountId:$aid, oldState:($a.sinceState // ""), newState:"mbx-1",
+                             hasMoreChanges:false, created:[], updated:[], destroyed:[]}]]
+            else
+              [$state, [$m, {accountId:$aid, state:"mbx-1", list:[], notFound:[]}]]
+            end
+          elif $m == "Mailbox/get" then
+            (pick($acct.mailboxes; (if $a | has("ids") then $a.ids else null end))) as $p
+            | [note($state; "Mailbox/get"),
+               [$m, {accountId:$aid, state:$acct.mbxState, list:$p.list, notFound:$p.notFound}]]
+          elif $m == "Identity/get" then
+            (pick($acct.identities; (if $a | has("ids") then $a.ids else null end))) as $p
+            | [note($state; "Identity/get"),
+               [$m, {accountId:$aid, state:$acct.idnState, list:$p.list, notFound:$p.notFound}]]
+          elif $m == "Mailbox/changes" then
+            changes_since($acct.mbxRevs; ($a.sinceState // "")) as $ch
+            | if $ch == null then
+                [note($state; "Mailbox/changes"),
+                 ["error", errbody("cannotCalculateChanges")]]
+              else
+                [note($state; "Mailbox/changes"),
+                 [$m, {accountId:$aid, oldState:($a.sinceState // ""), newState:$acct.mbxState,
+                       hasMoreChanges:false, created:$ch.created, updated:$ch.updated, destroyed:$ch.destroyed}]]
+              end
+          elif $m == "Identity/changes" then
+            if ($a.sinceState // "") == $acct.idnState then
+              [note($state; "Identity/changes"),
+               [$m, {accountId:$aid, oldState:$acct.idnState, newState:$acct.idnState,
+                     hasMoreChanges:false, created:[], updated:[], destroyed:[]}]]
+            else
+              [note($state; "Identity/changes"),
+               ["error", errbody("cannotCalculateChanges")]]
+            end
+          else
+            apply_mbx_set($acct; $a) as $done
+            | ($state | .[$domain][$aid] = $done.acct) as $next
+            | [note($next; "Mailbox/set"),
+               [$m, {accountId:$aid, oldState:$acct.mbxState, newState:$done.acct.mbxState,
+                     created:{}, updated:(reduce $done.updated[] as $id ({}; .[$id] = null)),
+                     destroyed:($done.destroyed // []), notFound:$done.notFound}]]
+          end
         else
-          {methodResponses: [(.methodCalls // [])[] as $call
-            | if ($call | type) != "array" or ($call | length) < 3 then
-                ["error", {code: "invalidRequest"}, null]
-              elif ($qerr == "cannotCalculateChanges" or $qerr == "stateMismatch") then
-                ["error", errbody($qerr), $call[2]]
-              elif ($call[1] | type) == "object"
-                   and ($call[1].__error == "cannotCalculateChanges" or $call[1].__error == "stateMismatch") then
-                ["error", errbody($call[1].__error), $call[2]]
-              else handle($call[0]; $call[1]) + [$call[2]]
-              end],
-           sessionState: "state-1"} | py
+          [$state, canned($m; $a)]
+        end;
+    if ($st | length) != 1 or ($st[0] | type) != "object" then {fail:"400"}
+    elif length != 1 then {fail:"400"}
+    else .[0] as $req
+      | if ($req | type) != "object" then {fail:"DROP"}
+        elif ($req | has("methodCalls")) and ($req.methodCalls | type) != "array" then {fail:"DROP"}
+        else
+          reduce ($req.methodCalls // [])[] as $call ({st:$st[0], res:[]};
+            if ($call | type) != "array" or ($call | length) < 3 then
+              .res += [["error", {code:"invalidRequest"}, null]]
+            elif ($qerr == "cannotCalculateChanges" or $qerr == "stateMismatch") then
+              .res += [["error", {error: errbody($qerr)}, $call[2]]]
+            elif ($call[1] | type) == "object"
+                 and ($call[1].__error == "cannotCalculateChanges" or $call[1].__error == "stateMismatch") then
+              .res += [["error", {error: errbody($call[1].__error)}, $call[2]]]
+            else
+              one(.st; $call[0]; (if ($call[1] | type) == "object" then $call[1] else {} end)) as $got
+              | .st = $got[0]
+              | .res += [$got[1] + [$call[2]]]
+            end)
+          | {state:.st, body:{methodResponses:.res, sessionState:"state-1"}}
         end
-    end' < "$tmp" 2>/dev/null) || out="400"
+    end' < "$tmp" 2>"$run/api.err") || out=""
   rm -f "$tmp"
-  case "$out" in
-    400|"") send_json 400 '{"error": {"code": "invalidRequest", "description": "invalid JSON"}}' ;;
-    DROP) exit 0 ;;
-    *) send_json 200 "$out" ;;
-  esac
+  if [ -z "$out" ] || [ "$(printf '%s' "$out" | jq -r '.fail // empty' 2>/dev/null)" = "400" ]; then
+    unlock_mailstate
+    send_json 400 '{"error": {"code": "invalidRequest", "description": "invalid JSON"}}'
+    return
+  fi
+  if [ "$(printf '%s' "$out" | jq -r '.fail // empty' 2>/dev/null)" = "DROP" ]; then
+    unlock_mailstate
+    exit 0
+  fi
+  printf '%s' "$out" | jq -c '.state' > "$statef.tmp" && mv "$statef.tmp" "$statef"
+  unlock_mailstate
+  send_json 200 "$(printf '%s' "$out" | jq -c '.body')"
 }
 
 # Shared by GET and POST: cut, slow, scripted HTTP errors. Returns 0 when the
@@ -428,7 +605,14 @@ do_get() {
       domain=${domain%%:*}
       d=test-a.local
       case " $DOMAINS " in *" $domain "*) d=$domain ;; esac
-      send_json 200 "$(cat "$run/session-$d.json")"
+      # The file names apiUrl after the fixture domain. That name does not
+      # resolve. Serve the host the client actually connected to, port included.
+      send_json 200 "$(jq -c --arg host "${host:-localhost}" \
+        '.apiUrl = "https://\($host)/jmap/api"
+         | .downloadUrl = "https://\($host)/jmap/download"
+         | .uploadUrl = "https://\($host)/jmap/upload"
+         | .eventSourceUrl = "https://\($host)/jmap/events"' \
+        "$run/session-$d.json")"
       ;;
     /jmap/events) serve_events ;;
     /jmap/download/*) serve_download "${path#/jmap/download/}" ;;

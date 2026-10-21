@@ -325,7 +325,7 @@ export const helpPages = [
         title: "Mail sync",
         paragraphs: [
           "An enabled JMAP account starts a mail sync when the core is ready. sync.now asks again for one account, or for every enabled account when the call leaves the account id out. The states are idle, syncing, offline, locked, error:auth, error:server, and disabled. sync.state carries the account id, the state, and a short detail.",
-          "A 401 leaves the account at error:auth until the password changes. A locked keyring leaves it at locked until sync.now or the next poll. This build stores the Session and the remote mail accounts. Identity and mailbox sync come later.",
+          "A 401 leaves the account at error:auth until the password changes. A locked keyring leaves it at locked until sync.now or the next poll. This build stores the Session, the remote mail accounts, identities, and mailboxes. mailbox.list returns the tree: one account root, then each mailbox. identity.list returns the synced identities. A mailbox change emits mail.mailboxes_changed. The on-screen mailbox tree comes later.",
         ],
       },
       {

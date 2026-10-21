@@ -5,8 +5,8 @@ Status: v0.7 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 **Resume:** each phase's history is in its own document's Working log; this block is only the current state.
 
 - Last finished: H-4 (step 131) and D-10 (step 134), 2026-10-21, in [docs/H-LOGGING.md](docs/H-LOGGING.md) and [docs/D-UI.md](docs/D-UI.md). Andrew accepted both windows the same day. E-4 (step 52) was the previous sequenced finish, 2026-10-19.
-- Next: M-3 (step 53), in [docs/M-SYNC.md](docs/M-SYNC.md). In progress. Last finished work item is M-3a (supervisor, stored Session, account states, `sync.now`). M-3b and M-3c are not started. Andrew's live-account report is the UI half of the entry gate (2026-10-21). Automated tests use the fixture. The Accounts table (Tabulator) polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md) and does not block M-3.
-- Last full `make test`: 176 Unity tests, 2 Rust tests and 349 Vitest tests, exit 0 (2026-10-21).
+- Next: M-3 (step 53), in [docs/M-SYNC.md](docs/M-SYNC.md). In progress. Last finished work item is M-3b (Identity and Mailbox sync, `mailbox.list`, `identity.list`, `mail.mailboxes_changed`). Lessons for M-3a and M-3b, and the handoff for the next sitting, are in that file. The next sitting is M-3c (`record.sh` and seed mailboxes). M-3c is not started. Andrew's live-account report is the UI half of the entry gate (2026-10-21). Automated tests use the fixture. The Accounts table (Tabulator) polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md) and does not block M-3.
+- Last full `make test`: 180 Unity tests, 2 Rust tests and 349 Vitest tests, exit 0 (2026-10-21).
 - `PAVILLION_API_VERSION` is 3. The phase stamp is `0.58.0` (58 Done rows), release date 2026-10-21.
 
 **Read first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), one page with diagrams of the layers, the threads, and the data flow.

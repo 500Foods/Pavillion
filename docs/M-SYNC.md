@@ -1,6 +1,6 @@
 # M — SYNC
 
-**Status:** M-1 and M-2 complete (2026-10-19). M-3 is in progress (2026-10-21): M-3a is the last finished work item. M-3b and M-3c are not started. M-4 through M-8 are not started. The index names the next phase.
+**Status:** M-1 and M-2 complete (2026-10-19). M-3 is in progress (2026-10-21): M-3b is the last finished work item (Identity and Mailbox sync, `mailbox.list`, `identity.list`, `mail.mailboxes_changed`, `cannotCalculateChanges`). M-3c is not started. M-4 through M-8 are not started. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The network and the sync engine: HTTP through libcurl, JMAP session discovery, initial and delta sync, the mutation queue, and push. Mail first; contacts, calendars, and files reuse the same engine with their own types ([S-CONTACTS.md](S-CONTACTS.md), [T-CALENDAR.md](T-CALENDAR.md), [U-FILES.md](U-FILES.md)). Tasks ([X-TASKS.md](X-TASKS.md)) sync over CalDAV after T-7, on that DAV client, not as a JMAP tasks capability. Notes ([Y-NOTES.md](Y-NOTES.md)) reuse the files sync of one account. Sending is [O-COMPOSE.md](O-COMPOSE.md).
@@ -203,7 +203,7 @@ M-1's net layer is complete and tested. M-2 adds `account.test`, JMAP session pa
 ## M-3: Supervisor, Identity and Mailbox sync
 
 **Kind:** Medium
-**Status:** In progress (2026-10-21). Last finished work item: M-3a (supervisor, stored Session, account states, `sync.now`, `ca_file`, the 401 path, and the locked-keyring path). M-3b and M-3c are not started.
+**Status:** In progress (2026-10-21). Last finished work item: M-3b (Identity/get and Mailbox/get, changes delta, `cannotCalculateChanges` resync, `mailbox.list`, `identity.list`, `mail.mailboxes_changed`, activity detail). The profile writer resets cached statements before `BEGIN IMMEDIATE` and retries once on `SQLITE_BUSY_SNAPSHOT`, because a stepped statement kept a stale WAL snapshot after an outside write. M-3c (`record.sh` and seed mailboxes) is not started.
 
 **Goal:** Every enabled account keeps its identities and mailboxes in the store, and the UI can list them with counts.
 
@@ -240,11 +240,11 @@ The UI half of this gate (the `make build` steps above) is Andrew's to run befor
 
 - [x] `core/src/sync.c`: one `PavSup` per enabled account, started after `core ready`, stopped on remove or disable; account states and `sync.state` events; `sync.now {accountId?}`.
 - [x] Each `PavJmapCtx` the supervisor builds sets `ca_file` from the account's `caFile` (M Lock, TLS). No context is built outside tests before M-3, so this lands with `sync.c`.
-- [ ] `Identity/get` and `Mailbox/get` initial; `Mailbox/changes` and `Identity/changes` delta (polling every 2 minutes until M-7).
-- [ ] Commands `mailbox.list {accountId?}` (nodes in the [E-TREE.md](E-TREE.md) contract shape: `id`, `parentId`, `kind`, `label`, `role`, `order`, `unread`, `total`, `hasChildren`, `swatch`), `identity.list`. Event `mail.mailboxes_changed`.
-- [ ] Activity `sync.mail` per account with detail per step.
+- [x] `Identity/get` and `Mailbox/get` initial; `Mailbox/changes` and `Identity/changes` delta (polling every 2 minutes until M-7).
+- [x] Commands `mailbox.list {accountId?}` (nodes in the [E-TREE.md](E-TREE.md) contract shape: `id`, `parentId`, `kind`, `label`, `role`, `order`, `unread`, `total`, `hasChildren`, `swatch`), `identity.list`. Event `mail.mailboxes_changed`.
+- [x] Activity `sync.mail` per account with detail per step.
 - [x] 401 path per the K Lock; keyring locked path.
-- [ ] Unity on fixtures: `test_sync_mailboxes_initial`, `test_sync_mailboxes_delta_rename`, `test_sync_401_stops_account`, `test_mailbox_list_tree_shape`.
+- [x] Unity on fixtures: `test_sync_mailboxes_initial`, `test_sync_mailboxes_delta_rename`, `test_sync_401_stops_account`, `test_mailbox_list_tree_shape`.
 - [ ] Moved from W-2: add `tests/support/record.sh` (curl and jq) and record the first real Session and responses from the W-2 Stalwart container into `tests/support/fixtures/`, scrubbed of secrets. This is what makes the W Lock's "serves recorded JMAP responses from `tests/support/fixtures/*.json`" true: it is not implemented yet. The directory is empty and `jmapfix.sh` builds every reply with jq ([W-SHIP.md](W-SHIP.md) Lock, Fixture server).
 - [ ] Moved from W-2: make `tests/stalwart/seed.sh` create mailboxes in the container (idempotent). Today it only creates the domains and accounts through the admin API. Seeding the `tests/corpus/` messages moved to M-4.
 
@@ -278,7 +278,7 @@ The UI half of this gate (the `make build` steps above) is Andrew's to run befor
 
 **Scope:** `jmapfix.sh` serves `Identity/get`, `Identity/changes`, `Mailbox/get`, and `Mailbox/changes` with a mutable state; initial and delta reducers on the net thread; `sync_state` per type; the 2-minute poll; `cannotCalculateChanges` reruns the initial sync for that type; commands `mailbox.list` and `identity.list`; event `mail.mailboxes_changed`.
 
-**Tests:** `test_sync_mailboxes_initial`, `test_sync_mailboxes_delta_rename`, `test_mailbox_list_tree_shape`.
+**Tests:** `test_sync_mailboxes_initial`, `test_sync_mailboxes_delta_rename`, `test_mailbox_list_tree_shape`, `test_sync_mailboxes_cannot_calculate`.
 
 **Acceptance:** the M-3 exit gate.
 
@@ -289,6 +289,42 @@ The UI half of this gate (the `make build` steps above) is Andrew's to run befor
 **Tests:** a Unity test that replays a recorded Stalwart `Mailbox/get`.
 
 **Acceptance:** `make test` exits 0, a reseed is idempotent, and `rg` finds no secrets in `tests/support/fixtures/`.
+
+### Lessons learned
+
+Sitting notes from 2026-10-21. M-3 is still in progress. There is no Accomplished section until Andrew accepts the window.
+
+- A sync job must not open its own transaction. The writer already wraps the batch in `BEGIN IMMEDIATE`. A nested `BEGIN` fails and rolls the update back. This showed up in M-3a: the state write reported success in memory and left the database row at `idle`.
+- Jansson 2.14 steals on failure. `json_array_append_new` and `json_object_set_new` decref the value even when the call fails. Do not `json_decref` after either call. A NULL value is not stolen.
+- `pav_db_prepare` keys its cache by pointer equality, not by `strcmp`. The same literal resets one statement. Two literals with the same SQL text are two entries. Do not change the SQL text of an existing key. List commands prepare with `sqlite3_prepare_v2` on a read-pool connection after `pav_db_read_begin`, and finish with `pav_db_read_end`. They do not call `pav_db_prepare`.
+- `account.add` inserts `account_state` `idle` before the first sync finishes. A wait that only checks `idle` returns immediately. Wait for the `sync_state` row and `idle` together.
+- `/.well-known/jmap` on the fixture is a 302, and `start_connect` counts that follow as another attempt. Tests that assert `pav_sync_attempt_count` use `$PAV_FIXTURE_URL/jmap/session`.
+- Fixture mail state is one file for the whole Unity process. A `Mailbox/set` is visible to every later test. The order is initial, tree, cannot, delta. The tree expects the label Later. A cannot-calculate test that expects `mbx-1` runs before any `Mailbox/set`. After a resync `Mailbox/get`, the stored Mailbox state is the server's current `mbxState`.
+- `Mailbox/get` does not return `cannotCalculateChanges`. Only `Mailbox/changes` with an unknown `sinceState` does. At most one resync per type per cycle. An Identity state of `idn-1` survives a Mailbox resync.
+- Foreign keys are on. Deleting a `remote_account` cascades `mailbox`, `identity`, and `sync_state`. `publish_session` with `remote_count` 0 deletes those rows.
+- A command is real only when [API.md](API.md) lists `State: real` under `## Commands`, in the shape the Unity test parses, and `k_commands[]` matches that list in `strcmp` order. The events test counts only `## Events` lines that start `State: real`, also in `strcmp` order (`log.lines`, `mail.mailboxes_changed`, `sync.state`).
+- Unity is built without `UNITY_USE_COMMAND_LINE_ARGS`, so `-n` does not filter. Do not leave a `PAV_ONLY` hook in `main()`.
+- `flock(1)` is not portable. The fixture lock is the directory `$run/mailstate.lockd`, with a pid file and a stale-holder steal.
+- `mailbox.list` returns the tree shape. The on-screen tree is E-7.
+
+The one that cost the sitting: after another connection commits, the writer's next `BEGIN IMMEDIATE` failed with `SQLITE_BUSY_SNAPSHOT` (517, `database is locked`) while `sqlite3_get_autocommit` was 1. A stepped statement on the writer connection was still holding that connection's WAL snapshot. `pav_db_prepare` resets a statement when that statement is next prepared, and the begin ran before that prepare, so the snapshot was never released. `run_batch` treated any begin failure as fatal, so every later `pav_db_call` failed until the process restarted. The cannot-calculate test updated `sync_state` to `gone`, called `sync.now`, and the client never sent `Mailbox/changes`. The row stayed `gone`. The delta test did not hit this, because nothing else writes the profile database between its two syncs. `begin_write` now calls `pav_db_cache_reset` before every writer `BEGIN` and retries once when the extended code is `SQLITE_BUSY_SNAPSHOT` or the primary code is `SQLITE_BUSY`. A retry without the reset fails the same way. The extended code has been 517 since SQLite 3.7; `db_writer.c` defines it when the header does not. A final failure logs `write begin failed %d` and nothing else.
+
+### Handoff for M-3c
+
+The next sitting is M-3c. E-7 starts after M-3 is accepted. Do not mark row 53 Done, do not bump the stamp, and do not write Accomplished.
+
+M-3c is `tests/support/record.sh` and mailbox seeding in `tests/stalwart/seed.sh`. The corpus messages stay in M-4. `jmapfix.sh` still builds every reply with jq. Its header says nothing reads `tests/support/fixtures/` today.
+
+- `make test` and the three CI jobs stay on the fixture, with the container down. macOS and Windows have no Docker Stalwart. `record.sh` and the mailbox seed run on Andrew's machine against `https://localhost:1443`. CI replays the committed JSON.
+- Keep the scripted `Mailbox/get`, `Mailbox/changes`, and `Mailbox/set`. They own `mailstate.json`, the rename, and `cannotCalculateChanges`. Recorded files are a second source, keyed by method and arguments, as the W Lock says.
+- The replay test reads one recorded `Mailbox/get`. It does not POST that body through the fixture's `Mailbox/set` path.
+- `seed.sh` already creates the domains, the test certificate, and the five accounts, then checks `andrew@test-a.local`'s `apiUrl`. Mailboxes are new. Create them as that user with `Mailbox/get`, then `Mailbox/set`, against `https://localhost:1443/jmap/`, using `--cacert build/stalwart-tls/test-ca.crt`, after the certificate restart. Query first. A second `make it-seed` must not add a second copy. The admin API stays for domains, the certificate, and accounts.
+- Scrub before the file is written. `rg` over `tests/support/fixtures/` must not find `pavtest-pw`, an `Authorization` header, or the admin password. Account ids and `apiUrl` are not secrets. Check the download and upload URLs.
+- `record.sh` is curl and jq. No Python. No `flock`.
+- Compare one recorded mailbox to `box()` in `jmapfix.sh` before changing the reducer. `append_mailbox` reads `id`, `name`, `parentId`, `role`, `sortOrder`, `totalEmails`, `unreadEmails`, `totalThreads`, `unreadThreads`, `myRights`, and `isSubscribed`. `role` is a string or null. If Stalwart v0.16 uses those keys, leave `sync.c` alone. If a key differs, fix the reducer in this sitting and cover it with the replay test.
+- Sitting acceptance is `make test` exit 0, a reseed that creates nothing the second time, and the secret scan. The phase exit gate is still separate: `Mailbox/set` as `andrew@test-a.local`, then within one poll `mail.mailboxes_changed` and `mailbox.list`. M-3c does not close M-3.
+
+M-3c is Bash and a JSON file. The writer bug and the sync reducer are done. The likely misses are a recorded object that does not match `box()`, a seed that duplicates role mailboxes, a file that still contains the test password, and a replay that writes the shared mail state. M-4 and M-5 reuse the writer, the one-resync rule, and `cannotCalculateChanges`. The 517 fix matters there.
 
 ## M-4: Email initial sync
 
@@ -416,3 +452,5 @@ The UI half of this gate (the `make build` steps above) is Andrew's to run befor
 - 2026-10-19 M-3 split into sittings M-3a, M-3b, M-3c (row 53 stays one phase); decisions recorded (mail-capable remote accounts, composite `ra_id`, account-root tree and `mbx:` ids, sort order, core-thread poll, keyring retry, `curl_multi_wakeup` deferred, `record.sh`, corpus to M-4, exit-gate `Mailbox/set`); entry gate UI half is Andrew's.
 - 2026-10-19 account.test fixes (Andrew): early `goto done` paths returned `{ok:true,data:null}`; Stalwart's `307 location: /jmap/session` (relative, lowercase) was not followed. Now every failure is not-ok, relative and case-insensitive `Location` resolves against the request URL, and the test runs as an `account.test` activity. Unity: `test_account_test_relative_redirect`, `test_account_test_early_failure_not_ok`.
 - 2026-10-21 M-3 in progress. M-3a finished: one supervisor per enabled JMAP account, Session and mail remote accounts stored, states and `sync.state`, `sync.now`, `ca_file` from `caFile`, a 401 stops until the secret changes, and a locked keyring retries only on `sync.now` or the next poll. The state job does not open its own transaction; the writer already holds one. Unity: `test_sync_session_stored`, `test_sync_401_stops_account`, `test_sync_locked_keyring_no_retry`. `make test`: 176 Unity, 2 Rust, 349 Vitest, exit 0. M-3b and M-3c are not started. The container check for M-3a was not run.
+- 2026-10-21 M-3 in progress. M-3b finished: Identity and Mailbox initial and delta sync, `sync_state` per type, `cannotCalculateChanges` reruns that type, `mailbox.list` and `identity.list`, `mail.mailboxes_changed`. An outside UPDATE of `sync_state` made the next writer `BEGIN IMMEDIATE` fail with `SQLITE_BUSY_SNAPSHOT` (517) until cached statements were reset; `begin_write` now resets them and retries once. Unity: `test_sync_mailboxes_initial`, `test_sync_mailboxes_delta_rename`, `test_mailbox_list_tree_shape`, `test_sync_mailboxes_cannot_calculate` (plus the existing 401 and locked-keyring tests). `make test`: 180 Unity, 2 Rust, 349 Vitest, exit 0. M-3c is not started. The container half of the exit gate was not run. The window was not launched.
+- 2026-10-21 Lessons for M-3a and M-3b written, and the M-3c handoff added. M-3 stays in progress. The next sitting is M-3c. Corpus messages stay in M-4. The container exit gate was not run. The window was not launched.

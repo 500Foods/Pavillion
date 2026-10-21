@@ -4655,6 +4655,21 @@ static void add_fixture_account(const char *id, const char *session_url, const c
     json_decref(root);
 }
 
+static void add_fixture_account_color(const char *id, const char *session_url, const char *ca, const char *color) {
+    char body[1400];
+    json_t *root;
+    int n;
+
+    n = snprintf(body, sizeof(body),
+                 "{\"kind\":\"jmap\",\"sessionUrl\":\"%s\",\"username\":\"u\",\"secret\":\"Zq9-sync-pw\","
+                 "\"id\":\"%s\",\"name\":\"Box\",\"caFile\":\"%s\",\"color\":\"%s\"}",
+                 session_url, id, ca, color);
+    TEST_ASSERT_TRUE(n > 0 && n < (int)sizeof(body));
+    root = call_reply("account.add", body);
+    assert_ok(root);
+    json_decref(root);
+}
+
 void test_sync_session_stored(void) {
     const char *url = getenv("PAV_FIXTURE_URL");
     const char *ca = getenv("PAV_FIXTURE_CA");
@@ -4673,10 +4688,11 @@ void test_sync_session_stored(void) {
     add_fixture_account("box", session_url, ca);
     db_path_for_cfg(path, sizeof(path));
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
-        "SELECT count(*) FROM account_state WHERE account_id='box' AND session_state='state-1' "
-        "AND session_json LIKE '%apiUrl%'",
+        "SELECT count(*) FROM account_state WHERE account_id='box' AND state='idle' "
+        "AND session_state='state-1' AND session_json LIKE '%apiUrl%'",
         1, "box", got, sizeof(got)), got);
     TEST_ASSERT_EQUAL_INT(2, scalar_int(path, "SELECT count(*) FROM remote_account WHERE account_id='box'"));
+    TEST_ASSERT_EQUAL_INT(6, scalar_int(path, "SELECT count(*) FROM mailbox WHERE ra_id LIKE 'box/%'"));
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
         "SELECT count(*) FROM remote_account WHERE id='box/a1' AND is_personal=1 "
         "AND caps LIKE '%urn:ietf:params:jmap:mail%'"));
@@ -4687,7 +4703,7 @@ void test_sync_session_stored(void) {
     item = find_sync_act(rows, "box");
     TEST_ASSERT_NOT_NULL(item);
     TEST_ASSERT_EQUAL_STRING("done", json_string_value(json_object_get(item, "state")));
-    TEST_ASSERT_EQUAL_STRING("Session", json_string_value(json_object_get(item, "detail")));
+    TEST_ASSERT_EQUAL_STRING("Mailboxes", json_string_value(json_object_get(item, "detail")));
     json_decref(rows);
 }
 
@@ -6273,6 +6289,471 @@ static int net_get_once(const char *url, const char *ca, int expect_status,
     return 0;
 }
 
+static int g_mbx_watch;
+static int g_mbx_hit;
+static char g_mbx_expect[80];
+static PavReq g_fix_req;
+static NetDone g_fix_done;
+static char g_fix_url[512];
+static char g_fix_ca[1024];
+static char g_fix_body[1024];
+
+static void mbx_event_cb(const char *name, const char *json, void *user) {
+    (void)user;
+    pthread_mutex_lock(&g_ev_test_mu);
+    if (g_mbx_watch && name != NULL && json != NULL && strcmp(name, "mail.mailboxes_changed") == 0 &&
+        strstr(json, g_mbx_expect) != NULL) {
+        g_mbx_hit = 1;
+        pthread_cond_signal(&g_ev_test_cv);
+    }
+    pthread_mutex_unlock(&g_ev_test_mu);
+}
+
+static void mbx_watch_begin(const char *account_id) {
+    pthread_mutex_lock(&g_ev_test_mu);
+    g_mbx_hit = 0;
+    snprintf(g_mbx_expect, sizeof(g_mbx_expect), "\"accountId\":\"%s\"", account_id);
+    g_mbx_watch = 1;
+    pthread_mutex_unlock(&g_ev_test_mu);
+    pav_on_event(mbx_event_cb, NULL);
+}
+
+static int mbx_watch_end(void) {
+    struct timespec ts;
+    int hit;
+    int rc;
+
+    pthread_mutex_lock(&g_ev_test_mu);
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 2;
+    while (g_mbx_watch && !g_mbx_hit) {
+        rc = pthread_cond_timedwait(&g_ev_test_cv, &g_ev_test_mu, &ts);
+        if (rc != 0) {
+            break;
+        }
+    }
+    g_mbx_watch = 0;
+    hit = g_mbx_hit;
+    pthread_mutex_unlock(&g_ev_test_mu);
+    pav_on_event(NULL, NULL);
+    return hit;
+}
+
+static json_t *node_by_id(json_t *nodes, const char *id) {
+    size_t i;
+
+    TEST_ASSERT_TRUE(json_is_array(nodes));
+    for (i = 0; i < json_array_size(nodes); i++) {
+        json_t *node = json_array_get(nodes, i);
+        const char *got = json_string_value(json_object_get(node, "id"));
+
+        if (got != NULL && strcmp(got, id) == 0) {
+            return node;
+        }
+    }
+    return NULL;
+}
+
+/* Counts a method name in the fixture trace. The file is repo-root relative. */
+static int trace_count(const char *needle) {
+    FILE *f;
+    long n;
+    char *buf;
+    const char *p;
+    int count = 0;
+    size_t len;
+
+    f = fopen("build/fixture-run/mailstate.json", "rb");
+    if (f == NULL) {
+        return -1;
+    }
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return -1;
+    }
+    n = ftell(f);
+    if (n < 0 || n > 8 * 1024 * 1024 || fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return -1;
+    }
+    buf = malloc((size_t)n + 1);
+    if (buf == NULL) {
+        fclose(f);
+        return -1;
+    }
+    if (fread(buf, 1, (size_t)n, f) != (size_t)n) {
+        free(buf);
+        fclose(f);
+        return -1;
+    }
+    buf[n] = '\0';
+    fclose(f);
+    len = strlen(needle);
+    for (p = buf; len > 0 && (p = strstr(p, needle)) != NULL; p += len) {
+        count++;
+    }
+    free(buf);
+    return count;
+}
+
+/* Posts to the fixture while the core holds the net. Does not start or stop it. */
+static int fixture_post(const char *url, const char *ca, const char *body) {
+    json_t *headers;
+    size_t len;
+    int hit;
+
+    if (url == NULL || ca == NULL || body == NULL) {
+        return -1;
+    }
+    len = strlen(body);
+    if (strlen(url) >= sizeof(g_fix_url) || strlen(ca) >= sizeof(g_fix_ca) || len >= sizeof(g_fix_body)) {
+        return -1;
+    }
+    memcpy(g_fix_url, url, strlen(url) + 1);
+    memcpy(g_fix_ca, ca, strlen(ca) + 1);
+    memcpy(g_fix_body, body, len + 1);
+    net_done_init(&g_fix_done);
+    memset(&g_fix_req, 0, sizeof(g_fix_req));
+    headers = json_pack("{s:s}", "Content-Type", "application/json");
+    if (headers == NULL) {
+        return -1;
+    }
+    g_fix_req.method = "POST";
+    g_fix_req.url = g_fix_url;
+    g_fix_req.ca_file = g_fix_ca;
+    g_fix_req.headers = headers;
+    g_fix_req.body = g_fix_body;
+    g_fix_req.body_len = len;
+    g_fix_req.on_done = net_done_cb;
+    g_fix_req.user = &g_fix_done;
+    if (pav_net_request(&g_fix_req) != 0) {
+        json_decref(headers);
+        g_fix_req.headers = NULL;
+        return -1;
+    }
+    hit = net_wait_done(&g_fix_done, 8);
+    if (!hit) {
+        return -1;
+    }
+    json_decref(g_fix_req.resp_headers);
+    json_decref(headers);
+    g_fix_req.resp_headers = NULL;
+    g_fix_req.headers = NULL;
+    if (g_fix_done.status_code != 200 || g_fix_req.body_out == NULL ||
+        strstr(g_fix_req.body_out, "Mailbox/set") == NULL) {
+        pav_net_free(g_fix_req.body_out);
+        g_fix_req.body_out = NULL;
+        return -1;
+    }
+    pav_net_free(g_fix_req.body_out);
+    g_fix_req.body_out = NULL;
+    return 0;
+}
+
+static void scalar_text(const char *path, const char *sql, char *out, size_t n) {
+    sqlite3 *db = NULL;
+    sqlite3_stmt *stmt = NULL;
+
+    if (n > 0) {
+        out[0] = '\0';
+    }
+    if (sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, NULL) != SQLITE_OK) {
+        if (db != NULL) {
+            sqlite3_close(db);
+        }
+        return;
+    }
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *text = (const char *)sqlite3_column_text(stmt, 0);
+
+        if (text != NULL && n > 0) {
+            snprintf(out, n, "%s", text);
+        }
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+}
+
+static int exec_sql(const char *path, const char *sql) {
+    sqlite3 *db = NULL;
+    char *errmsg = NULL;
+    int rc;
+    int changes = -1;
+
+    if (sqlite3_open_v2(path, &db, SQLITE_OPEN_READWRITE, NULL) != SQLITE_OK) {
+        if (db != NULL) {
+            sqlite3_close(db);
+        }
+        return -1;
+    }
+    sqlite3_busy_timeout(db, 2000);
+    rc = sqlite3_exec(db, sql, NULL, NULL, &errmsg);
+    sqlite3_free(errmsg);
+    if (rc == SQLITE_OK) {
+        changes = sqlite3_changes(db);
+    }
+    sqlite3_close(db);
+    return changes;
+}
+
+static void assert_bad_account_id(const char *cmd, const char *args) {
+    json_t *root = call_reply(cmd, args);
+
+    assert_call_error(root, "bad_args", "accountId must be a non-empty string");
+    json_decref(root);
+}
+
+static void sync_slot(const char *id, int with_color, char *path, size_t path_n) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char session_url[512];
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_sync_set_poll_ms(3600000);
+    snprintf(session_url, sizeof(session_url), "%s/jmap/session", url);
+    if (with_color) {
+        add_fixture_account_color(id, session_url, ca, "#336699");
+    } else {
+        add_fixture_account(id, session_url, ca);
+    }
+    db_path_for_cfg(path, path_n);
+}
+
+void test_sync_mailboxes_initial(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char session_url[512];
+    char path[160];
+    char got[192];
+    json_t *root;
+    json_t *idents;
+    json_t *andrew;
+    json_t *rows;
+    json_t *item;
+    int waited;
+    int hit;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_sync_set_poll_ms(3600000);
+    mbx_watch_begin("init");
+    snprintf(session_url, sizeof(session_url), "%s/jmap/session", url);
+    add_fixture_account("init", session_url, ca);
+    db_path_for_cfg(path, sizeof(path));
+    waited = wait_count(path,
+                        "SELECT count(*) FROM mailbox WHERE ra_id='init/a1' AND id='later' AND name='Later' "
+                        "AND parent_id='in' AND unread=1 AND total=3",
+                        1, "init", got, sizeof(got));
+    hit = mbx_watch_end();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, waited, got);
+    TEST_ASSERT_EQUAL_INT(1, hit);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM account_state WHERE account_id='init' AND state='idle'", 1, "init", got, sizeof(got)),
+        got);
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM sync_state WHERE ra_id='init/a1' AND type='Mailbox' AND state='mbx-1'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM sync_state WHERE ra_id='init/a1' AND type='Identity' AND state='idn-1'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM sync_state WHERE ra_id='init/a2' AND type='Mailbox' AND state='mbx-1'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM sync_state WHERE ra_id='init/a2' AND type='Identity' AND state='idn-1'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM identity WHERE ra_id='init/a1' AND email='andrew@test-a.local' AND may_delete=0"));
+    TEST_ASSERT_EQUAL_INT(4, scalar_int(path, "SELECT count(*) FROM mailbox WHERE ra_id='init/a1'"));
+    TEST_ASSERT_EQUAL_INT(2, scalar_int(path, "SELECT count(*) FROM mailbox WHERE ra_id='init/a2'"));
+    TEST_ASSERT_EQUAL_INT(1, pav_sync_attempt_count("init"));
+
+    root = call_reply("identity.list", "{\"accountId\":\"init\"}");
+    assert_ok(root);
+    idents = json_object_get(json_object_get(root, "data"), "identities");
+    TEST_ASSERT_EQUAL_INT(2, json_array_size(idents));
+    TEST_ASSERT_EQUAL_STRING("alice@test-a.local",
+                             json_string_value(json_object_get(json_array_get(idents, 0), "email")));
+    andrew = json_array_get(idents, 1);
+    TEST_ASSERT_EQUAL_STRING("init", json_string_value(json_object_get(andrew, "accountId")));
+    TEST_ASSERT_EQUAL_STRING("init/a1", json_string_value(json_object_get(andrew, "raId")));
+    TEST_ASSERT_EQUAL_STRING("Andrew", json_string_value(json_object_get(andrew, "name")));
+    TEST_ASSERT_EQUAL_STRING("andrew@test-a.local", json_string_value(json_object_get(andrew, "email")));
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(andrew, "mayDelete")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(andrew, "replyTo")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(andrew, "bcc")));
+    json_decref(root);
+
+    rows = activity_rows(1);
+    item = find_sync_act(rows, "init");
+    TEST_ASSERT_NOT_NULL(item);
+    TEST_ASSERT_EQUAL_STRING("done", json_string_value(json_object_get(item, "state")));
+    TEST_ASSERT_EQUAL_STRING("Mailboxes", json_string_value(json_object_get(item, "detail")));
+    json_decref(rows);
+}
+
+void test_sync_mailboxes_delta_rename(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char path[160];
+    char got[192];
+    char api[512];
+    json_t *root;
+    int before;
+    int mid;
+    int after;
+    int n;
+
+    sync_slot("delta", 0, path, sizeof(path));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM mailbox m JOIN account_state a ON a.account_id='delta' "
+        "WHERE m.ra_id='delta/a1' AND m.id='later' AND m.name='Later' AND a.state='idle'",
+        1, "delta", got, sizeof(got)), got);
+    before = trace_count("Mailbox/changes");
+    TEST_ASSERT_TRUE(before >= 0);
+    snprintf(api, sizeof(api), "%s/jmap/api", url);
+    TEST_ASSERT_EQUAL_INT(0, fixture_post(api, ca,
+        "{\"using\":[\"urn:ietf:params:jmap:core\",\"urn:ietf:params:jmap:mail\"],"
+        "\"methodCalls\":[[\"Mailbox/set\",{\"accountId\":\"a1\",\"update\":{\"later\":{\"name\":\"Soon\"}}},\"c1\"]]}"));
+    mid = trace_count("Mailbox/changes");
+    TEST_ASSERT_EQUAL_INT(before, mid);
+    n = pav_sync_attempt_count("delta");
+    root = call_reply("sync.now", "{\"accountId\":\"delta\"}");
+    assert_ok(root);
+    json_decref(root);
+    TEST_ASSERT_EQUAL_INT(n + 1, pav_sync_attempt_count("delta"));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM mailbox m JOIN account_state a ON a.account_id='delta' "
+        "WHERE m.ra_id='delta/a1' AND m.id='later' AND m.name='Soon' AND m.parent_id='in' AND m.unread=1 "
+        "AND a.state='idle'",
+        1, "delta", got, sizeof(got)), got);
+    after = trace_count("Mailbox/changes");
+    TEST_ASSERT_TRUE(after > before);
+    TEST_ASSERT_EQUAL_INT(n + 1, pav_sync_attempt_count("delta"));
+}
+
+void test_mailbox_list_tree_shape(void) {
+    char path[160];
+    char got[192];
+    json_t *root;
+    json_t *nodes;
+    json_t *account;
+    json_t *inbox;
+    json_t *later;
+    json_t *sent;
+    json_t *drafts;
+    json_int_t inbox_order;
+    json_int_t sent_order;
+    json_int_t drafts_order;
+
+    sync_slot("tree", 1, path, sizeof(path));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM account_state WHERE account_id='tree' AND state='idle'", 1, "tree", got, sizeof(got)),
+        got);
+
+    root = call_reply("mailbox.list", "{\"accountId\":\"tree\"}");
+    assert_ok(root);
+    nodes = json_object_get(json_object_get(root, "data"), "nodes");
+    TEST_ASSERT_EQUAL_INT(7, json_array_size(nodes));
+    account = node_by_id(nodes, "tree");
+    inbox = node_by_id(nodes, "mbx:tree/a1:in");
+    later = node_by_id(nodes, "mbx:tree/a1:later");
+    sent = node_by_id(nodes, "mbx:tree/a1:sent");
+    drafts = node_by_id(nodes, "mbx:tree/a1:drafts");
+    TEST_ASSERT_NOT_NULL(account);
+    TEST_ASSERT_NOT_NULL(inbox);
+    TEST_ASSERT_NOT_NULL(later);
+    TEST_ASSERT_NOT_NULL(sent);
+    TEST_ASSERT_NOT_NULL(drafts);
+
+    TEST_ASSERT_EQUAL_STRING("account", json_string_value(json_object_get(account, "kind")));
+    TEST_ASSERT_EQUAL_STRING("#336699", json_string_value(json_object_get(account, "swatch")));
+    TEST_ASSERT_EQUAL_INT(0, (int)json_integer_value(json_object_get(account, "order")));
+    TEST_ASSERT_EQUAL_STRING("Box", json_string_value(json_object_get(account, "label")));
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(account, "hasChildren")));
+    TEST_ASSERT_EQUAL_INT(1, (int)json_integer_value(json_object_get(account, "unread")));
+    TEST_ASSERT_EQUAL_INT(3, (int)json_integer_value(json_object_get(account, "total")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(account, "role")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(account, "parentId")));
+
+    TEST_ASSERT_EQUAL_STRING("tree", json_string_value(json_object_get(inbox, "parentId")));
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(inbox, "hasChildren")));
+    TEST_ASSERT_EQUAL_STRING("inbox", json_string_value(json_object_get(inbox, "role")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(inbox, "swatch")));
+    TEST_ASSERT_EQUAL_STRING("mailbox", json_string_value(json_object_get(inbox, "kind")));
+
+    TEST_ASSERT_EQUAL_STRING("mbx:tree/a1:in", json_string_value(json_object_get(later, "parentId")));
+    TEST_ASSERT_EQUAL_INT(1, (int)json_integer_value(json_object_get(later, "unread")));
+    TEST_ASSERT_EQUAL_INT(3, (int)json_integer_value(json_object_get(later, "total")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(later, "role")));
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(later, "hasChildren")));
+    TEST_ASSERT_EQUAL_STRING("Later", json_string_value(json_object_get(later, "label")));
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(sent, "hasChildren")));
+
+    inbox_order = json_integer_value(json_object_get(inbox, "order"));
+    sent_order = json_integer_value(json_object_get(sent, "order"));
+    drafts_order = json_integer_value(json_object_get(drafts, "order"));
+    TEST_ASSERT_TRUE(inbox_order < sent_order);
+    TEST_ASSERT_TRUE(sent_order < drafts_order);
+    json_decref(root);
+
+    root = call_reply("mailbox.list", "{\"accountId\":\"nope\"}");
+    assert_ok(root);
+    nodes = json_object_get(json_object_get(root, "data"), "nodes");
+    TEST_ASSERT_EQUAL_INT(0, json_array_size(nodes));
+    json_decref(root);
+    assert_bad_account_id("mailbox.list", "{\"accountId\":1}");
+    assert_bad_account_id("mailbox.list", "{\"accountId\":\"\"}");
+
+    root = call_reply("identity.list", "{\"accountId\":\"nope\"}");
+    assert_ok(root);
+    TEST_ASSERT_EQUAL_INT(0, json_array_size(json_object_get(json_object_get(root, "data"), "identities")));
+    json_decref(root);
+    assert_bad_account_id("identity.list", "{\"accountId\":1}");
+    assert_bad_account_id("identity.list", "{\"accountId\":\"\"}");
+}
+
+void test_sync_mailboxes_cannot_calculate(void) {
+    char path[160];
+    char got[192];
+    char mbx_state[64];
+    char why[512];
+    json_t *root;
+    int n;
+    int waited_rc;
+
+    sync_slot("calc", 0, path, sizeof(path));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM sync_state s, account_state a "
+        "WHERE s.ra_id='calc/a1' AND s.type='Mailbox' AND s.state='mbx-1' "
+        "AND a.account_id='calc' AND a.state='idle'",
+        1, "calc", got, sizeof(got)), got);
+    TEST_ASSERT_TRUE(exec_sql(path,
+        "UPDATE sync_state SET state='gone' WHERE ra_id='calc/a1' AND type='Mailbox'") >= 1);
+    n = pav_sync_attempt_count("calc");
+    root = call_reply("sync.now", "{\"accountId\":\"calc\"}");
+    assert_ok(root);
+    json_decref(root);
+    TEST_ASSERT_EQUAL_INT(n + 1, pav_sync_attempt_count("calc"));
+    waited_rc = wait_count(path,
+        "SELECT count(*) FROM sync_state s, account_state a "
+        "WHERE s.ra_id='calc/a1' AND s.type='Mailbox' AND s.state='mbx-1' "
+        "AND a.account_id='calc' AND a.state='idle'",
+        1, "calc", got, sizeof(got));
+    scalar_text(path, "SELECT state FROM sync_state WHERE ra_id='calc/a1' AND type='Mailbox'", mbx_state,
+                sizeof(mbx_state));
+    snprintf(why, sizeof(why), "%s mailbox_state=%s gets=%d changes=%d", got,
+             mbx_state[0] != '\0' ? mbx_state : "(none)", trace_count("Mailbox/get"), trace_count("Mailbox/changes"));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, waited_rc, why);
+    TEST_ASSERT_EQUAL_INT(4, scalar_int(path, "SELECT count(*) FROM mailbox WHERE ra_id='calc/a1'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM identity WHERE ra_id='calc/a1' AND email='andrew@test-a.local'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM sync_state WHERE ra_id='calc/a1' AND type='Identity' AND state='idn-1'"));
+    TEST_ASSERT_EQUAL_INT(n + 1, pav_sync_attempt_count("calc"));
+}
+
 void test_session_parse_stalwart(void) {
     const char *url = getenv("PAV_FIXTURE_URL");
     const char *ca = getenv("PAV_FIXTURE_CA");
@@ -6955,7 +7436,8 @@ void test_remote_accounts_from_session(void) {
 
 void test_api_md_lists_every_event(void) {
     static const char *const emitted[] = {
-        "accounts.changed", "activity.changed", "link.clicked", "log.lines", "sync.state"};
+        "accounts.changed", "activity.changed", "link.clicked", "log.lines", "mail.mailboxes_changed",
+        "sync.state"};
     FILE *f = fopen("docs/API.md", "rb");
     char line[2048];
     char heading[API_NAME_LEN] = "";
@@ -7362,6 +7844,10 @@ int main(void) {
     RUN_TEST(test_sync_session_stored);
     RUN_TEST(test_sync_401_stops_account);
     RUN_TEST(test_sync_locked_keyring_no_retry);
+    RUN_TEST(test_sync_mailboxes_initial);
+    RUN_TEST(test_mailbox_list_tree_shape);
+    RUN_TEST(test_sync_mailboxes_cannot_calculate);
+    RUN_TEST(test_sync_mailboxes_delta_rename);
     RUN_TEST(test_writes_are_serial_fifo);
     RUN_TEST(test_write_batch_one_transaction);
     RUN_TEST(test_failed_job_rolls_back_alone);

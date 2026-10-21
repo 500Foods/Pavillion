@@ -108,7 +108,7 @@ Revert green: [run 38962706169](https://github.com/500Foods/Pavillion/actions/ru
 - [x] `tests/stalwart/compose.yaml`, `config.json`, `VERSION`, and `seed.sh` (pins `stalwartlabs/stalwart:v0.16.26`). `seed.sh` provisions the two domains and five accounts through the admin API (Lock) and checks `andrew@test-a.local`'s Session.
 - [x] `make it-up`, `make it-seed`, `make it-down`, `make test-it`.
 - [~] Record the first real Session and responses from the container into `tests/support/fixtures/` with `tests/support/record.sh`, scrubbed of secrets. Deferred to M-3 (M-3c), which first runs the container (M-3 work items).
-- [~] Seed mailboxes and the `tests/corpus/` messages into the container. `seed.sh` does not do this yet. Deferred to M-3 (M-3 work items).
+- [~] Seed mailboxes into the container. Deferred to M-3c. The `tests/corpus/` messages moved to M-4 ([M-SYNC.md](M-SYNC.md) M-3 decisions, 2026-10-19). `seed.sh` still creates domains and accounts only.
 - [x] A smoke Unity test `test_fixture_server_session`; integration smoke `it_session_lists_mail_capability` is skipped until M-2 (`account.test`) exists.
 
 **Done means:** `make test` runs against the fixture server, and `make it-up && make it-seed && PAVILLION_IT=1 make test-it` passes against Stalwart.
@@ -184,3 +184,4 @@ Revert green: [run 38962706169](https://github.com/500Foods/Pavillion/actions/ru
 - 2026-10-19 Stalwart test server moved to v0.16 config: `config.toml` replaced by `config.json` (datastore only) and API seeding in `seed.sh`; `make it-up` auto-seeds; data in `build/stalwart-data`; test password `pavtest-pw`.
 - 2026-10-19 Fixture recording is `tests/support/record.sh` (curl and jq), not a `jmapfix.sh` mode; lands in M-3c.
 - 2026-10-20 Policy (Andrew): `macos-core` and `windows-core` are required; `continue-on-error` removed from both. Platform breaks are fixed in the same round, never deferred.
+- 2026-10-21 W-2's open seed line corrected: mailboxes are M-3c, and the corpus messages are M-4. The 2026-10-19 log line that sent both to M-3 is that morning's note. [M-SYNC.md](M-SYNC.md) owns the split.
