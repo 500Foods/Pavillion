@@ -6289,6 +6289,59 @@ static int net_get_once(const char *url, const char *ca, int expect_status,
     return 0;
 }
 
+/* POST one JSON body. Starts and stops the net. The caller must not already hold it. */
+static int net_post_once(const char *url, const char *ca, const char *body, char **body_out, int timeout_sec) {
+    PavReq req;
+    NetDone done;
+    json_t *headers;
+    int ok;
+
+    if (pav_net_start() != 0) {
+        return -1;
+    }
+    if (pav_net_server_for(url) == NULL) {
+        pav_net_stop();
+        return -1;
+    }
+    net_done_init(&done);
+    memset(&req, 0, sizeof(req));
+    headers = json_pack("{s:s}", "Content-Type", "application/json");
+    if (headers == NULL) {
+        pav_net_stop();
+        return -1;
+    }
+    req.method = "POST";
+    req.url = url;
+    req.ca_file = ca;
+    req.headers = headers;
+    req.body = body;
+    req.body_len = strlen(body);
+    req.on_done = net_done_cb;
+    req.user = &done;
+    if (pav_net_request(&req) != 0) {
+        json_decref(headers);
+        pav_net_stop();
+        return -1;
+    }
+    ok = net_wait_done(&done, timeout_sec);
+    json_decref(headers);
+    if (!ok || done.status_code != 200) {
+        if (req.body_out != NULL) {
+            pav_net_free(req.body_out);
+        }
+        pav_net_stop();
+        return -1;
+    }
+    if (body_out != NULL && req.body_out != NULL) {
+        *body_out = strdup(req.body_out);
+    }
+    if (req.body_out != NULL) {
+        pav_net_free(req.body_out);
+    }
+    pav_net_stop();
+    return 0;
+}
+
 static int g_mbx_watch;
 static int g_mbx_hit;
 static char g_mbx_expect[80];
@@ -6752,6 +6805,138 @@ void test_sync_mailboxes_cannot_calculate(void) {
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
         "SELECT count(*) FROM sync_state WHERE ra_id='calc/a1' AND type='Identity' AND state='idn-1'"));
     TEST_ASSERT_EQUAL_INT(n + 1, pav_sync_attempt_count("calc"));
+}
+
+/* Reads the recorded Stalwart Mailbox/get and asks the fixture for those
+   arguments. The fixture returns the file. It does not go through Mailbox/set. */
+void test_recorded_mailbox_get_replay(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char api[512];
+    char *text;
+    char *request = NULL;
+    char *served = NULL;
+    json_error_t jerr;
+    json_t *file;
+    json_t *args;
+    json_t *result;
+    json_t *list;
+    json_t *wrapped = NULL;
+    json_t *post = NULL;
+    json_t *call;
+    json_t *calls;
+    char *wrapped_text = NULL;
+    PavJmapResp resp;
+    char err[256];
+    size_t i;
+    size_t n;
+    int saw_inbox = 0;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+    text = slurp("tests/support/fixtures/mailbox-get.json");
+    TEST_ASSERT_NOT_NULL_MESSAGE(text, "recorded Mailbox/get");
+    TEST_ASSERT_NULL(strstr(text, "pavtest-pw"));
+    TEST_ASSERT_NULL(strstr(text, "pavtest-admin"));
+    TEST_ASSERT_NULL(strstr(text, "Authorization"));
+    file = json_loads(text, 0, &jerr);
+    free(text);
+    TEST_ASSERT_NOT_NULL_MESSAGE(file, jerr.text);
+    TEST_ASSERT_EQUAL_STRING("Mailbox/get", json_string_value(json_object_get(file, "method")));
+    args = json_object_get(file, "arguments");
+    result = json_object_get(file, "response");
+    TEST_ASSERT_TRUE(json_is_object(args));
+    TEST_ASSERT_TRUE(json_is_string(json_object_get(args, "accountId")));
+    TEST_ASSERT_TRUE(json_string_value(json_object_get(args, "accountId"))[0] != '\0');
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(args, "ids")));
+    TEST_ASSERT_TRUE(json_is_object(result));
+    list = json_object_get(result, "list");
+    TEST_ASSERT_TRUE(json_is_array(list));
+    n = json_array_size(list);
+    TEST_ASSERT_TRUE(n > 0);
+    for (i = 0; i < n; i++) {
+        json_t *box = json_array_get(list, i);
+        json_t *id = json_object_get(box, "id");
+        json_t *name = json_object_get(box, "name");
+        json_t *parent = json_object_get(box, "parentId");
+        json_t *role = json_object_get(box, "role");
+        json_t *order = json_object_get(box, "sortOrder");
+        json_t *total = json_object_get(box, "totalEmails");
+        json_t *unread = json_object_get(box, "unreadEmails");
+        json_t *subscribed = json_object_get(box, "isSubscribed");
+        json_t *rights = json_object_get(box, "myRights");
+        const char *role_text;
+
+        TEST_ASSERT_TRUE(json_is_object(box));
+        TEST_ASSERT_TRUE(json_is_string(id) && json_string_value(id)[0] != '\0');
+        TEST_ASSERT_TRUE(json_is_string(name) && json_string_value(name)[0] != '\0');
+        TEST_ASSERT_TRUE(parent == NULL || json_is_null(parent) || json_is_string(parent));
+        TEST_ASSERT_TRUE(role == NULL || json_is_null(role) || json_is_string(role));
+        TEST_ASSERT_TRUE(order == NULL || json_is_integer(order));
+        TEST_ASSERT_TRUE(total == NULL || json_is_integer(total));
+        TEST_ASSERT_TRUE(unread == NULL || json_is_integer(unread));
+        TEST_ASSERT_TRUE(subscribed == NULL || json_is_boolean(subscribed));
+        TEST_ASSERT_TRUE(rights == NULL || json_is_null(rights) || json_is_object(rights));
+        role_text = json_string_value(role);
+        if (role_text != NULL && strcmp(role_text, "inbox") == 0) {
+            saw_inbox = 1;
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(saw_inbox, "recorded mailboxes include an inbox");
+
+    wrapped = json_pack("{s:[[s,O,s]], s:s}", "methodResponses", "Mailbox/get", result, "0", "sessionState", "rec");
+    TEST_ASSERT_NOT_NULL(wrapped);
+    wrapped_text = json_dumps(wrapped, JSON_COMPACT);
+    json_decref(wrapped);
+    TEST_ASSERT_NOT_NULL(wrapped_text);
+    memset(&resp, 0, sizeof(resp));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_jmap_parse_response(wrapped_text, strlen(wrapped_text), &resp, err, sizeof(err)),
+                                  err);
+    free(wrapped_text);
+    TEST_ASSERT_TRUE(resp.is_success);
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(resp.method_responses));
+    json_decref(resp.method_responses);
+
+    call = json_pack("[s,O,s]", "Mailbox/get", args, "0");
+    calls = json_array();
+    post = json_object();
+    TEST_ASSERT_TRUE(call != NULL && calls != NULL && post != NULL);
+    TEST_ASSERT_EQUAL_INT(0, json_array_append_new(calls, call));
+    TEST_ASSERT_EQUAL_INT(0, json_object_set_new(post, "using",
+                                                 json_pack("[s,s]", "urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail")));
+    TEST_ASSERT_EQUAL_INT(0, json_object_set_new(post, "methodCalls", calls));
+    request = json_dumps(post, JSON_COMPACT);
+    json_decref(post);
+    TEST_ASSERT_NOT_NULL(request);
+    snprintf(api, sizeof(api), "%s/jmap/api", url);
+    {
+        int post_rc = net_post_once(api, ca, request, &served, 8);
+
+        free(request);
+        TEST_ASSERT_EQUAL_INT(0, post_rc);
+    }
+    TEST_ASSERT_NOT_NULL(served);
+    memset(&resp, 0, sizeof(resp));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_jmap_parse_response(served, strlen(served), &resp, err, sizeof(err)), err);
+    free(served);
+    TEST_ASSERT_TRUE(resp.is_success);
+    {
+        json_t *entry = json_array_get(resp.method_responses, 0);
+        json_t *got = json_array_get(entry, 1);
+        json_t *got_list = json_object_get(got, "list");
+
+        TEST_ASSERT_EQUAL_STRING("Mailbox/get", json_string_value(json_array_get(entry, 0)));
+        TEST_ASSERT_TRUE(json_is_array(got_list));
+        TEST_ASSERT_EQUAL_INT((int)n, (int)json_array_size(got_list));
+        for (i = 0; i < n; i++) {
+            const char *want_id = json_string_value(json_object_get(json_array_get(list, i), "id"));
+            const char *got_id = json_string_value(json_object_get(json_array_get(got_list, i), "id"));
+
+            TEST_ASSERT_EQUAL_STRING(want_id, got_id);
+        }
+    }
+    json_decref(resp.method_responses);
+    json_decref(file);
 }
 
 void test_session_parse_stalwart(void) {
@@ -7848,6 +8033,7 @@ int main(void) {
     RUN_TEST(test_mailbox_list_tree_shape);
     RUN_TEST(test_sync_mailboxes_cannot_calculate);
     RUN_TEST(test_sync_mailboxes_delta_rename);
+    RUN_TEST(test_recorded_mailbox_get_replay);
     RUN_TEST(test_writes_are_serial_fifo);
     RUN_TEST(test_write_batch_one_transaction);
     RUN_TEST(test_failed_job_rolls_back_alone);

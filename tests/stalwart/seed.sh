@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Seed the Stalwart v0.16 test container through its admin API (JMAP,
-# urn:stalwart:jmap). Idempotent: existing objects are kept, missing ones are
-# created. Steps: wait for /healthz/live; create the TLS certificate (files
-# from build/stalwart-tls) and the two domains; set SystemSettings (hostname,
-# default domain, default certificate); restart the container only when the
-# certificate or settings changed, since 443 picks up a new certificate on
-# restart; create missing accounts; check andrew's Session with --cacert.
+# Seed the Stalwart v0.16 test container. Idempotent: existing objects are
+# kept, missing ones are created. Steps: wait for /healthz/live; create the
+# TLS certificate (files from build/stalwart-tls) and the two domains through
+# the admin API; set SystemSettings (hostname, default domain, default
+# certificate); restart the container only when the certificate or settings
+# changed, since 443 picks up a new certificate on restart; create missing
+# accounts; check andrew's Session with --cacert; as each user, Mailbox/get
+# then Mailbox/set for any missing role (inbox, drafts, sent, junk, trash,
+# archive) and for a mailbox named Later under Inbox.
 #
 # Environment (defaults): PAV_STALWART_ADMIN_PW (required; the Makefile sets
 # it), PAV_STALWART_PASS (pavtest-pw, used for all five accounts; Stalwart
@@ -147,3 +149,79 @@ printf 'user = "%s:%s"\n' "${accounts[0]}" "$pass" | curl -sS --fail --max-time 
 api_url=$(jq -r '.apiUrl' "$body")
 echo "seed: ${accounts[0]} Session apiUrl $api_url"
 [ "$api_url" = "$base_url/jmap/" ] || { echo "seed: expected apiUrl $base_url/jmap/" >&2; exit 1; }
+
+# user_session USER: GET the Session as that user. The password stays on curl's stdin.
+user_session() {
+  printf 'user = "%s:%s"\n' "$1" "$pass" | curl -sS --fail --max-time 10 --cacert "$ca" --config - \
+    -L "$base_url/.well-known/jmap"
+}
+# user_jmap USER METHOD_CALLS_JSON: one mail JMAP request as that user.
+user_jmap() {
+  jq -nc --argjson mc "$2" \
+    '{using: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"], methodCalls: $mc}' > "$body"
+  printf 'user = "%s:%s"\n' "$1" "$pass" | curl -sS --fail-with-body --max-time 20 --cacert "$ca" --config - \
+    -H 'Content-Type: application/json' --data-binary "@$body" "$base_url/jmap/"
+}
+method_name() {
+  jq -r '.methodResponses[0][0] // empty' <<<"$1"
+}
+method_error() {
+  jq -r '.methodResponses[0][1].type // .methodResponses[0][1].code // "unknown"' <<<"$1"
+}
+
+# ensure_mailboxes USER: create missing role mailboxes, then Later under Inbox.
+ensure_mailboxes() {
+  local user=$1
+  local sess aid got kind missing n inbox has_later created bad
+  sess=$(user_session "$user")
+  aid=$(jq -r '.primaryAccounts["urn:ietf:params:jmap:mail"] // empty' <<<"$sess")
+  [ -n "$aid" ] || { echo "seed: $user has no mail account" >&2; return 1; }
+  got=$(user_jmap "$user" "$(jq -nc --arg id "$aid" '[["Mailbox/get", {accountId:$id}, "m"]]')")
+  kind=$(method_name "$got")
+  [ "$kind" = "Mailbox/get" ] || { echo "seed: $user Mailbox/get failed ($(method_error "$got"))" >&2; return 1; }
+  missing=$(jq -c '
+    .methodResponses[0][1].list as $list
+    | ["inbox","drafts","sent","junk","trash","archive"] as $roles
+    | ["Inbox","Drafts","Sent","Junk","Trash","Archive"] as $names
+    | [ range(0; 6) as $i
+        | select( [$list[].role] | index($roles[$i]) | not )
+        | {key: $roles[$i], value: {name: $names[$i], role: $roles[$i], parentId: null}} ]
+    | from_entries
+  ' <<<"$got")
+  inbox=$(jq -r '[.methodResponses[0][1].list[]? | select(.role == "inbox") | .id][0] // empty' <<<"$got")
+  has_later=$(jq -r '[(.methodResponses[0][1].list // [])[].name] | index("Later") | if . == null then "no" else "yes" end' <<<"$got")
+  n=$(jq 'length' <<<"$missing")
+  if [ "$n" != "0" ]; then
+    created=$(user_jmap "$user" "$(jq -nc --arg id "$aid" --argjson c "$missing" \
+      '[["Mailbox/set", {accountId:$id, create:$c}, "c"]]')")
+    kind=$(method_name "$created")
+    [ "$kind" = "Mailbox/set" ] || { echo "seed: $user Mailbox/set failed ($(method_error "$created"))" >&2; return 1; }
+    bad=$(jq -r '.methodResponses[0][1].notCreated // {} | keys | length' <<<"$created")
+    [ "$bad" = "0" ] || {
+      echo "seed: $user Mailbox/set rejected $(jq -r '.methodResponses[0][1].notCreated // {} | to_entries[] | "\(.key):\(.value.type // .value.code // "error")"' <<<"$created")" >&2
+      return 1
+    }
+    echo "seed: $user created $n role mailbox(es)"
+    if [ -z "$inbox" ]; then
+      inbox=$(jq -r '.methodResponses[0][1].created.inbox.id // empty' <<<"$created")
+    fi
+  else
+    echo "seed: $user role mailboxes present"
+  fi
+  if [ "$has_later" = "yes" ]; then
+    echo "seed: $user mailbox Later present"
+    return 0
+  fi
+  [ -n "$inbox" ] || { echo "seed: $user has no Inbox for Later" >&2; return 1; }
+  created=$(user_jmap "$user" "$(jq -nc --arg id "$aid" --arg p "$inbox" \
+    '[["Mailbox/set", {accountId:$id, create:{later:{name:"Later", parentId:$p}}}, "l"]]')")
+  kind=$(method_name "$created")
+  [ "$kind" = "Mailbox/set" ] || { echo "seed: $user Later failed ($(method_error "$created"))" >&2; return 1; }
+  bad=$(jq -r '.methodResponses[0][1].notCreated // {} | keys | length' <<<"$created")
+  [ "$bad" = "0" ] || { echo "seed: $user Later was rejected" >&2; return 1; }
+  echo "seed: $user created mailbox Later"
+}
+
+for a in "${accounts[@]}"; do
+  ensure_mailboxes "$a"
+done

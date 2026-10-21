@@ -49,8 +49,10 @@
 #   POST /jmap/proxy?cut=1     -> set the cut; ?restore=1 clears it
 #   OPTIONS *                  -> 204 with CORS headers
 #
-# tests/support/fixtures/ is reserved for recorded responses (record mode is
-# not implemented yet); nothing reads it today.
+# tests/support/fixtures/*.json holds recorded responses from record.sh.
+# A file with method, arguments, and response is served when that method
+# call's arguments match. Every other call, including the scripted Mailbox
+# and Identity state, is unchanged. A file with no method is ignored.
 
 set -u
 set -f
@@ -381,8 +383,26 @@ seed_mailstate() {
     }'
 }
 
+# load_recorded DIR OUT: one JSON array of every fixture object. An empty
+# directory writes []. find, not a shell glob: this script sets noglob.
+load_recorded() {
+  local dir=$1 out=$2 f
+  printf '%s\n' '[]' > "$out"
+  [ -d "$dir" ] || return 0
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    if jq -c -s '.[0] + [.[1]]' "$out" "$f" > "$out.next"; then
+      mv "$out.next" "$out"
+    else
+      rm -f "$out.next"
+    fi
+  done <<EOF
+$(find "$dir" -maxdepth 1 -type f -name '*.json' | sort)
+EOF
+}
+
 serve_api() {
-  local tmp out qerr domain d statef
+  local tmp out qerr domain d statef rec
   tmp=$(mktemp "$run/api.XXXXXX")
   read_body "$tmp"
   qerr=$(qget error || true)
@@ -399,7 +419,9 @@ serve_api() {
   if [ ! -f "$statef" ]; then
     seed_mailstate > "$statef" || { unlock_mailstate; rm -f "$tmp"; send_json 500 '{"error":{"code":"serverFail"}}'; return; }
   fi
-  out=$(jq -c -s --arg qerr "$qerr" --arg domain "$d" --slurpfile st "$statef" "$JQ_LIB"'
+  rec=$(mktemp "$run/rec.XXXXXX")
+  load_recorded "$root/tests/support/fixtures" "$rec"
+  out=$(jq -c -s --arg qerr "$qerr" --arg domain "$d" --slurpfile st "$statef" --slurpfile recorded "$rec" "$JQ_LIB"'
     def errbody($c):
       if $c == "cannotCalculateChanges" then {code: "cannotCalculateChanges", description: "server cannot calculate changes"}
       else {code: "stateMismatch", description: "state has changed"} end;
@@ -507,6 +529,16 @@ serve_api() {
         else
           [$state, canned($m; $a)]
         end;
+    def canon:
+      if type == "object" then
+        to_entries | sort_by(.key) | map({key: .key, value: (.value | canon)}) | from_entries
+      elif type == "array" then map(canon)
+      else . end;
+    def recorded_for($m; $a):
+      first(($recorded[0] // [])[]
+        | select((.method // "") == $m)
+        | select((((.arguments // {}) | canon | tojson) == ($a | canon | tojson)))
+        | .response) // null;
     if ($st | length) != 1 or ($st[0] | type) != "object" then {fail:"400"}
     elif length != 1 then {fail:"400"}
     else .[0] as $req
@@ -522,14 +554,20 @@ serve_api() {
                  and ($call[1].__error == "cannotCalculateChanges" or $call[1].__error == "stateMismatch") then
               .res += [["error", {error: errbody($call[1].__error)}, $call[2]]]
             else
-              one(.st; $call[0]; (if ($call[1] | type) == "object" then $call[1] else {} end)) as $got
-              | .st = $got[0]
-              | .res += [$got[1] + [$call[2]]]
+              (if ($call[1] | type) == "object" then $call[1] else {} end) as $args
+              | (recorded_for($call[0]; $args)) as $hit
+              | if $hit != null then
+                  .res += [[$call[0], $hit, $call[2]]]
+                else
+                  one(.st; $call[0]; $args) as $got
+                  | .st = $got[0]
+                  | .res += [$got[1] + [$call[2]]]
+                end
             end)
           | {state:.st, body:{methodResponses:.res, sessionState:"state-1"}}
         end
     end' < "$tmp" 2>"$run/api.err") || out=""
-  rm -f "$tmp"
+  rm -f "$tmp" "$rec" "$rec.next"
   if [ -z "$out" ] || [ "$(printf '%s' "$out" | jq -r '.fail // empty' 2>/dev/null)" = "400" ]; then
     unlock_mailstate
     send_json 400 '{"error": {"code": "invalidRequest", "description": "invalid JSON"}}'

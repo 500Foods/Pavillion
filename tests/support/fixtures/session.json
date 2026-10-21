@@ -1,0 +1,252 @@
+{
+  "account": "andrew@test-a.local",
+  "recorded": "session",
+  "response": {
+    "accounts": {
+      "b": {
+        "accountCapabilities": {
+          "urn:ietf:params:jmap:blob": {
+            "maxDataSources": 16,
+            "maxSizeBlobSet": 7499488,
+            "supportedDigestAlgorithms": [
+              "sha",
+              "sha-256",
+              "sha-512"
+            ],
+            "supportedTypeNames": [
+              "Email",
+              "Thread",
+              "SieveScript"
+            ]
+          },
+          "urn:ietf:params:jmap:calendars": {
+            "maxCalendarsPerEvent": null,
+            "maxDateTime": "9999-12-31T23:59:59Z",
+            "maxExpandedQueryDuration": "P52W1D",
+            "maxParticipantsPerEvent": 20,
+            "mayCreateCalendar": true,
+            "minDateTime": "0001-01-01T00:00:00Z"
+          },
+          "urn:ietf:params:jmap:calendars:parse": {},
+          "urn:ietf:params:jmap:contacts": {
+            "maxAddressBooksPerCard": null,
+            "mayCreateAddressBook": true
+          },
+          "urn:ietf:params:jmap:contacts:parse": {},
+          "urn:ietf:params:jmap:emailpush": {},
+          "urn:ietf:params:jmap:filenode": {
+            "caseInsensitiveNames": false,
+            "fileNodeQuerySortOptions": [
+              "name",
+              "size",
+              "nodeType"
+            ],
+            "forbiddenNameChars": "/<>:\"\\|?*",
+            "forbiddenNodeNames": [
+              ".",
+              "..",
+              "CON",
+              "PRN",
+              "AUX",
+              "NUL",
+              "COM0",
+              "COM1",
+              "COM2",
+              "COM3",
+              "COM4",
+              "COM5",
+              "COM6",
+              "COM7",
+              "COM8",
+              "COM9",
+              "LPT0",
+              "LPT1",
+              "LPT2",
+              "LPT3",
+              "LPT4",
+              "LPT5",
+              "LPT6",
+              "LPT7",
+              "LPT8",
+              "LPT9"
+            ],
+            "maxFileNodeDepth": null,
+            "maxSizeFileNodeName": 255,
+            "mayCreateTopLevelFileNode": true,
+            "webTrashUrl": null,
+            "webUrlTemplate": null,
+            "webWriteUrlTemplate": null
+          },
+          "urn:ietf:params:jmap:mail": {
+            "emailQuerySortOptions": [
+              "receivedAt",
+              "size",
+              "from",
+              "to",
+              "subject",
+              "sentAt",
+              "hasKeyword",
+              "allInThreadHaveKeyword",
+              "someInThreadHaveKeyword"
+            ],
+            "maxMailboxDepth": 10,
+            "maxMailboxesPerEmail": null,
+            "maxSizeAttachmentsPerEmail": 50000000,
+            "maxSizeMailboxName": 255,
+            "mayCreateTopLevelMailbox": true
+          },
+          "urn:ietf:params:jmap:mail:share": {},
+          "urn:ietf:params:jmap:principals": {
+            "currentUserPrincipalId": "b"
+          },
+          "urn:ietf:params:jmap:principals:availability": {
+            "maxAvailabilityDuration": "P52W1D"
+          },
+          "urn:ietf:params:jmap:quota": {},
+          "urn:ietf:params:jmap:sieve": {
+            "externalLists": null,
+            "maxNumberRedirects": 1,
+            "maxNumberScripts": 100,
+            "maxSizeScript": 102400,
+            "maxSizeScriptName": 512,
+            "notificationMethods": [
+              "mailto"
+            ],
+            "sieveExtensions": [
+              "body",
+              "comparator-elbonia",
+              "comparator-i;ascii-casemap",
+              "comparator-i;ascii-numeric",
+              "comparator-i;octet",
+              "convert",
+              "copy",
+              "date",
+              "duplicate",
+              "editheader",
+              "enclose",
+              "encoded-character",
+              "enotify",
+              "envelope",
+              "envelope-deliverby",
+              "envelope-dsn",
+              "environment",
+              "ereject",
+              "extlists",
+              "extracttext",
+              "fcc",
+              "fileinto",
+              "foreverypart",
+              "ihave",
+              "imap4flags",
+              "imapsieve",
+              "include",
+              "index",
+              "mailbox",
+              "mailboxid",
+              "mboxmetadata",
+              "mime",
+              "redirect-deliverby",
+              "redirect-dsn",
+              "regex",
+              "reject",
+              "relational",
+              "replace",
+              "servermetadata",
+              "spamtest",
+              "spamtestplus",
+              "special-use",
+              "subaddress",
+              "vacation",
+              "vacation-seconds",
+              "variables",
+              "virustest"
+            ]
+          },
+          "urn:ietf:params:jmap:submission": {
+            "maxDelayedSend": 2592000,
+            "submissionExtensions": {
+              "DELIVERYBY": [],
+              "DSN": [],
+              "FUTURERELEASE": [],
+              "MT-PRIORITY": [
+                "MIXER"
+              ],
+              "REQUIRETLS": [],
+              "SIZE": []
+            }
+          },
+          "urn:ietf:params:jmap:vacationresponse": {},
+          "urn:ietf:params:jmap:websocket": {},
+          "urn:stalwart:jmap": {}
+        },
+        "isPersonal": true,
+        "isReadOnly": false,
+        "name": "andrew@test-a.local"
+      }
+    },
+    "apiUrl": "https://localhost:1443/jmap/",
+    "capabilities": {
+      "urn:ietf:params:jmap:blob": {},
+      "urn:ietf:params:jmap:calendars": {},
+      "urn:ietf:params:jmap:calendars:parse": {},
+      "urn:ietf:params:jmap:contacts": {},
+      "urn:ietf:params:jmap:contacts:parse": {},
+      "urn:ietf:params:jmap:core": {
+        "collationAlgorithms": [
+          "i;ascii-numeric",
+          "i;ascii-casemap",
+          "i;unicode-casemap"
+        ],
+        "maxCallsInRequest": 16,
+        "maxConcurrentRequests": 4,
+        "maxConcurrentUpload": 4,
+        "maxObjectsInGet": 500,
+        "maxObjectsInSet": 500,
+        "maxSizeRequest": 10000000,
+        "maxSizeUpload": 50000000
+      },
+      "urn:ietf:params:jmap:emailpush": {},
+      "urn:ietf:params:jmap:filenode": {},
+      "urn:ietf:params:jmap:mail": {},
+      "urn:ietf:params:jmap:principals": {},
+      "urn:ietf:params:jmap:principals:availability": {},
+      "urn:ietf:params:jmap:quota": {},
+      "urn:ietf:params:jmap:sieve": {
+        "implementation": "Stalwart v1.0.0"
+      },
+      "urn:ietf:params:jmap:submission": {},
+      "urn:ietf:params:jmap:vacationresponse": {},
+      "urn:ietf:params:jmap:webpush-vapid": {
+        "applicationServerKey": "BHxZln57ZYg2cGzRP7el_q2FqdLcDZsJcBt-IRY8bbcsJG5yNfTsKIlbcxs-Af4bCRvEMYfqGohOKKwvSxfW3D8"
+      },
+      "urn:ietf:params:jmap:websocket": {
+        "supportsPush": true,
+        "url": "wss://localhost:1443/jmap/ws"
+      }
+    },
+    "downloadUrl": "https://localhost:1443/jmap/download/{accountId}/{blobId}/{name}?accept={type}",
+    "eventSourceUrl": "https://localhost:1443/jmap/eventsource/?types={types}&closeafter={closeafter}&ping={ping}",
+    "primaryAccounts": {
+      "urn:ietf:params:jmap:blob": "b",
+      "urn:ietf:params:jmap:calendars": "b",
+      "urn:ietf:params:jmap:calendars:parse": "b",
+      "urn:ietf:params:jmap:contacts": "b",
+      "urn:ietf:params:jmap:contacts:parse": "b",
+      "urn:ietf:params:jmap:emailpush": "b",
+      "urn:ietf:params:jmap:filenode": "b",
+      "urn:ietf:params:jmap:mail": "b",
+      "urn:ietf:params:jmap:mail:share": "b",
+      "urn:ietf:params:jmap:principals": "b",
+      "urn:ietf:params:jmap:principals:availability": "b",
+      "urn:ietf:params:jmap:quota": "b",
+      "urn:ietf:params:jmap:sieve": "b",
+      "urn:ietf:params:jmap:submission": "b",
+      "urn:ietf:params:jmap:vacationresponse": "b",
+      "urn:ietf:params:jmap:websocket": "b",
+      "urn:stalwart:jmap": "b"
+    },
+    "state": "e00e538",
+    "uploadUrl": "https://localhost:1443/jmap/upload/{accountId}/",
+    "username": "andrew@test-a.local"
+  }
+}

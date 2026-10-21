@@ -1,0 +1,24 @@
+{
+  "arguments": {
+    "accountId": "b",
+    "ids": null
+  },
+  "method": "Identity/get",
+  "response": {
+    "accountId": "b",
+    "list": [
+      {
+        "bcc": null,
+        "email": "andrew@test-a.local",
+        "htmlSignature": "",
+        "id": "b",
+        "mayDelete": true,
+        "name": "andrew@test-a.local",
+        "replyTo": null,
+        "textSignature": ""
+      }
+    ],
+    "notFound": [],
+    "state": "saq"
+  }
+}
