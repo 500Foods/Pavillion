@@ -1,6 +1,6 @@
 # M — SYNC
 
-**Status:** M-1 and M-2 complete (2026-10-19). M-3 is in progress (2026-10-21): M-3d is the last finished work item (the Session parser keeps a Stalwart account id and its mail capability). The phase exit gate against the container has not been run. M-4 through M-8 are not started. The index names the next phase.
+**Status:** M-1 and M-2 complete (2026-10-19). M-3 is in progress (2026-10-21): M-3e is the last finished work item (`Identity/get` includes the submission capability, and a method error reads `type`). The phase exit gate against the container has not been run. M-4 through M-8 are not started. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The network and the sync engine: HTTP through libcurl, JMAP session discovery, initial and delta sync, the mutation queue, and push. Mail first; contacts, calendars, and files reuse the same engine with their own types ([S-CONTACTS.md](S-CONTACTS.md), [T-CALENDAR.md](T-CALENDAR.md), [U-FILES.md](U-FILES.md)). Tasks ([X-TASKS.md](X-TASKS.md)) sync over CalDAV after T-7, on that DAV client, not as a JMAP tasks capability. Notes ([Y-NOTES.md](Y-NOTES.md)) reuse the files sync of one account. Sending is [O-COMPOSE.md](O-COMPOSE.md).
@@ -203,7 +203,7 @@ M-1's net layer is complete and tested. M-2 adds `account.test`, JMAP session pa
 ## M-3: Supervisor, Identity and Mailbox sync
 
 **Kind:** Medium
-**Status:** In progress (2026-10-21). Last finished work item: M-3d (the Session parser keeps a Stalwart account id and its mail capability). The phase exit gate against the container has not been run. The window was not launched.
+**Status:** In progress (2026-10-21). Last finished work item: M-3e (`Identity/get` includes the submission capability, and a method error reads `type`). The phase exit gate against the container has not been run. The window was not launched.
 
 **Goal:** Every enabled account keeps its identities and mailboxes in the store, and the UI can list them with counts.
 
@@ -248,6 +248,7 @@ The UI half of this gate (the `make build` steps above) is Andrew's to run befor
 - [x] Moved from W-2: `tests/support/record.sh` (curl and jq) records a scrubbed Session, `Mailbox/get`, and `Identity/get` from the W-2 container into `tests/support/fixtures/`. `jmapfix.sh` serves a file when the method and arguments match. The scripted mailboxes stay for every other call ([W-SHIP.md](W-SHIP.md) Lock, Fixture server).
 - [x] Moved from W-2: `tests/stalwart/seed.sh` creates missing role mailboxes and a mailbox named Later (idempotent). Seeding the `tests/corpus/` messages stays in M-4.
 - [x] `pav_jmap_parse_session` takes the account id from the object key and mail from `accountCapabilities`. Unity: `test_recorded_session_keeps_mail_account`. The fixture Session uses that shape.
+- [x] An Identity method is sent with `urn:ietf:params:jmap:submission` when the account advertises it. A method error reads RFC `type` as well as `code`. The fixture rejects `Identity/get` without submission, and its `cannotCalculateChanges` error uses `type`.
 
 **Done means:** Mailboxes and unread counts for the accounts in Settings are in the store and update on change.
 
@@ -299,6 +300,14 @@ The UI half of this gate (the `make build` steps above) is Andrew's to run befor
 
 **Acceptance:** `make test` exits 0. Passed 2026-10-21: 182 Unity, 2 Rust, 349 Vitest.
 
+### M-3e: Identity submission and method error type
+
+**Scope:** `Identity/get` and `Identity/changes` go out with `urn:ietf:params:jmap:submission` in `using` when that account advertises it. An account without it syncs mailboxes only. A JMAP method error is read from `type`, then from `code`, including the fixture's nested `error` object.
+
+**Tests:** the existing mailbox sync tests. The fixture returns `unknownMethod` with `type` when `using` omits submission, and `cannotCalculateChanges` with `type` on an unknown `sinceState`.
+
+**Acceptance:** `make test` exits 0. Passed 2026-10-21: 182 Unity, 2 Rust, 349 Vitest.
+
 ### Lessons learned
 
 Sitting notes from 2026-10-21. M-3 is still in progress. There is no Accomplished section until Andrew accepts the window.
@@ -327,9 +336,11 @@ M-3c was smaller, and two Stalwart details mattered:
 
 M-3d: a live Update that logs Session 200 and then idle, with no `POST`, means `remote_count` was 0. RFC 8620 makes `accounts` an `Id[Account]` map. Stalwart does not repeat the id inside the account, and it puts mail under `accountCapabilities`. The parser copied an inner `id` and a `capabilities` object, so the account was dropped and sync stored the Session and stopped. The fixture used to send that inner shape, so the mailbox tests never saw the drop. The recorded Session is the check. The fixture Session now uses the key and `accountCapabilities`, and `test_sync_session_stored` still counts the mailboxes. Session-level capability flags stay capped at 8. That cap did not cause this drop.
 
+M-3e: once the account was kept, the next POST was `Identity/get` plus `Mailbox/get` with only core and mail in `using`. Stalwart returns `["error", {"type": "unknownMethod"}, ...]`. The parser read `code`, found none, and stored `request rejected`. Both live accounts went to `error:server`. `Identity/get` needs `urn:ietf:params:jmap:submission` in `using`. The method-error field is `type`.
+
 ### Remaining for M-3
 
-M-3d is finished (2026-10-21). Row 53 stays in progress. Do not mark it Done, do not bump the stamp, and do not write Accomplished until Andrew accepts the window.
+M-3e is finished (2026-10-21). Row 53 stays in progress. Do not mark it Done, do not bump the stamp, and do not write Accomplished until Andrew accepts the window.
 
 The phase exit gate is still open: `Mailbox/set` as `andrew@test-a.local` against `https://localhost:1443/jmap/`, then within one poll `mail.mailboxes_changed` and `mailbox.list`. The implementer drives the container. Andrew does not. It was not run this sitting. The window was not launched.
 
@@ -465,3 +476,4 @@ E-7 starts after M-3 is accepted. The corpus messages stay in M-4. `make test` k
 - 2026-10-21 Lessons for M-3a and M-3b written, and the M-3c handoff added. M-3 stays in progress. The next sitting is M-3c. Corpus messages stay in M-4. The container exit gate was not run. The window was not launched.
 - 2026-10-21 M-3 in progress. M-3c finished: `record.sh` wrote a scrubbed Session, `Mailbox/get`, and `Identity/get`; `jmapfix.sh` serves a file when the method and arguments match; `seed.sh` creates a missing role mailbox and Later, and a second seed creates nothing. Stalwart names the role mailboxes Sent Items, Junk Mail, and Deleted Items. `Identity/get` needs the submission capability in `using`. The recorded mailbox keys match `append_mailbox`, so `sync.c` was not changed. Unity: `test_recorded_mailbox_get_replay`. `make test`: 181 Unity, 2 Rust, 349 Vitest, exit 0. The phase exit gate was not run. The window was not launched. The container was left up.
 - 2026-10-21 M-3 in progress. M-3d finished: `pav_jmap_parse_session` takes the account id from the object key and copies `accountCapabilities`. The fixture Session uses that shape. Unity: `test_recorded_session_keeps_mail_account`. `make test`: 182 Unity, 2 Rust, 349 Vitest, exit 0. The phase exit gate was not run. The window was not launched. Help was not checked in a browser.
+- 2026-10-21 M-3 in progress. M-3e finished: Identity methods include `urn:ietf:params:jmap:submission` when the account advertises it, and a method error is read from `type`. A live Update had reached the POST and both accounts ended `error:server` / `request rejected`. The fixture rejects `Identity/get` without submission and sends `cannotCalculateChanges` as `type`. `make test`: 182 Unity, 2 Rust, 349 Vitest, exit 0. The phase exit gate was not run. The window was not launched. Help was not checked in a browser.

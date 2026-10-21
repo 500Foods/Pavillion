@@ -328,6 +328,7 @@ export const helpPages = [
           "A 401 leaves the account at error:auth until the password changes. A locked keyring leaves it at locked until sync.now or the next poll. This build stores the Session, the remote mail accounts, identities, and mailboxes. mailbox.list returns the tree: one account root, then each mailbox. identity.list returns the synced identities. A mailbox change emits mail.mailboxes_changed. The on-screen mailbox tree comes later.",
           "tests/support/record.sh stores a scrubbed Session, Mailbox/get, and Identity/get from the Stalwart container. The fixture serves one of those files when the method and the arguments match. Every other call still uses the scripted mailboxes.",
           "A Session account id is the object key, and mail is under accountCapabilities. The suite parses the recorded Session and requires account b to keep the mail capability. The fixture Session uses that same shape, so mailbox sync runs against it.",
+          "Identity/get is sent with the submission capability. Stalwart rejects the method without it. A mail account that does not advertise submission syncs mailboxes only.",
         ],
       },
       {

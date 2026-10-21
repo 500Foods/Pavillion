@@ -33,6 +33,7 @@
 #define PAV_SYNC_REDIRECTS 3
 #define PAV_SYNC_PAGE_MAX 8
 #define PAV_MAIL_URN "urn:ietf:params:jmap:mail"
+#define PAV_SUBMISSION_URN "urn:ietf:params:jmap:submission"
 #define SYNC_KIND_SESSION 0
 #define SYNC_KIND_TYPES 1
 #define TYPE_SKIP 0
@@ -56,6 +57,7 @@ typedef struct SupRemote {
     int pending_idn_more;
     char pending_mbx_state[128];
     char pending_idn_state[128];
+    int has_submission;
 } SupRemote;
 
 typedef struct PavSup {
@@ -954,6 +956,26 @@ static int call_side(const json_t *entry) {
     return 0;
 }
 
+/* RFC 8620 names the method-error field type. The fixture also sends code,
+   and one path nests that object under error. */
+static const char *error_type_field(const json_t *obj) {
+    const char *type;
+    const char *code;
+
+    if (!json_is_object(obj)) {
+        return NULL;
+    }
+    type = json_string_value(json_object_get((json_t *)obj, "type"));
+    if (type != NULL && type[0] != '\0') {
+        return type;
+    }
+    code = json_string_value(json_object_get((json_t *)obj, "code"));
+    if (code != NULL && code[0] != '\0') {
+        return code;
+    }
+    return NULL;
+}
+
 static const char *method_error_code(const json_t *entry) {
     const char *name = json_string_value(json_array_get(entry, 0));
     const json_t *args;
@@ -967,13 +989,29 @@ static const char *method_error_code(const json_t *entry) {
     if (!json_is_object(args)) {
         return "";
     }
-    code = json_string_value(json_object_get(args, "code"));
+    code = error_type_field(args);
     if (code != NULL) {
         return code;
     }
     inner = json_object_get(args, "error");
-    code = json_is_object(inner) ? json_string_value(json_object_get(inner, "code")) : NULL;
+    code = error_type_field(inner);
     return code != NULL ? code : "";
+}
+
+static int caps_has_urn(const char *caps, const char *urn) {
+    const char *p;
+    size_t n;
+
+    if (caps == NULL || urn == NULL || urn[0] == '\0') {
+        return 0;
+    }
+    n = strlen(urn);
+    for (p = strstr(caps, urn); p != NULL; p = strstr(p + n, urn)) {
+        if (p > caps && p[-1] == '"' && p[n] == '"') {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 static int reduce_types(const char *body, TypeResult *out) {
@@ -1396,6 +1434,7 @@ static void merge_sup_remotes(PavSup *s, const SyncResult *r) {
         }
         copy_fit(node->ra_id, sizeof(node->ra_id), r->remotes[i].ra_id);
         reset_sup_remote(node);
+        node->has_submission = caps_has_urn(r->remotes[i].caps, PAV_SUBMISSION_URN);
         if (keep == NULL) {
             keep = node;
         } else {
@@ -1786,6 +1825,18 @@ static char *build_type_body(SupRemote *remote, int mbx_mode, int idn_mode, cons
         json_decref(root);
         return NULL;
     }
+    /* Stalwart answers Identity/get with unknownMethod unless submission is
+       in using. Mailbox/get does not need it. */
+    if (idn_mode != TYPE_SKIP) {
+        json_t *submission = json_string(PAV_SUBMISSION_URN);
+
+        if (submission == NULL || json_array_append_new(using, submission) != 0) {
+            json_decref(using);
+            json_decref(calls);
+            json_decref(root);
+            return NULL;
+        }
+    }
     if (put_json(root, "using", using) != 0) {
         json_decref(calls);
         json_decref(root);
@@ -1899,6 +1950,9 @@ static void start_type_request(PavSup *s, SupRemote *remote, int mbx_mode, int i
         mbx_mode = TYPE_SKIP;
     }
     if (idn_mode == TYPE_GET_IDS && idn_n <= 0) {
+        idn_mode = TYPE_SKIP;
+    }
+    if (idn_mode != TYPE_SKIP && !remote->has_submission) {
         idn_mode = TYPE_SKIP;
     }
     mbx_since[0] = '\0';

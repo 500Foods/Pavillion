@@ -503,7 +503,7 @@ serve_api() {
             changes_since($acct.mbxRevs; ($a.sinceState // "")) as $ch
             | if $ch == null then
                 [note($state; "Mailbox/changes"),
-                 ["error", errbody("cannotCalculateChanges")]]
+                 ["error", {type: "cannotCalculateChanges", description: "server cannot calculate changes"}]]
               else
                 [note($state; "Mailbox/changes"),
                  [$m, {accountId:$aid, oldState:($a.sinceState // ""), newState:$acct.mbxState,
@@ -516,7 +516,7 @@ serve_api() {
                      hasMoreChanges:false, created:[], updated:[], destroyed:[]}]]
             else
               [note($state; "Identity/changes"),
-               ["error", errbody("cannotCalculateChanges")]]
+               ["error", {type: "cannotCalculateChanges", description: "server cannot calculate changes"}]]
             end
           else
             apply_mbx_set($acct; $a) as $done
@@ -548,6 +548,9 @@ serve_api() {
           reduce ($req.methodCalls // [])[] as $call ({st:$st[0], res:[]};
             if ($call | type) != "array" or ($call | length) < 3 then
               .res += [["error", {code:"invalidRequest"}, null]]
+            elif (($call[0] == "Identity/get") or ($call[0] == "Identity/changes"))
+                 and ((($req.using // []) | index("urn:ietf:params:jmap:submission")) == null) then
+              .res += [["error", {type: "unknownMethod"}, $call[2]]]
             elif ($qerr == "cannotCalculateChanges" or $qerr == "stateMismatch") then
               .res += [["error", {error: errbody($qerr)}, $call[2]]]
             elif ($call[1] | type) == "object"
