@@ -62,6 +62,8 @@ int pav_exists(const char *path);
 int pav_is_dir(const char *path);
 /* Mode 0600 on an existing file. Returns 0, or -1. */
 int pav_file_private(const char *path);
+/* Size in bytes of a regular file, or -1 when it is missing or not a file. */
+int64_t pav_file_size(const char *path);
 
 /* Calls visit for each name except "." and "..". Returns 0, or -1 when the
    directory cannot be opened. A non-zero visit result stops the walk. */

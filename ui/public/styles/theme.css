@@ -814,6 +814,18 @@
   text-align: right;
 }
 
+.pav-root .limits-list {
+  display: grid;
+  gap: 0.4rem;
+  margin-bottom: 0.8rem;
+  width: 34rem;
+}
+
+.pav-root .limits-list input[type="number"] {
+  flex: none;
+  width: 8rem;
+}
+
 .pav-root .zoom-wheel-switch {
   flex: 1;
   min-width: 0;

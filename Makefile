@@ -53,7 +53,9 @@ $(LIB): core/CMakeLists.txt core/include/pavillion.h core/include/pav_config.h \
 		core/src/config_fs.c core/src/config_internal.h core/src/store.c \
 		core/src/db.c core/src/db_writer.c core/src/db_readpool.c \
 		core/src/migrate.c core/src/migrations_embed.h \
-		core/src/migrations/001_accounts.sql core/embed_sql.cmake \
+		core/src/migrations/001_accounts.sql core/src/migrations/002_mail.sql \
+		core/embed_sql.cmake \
+		core/src/blobs.c core/include/pav_blob.h \
 		core/src/logdb.c core/include/pav_logdb.h core/src/migrations/log/001_log.sql \
 		core/include/pav_db.h \
 		core/src/activity.c core/include/pav_activity.h \

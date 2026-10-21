@@ -138,6 +138,15 @@ int pav_file_private(const char *path) {
     return 0;
 }
 
+int64_t pav_file_size(const char *path) {
+    struct stat st;
+
+    if (path == NULL || stat(path, &st) != 0 || !S_ISREG(st.st_mode)) {
+        return -1;
+    }
+    return (int64_t)st.st_size;
+}
+
 int pav_dir_each(const char *path, int (*visit)(const char *name, void *user), void *user) {
     DIR *dir;
     struct dirent *ent;

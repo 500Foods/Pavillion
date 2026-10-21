@@ -9,6 +9,7 @@
 #include "pav_logdb.h"
 #include "logring.h"
 #include "pav_activity.h"
+#include "pav_blob.h"
 #include "pav_cfg.h"
 #include "pav_config.h"
 #include "pav_net.h"
@@ -213,6 +214,7 @@ static void profile_lock_release(void) {
 
 static void core_release_profile(void) {
     pav_activity_shutdown();
+    pav_blob_unbind();
     pav_store_close(g_store);
     g_store = NULL;
     pav_config_load_free(g_load);
@@ -315,6 +317,14 @@ static void core_boot(void) {
         publish_boot("error", profile->name, profile->id, err);
         return;
     }
+    if (pav_blob_bind(profile->resolved_blobs) != 0) {
+        publish_boot("error", profile->name, profile->id, "cannot bind blob store");
+        return;
+    }
+    pav_cache_set_limits(profile->bodies_mb, profile->blobs_mb);
+    if (pav_runtime_open_prepare() != 0) {
+        pav_log("core", PAV_WARN, 0, "cannot create runtime open directory");
+    }
     if (pav_activity_attach() != 0) {
         publish_boot("error", profile->name, profile->id, "cannot open activity registry");
         return;
@@ -347,7 +357,7 @@ static int core_prepare_prefs(char *err, size_t err_len) {
     if (pav_profile_migrate_ui(g_load->profile, &changed, err, err_len) != 0) {
         return -1;
     }
-    if ((changed || g_load->profile->logs_migrated) &&
+    if ((changed || g_load->profile->logs_migrated || g_load->profile->cache_filled) &&
         pav_profile_store(g_load->profile_path, g_load->profile, err, err_len) != 0) {
         return -1;
     }
@@ -905,6 +915,7 @@ void pavillion_stop(void) {
     pav_net_stop();
     pav_event_thread_stop();
     pav_log("core", PAV_INFO, 0, "stopped");
+    pav_runtime_open_remove();
     pav_log_thread_shutdown();
 }
 
@@ -1464,26 +1475,73 @@ int pav_core_prefs_get_data(json_t **data, PavError *err) {
     }
     profile = g_load->profile;
     obj = json_object();
-    if (json_set_or_oom(obj, "timezone", json_string(profile->timezone), err) != 0 ||
-        json_set_or_oom(obj, "weekStart", json_string(profile->week_start), err) != 0 ||
-        json_set_or_oom(obj, "timeFormat", json_string(profile->time_format), err) != 0 ||
-        json_set_or_oom(obj, "theme", json_string(profile->theme), err) != 0 ||
-        json_set_or_oom(obj, "density", json_string(profile->density), err) != 0 ||
-        json_set_or_oom(obj, "windowMaximized", profile->window_maximized ? json_true() : json_false(), err) !=
-            0 ||
-        json_set_or_oom(obj, "windowWidth", json_integer(profile->window_width), err) != 0 ||
-        json_set_or_oom(obj, "windowHeight", json_integer(profile->window_height), err) != 0 ||
-        json_set_or_oom(obj, "windowX",
-                        profile->window_x_set ? json_integer(profile->window_x) : json_null(), err) != 0 ||
-        json_set_or_oom(obj, "windowY",
-                        profile->window_y_set ? json_integer(profile->window_y) : json_null(), err) != 0 ||
-        json_set_or_oom(obj, "chrome", json_string(profile->chrome), err) != 0 ||
-        json_set_or_oom(obj, "logLevel",
-                        json_string(g_load->log_level[0] != '\0' ? g_load->log_level : "info"), err) != 0) {
-        return -1;
+    {
+        json_t *cache = json_object();
+
+        if (cache == NULL || json_object_set_new(cache, "bodiesMb", json_integer(profile->bodies_mb)) != 0 ||
+            json_object_set_new(cache, "blobsMb", json_integer(profile->blobs_mb)) != 0) {
+            json_decref(cache);
+            json_decref(obj);
+            pav_error_set(err, "internal", "out of memory", 0);
+            return -1;
+        }
+        if (json_set_or_oom(obj, "cache", cache, err) != 0 ||
+            json_set_or_oom(obj, "timezone", json_string(profile->timezone), err) != 0 ||
+            json_set_or_oom(obj, "weekStart", json_string(profile->week_start), err) != 0 ||
+            json_set_or_oom(obj, "timeFormat", json_string(profile->time_format), err) != 0 ||
+            json_set_or_oom(obj, "theme", json_string(profile->theme), err) != 0 ||
+            json_set_or_oom(obj, "density", json_string(profile->density), err) != 0 ||
+            json_set_or_oom(obj, "windowMaximized", profile->window_maximized ? json_true() : json_false(), err) !=
+                0 ||
+            json_set_or_oom(obj, "windowWidth", json_integer(profile->window_width), err) != 0 ||
+            json_set_or_oom(obj, "windowHeight", json_integer(profile->window_height), err) != 0 ||
+            json_set_or_oom(obj, "windowX",
+                            profile->window_x_set ? json_integer(profile->window_x) : json_null(), err) != 0 ||
+            json_set_or_oom(obj, "windowY",
+                            profile->window_y_set ? json_integer(profile->window_y) : json_null(), err) != 0 ||
+            json_set_or_oom(obj, "chrome", json_string(profile->chrome), err) != 0 ||
+            json_set_or_oom(obj, "logLevel",
+                            json_string(g_load->log_level[0] != '\0' ? g_load->log_level : "info"), err) != 0) {
+            return -1;
+        }
     }
     *data = obj;
     return 0;
+}
+
+static int take_cache_mb(json_t *value, int *out, const char *wire, PavError *err) {
+    json_int_t number;
+    char buf[128];
+
+    if (!json_is_integer(value)) {
+        snprintf(buf, sizeof(buf), "%s must be an integer", wire);
+        pav_error_set(err, "bad_args", buf, 0);
+        return -1;
+    }
+    number = json_integer_value(value);
+    if (number < PAV_CACHE_MB_MIN || number > PAV_CACHE_MB_MAX) {
+        snprintf(buf, sizeof(buf), "%s is out of range", wire);
+        pav_error_set(err, "bad_args", buf, 0);
+        return -1;
+    }
+    *out = (int)number;
+    return 0;
+}
+
+static int write_cache_mb(PavProfile *profile, const char *key, int value, char *err, size_t err_len) {
+    json_t *prefs = cfg_obj(profile->doc, "preferences", 0);
+    json_t *cache;
+
+    if (prefs == NULL) {
+        snprintf(err, err_len, "%s", "missing profile fields");
+        return -1;
+    }
+    cache = cfg_obj(prefs, "cache", 1);
+    if (cache == NULL) {
+        snprintf(err, err_len, "%s", "preferences.cache is not an object");
+        return -1;
+    }
+    return cfg_set_int(cache, key, value, err, err_len);
 }
 
 static int take_pref_string(json_t *value, size_t cap, const char **out, const char *wire, PavError *err) {
@@ -1619,6 +1677,10 @@ int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
     int window_touched = 0;
     int profile_touched = 0;
     int any = 0;
+    int bodies_mb = 0;
+    int blobs_mb = 0;
+    int bodies_set = 0;
+    int blobs_set = 0;
 
     if (data == NULL) {
         pav_error_set(err, "internal", "missing data", 0);
@@ -1699,6 +1761,37 @@ int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
                 return -1;
             }
             log_level = json_string_value(value);
+        } else if (strcmp(key, "cache") == 0) {
+            const char *cache_key;
+            json_t *cache_value;
+            int saw = 0;
+
+            if (!json_is_object(value)) {
+                pav_error_set(err, "bad_args", "cache must be an object", 0);
+                return -1;
+            }
+            json_object_foreach(value, cache_key, cache_value) {
+                saw = 1;
+                if (strcmp(cache_key, "bodiesMb") == 0) {
+                    if (take_cache_mb(cache_value, &bodies_mb, "bodiesMb", err) != 0) {
+                        return -1;
+                    }
+                    bodies_set = 1;
+                } else if (strcmp(cache_key, "blobsMb") == 0) {
+                    if (take_cache_mb(cache_value, &blobs_mb, "blobsMb", err) != 0) {
+                        return -1;
+                    }
+                    blobs_set = 1;
+                } else {
+                    snprintf(buf, sizeof(buf), "unknown preference cache.%s", cache_key);
+                    pav_error_set(err, "bad_args", buf, 0);
+                    return -1;
+                }
+            }
+            if (!saw) {
+                pav_error_set(err, "bad_args", "cache is empty", 0);
+                return -1;
+            }
         } else {
             snprintf(buf, sizeof(buf), "unknown preference %s", key);
             pav_error_set(err, "bad_args", buf, 0);
@@ -1715,7 +1808,7 @@ int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
         return -1;
     }
     profile_touched = window_touched || timezone != NULL || week_start != NULL || time_format != NULL ||
-                      theme != NULL || density != NULL;
+                      theme != NULL || density != NULL || bodies_set || blobs_set;
     if (profile_touched && window_touched &&
         pav_profile_write_shell(profile, &shell, PAV_PREFS_WINDOW, errbuf, sizeof(errbuf)) != 0) {
         return fail_profile(err, errbuf);
@@ -1734,6 +1827,19 @@ int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
          (density != NULL && apply_pref_string(profile, "density", density, profile->density,
                                                sizeof(profile->density), errbuf, sizeof(errbuf)) != 0))) {
         return fail_profile(err, errbuf);
+    }
+    if ((bodies_set && write_cache_mb(profile, "bodiesMb", bodies_mb, errbuf, sizeof(errbuf)) != 0) ||
+        (blobs_set && write_cache_mb(profile, "blobsMb", blobs_mb, errbuf, sizeof(errbuf)) != 0)) {
+        return fail_profile(err, errbuf);
+    }
+    if (bodies_set) {
+        profile->bodies_mb = bodies_mb;
+    }
+    if (blobs_set) {
+        profile->blobs_mb = blobs_mb;
+    }
+    if (bodies_set || blobs_set) {
+        pav_cache_set_limits(profile->bodies_mb, profile->blobs_mb);
     }
     if (profile_touched && pav_profile_store(g_load->profile_path, profile, errbuf, sizeof(errbuf)) != 0) {
         return fail_profile(err, errbuf[0] != '\0' ? errbuf : "cannot write profile");

@@ -36,6 +36,7 @@ static const char *const k_kinds[] = {
     "account.test",
     "attachment.download",
     "body.fetch",
+    "cache.evict",
     "export",
     "files.download",
     "files.upload",

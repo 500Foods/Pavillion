@@ -54,6 +54,7 @@ add_library(pavillion_core STATIC
     ${LOG_MIGRATION_EMBED}
     src/logdb.c
     src/activity.c
+    src/blobs.c
     src/secret.c
     src/auth_basic.c
     src/account.c

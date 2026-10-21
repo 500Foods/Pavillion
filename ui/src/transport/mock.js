@@ -23,6 +23,7 @@ const PREF_KEYS = [
   "windowY",
   "chrome",
   "logLevel",
+  "cache",
 ];
 
 function defaultPrefs() {
@@ -39,6 +40,7 @@ function defaultPrefs() {
     windowY: null,
     chrome: "system",
     logLevel: "info",
+    cache: { bodiesMb: 2048, blobsMb: 4096 },
   };
 }
 

@@ -5,8 +5,8 @@ Status: v0.7 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 **Resume:** each phase's history is in its own document's Working log; this block is only the current state.
 
 - Last finished: E-7 (step 54), 2026-10-21, in [docs/E-TREE.md](docs/E-TREE.md). Andrew accepted the window the same day. The Mail nav is the tree from `mailbox.list`, patched by `mail.mailboxes_changed`. The container showed the three test accounts, and a mailbox created on the server appeared without a restart. The live profile showed Foods. M-3 (step 53), H-4 (step 131), and D-10 (step 134) were accepted earlier the same day.
-- Next: L-2 (step 55), in [docs/L-STORE.md](docs/L-STORE.md). Not started. Mail tables, the blob store, and `preferences.cache`. Its entry gate is M-3, which is met. The Accounts table (Tabulator) polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md).
-- Last full `make test`: 184 Unity tests, 2 Rust tests and 357 Vitest tests, exit 0 (2026-10-21, after the stamp move to `0.60.0`).
+- Next: L-2 (step 55), in [docs/L-STORE.md](docs/L-STORE.md). In progress. Mail tables, the blob store, `preferences.cache`, and Settings → Limits are in, and `make test` passed. Andrew's launch applied migration 2. The phase stays in progress until he accepts the window, including Limits. Do not mark the row Done. The Accounts table (Tabulator) polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md).
+- Last full `make test`: 192 Unity tests, 2 Rust tests and 361 Vitest tests, exit 0 (2026-10-21, L-2 in progress). The phase stamp stays `0.60.0`.
 - `PAVILLION_API_VERSION` is 3. The phase stamp is `0.60.0` (60 Done rows), release date 2026-10-21.
 
 **Read first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), one page with diagrams of the layers, the threads, and the data flow.
@@ -129,7 +129,7 @@ Row order decides what is next: the next phase is the first row, top to bottom, 
 | 53 | M-3 | Sync supervisor, Identity and Mailbox sync, `mailbox.list` | Medium | Done |
 | 54 | E-7 | Real mailbox tree from `mailbox.list` | Hard | Done |
 | | | *Milestone 2: real accounts and mailbox trees (old P0)* | | |
-| 55 | L-2 | Mail schema and the blob store | Medium | |
+| 55 | L-2 | Mail schema and the blob store | Medium | In progress |
 | 56 | M-4 | Email initial sync | Medium | |
 | 57 | M-5 | Delta sync | Medium | |
 | 58 | N-1 | Body fetch and MIME (GMime) | Medium | |
@@ -286,6 +286,7 @@ Resolved 2026-10-16 by Andrew (each written into its Lock):
 - I-Q1: finished activities persist in the profile SQLite table `activity`. The log (`log.db` from H-4) stays the human record, and running work is not resumed after a restart (I Lock).
 - K-Q4 (2026-10-18): the OS keyring (libsecret) holds only the Stronghold snapshot password. Account secrets are Stronghold records (K Lock, Secrets). 1Password service accounts (token, cached vault list, cached username and password, one refresh, then the Activity control) are recorded in [docs/K-ACCOUNTS.md](docs/K-ACCOUNTS.md).
 - K-Q1 (2026-10-19): the first accounts are the W-2 Stalwart container's `andrew@test-a.local` and `alice@test-a.local` (tenant A) and `bob@test-b.local` (tenant B), at `https://localhost:1443/.well-known/jmap` (K Lock, Accounts).
+- L-Q1 (2026-10-21): cache limits stay 2048 MB of bodies and 4096 MB of blobs (L Lock).
 - H-Q2 (2026-10-19): folded into H-4, then dropped the same day: every level is captured and the Log view filters, so there is no `preferences.log_levels`. Retention is one size cap, `preferences.log_max_mb` (H Lock).
 
 Still open, owned by the named document:
@@ -296,7 +297,6 @@ Each is owned by the document named; the answer is written into that document's 
 | --- | --- | --- |
 | J-Q2 | Single click shows in the reading pane and only Ctrl+Enter or double-click opens a sub-tab? | N-4 |
 | J-Q4 | Should section colors tint the nav button too? | J-5 |
-| L-Q1 | Cache limits 2 GB bodies and 4 GB attachments: right size? | L-2 |
 | N-Q1 | Notifications: every message, Inbox only, or per-folder opt-in? Quiet hours? | N-8 |
 | N-Q2 | Retention: Trash or destroy? Same rule for all willard@ folders? | N-9 |
 | N-Q3 | Prefer a server-side retention in Stalwart if available? Never two trimmers on one folder. | N-9 |

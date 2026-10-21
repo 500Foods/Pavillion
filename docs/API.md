@@ -172,7 +172,7 @@ Result: `{activities:[activity]}`. Each activity is:
   "dismissed": false }
 ```
 
-`state` is `queued`, `running`, `done`, `failed`, or `cancelled`. `dismissed` is true only after `activity.dismiss`. `kind` is `sync.mail`, `sync.contacts`, `sync.calendar`, `sync.files`, `body.fetch`, `attachment.download`, `files.upload`, `files.download`, `send`, `index.rebuild`, `rules.run`, `import`, `export`, or `retention`. A later phase adds a kind here in the same sitting that first uses it. `progress` is null until the first progress report. `progress.total` and `etaMs` are null when the total is unknown. `etaMs` stays null until two progress samples exist. `parentId` is `act-<n>` or null. `endedMs` and `error` are null while the activity is unfinished. Finished rows are reloaded from SQLite on the next start. Running rows are not.
+`state` is `queued`, `running`, `done`, `failed`, or `cancelled`. `dismissed` is true only after `activity.dismiss`. `kind` is `sync.mail`, `sync.contacts`, `sync.calendar`, `sync.files`, `body.fetch`, `attachment.download`, `cache.evict`, `files.upload`, `files.download`, `send`, `index.rebuild`, `rules.run`, `import`, `export`, or `retention`. A later phase adds a kind here in the same sitting that first uses it. `progress` is null until the first progress report. `progress.total` and `etaMs` are null when the total is unknown. `etaMs` stays null until two progress samples exist. `parentId` is `act-<n>` or null. `endedMs` and `error` are null while the activity is unfinished. Finished rows are reloaded from SQLite on the next start. Running rows are not.
 
 Errors: `bad_args`.
 
@@ -605,7 +605,8 @@ Result:
   "windowX": null,
   "windowY": null,
   "chrome": "system",
-  "logLevel": "info"
+  "logLevel": "info",
+  "cache": { "bodiesMb": 2048, "blobsMb": 4096 }
 }
 ```
 
@@ -619,7 +620,7 @@ State: real (G-2)
 
 Writes the same fields. Keys that are absent stay as stored. `{}` is `bad_args`. An unknown key is `bad_args`. Profile fields are written once. `logLevel` is written on the index and applied to the running process as the view default; it does not change what is captured. A request that only sets `logLevel` does not write the profile.
 
-Args: any subset of the `prefs.get` result. Booleans are JSON booleans. Width, height, and coordinates are integers. `windowX` or `windowY` set to null clears that coordinate. Strings must be non-empty and fit the profile field (`timezone` 63 bytes, `weekStart` 15, `timeFormat` 7, `theme` 15, `density` 15, `chrome` 15). Width and height are 200 to 10000. A set coordinate is -32000 to 32000. `chrome` is `system` or `hidden`. `logLevel` is `error`, `warn`, `info`, or `debug`.
+Args: any subset of the `prefs.get` result. Booleans are JSON booleans. Width, height, and coordinates are integers. `windowX` or `windowY` set to null clears that coordinate. Strings must be non-empty and fit the profile field (`timezone` 63 bytes, `weekStart` 15, `timeFormat` 7, `theme` 15, `density` 15, `chrome` 15). Width and height are 200 to 10000. A set coordinate is -32000 to 32000. `chrome` is `system` or `hidden`. `logLevel` is `error`, `warn`, `info`, or `debug`. `cache` is an object with `bodiesMb`, `blobsMb`, or both. Each is an integer from 1 to 1048576. An empty `cache` object, or a key other than those two, is `bad_args`. Absent cache keys stay as stored.
 
 Result: the `prefs.get` object after the write.
 

@@ -12,6 +12,7 @@ import { createRailDrag } from "./shell/rail-drag.js";
 import { createActivityView } from "./activity/view.js";
 import { createAccountsView } from "./settings/accounts.js";
 import { createLogSettings } from "./settings/log.js";
+import { createLimitsSettings } from "./settings/limits.js";
 import { createHelpView } from "./help/view.js";
 import { createBackTracker } from "./help/back.js";
 import { createLogView } from "./log/view.js";
@@ -1199,6 +1200,7 @@ let helpView = null;
 let helpBack = createBackTracker();
 let accountsView = null;
 let logSettings = null;
+let limitsSettings = null;
 let logTimeZone = "America/Vancouver";
 let mailTree = null;
 let mailNav = null;
@@ -1480,6 +1482,9 @@ function applyHomeContext(entry) {
       }
       if (ctx.heading === "log" && logSettings) {
         logSettings.refresh();
+      }
+      if (ctx.heading === "limits" && limitsSettings) {
+        limitsSettings.refresh();
       }
     }
   }
@@ -1938,6 +1943,9 @@ function bindSettings() {
       if (button.dataset.heading === "log" && logSettings) {
         logSettings.refresh();
       }
+      if (button.dataset.heading === "limits" && limitsSettings) {
+        limitsSettings.refresh();
+      }
       showNav("settings");
       openHome("settings", { heading: button.dataset.heading });
     });
@@ -2200,6 +2208,10 @@ export function stopShell() {
   if (logSettings) {
     logSettings.destroy();
     logSettings = null;
+  }
+  if (limitsSettings) {
+    limitsSettings.destroy();
+    limitsSettings = null;
   }
   if (mailNav) {
     mailNav.stop();
@@ -2815,6 +2827,12 @@ export async function startShell(surface, nextApi, nextHost, result) {
       showBanner(text);
     },
   });
+  limitsSettings = createLimitsSettings(api, mountRoot, {
+    onError(text) {
+      showBanner(text);
+    },
+  });
+  limitsSettings.refresh();
   if (mountRoot.querySelector("[data-settings='accounts']")) {
     accountsView.refresh();
   }

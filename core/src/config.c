@@ -1,4 +1,5 @@
 #include "pav_config.h"
+#include "pav_blob.h"
 #include "pav_cfg.h"
 #include "pav_platform.h"
 #include "config_internal.h"
@@ -139,6 +140,45 @@ int pav_index_parse(const char *text, PavIndex **out, char *err, size_t err_len)
     return 0;
 }
 
+static int fill_cache(json_t *prefs, PavProfile *profile, char *err, size_t err_len) {
+    json_t *cache = json_object_get(prefs, "cache");
+    int filled = 0;
+
+    if (cache == NULL) {
+        cache = json_object();
+        if (cache == NULL || json_object_set_new(prefs, "cache", cache) != 0) {
+            cfg_err(err, err_len, "out of memory");
+            return -1;
+        }
+        filled = 1;
+    } else if (!json_is_object(cache)) {
+        cfg_err(err, err_len, "preferences.cache is not an object");
+        return -1;
+    }
+    if (json_object_get(cache, "bodiesMb") == NULL) {
+        if (json_object_set_new(cache, "bodiesMb", json_integer(PAV_CACHE_BODIES_MB)) != 0) {
+            cfg_err(err, err_len, "out of memory");
+            return -1;
+        }
+        filled = 1;
+    }
+    if (json_object_get(cache, "blobsMb") == NULL) {
+        if (json_object_set_new(cache, "blobsMb", json_integer(PAV_CACHE_BLOBS_MB)) != 0) {
+            cfg_err(err, err_len, "out of memory");
+            return -1;
+        }
+        filled = 1;
+    }
+    if (cfg_int_range(cache, "bodiesMb", PAV_CACHE_BODIES_MB, PAV_CACHE_MB_MIN, PAV_CACHE_MB_MAX, 0,
+                      &profile->bodies_mb, err, err_len) != 0 ||
+        cfg_int_range(cache, "blobsMb", PAV_CACHE_BLOBS_MB, PAV_CACHE_MB_MIN, PAV_CACHE_MB_MAX, 0,
+                      &profile->blobs_mb, err, err_len) != 0) {
+        return -1;
+    }
+    profile->cache_filled = filled;
+    return 0;
+}
+
 int pav_profile_parse(const char *text, PavProfile **out, char *err, size_t err_len) {
     json_t *root;
     json_t *storage;
@@ -212,6 +252,9 @@ int pav_profile_parse(const char *text, PavProfile **out, char *err, size_t err_
     profile->window_width = (int)json_integer_value(json_object_get(window, "width"));
     profile->window_height = (int)json_integer_value(json_object_get(window, "height"));
     if (cfg_int_range(prefs, "log_max_mb", 10, 1, 100, 0, &profile->log_max_mb, err, err_len) != 0) {
+        goto fail;
+    }
+    if (fill_cache(prefs, profile, err, err_len) != 0) {
         goto fail;
     }
     {

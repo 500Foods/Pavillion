@@ -15,6 +15,7 @@
 #include "pav_cfg.h"
 #include "pav_config.h"
 #include "pav_db.h"
+#include "pav_blob.h"
 #include "pav_sync.h"
 #include "pavillion.h"
 #include "logring.h"
@@ -569,6 +570,10 @@ void test_parse_index_and_profile(void) {
     TEST_ASSERT_EQUAL_INT(0, profile->window_x_set);
     TEST_ASSERT_EQUAL_INT(0, profile->window_y_set);
     TEST_ASSERT_EQUAL_STRING("system", profile->chrome);
+    /* k_profile has no preferences.cache. Parse fills the defaults. */
+    TEST_ASSERT_EQUAL_INT(2048, profile->bodies_mb);
+    TEST_ASSERT_EQUAL_INT(4096, profile->blobs_mb);
+    TEST_ASSERT_EQUAL_INT(1, profile->cache_filled);
     TEST_ASSERT_EQUAL_UINT(0, (unsigned)profile->account_count);
 
     pav_index_free(index);
@@ -669,6 +674,10 @@ static const char k_default_profile[] =
     "    \"time_format\": \"24h\",\n"
     "    \"theme\": \"system\",\n"
     "    \"density\": \"comfortable\",\n"
+    "    \"cache\": {\n"
+    "      \"bodiesMb\": 2048,\n"
+    "      \"blobsMb\": 4096\n"
+    "    },\n"
     "    \"window\": {\n"
     "      \"maximized\": false,\n"
     "      \"width\": 1200,\n"
@@ -1141,6 +1150,9 @@ static void profile_text(char *dst, size_t dst_len, const char *storage) {
 
     TEST_ASSERT_TRUE(wrote > 0 && (size_t)wrote < dst_len);
 }
+
+/* 001's seven tables, 002's mail tables, and the contentless email_fts shadows. */
+enum { PAV_STORE_TABLES = 23 };
 
 static int user_table_count(const char *path) {
     sqlite3 *db = NULL;
@@ -4079,6 +4091,20 @@ static json_t *find_act(json_t *rows, const char *id) {
     return NULL;
 }
 
+static json_t *find_kind(json_t *rows, const char *kind) {
+    size_t i;
+
+    for (i = 0; i < json_array_size(rows); i++) {
+        json_t *item = json_array_get(rows, i);
+        const char *got = json_string_value(json_object_get(item, "kind"));
+
+        if (got != NULL && strcmp(got, kind) == 0) {
+            return item;
+        }
+    }
+    return NULL;
+}
+
 static int user_version(const char *path) {
     sqlite3 *db = NULL;
     sqlite3_stmt *stmt = NULL;
@@ -4387,8 +4413,8 @@ void test_activity_history_capped(void) {
     make_slot(g_cfg_dir, sizeof(g_cfg_dir));
     TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
     snprintf(path, sizeof(path), "%s/default.sqlite", g_cfg_dir);
-    TEST_ASSERT_EQUAL_INT(1, user_version(path));
-    TEST_ASSERT_EQUAL_INT(7, user_table_count(path));
+    TEST_ASSERT_EQUAL_INT(2, user_version(path));
+    TEST_ASSERT_EQUAL_INT(PAV_STORE_TABLES, user_table_count(path));
 
     for (i = 0; i < 501; i++) {
         id = pav_activity_begin("export", NULL, "cap", 0, 0);
@@ -4430,7 +4456,7 @@ void test_activity_history_capped(void) {
 
     pavillion_stop();
     TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
-    TEST_ASSERT_EQUAL_INT(1, user_version(path));
+    TEST_ASSERT_EQUAL_INT(2, user_version(path));
     rows = activity_rows(1);
     TEST_ASSERT_EQUAL_INT(501, (int)json_array_size(rows));
     TEST_ASSERT_NOT_NULL(find_act(rows, failed_text));
@@ -5048,19 +5074,19 @@ void test_migrate_fresh_to_v1(void) {
     char path[160];
     static const char *names[] = {
         "activity", "account_state", "remote_account", "identity", "mailbox", "sync_state", "kv",
+        "email", "body_cache", "email_fts", "outbox", "draft_local",
     };
     size_t i;
 
     make_slot(g_cfg_dir, sizeof(g_cfg_dir));
     snprintf(path, sizeof(path), "%s/mail.sqlite", g_cfg_dir);
     open_v1(path);
-    TEST_ASSERT_EQUAL_INT(1, user_version(path));
-    TEST_ASSERT_EQUAL_INT(7, user_table_count(path));
+    TEST_ASSERT_EQUAL_INT(2, user_version(path));
+    TEST_ASSERT_EQUAL_INT(PAV_STORE_TABLES, user_table_count(path));
     TEST_ASSERT_TRUE(journal_is_wal(path));
     for (i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
         TEST_ASSERT_TRUE(table_exists(path, names[i]));
     }
-    TEST_ASSERT_FALSE(table_exists(path, "email"));
     close_test_store();
 }
 
@@ -5096,13 +5122,13 @@ void test_migrate_is_idempotent(void) {
     g_test_store = store;
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_migrate(store, err, sizeof(err)), err);
-    TEST_ASSERT_EQUAL_INT(1, user_version(path));
+    TEST_ASSERT_EQUAL_INT(2, user_version(path));
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM activity WHERE id=7 AND title='kept'"));
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_migrate(store, err, sizeof(err)), err);
-    TEST_ASSERT_EQUAL_INT(1, user_version(path));
+    TEST_ASSERT_EQUAL_INT(2, user_version(path));
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM activity WHERE id=7 AND title='kept'"));
-    TEST_ASSERT_EQUAL_INT(7, user_table_count(path));
+    TEST_ASSERT_EQUAL_INT(PAV_STORE_TABLES, user_table_count(path));
     close_test_store();
 }
 
@@ -5123,9 +5149,363 @@ void test_newer_db_is_error(void) {
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT(-1, pav_store_migrate(store, err, sizeof(err)));
     TEST_ASSERT_NOT_NULL(strstr(err, "9"));
-    TEST_ASSERT_NOT_NULL(strstr(err, "1"));
+    TEST_ASSERT_NOT_NULL(strstr(err, "2"));
     TEST_ASSERT_NOT_NULL(strstr(err, "newer"));
     close_test_store();
+}
+
+static char g_sql_err[256];
+
+static int exec_sql_job(void *ctx, sqlite3 *db) {
+    char *errmsg = NULL;
+    int rc = sqlite3_exec(db, ctx, NULL, NULL, &errmsg);
+
+    g_sql_err[0] = '\0';
+    if (errmsg != NULL) {
+        snprintf(g_sql_err, sizeof(g_sql_err), "%s", errmsg);
+        sqlite3_free(errmsg);
+    }
+    return rc == SQLITE_OK ? 0 : -1;
+}
+
+static void write_private_text(const char *path, const char *text) {
+    const PavPlatform *platform = pav_platform();
+
+    TEST_ASSERT_NOT_NULL(platform);
+    TEST_ASSERT_NOT_NULL(platform->write_private);
+    TEST_ASSERT_EQUAL_INT(0, platform->write_private(path, text, strlen(text)));
+}
+
+static void expect_segments(char *out, size_t len, const char *root, const char *ra, const char *shard,
+                            const char *id) {
+    char one[4096];
+    char two[4096];
+
+    TEST_ASSERT_EQUAL_INT(0, pav_path_join(one, sizeof(one), root, ra));
+    TEST_ASSERT_EQUAL_INT(0, pav_path_join(two, sizeof(two), one, shard));
+    TEST_ASSERT_EQUAL_INT(0, pav_path_join(out, len, two, id));
+}
+
+static void bind_slot_blobs(char *root, size_t len) {
+    TEST_ASSERT_EQUAL_INT(0, pav_path_join(root, len, g_cfg_dir, "blobs"));
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_bind(root));
+}
+
+void test_migrate_v1_to_v2(void) {
+    char path[160];
+    char err[256];
+    char *sql;
+    char *errmsg = NULL;
+    sqlite3 *raw = NULL;
+    PavStore *store = NULL;
+    int rc;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    snprintf(path, sizeof(path), "%s/mail.sqlite", g_cfg_dir);
+    sql = slurp("core/src/migrations/001_accounts.sql");
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open_v2(path, &raw, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL));
+    rc = sqlite3_exec(raw, sql, NULL, NULL, &errmsg);
+    free(sql);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(SQLITE_OK, rc, errmsg != NULL ? errmsg : "");
+    sqlite3_free(errmsg);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(raw, "PRAGMA user_version = 1", NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_exec(raw,
+                     "INSERT INTO activity (id, kind, title, state, started_ms, ended_ms, cancellable) "
+                     "VALUES (4, 'sync.mail', 'kept-v1', 'done', 1, 2, 0);"
+                     "INSERT INTO kv (key, value) VALUES ('keep', 'yes');",
+                     NULL, NULL, NULL));
+    sqlite3_close(raw);
+    TEST_ASSERT_EQUAL_INT(1, user_version(path));
+    TEST_ASSERT_FALSE(table_exists(path, "email"));
+
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_open(&store, "sqlite", path, err, sizeof(err)), err);
+    g_test_store = store;
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_migrate(store, err, sizeof(err)), err);
+    TEST_ASSERT_EQUAL_INT(2, user_version(path));
+    TEST_ASSERT_TRUE(table_exists(path, "email"));
+    TEST_ASSERT_TRUE(table_exists(path, "body_cache"));
+    TEST_ASSERT_TRUE(table_exists(path, "email_fts"));
+    TEST_ASSERT_TRUE(table_exists(path, "outbox"));
+    TEST_ASSERT_TRUE(table_exists(path, "draft_local"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM activity WHERE id=4 AND title='kept-v1'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM kv WHERE key='keep' AND value='yes'"));
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_migrate(store, err, sizeof(err)), err);
+    TEST_ASSERT_EQUAL_INT(2, user_version(path));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM activity WHERE id=4 AND title='kept-v1'"));
+    close_test_store();
+}
+
+void test_blob_path_sharding(void) {
+    char root[160];
+    char path[4096];
+    char expect[4096];
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    bind_slot_blobs(root, sizeof(root));
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_path("a/b", "foo", path, sizeof(path)));
+    expect_segments(expect, sizeof(expect), root, "YS9i", "Zm", "Zm9v");
+    TEST_ASSERT_EQUAL_STRING(expect, path);
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_path("a/b", "f", path, sizeof(path)));
+    expect_segments(expect, sizeof(expect), root, "YS9i", "Zg", "Zg");
+    TEST_ASSERT_EQUAL_STRING(expect, path);
+    TEST_ASSERT_NULL(strstr(path, "/a/"));
+    pav_blob_unbind();
+}
+
+void test_blob_id_is_base64url(void) {
+    char root[160];
+    char path[4096];
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    bind_slot_blobs(root, sizeof(root));
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_path("a", "foo", path, sizeof(path)));
+    TEST_ASSERT_NOT_NULL(strstr(path, "Zm9v"));
+    TEST_ASSERT_NULL(strchr(path, '='));
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_path("a", "/", path, sizeof(path)));
+    TEST_ASSERT_NOT_NULL(strstr(path, "Lw"));
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_path("a", "..", path, sizeof(path)));
+    TEST_ASSERT_NOT_NULL(strstr(path, "Li4"));
+    TEST_ASSERT_NULL(strstr(path, "/../"));
+    TEST_ASSERT_EQUAL_INT(-1, pav_blob_path("a", "", path, sizeof(path)));
+    TEST_ASSERT_EQUAL_INT(-1, pav_blob_path("", "foo", path, sizeof(path)));
+    TEST_ASSERT_EQUAL_INT(-1, pav_blob_path("a", NULL, path, sizeof(path)));
+    pav_blob_unbind();
+}
+
+void test_blob_modes(void) {
+    char root[160];
+    char path[4096];
+    char parent[4096];
+    char ra_dir[4096];
+    struct stat st;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    bind_slot_blobs(root, sizeof(root));
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_write("a/b", "foo", "hello", 5));
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_path("a/b", "foo", path, sizeof(path)));
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
+    TEST_ASSERT_TRUE(S_ISREG(st.st_mode));
+    ASSERT_MODE(0600, st);
+    TEST_ASSERT_EQUAL_INT(0, pav_path_parent(parent, sizeof(parent), path));
+    TEST_ASSERT_EQUAL_INT(0, stat(parent, &st));
+    TEST_ASSERT_TRUE(S_ISDIR(st.st_mode));
+    ASSERT_MODE(0700, st);
+    TEST_ASSERT_EQUAL_INT(0, pav_path_parent(ra_dir, sizeof(ra_dir), parent));
+    TEST_ASSERT_EQUAL_INT(0, stat(ra_dir, &st));
+    TEST_ASSERT_TRUE(S_ISDIR(st.st_mode));
+    ASSERT_MODE(0700, st);
+    TEST_ASSERT_EQUAL_INT(1, pav_blob_exists("a/b", "foo"));
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_remove("a/b", "foo"));
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_exists("a/b", "foo"));
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_remove("a/b", "foo"));
+    pav_blob_unbind();
+}
+
+void test_evict_skips_flagged_and_drafts(void) {
+    char db[160];
+    char body[4][256];
+    char blob_normal[4096];
+    char sql[4096];
+    const char *leaves[] = {"b-normal", "b-flagged", "b-draft", "b-outbox"};
+    json_t *rows;
+    json_t *item;
+    int wrote;
+    int i;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(0, pav_path_join(db, sizeof(db), g_cfg_dir, "default.sqlite"));
+    for (i = 0; i < 4; i++) {
+        TEST_ASSERT_EQUAL_INT(0, pav_path_join(body[i], sizeof(body[i]), g_cfg_dir, leaves[i]));
+        write_private_text(body[i], "body-bytes");
+    }
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_write("acct/ra", "normal-blob", "blob-bytes", 10));
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_write("acct/ra", "flagged-blob", "blob-bytes", 10));
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_path("acct/ra", "normal-blob", blob_normal, sizeof(blob_normal)));
+    wrote = snprintf(sql, sizeof(sql),
+                     "INSERT INTO account_state (account_id) VALUES ('acct');"
+                     "INSERT INTO remote_account (id, account_id, jmap_account_id) "
+                     "VALUES ('acct/ra', 'acct', 'j1');"
+                     "INSERT INTO email (rowid, ra_id, id, blob_id, draft, flagged, body_state, last_opened) VALUES "
+                     "(1, 'acct/ra', 'normal', 'normal-blob', 0, 0, 'fetched', 50),"
+                     "(2, 'acct/ra', 'flagged', 'flagged-blob', 0, 1, 'fetched', 1),"
+                     "(3, 'acct/ra', 'draft', NULL, 1, 0, 'fetched', 1),"
+                     "(4, 'acct/ra', 'queued', NULL, 0, 0, 'fetched', 1);"
+                     "INSERT INTO outbox (ra_id, draft_email_id) VALUES ('acct/ra', 'queued');"
+                     "INSERT INTO body_cache (email_rowid, text_plain_path) VALUES "
+                     "(1, '%s'), (2, '%s'), (3, '%s'), (4, '%s');"
+                     "INSERT INTO attachment (email_rowid, part_id, blob_id, local_path) "
+                     "VALUES (1, '1', 'normal-blob', '%s');",
+                     body[0], body[1], body[2], body[3], blob_normal);
+    TEST_ASSERT_TRUE(wrote > 0 && (size_t)wrote < sizeof(sql));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_db_call(exec_sql_job, sql), g_sql_err);
+
+    pav_cache_set_limits(0, 0);
+    TEST_ASSERT_EQUAL_INT(0, pav_cache_evict());
+    pav_cache_set_limits(PAV_CACHE_BODIES_MB, PAV_CACHE_BLOBS_MB);
+
+    TEST_ASSERT_FALSE(pav_exists(body[0]));
+    TEST_ASSERT_TRUE(pav_exists(body[1]));
+    TEST_ASSERT_TRUE(pav_exists(body[2]));
+    TEST_ASSERT_TRUE(pav_exists(body[3]));
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_exists("acct/ra", "normal-blob"));
+    TEST_ASSERT_EQUAL_INT(1, pav_blob_exists("acct/ra", "flagged-blob"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(db, "SELECT count(*) FROM email WHERE id='normal' AND blob_id='normal-blob' "
+                                            "AND body_state='evicted'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(db, "SELECT count(*) FROM email WHERE id='flagged' AND body_state='fetched'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(db, "SELECT count(*) FROM email WHERE id='draft' AND body_state='fetched'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(db, "SELECT count(*) FROM email WHERE id='queued' AND body_state='fetched'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(db, "SELECT count(*) FROM body_cache WHERE email_rowid=1 "
+                                            "AND text_plain_path IS NULL"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(db, "SELECT count(*) FROM body_cache WHERE email_rowid=2 "
+                                            "AND text_plain_path IS NOT NULL"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(db, "SELECT count(*) FROM attachment WHERE email_rowid=1 "
+                                            "AND blob_id='normal-blob' AND local_path IS NULL"));
+
+    rows = activity_rows(1);
+    item = find_kind(rows, "cache.evict");
+    TEST_ASSERT_NOT_NULL(item);
+    TEST_ASSERT_EQUAL_STRING("done", json_string_value(json_object_get(item, "state")));
+    TEST_ASSERT_EQUAL_STRING("Evict cache", json_string_value(json_object_get(item, "title")));
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(item, "cancellable")));
+    json_decref(rows);
+}
+
+void test_evict_clears_body_paths(void) {
+    char db[160];
+    char plain[256];
+    char raw[256];
+    char clean[256];
+    char sql[2048];
+    json_t *rows;
+    int wrote;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(0, pav_path_join(db, sizeof(db), g_cfg_dir, "default.sqlite"));
+    TEST_ASSERT_EQUAL_INT(0, pav_path_join(plain, sizeof(plain), g_cfg_dir, "plain"));
+    TEST_ASSERT_EQUAL_INT(0, pav_path_join(raw, sizeof(raw), g_cfg_dir, "raw"));
+    TEST_ASSERT_EQUAL_INT(0, pav_path_join(clean, sizeof(clean), g_cfg_dir, "clean"));
+    write_private_text(plain, "plain");
+    write_private_text(raw, "raw");
+    write_private_text(clean, "clean");
+    wrote = snprintf(sql, sizeof(sql),
+                     "INSERT INTO account_state (account_id) VALUES ('acct');"
+                     "INSERT INTO remote_account (id, account_id, jmap_account_id) "
+                     "VALUES ('acct/ra', 'acct', 'j1');"
+                     "INSERT INTO email (rowid, ra_id, id, blob_id, body_state) "
+                     "VALUES (1, 'acct/ra', 'one', 'keep-me', 'fetched');"
+                     "INSERT INTO body_cache (email_rowid, text_plain_path, html_raw_path, html_sanitized_path) "
+                     "VALUES (1, '%s', '%s', '%s');",
+                     plain, raw, clean);
+    TEST_ASSERT_TRUE(wrote > 0 && (size_t)wrote < sizeof(sql));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_db_call(exec_sql_job, sql), g_sql_err);
+
+    TEST_ASSERT_EQUAL_INT(0, pav_cache_evict());
+    TEST_ASSERT_TRUE(pav_exists(plain));
+    rows = activity_rows(1);
+    TEST_ASSERT_NULL(find_kind(rows, "cache.evict"));
+    json_decref(rows);
+
+    pav_cache_set_limits(0, PAV_CACHE_BLOBS_MB);
+    TEST_ASSERT_EQUAL_INT(0, pav_cache_evict());
+    pav_cache_set_limits(PAV_CACHE_BODIES_MB, PAV_CACHE_BLOBS_MB);
+
+    TEST_ASSERT_FALSE(pav_exists(plain));
+    TEST_ASSERT_FALSE(pav_exists(raw));
+    TEST_ASSERT_FALSE(pav_exists(clean));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(db, "SELECT count(*) FROM email WHERE id='one' AND blob_id='keep-me' "
+                                            "AND body_state='evicted'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(db, "SELECT count(*) FROM body_cache WHERE email_rowid=1 "
+                                            "AND text_plain_path IS NULL AND html_raw_path IS NULL "
+                                            "AND html_sanitized_path IS NULL"));
+    rows = activity_rows(1);
+    TEST_ASSERT_NOT_NULL(find_kind(rows, "cache.evict"));
+    json_decref(rows);
+}
+
+void test_runtime_dir_removed_on_stop(void) {
+    const PavPlatform *platform = pav_platform();
+    char runtime[4096];
+    char open_dir[4096];
+    char child[4096];
+    struct stat st;
+
+    TEST_ASSERT_NOT_NULL(platform);
+    TEST_ASSERT_NOT_NULL(platform->dir);
+    TEST_ASSERT_NOT_NULL(platform->write_private);
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(0, platform->dir(PAV_DIR_RUNTIME, runtime, sizeof(runtime)));
+    TEST_ASSERT_EQUAL_INT(0, pav_path_join(open_dir, sizeof(open_dir), runtime, "open"));
+    TEST_ASSERT_EQUAL_INT(0, stat(open_dir, &st));
+    TEST_ASSERT_TRUE(S_ISDIR(st.st_mode));
+    ASSERT_MODE(0700, st);
+    TEST_ASSERT_EQUAL_INT(0, pav_path_join(child, sizeof(child), open_dir, "note"));
+    TEST_ASSERT_EQUAL_INT(0, platform->write_private(child, "x", 1));
+    TEST_ASSERT_TRUE(pav_exists(child));
+    pavillion_stop();
+    TEST_ASSERT_FALSE(pav_exists(open_dir));
+    TEST_ASSERT_FALSE(pav_exists(child));
+}
+
+void test_prefs_cache_round_trip(void) {
+    json_t *root;
+    json_t *cache;
+    char dir[160];
+    char path[320];
+    char *text;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    root = call_reply("prefs.get", "{}");
+    cache = json_object_get(json_object_get(root, "data"), "cache");
+    TEST_ASSERT_TRUE(json_is_object(cache));
+    TEST_ASSERT_EQUAL_INT(2048, (int)json_integer_value(json_object_get(cache, "bodiesMb")));
+    TEST_ASSERT_EQUAL_INT(4096, (int)json_integer_value(json_object_get(cache, "blobsMb")));
+    json_decref(root);
+
+    root = call_reply("prefs.set", "{\"cache\":{\"bodiesMb\":100}}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    cache = json_object_get(json_object_get(root, "data"), "cache");
+    TEST_ASSERT_EQUAL_INT(100, (int)json_integer_value(json_object_get(cache, "bodiesMb")));
+    TEST_ASSERT_EQUAL_INT(4096, (int)json_integer_value(json_object_get(cache, "blobsMb")));
+    json_decref(root);
+
+    root = call_reply("prefs.set", "{\"cache\":{\"blobsMb\":50}}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    cache = json_object_get(json_object_get(root, "data"), "cache");
+    TEST_ASSERT_EQUAL_INT(100, (int)json_integer_value(json_object_get(cache, "bodiesMb")));
+    TEST_ASSERT_EQUAL_INT(50, (int)json_integer_value(json_object_get(cache, "blobsMb")));
+    json_decref(root);
+
+    root = call_reply("prefs.set", "{\"cache\":{\"bodiesMb\":0}}");
+    assert_call_error(root, "bad_args", "out of range");
+    json_decref(root);
+    root = call_reply("prefs.set", "{\"cache\":{\"bodiesMb\":\"no\"}}");
+    assert_call_error(root, "bad_args", "integer");
+    json_decref(root);
+    root = call_reply("prefs.set", "{\"cache\":{}}");
+    assert_call_error(root, "bad_args", "empty");
+    json_decref(root);
+    root = call_reply("prefs.set", "{\"cache\":{\"nope\":1}}");
+    assert_call_error(root, "bad_args", "cache.nope");
+    json_decref(root);
+    root = call_reply("prefs.set", "{\"cache\":1}");
+    assert_call_error(root, "bad_args", "object");
+    json_decref(root);
+
+    TEST_ASSERT_EQUAL_INT(0, pav_path_join(dir, sizeof(dir), g_cfg_dir, "profiles"));
+    TEST_ASSERT_EQUAL_INT(0, pav_path_join(path, sizeof(path), dir, "default.json"));
+    text = slurp(path);
+    TEST_ASSERT_NOT_NULL(strstr(text, "\"bodiesMb\": 100"));
+    TEST_ASSERT_NOT_NULL(strstr(text, "\"blobsMb\": 50"));
+    free(text);
 }
 
 void test_db_bind_never_concatenates(void) {
@@ -8217,6 +8597,14 @@ int main(void) {
     RUN_TEST(test_migrate_fresh_to_v1);
     RUN_TEST(test_migrate_is_idempotent);
     RUN_TEST(test_newer_db_is_error);
+    RUN_TEST(test_migrate_v1_to_v2);
+    RUN_TEST(test_blob_path_sharding);
+    RUN_TEST(test_blob_id_is_base64url);
+    RUN_TEST(test_blob_modes);
+    RUN_TEST(test_evict_skips_flagged_and_drafts);
+    RUN_TEST(test_evict_clears_body_paths);
+    RUN_TEST(test_runtime_dir_removed_on_stop);
+    RUN_TEST(test_prefs_cache_round_trip);
     RUN_TEST(test_db_bind_never_concatenates);
     RUN_TEST(test_secret_roundtrip);
     RUN_TEST(test_secret_missing);

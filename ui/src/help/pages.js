@@ -151,7 +151,7 @@ export const helpPages = [
         id: "features",
         title: "Features",
         paragraphs: [
-          "Features is the first Settings page. The others are Themes, Icons, Fonts, Tabs, and Zooms. Each of those pages has a help icon on the right of its top bar. The icon opens that topic here.",
+          "Features is a Settings page. Accounts, Themes, Icons, Fonts, Tabs, Zooms, Logs, and Limits are the others. Each of those pages has a help icon on the right of its top bar. The icon opens that topic here.",
           "The page lists every rail button: Mail, Contacts, Calendars, Tasks, Files, Notes, Argent, Grok Bots, GitHub, Activity, Settings, Update, and Help. Each row shows that button's icon. Drag a row by the bars on its left to change its place. Dragging an icon on the top or bottom bar does the same move: left or right stays in that bar, and crossing to the other bar moves it. A short press on the bar still opens the section. Rows under Top sit on the top bar. Rows under Bottom sit on the bottom bar. A check shows that button. Turning one off hides it and closes its home tab. A hidden button stays in the list and keeps its place, and it does not take a cell on the rail. Settings has no check, so it stays available. Update has no home tab. Mail, Contacts, Calendars, and Files start on. Activity, Update, and Help start on and can be turned off. Tasks, Notes, Argent, Grok Bots, and GitHub start off. The choice is saved and comes back after a restart.",
           "Each row has a shortcut, Ctrl and a number from 1 to 9, or None. A number belongs to one row. Giving it to another row clears it from the first. Mail starts at Ctrl+1, Contacts at Ctrl+2, Calendars at Ctrl+3, Tasks at Ctrl+4, Files at Ctrl+5, Notes at Ctrl+6, and Argent at Ctrl+7. The other rows start with no shortcut. A hidden button's shortcut does nothing. Moving a button does not move its shortcut. A shortcut on Update runs a sync.",
           "If the section in the nav is hidden when the app opens, the nav opens on the first section above the line that is on and has its own nav. If none of those are on, it opens on Settings. Grok Bots, GitHub, Activity, and Update do not take that place. Settings can sit above the line and take it.",
@@ -172,6 +172,14 @@ export const helpPages = [
         paragraphs: [
           "Every log line is kept in the profile's log database, beside its store, up to a size cap from 1 MB to 100 MB (10 MB unless you change it). When the database is over the cap, the oldest lines go first: at shutdown, and when you press Apply or Trim Now.",
           "Refresh shows the size, the number of records, and the oldest line's local date and time. Moving the slider shows an estimate of what a trim to that size would keep; nothing is deleted until you press a button. Apply saves the new cap and trims to it. Trim Now trims to the saved cap.",
+        ],
+      },
+      {
+        id: "limits",
+        title: "Limits",
+        paragraphs: [
+          "Limits sets how much mail this profile keeps on disk. Message bodies start at 2048 MB. Attachments start at 4096 MB. Each value is a whole number of megabytes from 1 to 1048576. Apply saves both. Refresh loads the saved values again and drops an unsaved edit.",
+          "A finished sync removes the oldest opened copies that put the profile over a limit. Drafts, flagged messages, and mail waiting to send stay. The log size cap stays on Logs. A later disk budget is another row on this page.",
         ],
       },
       {
@@ -461,7 +469,7 @@ export const helpPages = [
         id: "store",
         title: "The store",
         paragraphs: [
-          "Opening a profile migrates the database before the activity list is loaded. A fresh file is user_version 1. The tables are activity, account_state, remote_account, identity, mailbox, sync_state, and kv. An activity table already in the file is kept. A database newer than this binary does not open.",
+          "Opening a profile migrates the database before the activity list is loaded. A fresh file is user_version 2. Schema v1 keeps activity, account_state, remote_account, identity, mailbox, sync_state, and kv. Schema v2 adds email, threads, body_cache, attachments, a contentless email_fts index, the outbox, and local drafts. An activity table already in the file is kept. A database newer than this binary does not open. Message bodies and attachments are files under the profile blobs directory, mode 0600. Cache limits default to 2048 MB of bodies and 4096 MB of blobs. Settings → Limits writes them. An over-limit pass after sync is the activity Evict cache.",
           "One writer thread owns the only write connection. Reads use two read-only connections. Finished activities are queued on that writer and are not written on the core thread. The page does not talk to the database.",
         ],
       },

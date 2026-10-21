@@ -56,6 +56,9 @@ typedef struct PavProfile {
     char chrome[16];
     int log_max_mb;    /* preferences.log_max_mb, 1 to 100, default 10 */
     int logs_migrated; /* logs named an old .log file and now names <id>.log.db */
+    int bodies_mb;     /* preferences.cache.bodiesMb, default 2048 */
+    int blobs_mb;      /* preferences.cache.blobsMb, default 4096 */
+    int cache_filled;  /* parse inserted a missing cache object or key */
     size_t account_count;
     char resolved_logs[4096];
     char resolved_blobs[4096];

@@ -76,6 +76,7 @@ export const shellMarkup = `<div class="shell">
               <button type="button" data-heading="tabs">Tabs</button>
               <button type="button" data-heading="zoom">Zooms</button>
               <button type="button" data-heading="log">Logs</button>
+              <button type="button" data-heading="limits">Limits</button>
             </div>
           </div>
         </div>
@@ -246,6 +247,27 @@ export const shellMarkup = `<div class="shell">
               </div>
               <p class="muted">The log is kept in the profile's log database. Every level is kept. At shutdown, and on Apply or Trim Now, the oldest lines are removed until the database fits the cap. Apply saves the cap and trims to it. Trim Now trims to the saved cap.</p>
             </div>
+          </div>
+          <div data-settings="limits" hidden>
+            <div class="button-bar pav-module-toolbar" id="limits-toolbar" role="toolbar" aria-label="Limits">
+              <button type="button" class="help-jump" data-help-page="settings" data-help-section="limits" aria-label="Help for Limits">
+                <i class="icon fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="settings-body">
+              <div class="limits-list">
+                <label class="zoom"><span class="zoom-label">Message bodies</span>
+                  <input id="limits-bodies" type="number" min="1" max="1048576" step="1" value="2048" inputmode="numeric" />
+                  <span class="zoom-value">MB</span>
+                </label>
+                <label class="zoom"><span class="zoom-label">Attachments</span>
+                  <input id="limits-blobs" type="number" min="1" max="1048576" step="1" value="4096" inputmode="numeric" />
+                  <span class="zoom-value">MB</span>
+                </label>
+              </div>
+              <p class="muted">Message bodies and attachments stay on this machine up to these sizes. Apply saves both. The next finished sync drops the oldest opened copies that are over a limit. Drafts, flagged messages, and mail waiting to send stay. The log size cap is on Logs.</p>
+            </div>
+            <div class="button-bar pav-module-footer" id="limits-footer" role="toolbar" aria-label="Limits actions"></div>
           </div>
           <div data-settings="theme" hidden>
             <div class="button-bar settings-bar" role="toolbar" aria-label="Themes">

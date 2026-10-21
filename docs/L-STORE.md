@@ -1,6 +1,6 @@
 # L — STORE
 
-**Status:** L-1 complete (2026-10-18), step 42. The phase stamp at that close was `0.46`. `make test` was 81 Unity tests and 134 Vitest tests. L-2 and L-3 are not started. The index names the next phase.
+**Status:** L-1 complete (2026-10-18), step 42. The phase stamp at that close was `0.46`. `make test` was 81 Unity tests and 134 Vitest tests. L-2 is in progress (2026-10-21), step 55. L-3 is not started. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The SQLite schema, migrations, the statement helpers, the blob and cache directories, and their eviction. The open and close are [C-CORE.md](C-CORE.md) C-4. Account configuration is the profile ([B-CONFIG.md](B-CONFIG.md)); this store holds what sync learns and what the user does with mail.
@@ -12,7 +12,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
 | L-1 | Migration runner, statement helpers, schema v1 (accounts, mailboxes, identities, sync state) | Medium | Complete |
-| L-2 | Schema v2: mail (email, threads, bodies, attachments, FTS, queue, outbox, drafts) and the blob store | Medium | Not started |
+| L-2 | Schema v2: mail (email, threads, bodies, attachments, FTS, queue, outbox, drafts) and the blob store | Medium | In progress |
 | L-3 | PIM migration: contacts, calendars, files, tasks, notes, rules and script runs (CLI tables are V-2) | Medium | Not started |
 
 Kind: **Easy** is one module and a test. **Medium** is the database driver or the filesystem.
@@ -45,7 +45,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - Ids: server ids are kept as-is with their `ra_id` (remote account). A local row id (`rowid INTEGER PRIMARY KEY`) is used for joins and FTS. The UI sees a composite id `<raId>/<serverId>` as a string.
 - Account configuration (name, URLs, username, auth, color, flags, number) lives in the profile `accounts` array. The store's `account_state` holds only runtime state keyed by the same id. This replaces plan §4's `account` table, which duplicated the profile.
 - Message bodies, raw `.eml`, and attachments are files under `blobs/<profile>/`, mode 0600 in 0700 directories. The path is `blobs/<profile>/<ra>/<hh>/<encoded>`, where `encoded` is the blob id in base64url with no padding. A blob id is never used as a path segment raw: `/`, `..`, and any other byte outside the unreserved set cannot escape the shard. `body_cache` stores paths only (`text_plain_path`, `html_raw_path`, `html_sanitized_path`). Plain text and sanitized HTML are files under the same budget as bodies. A `text_plain` or `html_sanitized` column is not added. FTS reads the plain-text file, capped at 256 KB per message (Q Lock).
-- Cache limits: `preferences.cache.bodiesMb` (default 2,048) and `preferences.cache.blobsMb` (default 4,096). An eviction pass (least recently opened first, never drafts, outbox, or flagged) runs after sync when over the limit, registered as an activity. Evicted bodies refetch on open. This is a core-interpreted preference: it lives at `preferences.cache`, outside the opaque `preferences.ui` blob (F Lock, Preferences split). L-2 adds it to the B Lock.
+- Cache limits: `preferences.cache.bodiesMb` (default 2,048) and `preferences.cache.blobsMb` (default 4,096). An eviction pass (least recently opened first, never drafts, outbox, or flagged) runs after sync when over the limit, registered as an activity. Evicted bodies refetch on open. This is a core-interpreted preference: it lives at `preferences.cache`, outside the opaque `preferences.ui` blob (F Lock, Preferences split). L-2 adds it to the B Lock. Settings → Limits (heading id `limits`) edits these two integers. The page clamps each to 1..1048576 and writes them with `prefs.set`. The saved values are used on the next finished sync. The log size cap stays on Logs. A later disk budget is another row on Limits.
 - Opened attachments are copied to `$XDG_RUNTIME_DIR/pavillion/open/` (via `PAV_DIR_RUNTIME`) and that directory is removed on exit.
 - FTS5 tables are contentless (`content=''`), keyed by the row id of the source table. A header-only row is inserted on sync; when the body is fetched the row is deleted and reinserted with the body. Rebuild is a command (`index.rebuild`) and an activity.
 - Statement helpers: `pav_db_prepare(cached key, sql)`, `pav_db_bind_*`, `pav_db_step_row`, a statement cache keyed by a static string, `pav_db_tx_begin/commit/rollback`. No string-built SQL with values; always bind.
@@ -181,7 +181,7 @@ CREATE TABLE rule_run (id INTEGER PRIMARY KEY, rule_id TEXT, ra_id TEXT, email_i
 ## L-2: Mail schema and the blob store
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** In progress (2026-10-21). Last finished work item: Settings → Limits. `make test` is 192 Unity tests, 2 Rust tests, and 361 Vitest tests, exit 0. Andrew's launch log showed schema version 1, binary 2, and applied migration 2. The phase stays in progress until he accepts the window, including Limits. Do not start M-4.
 
 **Goal:** The mail tables and the blob directory exist with their helpers before sync writes email.
 
@@ -189,11 +189,12 @@ CREATE TABLE rule_run (id INTEGER PRIMARY KEY, rule_id TEXT, ra_id TEXT, email_i
 
 **Work items:**
 
-- [ ] `002_mail.sql` with schema v2.
-- [ ] `core/src/blobs.c`: `pav_blob_path(ra, blob_id)`, `pav_blob_write(ra, blob_id, buf, n)` (via `write_private`), `pav_blob_exists`, `pav_blob_remove`, sharded directories.
-- [ ] Add `preferences.cache {bodiesMb, blobsMb}` (not under `preferences.ui`) to the B Lock and the profile defaults, and set it through `prefs.set`. The eviction pass `pav_cache_evict()` runs as activity kind `cache.evict` (I Lock).
-- [ ] Runtime open directory creation and removal on stop.
-- [ ] Unity: `test_migrate_v1_to_v2`, `test_blob_path_sharding`, `test_blob_id_is_base64url`, `test_blob_modes`, `test_evict_skips_flagged_and_drafts`, `test_evict_clears_body_paths`, `test_runtime_dir_removed_on_stop`.
+- [x] `002_mail.sql` with schema v2.
+- [x] `core/src/blobs.c`: `pav_blob_path(ra, blob_id)`, `pav_blob_write(ra, blob_id, buf, n)` (via `write_private`), `pav_blob_exists`, `pav_blob_remove`, sharded directories.
+- [x] Add `preferences.cache {bodiesMb, blobsMb}` (not under `preferences.ui`) to the B Lock and the profile defaults, and set it through `prefs.set`. The eviction pass `pav_cache_evict()` runs as activity kind `cache.evict` (I Lock).
+- [x] Settings → Limits edits `bodiesMb` and `blobsMb` (heading id `limits`). The page clamps each to 1..1048576 and writes both through `prefs.set`. The log size cap stays on Logs.
+- [x] Runtime open directory creation and removal on stop.
+- [x] Unity: `test_migrate_v1_to_v2`, `test_blob_path_sharding`, `test_blob_id_is_base64url`, `test_blob_modes`, `test_evict_skips_flagged_and_drafts`, `test_evict_clears_body_paths`, `test_runtime_dir_removed_on_stop`.
 
 **Done means:** The v2 schema is in place and blobs can be written, found, and evicted.
 
@@ -219,7 +220,7 @@ CREATE TABLE rule_run (id INTEGER PRIMARY KEY, rule_id TEXT, ra_id TEXT, email_i
 
 ## Open questions for Andrew
 
-- L-Q1. Default cache limits (2 GB bodies, 4 GB attachments) for about 20 accounts: right order of magnitude?
+None. L-Q1 was answered on 2026-10-21: keep 2048 MB of bodies and 4096 MB of blobs.
 
 ## Working log
 
@@ -231,3 +232,5 @@ CREATE TABLE rule_run (id INTEGER PRIMARY KEY, rule_id TEXT, ra_id TEXT, email_i
 - 2026-10-18 Prep only. L-1 stays not started. The work items now name the build list, the attach order, and the activity deadlock. `pav_store_open` sets no PRAGMAs. New sources have to be listed in `core/CMakeLists.txt` and in the Makefile `$(LIB)` prerequisites. Migrate runs after open and before `pav_activity_attach`, and a failure does not attach. The queued-row `DELETE` stays an every-open write, not a line in `001_accounts.sql`. `persist_finished` runs while `g_mu` is held, from the core thread and from the demo thread, so a wait on the core queue for `on_done` deadlocks. The live profile was read again: `user_version` 0, journal mode `delete`, table `activity`, 4 rows. Tests must not write that file. The next real launch after L-1 sets WAL and `user_version` 1 and must keep the rows. No source was edited for L-1. J-9's window is still open.
 - 2026-10-18 L-1 complete, step 42. The store migrates on open to `user_version` 1. Andrew's `make dev` kept activity rows 1–4 and set WAL. `make test` is 81 Unity tests and 134 Vitest tests. The phase stamp is `0.46`. `PAVILLION_BUILD` is dirty at 169 from `make dev`; do not commit that bump. K-1 is next, step 43, in docs/K-ACCOUNTS.md. Do not start it in this sitting.
 - 2026-10-19 Lock change for H-4: `log.db` is the one exception to the one-writer rule. The log thread owns it on its own connection, and the store writer never opens it ([H-LOGGING.md](H-LOGGING.md) Lock).
+- 2026-10-21 L-2 in progress, step 55. Andrew kept the cache defaults at 2048 and 4096. Schema v2, the blob helpers, `preferences.cache`, eviction as `cache.evict`, and the runtime `open` directory are in. `make test` is 192 Unity tests, 2 Rust tests, and 357 Vitest tests, exit 0. The phase stays in progress until the next launch migrates the v1 profile store to `user_version` 2. The phase stamp stays `0.60.0`. Do not start M-4.
+- 2026-10-21 L-2 still in progress. Andrew's launch applied migration 2 (schema version 1, binary 2) on the live profile, with two accounts idle and no cache eviction. Settings → Limits edits the two cache sizes. `make test` is 192 Unity tests, 2 Rust tests, and 361 Vitest tests, exit 0. The phase stamp stays `0.60.0`. Do not mark the row Done. Do not start M-4.

@@ -10,6 +10,7 @@
 
 #include "dispatch.h"
 #include "pav_activity.h"
+#include "pav_blob.h"
 #include "pav_db.h"
 #include "pav_jmap.h"
 #include "pav_net.h"
@@ -1505,6 +1506,9 @@ static void finish_sync_ok(PavSup *s) {
         pav_activity_progress(s->activity_id, 0, -1, NULL, "Mailboxes");
     }
     publish_state(s, "idle", "", 0, PAV_ACT_DONE);
+    if (pav_cache_evict() != 0) {
+        pav_log("sync", PAV_WARN, 0, "cache eviction failed");
+    }
 }
 
 static void emit_mailboxes(const char *id) {
