@@ -6939,6 +6939,86 @@ void test_recorded_mailbox_get_replay(void) {
     json_decref(file);
 }
 
+/* The recorded Session is Stalwart's shape: the account id is the object
+   key, and mail is under accountCapabilities. Sync collects a remote
+   account only from the parsed id and capabilities. */
+void test_recorded_session_keeps_mail_account(void) {
+    char *text;
+    char *body;
+    json_error_t jerr;
+    json_t *file;
+    json_t *response;
+    json_t *accounts;
+    json_t *raw;
+    json_t *caps;
+    PavJmapSession sess;
+    char err[256];
+    size_t i;
+    int found = 0;
+
+    text = slurp("tests/support/fixtures/session.json");
+    TEST_ASSERT_NOT_NULL_MESSAGE(text, "recorded Session");
+    TEST_ASSERT_NULL(strstr(text, "pavtest-pw"));
+    TEST_ASSERT_NULL(strstr(text, "pavtest-admin"));
+    TEST_ASSERT_NULL(strstr(text, "Authorization"));
+    file = json_loads(text, 0, &jerr);
+    free(text);
+    TEST_ASSERT_NOT_NULL_MESSAGE(file, jerr.text);
+    response = json_object_get(file, "response");
+    TEST_ASSERT_TRUE(json_is_object(response));
+    accounts = json_object_get(response, "accounts");
+    TEST_ASSERT_TRUE(json_is_object(accounts));
+    raw = json_object_get(accounts, "b");
+    TEST_ASSERT_TRUE_MESSAGE(json_is_object(raw), "recorded account id is the key b");
+    TEST_ASSERT_NULL_MESSAGE(json_object_get(raw, "id"), "Stalwart does not repeat the id");
+    TEST_ASSERT_NULL(json_object_get(raw, "capabilities"));
+    caps = json_object_get(raw, "accountCapabilities");
+    TEST_ASSERT_TRUE(json_is_object(caps));
+    TEST_ASSERT_NOT_NULL(json_object_get(caps, "urn:ietf:params:jmap:mail"));
+
+    body = json_dumps(response, JSON_COMPACT);
+    TEST_ASSERT_NOT_NULL(body);
+    memset(&sess, 0, sizeof(sess));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_jmap_parse_session(body, strlen(body), &sess, err, sizeof(err)), err);
+    free(body);
+    TEST_ASSERT_NOT_NULL(sess.accounts);
+    for (i = 0; i < json_array_size(sess.accounts); i++) {
+        json_t *acct = json_array_get(sess.accounts, i);
+        const char *id = json_string_value(json_object_get(acct, "id"));
+        json_t *got;
+
+        if (id == NULL || strcmp(id, "b") != 0) {
+            continue;
+        }
+        found = 1;
+        got = json_object_get(acct, "capabilities");
+        TEST_ASSERT_TRUE(json_is_object(got));
+        TEST_ASSERT_NOT_NULL(json_object_get(got, "urn:ietf:params:jmap:mail"));
+        TEST_ASSERT_EQUAL_STRING("andrew@test-a.local",
+                                 json_string_value(json_object_get(acct, "name")));
+    }
+    TEST_ASSERT_TRUE_MESSAGE(found, "parsed session keeps account b");
+    pav_jmap_session_free(&sess);
+
+    /* The earlier fixture shape still parses: id and capabilities inside. */
+    {
+        const char *legacy =
+            "{\"accounts\":{\"a1\":{\"id\":\"a1\",\"name\":\"Andrew\","
+            "\"capabilities\":{\"urn:ietf:params:jmap:mail\":{}}}}}";
+
+        memset(&sess, 0, sizeof(sess));
+        err[0] = '\0';
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_jmap_parse_session(legacy, strlen(legacy), &sess, err, sizeof(err)), err);
+        TEST_ASSERT_EQUAL_size_t(1, json_array_size(sess.accounts));
+        TEST_ASSERT_EQUAL_STRING("a1",
+                                 json_string_value(json_object_get(json_array_get(sess.accounts, 0), "id")));
+        TEST_ASSERT_NOT_NULL(json_object_get(
+            json_object_get(json_array_get(sess.accounts, 0), "capabilities"), "urn:ietf:params:jmap:mail"));
+        pav_jmap_session_free(&sess);
+    }
+    json_decref(file);
+}
+
 void test_session_parse_stalwart(void) {
     const char *url = getenv("PAV_FIXTURE_URL");
     const char *ca = getenv("PAV_FIXTURE_CA");
@@ -8034,6 +8114,7 @@ int main(void) {
     RUN_TEST(test_sync_mailboxes_cannot_calculate);
     RUN_TEST(test_sync_mailboxes_delta_rename);
     RUN_TEST(test_recorded_mailbox_get_replay);
+    RUN_TEST(test_recorded_session_keeps_mail_account);
     RUN_TEST(test_writes_are_serial_fifo);
     RUN_TEST(test_write_batch_one_transaction);
     RUN_TEST(test_failed_job_rolls_back_alone);

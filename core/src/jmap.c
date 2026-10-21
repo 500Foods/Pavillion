@@ -138,8 +138,23 @@ int pav_jmap_parse_session(const char *body, size_t len, PavJmapSession *out,
                 json_t *entry = json_object();
                 if (entry == NULL) continue;
                 if (json_is_object(value)) {
-                    json_object_set_new(entry, "id",
-                                        json_string(json_string_value(json_object_get(value, "id"))));
+                    /* RFC 8620: accounts is Id[Account]. The id is the key.
+                       Stalwart does not repeat it, and mail lives under
+                       accountCapabilities. An inner id, or a capabilities
+                       object, is accepted when those RFC fields are absent. */
+                    const char *id = (key != NULL && key[0] != '\0') ? key : NULL;
+                    json_t *caps;
+
+                    if (id == NULL) {
+                        id = json_string_value(json_object_get(value, "id"));
+                    }
+                    if (id != NULL && id[0] != '\0') {
+                        json_t *id_json = json_string(id);
+
+                        if (id_json != NULL) {
+                            json_object_set_new(entry, "id", id_json);
+                        }
+                    }
                     json_object_set_new(entry, "name",
                                         json_string(json_string_value(json_object_get(value, "name"))));
                     json_object_set_new(entry, "isPersonal",
@@ -148,10 +163,15 @@ int pav_jmap_parse_session(const char *body, size_t len, PavJmapSession *out,
                                         json_string(json_string_value(json_object_get(value, "username"))));
                     json_object_set_new(entry, "from",
                                         json_string(json_string_value(json_object_get(value, "from"))));
-                    {
-                        json_t *caps = json_object_get(value, "capabilities");
-                        if (json_is_object(caps)) {
-                            json_object_set_new(entry, "capabilities", json_copy(caps));
+                    caps = json_object_get(value, "accountCapabilities");
+                    if (!json_is_object(caps)) {
+                        caps = json_object_get(value, "capabilities");
+                    }
+                    if (json_is_object(caps)) {
+                        json_t *copy = json_copy(caps);
+
+                        if (copy != NULL) {
+                            json_object_set_new(entry, "capabilities", copy);
                         }
                     }
                 }

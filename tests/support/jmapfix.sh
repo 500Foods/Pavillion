@@ -159,9 +159,9 @@ session_json() {
         state: "state-1",
         primaryAccounts: {mail: (if ($acc | length) > 0 then $acc[0].id else "" end)},
         accounts: (reduce $acc[] as $a ({}; .[$a.id] = {
-          id: $a.id, name: $a.name, isPersonal: true, isSystemAccount: true,
+          name: $a.name, isPersonal: true, isReadOnly: false,
           username: $a.email, from: $a.email,
-          capabilities: {
+          accountCapabilities: {
             "urn:ietf:params:jmap:mail": {},
             "urn:ietf:params:jmap:submission": {},
             "urn:ietf:params:jmap:contacts": {},
