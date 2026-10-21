@@ -114,7 +114,7 @@ The license is [MIT](LICENSE.md).
 [![Count Lines of Code](https://github.com/500Foods/Pavillion/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/main.yml)
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-20 23:28:05 UTC
+Last updated at 2026-10-21 04:52:28 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
@@ -122,7 +122,7 @@ C                               34           2452            422          22866
 JavaScript                      99           1545            508          21475
 Markdown                        34           2647              2           5630
 CSS                              7            434             29           3044
-JSON                             9              0              0           2662
+JSON                             9              0              0           2130
 C/C++ Header                    23            423            499           2119
 Rust                             4             72             62           1070
 Bourne Shell                     8             77            107            709
@@ -134,7 +134,7 @@ HTML                             3              4              0             84
 Text                             2              8              0             57
 TOML                             2              8              5             54
 -------------------------------------------------------------------------------
-SUM:                           234           7723           1681          60280
+SUM:                           234           7723           1681          59748
 -------------------------------------------------------------------------------
 27 Files were skipped (duplicate, binary, or without source code):
   png: 17
