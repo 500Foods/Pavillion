@@ -1,6 +1,6 @@
 # H — LOGGING
 
-**Status:** H-3 complete (2026-10-16). H-4: all five commits are in the tree (2026-10-19), ready for Andrew's acceptance; not Done until he accepts. The index names the next phase.
+**Status:** H-4 complete (2026-10-21). Andrew accepted the window the same day. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The core log in production, read back through a command, and the Log view in the Activity tab. It comes before tabs and before mail so every later phase can be watched from inside the app. The line format and `pav_log` are the [C-CORE.md](C-CORE.md) Lock and do not change here.
@@ -14,7 +14,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | H-1 | Log thread in production, a ring buffer, `log.tail`, and `log.lines` events | Medium | Complete |
 | H-2 | Log view: CodeMirror 6, live, in the Activity tab | Medium | Complete |
 | H-3 | Search, level and subsystem filters, follow, copy, save, print | Medium | Complete |
-| H-4 | The log in SQLite (`log.db`), TRACE and capture-all levels, size-cap retention, `log.query` history, session filter, no bypasses | Hard | In progress |
+| H-4 | The log in SQLite (`log.db`), TRACE and capture-all levels, size-cap retention, `log.query` history, session filter, no bypasses | Hard | Complete |
 
 Kind: **Easy** is one module and a test. **Medium** crosses one boundary. **Hard** is a first join: here a second database and a migration of the record.
 
@@ -156,7 +156,7 @@ H-4 rewrote this Lock on 2026-10-19, before any code. Until H-4 lands, the code 
 ## H-4: The log in SQLite, history, and session filters
 
 **Kind:** Hard
-**Status:** In progress, ready for acceptance (2026-10-19). Last finished work item: commit 5 (help, docs, close-out). Andrew's window check of the Exit gate is the remaining step; only Andrew marks H-4 Complete and the index row Done.
+**Status:** Complete (2026-10-21, step 131). Andrew accepted the window the same day: the log database, history, the session filter, and the size controls.
 
 **Goal:** The log's record is one SQLite database per profile, the view scrolls back past the ring, and nothing in the process writes around `pav_log`.
 
@@ -184,7 +184,13 @@ H-4 rewrote this Lock on 2026-10-19, before any code. Until H-4 lands, the code 
 
 **Done means:** No file under the workdir ends in `.log`. The log survives a restart, and Last run shows the previous run. Every level is captured; the view hides TRACE and DEBUG at the `info` default. `log.db` stays under its size cap after shutdown, and Trim Now brings an over-cap log under it. The view scrolls back past 10,000 lines. A subsystem set to `debug` logs debug while the rest stay at the default. Old log files were imported once and are gone.
 
-**Exit gate:** `make test` exits 0 with the tests above. In `make build`, on a copy of a workdir that has `logs/`: the first start deletes the old files and `logs/`. Scroll up past the ring and older lines load. This run, Last run, and All filter as named. Save writes the filtered lines. In Settings, Refresh shows size, records, and the oldest record; the slider previews; Apply and Trim Now trim and show the new stats. Andrew accepts the window.
+**Exit gate:** `make test` exits 0 with the tests above. In `make build`, on a copy of a workdir that has `logs/`: the first start deletes the old files and `logs/`. Scroll up past the ring and older lines load. This run, Last run, and All filter as named. Save writes the filtered lines. In Settings, Refresh shows size, records, and the oldest record; the slider previews; Apply and Trim Now trim and show the new stats. Andrew accepts the window. Passed. Andrew accepted the window on 2026-10-21. The last full `make test` recorded in the index, after this phase was already in the tree, is 173 Unity tests, 2 Rust tests, and 342 Vitest tests, exit 0 (2026-10-20). This close-out did not rerun it.
+
+**Accomplished:** The record is `<profile id>.log.db` beside the store, opened only by the log thread (`0600`, WAL, its own migrations). The store writer never opens it. There is no `logs/` directory and no `.log` file. An old profile whose `logs` key names a `.log` file is rewritten once to `<profile id>.log.db`. Old `logs/*.log` files are deleted without import. `seq` continues across runs. Lines logged before the profile attaches are renumbered from `max(seq)+1` and written once. Before any workdir exists, every level goes to stderr. After that, nothing does. Rows batch about every 100 ms. An ERROR waits for its commit, capped at about 250 ms. Shutdown flushes. `PAV_TRACE` is 4. Every level is captured. The ring and `log.lines` carry TRACE. The view's default checked levels are INFO and above. TRACE uses the DEBUG styling. The time range defaults to 12 hours, with presets and Custom, and `log.query {since, until}` pages older lines while keeping the scroll position. This run, Last run, and All filter the session. Copy, Save, and Print use that query. `log.tail` still reads the ring. `log.export` reads `log.db`. `preferences.log_max_mb` is 1 to 100, default 10, trimmed at shutdown and by Apply or Trim Now. Settings shows size, records, and the oldest record. The slider previews and deletes nothing until Apply or Trim Now. Identical consecutive lines collapse to `previous line repeated N times`. `pav_log` redacts known secret shapes, including `user:password@` in URLs. UI actions go through `log.client`, at most 50 lines a second. `bypass.test.js` fails a new stderr, `println!`, or `console` call that is not on its allowlist. `docs/API.md` has real headings for `log.lines` and `log.query`. `PAVILLION_API_VERSION` stays 3. Help covers the history, the session filter, TRACE, and the size controls. Two sentences in Done means were superseded by the Lock before the code: a per-subsystem debug level was dropped (`preferences.log_levels`), and old files are deleted rather than imported.
+
+**Lessons learned:** Capture every level and let the view filter. A per-subsystem floor was specified, then dropped, because the database is the record and the screen is the filter. Retention is one size cap, trimmed at shutdown and on demand, not a day count or a row count. Importing old text logs was dropped the same way: delete them. TRACE is an ordinary level with DEBUG styling. A separate `--pav-log-trace` was not added. The on-screen document is the local 24-hour line. Copy and save stay the UTC bytes. Consecutive identical lines belong in `pav_log`, not in each caller. Redaction has to live in `pav_log` itself or `log.client` walks around it. `pav_jmap_post` must keep the session URL on the context. A stack buffer becomes a dangling pointer after the call returns. The ring is still the live cache. History is `log.query` against `log.db`, posted to the log thread. Command handlers do not open that file.
+
+**Handoff:** M-3 is next in the sequence. Its entry gate does not include H-4. Do not bump `PAVILLION_API_VERSION` for another log command. Do not open `log.db` from the store writer or from a command handler. New log lines go through `pav_log`. The bypass allowlist is `ui/src/bypass.test.js`. "Email this log" stays at O-5. The log view's local time moves to Settings → Formats when D-8 lands. D-Q22 (a draft `account.add`) is not this phase.
 
 ## Open questions for Andrew
 
@@ -210,3 +216,4 @@ Resolved 2026-10-19: H-Q2. Yes, folded into H-4: a per-subsystem minimum level s
 - 2026-10-19 Andrew revised H-4: TRACE is an ordinary level (ring and `log.lines` carry it, `DEBUG` styling, no `--pav-log-trace`); the Log view gets a time range (default 12 h; 12 h, 24 h, 7 d, All, Custom), with `log.query {since, until}` on the `log_ts` index for anything older, built in commit 3.
 - 2026-10-19 H-4 commit 4: log points, bypass routing (`bypass.test.js`), redaction in `pav_log`, UI forwarding at 50/s, `prefs saved` names keys; the log view's document is now the local 24 h screen line (Andrew, 2026-10-19). `make test` is 150 Unity tests and 273 Vitest tests (44 files), exit 0.
 - 2026-10-19 H-4 commit 5 (close-out, ready for Andrew's acceptance, not Done): identical consecutive lines collapse in `pav_log` with `previous line repeated N times` (Lock, Andrew); redaction also drops `user:password@` in URLs and `net.c` server keys skip userinfo; `pav_jmap_post` keeps `ctx->session_url` instead of a stack buffer (dangling URL fixed). Help: the Activity and Logs page (local time, levels, repeats, redaction) and Developer → Logging. API.md `log.client` documents the rate limit. New Unity: `test_log_repeats_collapse_on_different_line`, `test_log_repeats_flush_on_idle`, `test_log_repeats_flush_at_shutdown`, `test_jmap_post_url_outlives_call`, `test_log_old_files_delete_failure_warns`.
+- 2026-10-21 H-4 complete. Andrew accepted the window. The phase stamp moves to `0.58.0` in the same sitting as the D-10 close. This sitting did not rerun `make test` and did not start M-3 source.

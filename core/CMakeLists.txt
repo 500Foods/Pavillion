@@ -59,6 +59,7 @@ add_library(pavillion_core STATIC
     src/account.c
      src/net.c
      src/jmap.c
+     src/sync.c
      src/account_test.c
      platform/posix/posix.c)
 target_include_directories(pavillion_core PUBLIC include)

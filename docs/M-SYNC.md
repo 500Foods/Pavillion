@@ -1,6 +1,6 @@
 # M — SYNC
 
-**Status:** M-1 and M-2 complete (2026-10-19). M-3 through M-8 are not started. The index names the next phase.
+**Status:** M-1 and M-2 complete (2026-10-19). M-3 is in progress (2026-10-21): M-3a is the last finished work item. M-3b and M-3c are not started. M-4 through M-8 are not started. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The network and the sync engine: HTTP through libcurl, JMAP session discovery, initial and delta sync, the mutation queue, and push. Mail first; contacts, calendars, and files reuse the same engine with their own types ([S-CONTACTS.md](S-CONTACTS.md), [T-CALENDAR.md](T-CALENDAR.md), [U-FILES.md](U-FILES.md)). Tasks ([X-TASKS.md](X-TASKS.md)) sync over CalDAV after T-7, on that DAV client, not as a JMAP tasks capability. Notes ([Y-NOTES.md](Y-NOTES.md)) reuse the files sync of one account. Sending is [O-COMPOSE.md](O-COMPOSE.md).
@@ -13,7 +13,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | --- | --- | --- | --- |
 | M-1 | Per-server network threads, a curl multi handle each, caps, retries, redaction | Hard | Complete |
 | M-2 | JMAP session discovery, `account.test`, remote accounts, capabilities | Medium | Complete |
-| M-3 | Sync supervisor, Identity and Mailbox sync, `mailbox.list`, `sync.state` | Medium | Not started |
+| M-3 | Sync supervisor, Identity and Mailbox sync, `mailbox.list`, `sync.state` | Medium | In progress |
 | M-4 | Email initial sync: headers, first page, background backfill, threads | Medium | Not started |
 | M-5 | Delta sync: `/changes`, `cannotCalculateChanges`, deletes | Medium | Not started |
 | M-6 | Mutation queue: optimistic apply, `ifInState`, conflicts, coalescing, undo | Hard | Not started |
@@ -203,7 +203,7 @@ M-1's net layer is complete and tested. M-2 adds `account.test`, JMAP session pa
 ## M-3: Supervisor, Identity and Mailbox sync
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** In progress (2026-10-21). Last finished work item: M-3a (supervisor, stored Session, account states, `sync.now`, `ca_file`, the 401 path, and the locked-keyring path). M-3b and M-3c are not started.
 
 **Goal:** Every enabled account keeps its identities and mailboxes in the store, and the UI can list them with counts.
 
@@ -211,12 +211,12 @@ M-1's net layer is complete and tested. M-2 adds `account.test`, JMAP session pa
 
 The UI half of this gate (the `make build` steps above) is Andrew's to run before M-3a starts. The server half (`make it-up`, each account's Session with `apiUrl` on 1443, 401 on a wrong password) passed on 2026-10-19.
 
-**Gate status (2026-10-20):**
+**Gate status (2026-10-21):**
 - K-3 and E-4 are complete, and the server half passed on 2026-10-19.
-- The UI half is still Andrew's to run: add the three test accounts in `make build`, restart, check a wrong password, then `rg -a` the workdir.
-- Since 2026-10-20 the Accounts form adds accounts through Save as well as Add (K-Q13). Before that, Save on a blank form did nothing, so an earlier attempt at this gate may have failed for that reason. Rerun it.
-- H-4 (the log in SQLite) is code-complete and waiting for Andrew's acceptance. It is not in M-3's entry gate.
-- D-10 and the Accounts table (Tabulator) polish continue in parallel. M-3 does not depend on either: it is core sync work (`sync.c`, the store, `mailbox.list`, `identity.list`, `sync.state`), and its only UI is the counts it exposes.
+- H-4 and D-10 are complete (accepted 2026-10-21). Neither is in this entry gate. The Accounts table polish stays paused and does not block M-3.
+- Andrew, 2026-10-21: two live JMAP accounts are saved, Test returns the expected services for both, and a wrong password fails. He asked to open M-3 on that report.
+- The written UI script was not rerun: three container accounts (`andrew@test-a.local`, `alice@test-a.local`, `bob@test-b.local`), numbers 001–003 after a restart, and `rg -a` for `pavtest-pw`. Since 2026-10-20 Save on a blank form adds an account (K-Q13).
+- Andrew, 2026-10-21, answered yes and yes. The live-account report is the UI half of this gate. This sitting is M-3a only (supervisor, stored Session, account states, `sync.now`). M-3b and M-3c stay for later sittings. The 2026-10-19 decisions below stay. Automated tests use the fixture, not the live accounts.
 
 **Handoff for a cold-start agent (2026-10-20):**
 - **Rules:** read [AGENTS.md](../AGENTS.md) first, then this file's Lock and the M-3 section.
@@ -238,12 +238,12 @@ The UI half of this gate (the `make build` steps above) is Andrew's to run befor
 
 **Work items:**
 
-- [ ] `core/src/sync.c`: one `PavSup` per enabled account, started after `core ready`, stopped on remove or disable; account states and `sync.state` events; `sync.now {accountId?}`.
-- [ ] Each `PavJmapCtx` the supervisor builds sets `ca_file` from the account's `caFile` (M Lock, TLS). No context is built outside tests before M-3, so this lands with `sync.c`.
+- [x] `core/src/sync.c`: one `PavSup` per enabled account, started after `core ready`, stopped on remove or disable; account states and `sync.state` events; `sync.now {accountId?}`.
+- [x] Each `PavJmapCtx` the supervisor builds sets `ca_file` from the account's `caFile` (M Lock, TLS). No context is built outside tests before M-3, so this lands with `sync.c`.
 - [ ] `Identity/get` and `Mailbox/get` initial; `Mailbox/changes` and `Identity/changes` delta (polling every 2 minutes until M-7).
 - [ ] Commands `mailbox.list {accountId?}` (nodes in the [E-TREE.md](E-TREE.md) contract shape: `id`, `parentId`, `kind`, `label`, `role`, `order`, `unread`, `total`, `hasChildren`, `swatch`), `identity.list`. Event `mail.mailboxes_changed`.
 - [ ] Activity `sync.mail` per account with detail per step.
-- [ ] 401 path per the K Lock; keyring locked path.
+- [x] 401 path per the K Lock; keyring locked path.
 - [ ] Unity on fixtures: `test_sync_mailboxes_initial`, `test_sync_mailboxes_delta_rename`, `test_sync_401_stops_account`, `test_mailbox_list_tree_shape`.
 - [ ] Moved from W-2: add `tests/support/record.sh` (curl and jq) and record the first real Session and responses from the W-2 Stalwart container into `tests/support/fixtures/`, scrubbed of secrets. This is what makes the W Lock's "serves recorded JMAP responses from `tests/support/fixtures/*.json`" true: it is not implemented yet. The directory is empty and `jmapfix.sh` builds every reply with jq ([W-SHIP.md](W-SHIP.md) Lock, Fixture server).
 - [ ] Moved from W-2: make `tests/stalwart/seed.sh` create mailboxes in the container (idempotent). Today it only creates the domains and accounts through the admin API. Seeding the `tests/corpus/` messages moved to M-4.
@@ -415,3 +415,4 @@ The UI half of this gate (the `make build` steps above) is Andrew's to run befor
 - 2026-10-19 M-3 gate: the Stalwart accounts are seeded by `tests/stalwart/seed.sh` with test password `pavtest-pw` (8-character minimum), not `config.toml`.
 - 2026-10-19 M-3 split into sittings M-3a, M-3b, M-3c (row 53 stays one phase); decisions recorded (mail-capable remote accounts, composite `ra_id`, account-root tree and `mbx:` ids, sort order, core-thread poll, keyring retry, `curl_multi_wakeup` deferred, `record.sh`, corpus to M-4, exit-gate `Mailbox/set`); entry gate UI half is Andrew's.
 - 2026-10-19 account.test fixes (Andrew): early `goto done` paths returned `{ok:true,data:null}`; Stalwart's `307 location: /jmap/session` (relative, lowercase) was not followed. Now every failure is not-ok, relative and case-insensitive `Location` resolves against the request URL, and the test runs as an `account.test` activity. Unity: `test_account_test_relative_redirect`, `test_account_test_early_failure_not_ok`.
+- 2026-10-21 M-3 in progress. M-3a finished: one supervisor per enabled JMAP account, Session and mail remote accounts stored, states and `sync.state`, `sync.now`, `ca_file` from `caFile`, a 401 stops until the secret changes, and a locked keyring retries only on `sync.now` or the next poll. The state job does not open its own transaction; the writer already holds one. Unity: `test_sync_session_stored`, `test_sync_401_stops_account`, `test_sync_locked_keyring_no_retry`. `make test`: 176 Unity, 2 Rust, 349 Vitest, exit 0. M-3b and M-3c are not started. The container check for M-3a was not run.

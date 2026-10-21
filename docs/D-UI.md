@@ -1,6 +1,6 @@
 # D — UI
 
-**Status:** D-3 complete (2026-10-14). D-4, D-6, and D-7 complete (2026-10-17). D-5 is not started. The shell preview below is not a phase.
+**Status:** D-4, D-6, and D-7 complete (2026-10-17). D-10 complete (2026-10-21). D-5, D-8, and D-9 are not started. The shell preview below is not a phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The first frame, the shell preview, and the theme layer. The shell layout (nav, buttons, home tabs, window) is the [J-TABS.md](J-TABS.md) Lock. Security rules for the main window are the [F-HARDEN.md](F-HARDEN.md) Lock. The tree behind the mail and files navs is [E-TREE.md](E-TREE.md). Mail, contacts, calendars, tasks, files, and notes have their own letters (N, O, S, T, X, U, Y). Argent is Z and is an icon only.
@@ -20,7 +20,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | D-5 | Theme extras: density, gradient tuning, the contrast audit | Medium | Not started |
 | D-8 | Settings → Formats: app-wide display formats through Luxon (before N-3) | Medium | Not started |
 | D-9 | Icon Wizard (DRAFT spec, docs only): up to 3 layered icons or images per icon, stored as an HTML snippet | Medium | Not started |
-| D-10 | Module bars (toolbar and footer convention): Accounts Clone and search, the Help bar with search and Back | Medium | In progress |
+| D-10 | Module bars (toolbar and footer convention): Accounts Clone and search, the Help bar with search and Back | Medium | Complete |
 
 Kind: **Easy** is the static frame or one function in `api.js`. **Medium** crosses one boundary. **Hard** is unused.
 
@@ -401,7 +401,7 @@ For the rework:
 ## D-10: Module bars: toolbar and footer, Accounts Clone and search, Help bar
 
 **Kind:** Medium
-**Status:** In progress (checked 2026-10-20). Spec answered 2026-10-20 (Andrew: "Let's implement D-10"). The code is in the tree and committed through "Another round of fussing with Tabulator". Andrew uses the Accounts bars daily: Add, Clone, Delete, search, the column chooser, Refresh, the navigator and Export all work. **What is left:** Andrew's acceptance of the bars in the real window (Accounts and the Help bar with search and Back), then the close-out (Accomplished, Lessons learned, Handoff, Working log, and the `ui/src/help/pages.js` update). The Accounts table polish is not part of D-10. It is paused, with its open issues listed in [TABULATOR.md](TABULATOR.md) "Status and open issues".
+**Status:** Complete (2026-10-21, step 134). Andrew accepted the Accounts bars and the Help bar (search and Back) the same day. The Accounts table polish is not this phase. It stays paused in [TABULATOR.md](TABULATOR.md).
 
 **Goal:** One convention for the bars of every module, and its first users: Accounts and Help.
 
@@ -435,12 +435,23 @@ For the rework:
 
 **Work items:**
 
-1. `module-bar.js` (`moduleToolbar`, `moduleFooter`, `paintFooterNav`) and the `.pav-module-*` rules in `theme.css`.
-2. Accounts: toolbar with Add, Clone, Delete, and search; footer with Refresh, First, Previous, Next, Last, and Export; the table loses its footer element.
-3. Help: toolbar with title `Help`, search, Back.
-4. Themes: Refresh moves to a module footer (first button) if cheap.
+- [x] `module-bar.js` (`moduleToolbar`, `moduleFooter`, `paintFooterNav`) and the `.pav-module-*` rules in `theme.css`.
+- [x] Accounts: toolbar with Add, Clone, Delete, and search; footer with Refresh, First, Previous, Next, Last, and Export; the table loses its footer element.
+- [x] Help: toolbar with title `Help`, search, Back.
+- [~] Themes: Refresh stays on the folder bar. Moving it was "if cheap" and was not done. No later phase owns it.
 
 **Tests (Vitest):** `cloneAccount` drops username, password, id, number, and capabilities; Clone disabled without a selection; `accountMatches` over the searched fields; footer Refresh first and navigator state; Help Back tracker returns to the opener and is empty with no earlier tab.
+
+**Done means:** Accounts and Help use the shared bars. Add, Clone, Delete, search, Refresh, the navigator, and Export work on Accounts. Help search stays, and Back returns to the previous tab.
+
+**Exit gate:** Andrew accepts the bars in the window. Passed on 2026-10-21. The last full `make test` recorded in the index, with this phase already in the tree, is 173 Unity tests, 2 Rust tests, and 342 Vitest tests, exit 0 (2026-10-20). This close-out did not rerun it.
+
+**Accomplished:** `ui/src/common/module-bar.js` builds the toolbar and the footer. Both are `.button-bar` rows, so Button bars zoom applies. The toolbar is the title, selection actions, the column chooser, search, other actions, then the help jump. The footer's first button is Refresh. It spins once per click unless motion is reduced. A list adds First, Previous, Next, and Last, and puts Export on the right. Icon-only controls use the shared tooltip. Accounts has Add, Clone, and Delete, then search. Clone copies every field except the username, the password, the id, and the number. The name gains ` (copy)`. Capabilities are cleared. The copy opens unsaved. Delete confirms, then `account.remove` with `purgeLocal`. Search is a case-insensitive substring over name, number, email, username, and the server label. Escape clears it. Export builds the CSV in the page and writes it through `export.write_text` after the save dialog, because a blob download did nothing in WebKitGTK. Help's bar is the title, search, then Back. Back returns to the last non-Help tab and is disabled when that tab is gone. Help covers those controls, and Developer → Module bars names the builders. D-Q22 stays open: `account.add` still requires a session URL, a username, and a secret, so toolbar Add opens a blank form instead of inserting a draft row.
+
+**Lessons learned:** A module bar has to be a real `.button-bar` in the page. A bar drawn inside Tabulator's footer does not pick up Button bars zoom or the shared strut. WebKitGTK does not complete a blob download from the page. The save dialog plus `export.write_text` is the path that writes the file. Restarting the Refresh spin means removing the class, forcing a reflow, and adding the class again. A native `title` fights the shared tooltip. `data-pav-tip` is what the builders set. The Accounts table's remaining look and behavior issues are a separate list. Closing the bars did not close that list.
+
+**Handoff:** M-3 is the next sequenced phase. D-10 does not block it. A later module uses `moduleToolbar` and `moduleFooter` and does not draw its own bars. Themes Refresh stays where it is. D-Q22 stays open until a phase that owns `account.add` asks it. The Accounts table polish stays in [TABULATOR.md](TABULATOR.md) and is not a sequenced phase.
+
 ## Working log
 
 - 2026-10-14 D-1: Dark frame. `theme.css` has the five variables. Title row shows Pavillion. Profile slot and body are empty.
@@ -458,6 +469,7 @@ For the rework:
 - 2026-10-18 Recorded at the J-9 close (moved from the index Resume): the host page still starts on `color-scheme: dark` and `background: #000`, and `data-pav-theme` follows the resolved theme. `pav-theme` is on the existing scheme list in `src-tauri/src/lib.rs`.
 - 2026-10-19 D-8 added (not started): Settings → Formats, app-wide display formats through Luxon, sequence step 132 after D-5. The H-4 log view's local 24 h time moves to it when it lands.
 - 2026-10-19 D-8 moved (Andrew): sequence row 132 now sits just before N-3 (step 61), entry gate Q-1, so N-3, T-3, and later screens use Settings → Formats; D-Q1 (placement) resolved and removed.
+- 2026-10-21 D-10 complete. Andrew accepted the Accounts bars and the Help bar. Themes Refresh was left on the folder bar. The phase stamp moves to `0.58.0` with the H-4 close. This sitting did not rerun `make test`.
 
 ## Shell preview
 

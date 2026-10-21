@@ -11,8 +11,10 @@
 #include "pav_activity.h"
 #include "pav_cfg.h"
 #include "pav_config.h"
+#include "pav_net.h"
 #include "pav_platform.h"
 #include "pav_store.h"
+#include "pav_sync.h"
 #include "pavillion.h"
 
 #include "window_state.h"
@@ -41,6 +43,7 @@
 #define CORE_CMD_UI 5
 #define CORE_CMD_CALL 6
 #define CORE_CMD_CAPS 7 /* K-Q10: store a Test result; call->args is the payload */
+#define CORE_CMD_SYNC 8 /* M-3a: call is a SyncResult; free with pav_sync_result_free */
 #define PAV_CALL_JSON_MAX (2u * 1024u * 1024u)
 
 /* No longer in the FFI. The older Unity tests still call pavillion_status. */
@@ -325,6 +328,9 @@ static void core_boot(void) {
         return;
     }
     pav_log("core", PAV_INFO, 2, "core ready: profile %s, %d accounts", profile->id, (int)profile->account_count);
+    if (pav_sync_boot((json_t *)profile->doc, profile->id) != 0) {
+        pav_log("core", PAV_ERROR, 1, "cannot start sync for %s", profile->id);
+    }
     publish_boot("ready", profile->name, profile->id, NULL);
 }
 
@@ -421,6 +427,27 @@ static void core_fail_prefs_unlocked(const char *msg) {
     pthread_cond_broadcast(&g_core_cv);
 }
 
+/* The caller holds g_core_mu. 1 when a window write or a sync poll is waiting.
+   *out is the earlier CLOCK_REALTIME deadline. */
+static int core_next_deadline(struct timespec *out) {
+    struct timespec window_dl;
+    struct timespec sync_dl;
+    int window_on = pav_window_deadline(&window_dl);
+    int sync_on = pav_sync_deadline(&sync_dl);
+
+    if (!window_on && !sync_on) {
+        return 0;
+    }
+    if (window_on && sync_on &&
+        (sync_dl.tv_sec < window_dl.tv_sec ||
+         (sync_dl.tv_sec == window_dl.tv_sec && sync_dl.tv_nsec < window_dl.tv_nsec))) {
+        *out = sync_dl;
+    } else {
+        *out = window_on ? window_dl : sync_dl;
+    }
+    return 1;
+}
+
 static void *core_thread_main(void *arg) {
     (void)arg;
     core_boot();
@@ -432,10 +459,11 @@ static void *core_thread_main(void *arg) {
         while (g_core_q_count == 0 && !g_core_stop) {
             struct timespec deadline;
 
-            if (pav_window_deadline(&deadline)) {
+            if (core_next_deadline(&deadline)) {
                 if (pthread_cond_timedwait(&g_core_cv, &g_core_mu, &deadline) == ETIMEDOUT) {
                     pthread_mutex_unlock(&g_core_mu);
                     pav_window_fire();
+                    pav_sync_on_wake();
                     pthread_mutex_lock(&g_core_mu);
                 }
             } else {
@@ -476,6 +504,12 @@ static void *core_thread_main(void *arg) {
             call->reply = reply;
             call->done = 1;
             pthread_cond_broadcast(&g_core_cv);
+            continue;
+        }
+        if (cmd == CORE_CMD_SYNC) {
+            pthread_mutex_unlock(&g_core_mu);
+            pav_sync_on_result(call);
+            pthread_mutex_lock(&g_core_mu);
             continue;
         }
         if (cmd == CORE_CMD_CAPS) {
@@ -536,7 +570,9 @@ static void *core_thread_main(void *arg) {
         PavCall *left = NULL;
 
         while (core_queue_pop_unlocked(&left_cmd, &left) == 0) {
-            if (left != NULL) {
+            if (left_cmd == CORE_CMD_SYNC) {
+                pav_sync_result_free(left);
+            } else if (left != NULL) {
                 fail_call_unlocked(left, "not_ready", "core stopped");
             }
         }
@@ -544,6 +580,7 @@ static void *core_thread_main(void *arg) {
     pthread_cond_broadcast(&g_core_cv);
     pthread_mutex_unlock(&g_core_mu);
     pav_window_flush();
+    pav_sync_shutdown();
     core_release_profile();
     return NULL;
 }
@@ -863,7 +900,9 @@ void pavillion_stop(void) {
         pthread_join(thread, NULL);
     }
     pav_log("core", PAV_DEBUG, 0, "core thread joined");
-    /* After the core thread has finished. A second stop joins nothing. */
+    /* After the core thread has finished, including its sync shutdown.
+       A second stop joins nothing and does not drop the net ref again. */
+    pav_net_stop();
     pav_event_thread_stop();
     pav_log("core", PAV_INFO, 0, "stopped");
     pav_log_thread_shutdown();
@@ -3034,6 +3073,19 @@ int pav_core_post_capabilities(const char *id, json_t *caps, const char *checked
         pthread_mutex_unlock(&g_core_mu);
         json_decref(payload);
         free(call);
+        return -1;
+    }
+    pthread_mutex_unlock(&g_core_mu);
+    return 0;
+}
+
+int pav_core_post_sync(void *result) {
+    if (result == NULL) {
+        return -1;
+    }
+    pthread_mutex_lock(&g_core_mu);
+    if (!g_core_alive || g_core_stop || core_queue_push_unlocked(CORE_CMD_SYNC, result) != 0) {
+        pthread_mutex_unlock(&g_core_mu);
         return -1;
     }
     pthread_mutex_unlock(&g_core_mu);

@@ -33,6 +33,8 @@
 #define PAV_NET_ACCOUNT_CAP_MAX 16
 #define PAV_NET_SERVER_MAX 64
 #define PAV_NET_BODY_MAX (2u * 1024u * 1024u)
+/* Phase stamp. The core does not read PAVILLION_BUILD. */
+#define PAV_HTTP_USER_AGENT "Pavillion/0.58"
 
 typedef struct {
     FILE *dl_file;
@@ -134,6 +136,7 @@ static PavNetServer *g_servers[PAV_NET_SERVER_MAX];
 static int g_server_count;
 static pthread_mutex_t g_reg_mu = PTHREAD_MUTEX_INITIALIZER;
 static int g_net_started;
+static int g_net_refs;
 
 static int g_overall_cap;
 static int g_overall_in_flight;
@@ -222,6 +225,7 @@ static int apply_auth_header(PavReq *req) {
     PavSecret secret;
     int rc;
 
+    req->auth_rc = 0;
     if (req->keyring_user == NULL || req->username == NULL ||
         req->auth_method == NULL) {
         return 0;
@@ -230,16 +234,19 @@ static int apply_auth_header(PavReq *req) {
     acct.auth = req->auth_method;
     auth = pav_auth_for(&acct, errbuf, sizeof(errbuf));
     if (auth == NULL) {
+        req->auth_rc = PAV_SECRET_FAILED;
         pav_log("http", PAV_WARN, 1,
                 "auth setup failed: %s", errbuf);
         return -1;
     }
     rc = pav_secret_get("pavillion", req->keyring_user, &secret_val);
     if (rc == PAV_SECRET_LOCKED) {
+        req->auth_rc = PAV_SECRET_LOCKED;
         pav_log("http", PAV_WARN, 0, "keyring is locked");
         return -1;
     }
     if (rc != 0) {
+        req->auth_rc = rc;
         pav_log("http", PAV_ERROR, 0, "cannot read secret");
         return -1;
     }
@@ -248,6 +255,9 @@ static int apply_auth_header(PavReq *req) {
     rc = auth->apply(&acct, req, &secret);
     if (secret_val) {
         pav_secret_free(secret_val); /* wipes, then frees */
+    }
+    if (rc != 0) {
+        req->auth_rc = PAV_SECRET_FAILED;
     }
     return rc;
 }
@@ -344,11 +354,13 @@ static int setup_request(PavNetServer *s, NetReqItem *item) {
     req->body_out = NULL;
     req->body_out_len = 0;
     req->status_code = 0;
+    req->auth_rc = 0;
 
     eh = curl_easy_init();
     if (!eh) return -1;
 
     curl_easy_setopt(eh, CURLOPT_URL, req->url);
+    curl_easy_setopt(eh, CURLOPT_USERAGENT, PAV_HTTP_USER_AGENT);
     curl_easy_setopt(eh, CURLOPT_CUSTOMREQUEST, req->method);
     curl_easy_setopt(eh, CURLOPT_CONNECTTIMEOUT_MS, PAV_NET_CONNECT_TIMEOUT_MS);
     curl_easy_setopt(eh, CURLOPT_TIMEOUT_MS, PAV_NET_REQUEST_TIMEOUT_MS);
@@ -701,6 +713,7 @@ static void *server_thread_main(void *arg) {
                 release_item_resources(picked);
                 if (picked->req->on_done) {
                     picked->req->status_code = 0;
+                    /* auth_rc stays. Locked and missing secrets land here. */
                     picked->req->on_done(picked->req, picked->req->user);
                 }
                 free(picked);
@@ -860,23 +873,39 @@ static PavNetServer *find_server_locked(const char *key) {
 }
 
 int pav_net_start(void) {
-    if (g_net_started) return 0;
-    if (curl_global_init(CURL_GLOBAL_DEFAULT) != 0) {
-        pav_log("http", PAV_ERROR, 0, "curl_global_init failed");
-        return -1;
+    pthread_mutex_lock(&g_reg_mu);
+    if (g_net_refs == 0) {
+        if (curl_global_init(CURL_GLOBAL_DEFAULT) != 0) {
+            pthread_mutex_unlock(&g_reg_mu);
+            pav_log("http", PAV_ERROR, 0, "curl_global_init failed");
+            return -1;
+        }
+        pav_log("http", PAV_DEBUG, 1, "net started (%s)", curl_version());
+        g_net_started = 1;
+        g_overall_cap = 0;
+        g_overall_in_flight = 0;
     }
-    pav_log("http", PAV_DEBUG, 1, "net started (%s)", curl_version());
-    g_net_started = 1;
-    g_overall_cap = 0;
-    g_overall_in_flight = 0;
+    g_net_refs++;
+    pthread_mutex_unlock(&g_reg_mu);
     return 0;
 }
 
 void pav_net_stop(void) {
     int i;
-    if (!g_net_started) return;
 
     pthread_mutex_lock(&g_reg_mu);
+    if (g_net_refs == 0) {
+        pthread_mutex_unlock(&g_reg_mu);
+        return;
+    }
+    g_net_refs--;
+    if (g_net_refs > 0) {
+        /* account.test and discover drop their own reference. The process
+           keeps one from boot, so a Test does not join the sync threads. */
+        pthread_mutex_unlock(&g_reg_mu);
+        return;
+    }
+    g_net_started = 0;
     for (i = 0; i < g_server_count; i++) {
         PavNetServer *s = g_servers[i];
         pthread_mutex_lock(&s->mu);

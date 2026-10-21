@@ -10,6 +10,7 @@
 #include "pav_platform.h"
 #include "pav_secret.h"
 #include "pav_store.h"
+#include "pav_sync.h"
 #include "pavillion.h"
 
 #include <jansson.h>
@@ -927,6 +928,7 @@ int pav_account_add(json_t *args, json_t **data, PavError *err) {
             pav_index_free(index);
         }
 
+        pav_sync_note_account(acct);
         result = json_deep_copy(acct);
         if (result == NULL) {
             pav_error_set(err, "internal", "out of memory", 0);
@@ -1014,6 +1016,7 @@ int pav_account_remove(json_t *args, json_t **data, PavError *err) {
             return -1;
         }
 
+        pav_sync_note_removed(id);
         snprintf(keyring_user, sizeof(keyring_user), "%s/%s", load->profile->id, id);
         pav_secret_delete("pavillion", keyring_user);
         json_array_remove(accounts, idx);
@@ -1184,6 +1187,7 @@ int pav_account_update(json_t *args, json_t **data, PavError *err) {
             return -1;
         }
 
+        pav_sync_note_account(acct);
         result = json_deep_copy(acct);
         if (result == NULL) {
             pav_error_set(err, "internal", "out of memory", 0);
@@ -1274,6 +1278,7 @@ int pav_account_set_secret(json_t *args, json_t **data, PavError *err) {
             return -1;
         }
 
+        pav_sync_note_secret(id);
         result = json_object();
         if (result == NULL || json_object_set_new(result, "id", json_string(id)) != 0) {
             json_decref(result);

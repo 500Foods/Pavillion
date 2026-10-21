@@ -35,7 +35,8 @@ export const helpPages = [
         id: "reader",
         title: "How to use Help",
         paragraphs: [
-          "The list on the left is the index. The page on the right is the topic. Drag the bar between them to change the width. The width is saved. Search in the bar matches a title or the words on a page, and Enter opens the first hit.",
+          "The list on the left is the index. The page on the right is the topic. Drag the bar between them to change the width. The width is saved. The bar above the page has the title, then search, then Back. Search matches a title or the words on a page, and Enter opens the first hit.",
+          "Back returns to the tab that was open before Help, one step. It stays off when there is no such tab, or when that tab has been closed.",
           "Escape clears the search and leaves the page you were reading. A match on a page title keeps every section of that page in the index. A match in the text keeps only those sections in the index, and the page still shows the whole topic.",
           "Pages are added as features land. A short page means that part of the app is not built yet. A help icon on the right of a page's top bar opens that topic here.",
         ],
@@ -159,7 +160,7 @@ export const helpPages = [
         id: "zoom",
         title: "Zooms",
         paragraphs: [
-          "Shell is the master scale, from 50% to 200% in steps of 5%. It multiplies every other row. Those rows run from 5% to 500% in the same steps. Button bars are the nav, the tabs, the log bars, the Help search bar, and the bars on settings pages. Help index and Help content are their own rows.",
+          "Shell is the master scale, from 50% to 200% in steps of 5%. It multiplies every other row. Those rows run from 5% to 500% in the same steps. Button bars are the nav, the tabs, the log bars, the module toolbars and footers, and the bars on settings pages. Help index and Help content are their own rows.",
           "Hold Ctrl and roll the wheel over a button bar, the nav, the calendar, a mail pane, the log text, the Help index, or the Help page. One notch changes that row by 5%. The wheel does not change Shell. A plain wheel still scrolls.",
           "Away zooms in unless the switch on this page says toward. The switch is for a touchpad whose roll feels backwards. The choice is saved with the other zoom settings. The Help index and the Help page take their colors from the theme.",
         ],
@@ -206,6 +207,7 @@ export const helpPages = [
         title: "Accounts",
         paragraphs: [
           "Settings → Accounts is the first Settings heading and a split panel. The account table is on the left, grouped by server (the session URL's host and the full URL; accounts without one are under (no server)), each group with its count. Click a column header to sort it ascending, descending, or back to the original order; rows sort within their server. The footer shows the number of accounts and how many have each feature, then First, Previous, Next, and Last buttons (Up and Down work too when the table has focus) and Export, which saves the list as CSV (number, name, server, features, email; never passwords). Each row shows the account number, the color swatch with its icon, the name, and a read-only box for Mail, Calendar, Contacts, and Files (on when the last successful Test found that service and the account syncs it; the result is saved with the account, and hovering a box shows when it was checked; Files has no sync switch yet). The Mail cell also shows J (JMAP); I (IMAP) and S (SMTP) are greyed until they exist. Click a row to load that account's form on the right. Adding an account takes a name, a JMAP session URL (https only), a username, a password, and a color. The session URL can be discovered from the email domain, or overridden by hand. Under Advanced, an optional CA file (an absolute path to a PEM bundle) is trusted for that account in addition to the system store, for internal or test servers.",
+          "The bar above the table has Add, Clone, and Delete, then the column chooser, then search. Add clears the selection and opens a blank form. Clone needs a selected row. It copies that account except the username, the password, the number, and the id. The name gains \" (copy)\". The copy stays in the form until you add it, and the service boxes stay off until that copy's own Test. Delete needs a selected row. It asks first, then removes the account, its saved password, and its local data. Search matches the name, number, email, username, or server, and it ignores case. Escape clears it. A server group with no match is hidden. Refresh, First, Previous, Next, and Last walk only the rows still shown. Refresh spins once, unless motion is reduced.",
           "The Test button checks the credentials against the server before Save is enabled. A wrong password shows one error and does not retry. The Password field is cleared after submit, and the secret is never shown once stored in the keyring. The Credentials area shows whether a password is stored, not what it is.",
           "The form is grouped as Identity (display name, color, email), Server (kind, session URL, auth method, Advanced), Credentials (username, password), and Options (sync, fetch bodies, enabled), with Test, Add, Save, and Remove below. Beside Color is a short row of icons drawn on the account color; the chosen one is the account's icon (the envelope by default). Detect, beside the session URL, finds it from the email address: first the _jmap._tcp SRV record of the domain, then https://<domain>/.well-known/jmap, following redirects without sending the password. On a saved account the URL it finds is saved at once and Detect shows Saved; on a new account it stays in the form until Add. When Test is redirected to a different final URL, that URL replaces the session URL the same way (Session URL updated), and if the redirect changed host, Test runs once more against it so the password is really checked. The email follows the username while the username looks like an address. On a saved account the password can stay blank: Test then uses the saved password, and the field shows Saved in keyring.",
           "Each account gets a three-digit number (001 and up) that never changes and is never reused after removal. The auth method is Basic in v1; OpenID Connect comes later.",
@@ -309,6 +311,21 @@ export const helpPages = [
           "Everything that logs goes through pav_log in the core: C, the Rust shell (subsystem shell), and the UI through log.client (user actions at INFO, navigation at DEBUG, at most 50 lines a second; console.warn and console.error are forwarded too). bypass.test.js fails on any new direct stderr, println!, or console call; the allowed ones are --help, --version, the API version mismatch line, and pav_log's own stderr copy.",
           "Lines are stored in <profile id>.log.db next to the store (UTC milliseconds), batched about every 100 ms; an ERROR waits for its commit. The file is trimmed to preferences.log_max_mb at shutdown. log.query pages history; log.export writes UTC lines.",
           "pav_log redacts every line before it is stored: the rest of an Authorization header, Basic and Bearer credentials, URL query strings and fragments, user:password@ in URLs, the value after a secret-named key (password, secret, token, key), and email addresses at INFO and above. Identical consecutive lines collapse into one plus a \"previous line repeated N times\" line, flushed by a different line, 1 s of quiet, a flush, or shutdown. Callers still pass ids, never content.",
+        ],
+      },
+      {
+        id: "module-bars",
+        title: "Module bars",
+        paragraphs: [
+          "A module is one section of a view, such as Accounts or Help. Its toolbar and footer come from moduleToolbar and moduleFooter in ui/src/common/module-bar.js. A new module uses those builders. The toolbar is the title, selection actions, the column chooser, search, then other actions, then the help jump. The footer's first button is Refresh. A list adds First, Previous, Next, and Last, and puts Export on the right. Both bars are button bars, so Button bars zoom applies. Icon-only controls use the shared tooltip, not a native title.",
+        ],
+      },
+      {
+        id: "sync",
+        title: "Mail sync",
+        paragraphs: [
+          "An enabled JMAP account starts a mail sync when the core is ready. sync.now asks again for one account, or for every enabled account when the call leaves the account id out. The states are idle, syncing, offline, locked, error:auth, error:server, and disabled. sync.state carries the account id, the state, and a short detail.",
+          "A 401 leaves the account at error:auth until the password changes. A locked keyring leaves it at locked until sync.now or the next poll. This build stores the Session and the remote mail accounts. Identity and mailbox sync come later.",
         ],
       },
       {

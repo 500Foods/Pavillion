@@ -15,6 +15,7 @@
 #include "pav_cfg.h"
 #include "pav_config.h"
 #include "pav_db.h"
+#include "pav_sync.h"
 #include "pavillion.h"
 #include "logring.h"
 #include "unity.h"
@@ -4565,6 +4566,211 @@ static int journal_is_wal(const char *path) {
     return wal;
 }
 
+static void db_path_for_cfg(char *path, size_t n) {
+    snprintf(path, n, "%s/default.sqlite", g_cfg_dir);
+}
+
+static void account_state_text(const char *path, const char *id, char *out, size_t n) {
+    char sql[320];
+    sqlite3 *db = NULL;
+    sqlite3_stmt *stmt = NULL;
+
+    snprintf(out, n, "(unread)");
+    snprintf(sql, sizeof(sql),
+             "SELECT state, session_state, last_error, "
+             "CASE WHEN session_json IS NULL THEN -1 ELSE length(session_json) END "
+             "FROM account_state WHERE account_id='%s'",
+             id);
+    if (sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, NULL) != SQLITE_OK) {
+        snprintf(out, n, "(no db)");
+        if (db != NULL) {
+            sqlite3_close(db);
+        }
+        return;
+    }
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *state = (const char *)sqlite3_column_text(stmt, 0);
+        const char *session = (const char *)sqlite3_column_text(stmt, 1);
+        const char *err = (const char *)sqlite3_column_text(stmt, 2);
+
+        snprintf(out, n, "state=%s session=%s err=%s json=%d", state != NULL ? state : "(null)",
+                 session != NULL ? session : "(null)", err != NULL ? err : "(null)", sqlite3_column_int(stmt, 3));
+    } else {
+        snprintf(out, n, "(no row)");
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+}
+
+static int wait_count(const char *path, const char *sql, int expect, const char *id, char *why, size_t why_n) {
+    int i;
+
+    for (i = 0; i < 160; i++) {
+        if (scalar_int(path, sql) == expect) {
+            return 0;
+        }
+        usleep(50000);
+    }
+    if (why != NULL && why_n > 0) {
+        account_state_text(path, id, why, why_n);
+    }
+    return -1;
+}
+
+static int wait_account_state(const char *path, const char *id, const char *state, char *why, size_t why_n) {
+    char sql[192];
+
+    snprintf(sql, sizeof(sql),
+             "SELECT count(*) FROM account_state WHERE account_id='%s' AND state='%s'", id, state);
+    return wait_count(path, sql, 1, id, why, why_n);
+}
+
+static void assert_ok(json_t *root);
+
+static json_t *find_sync_act(json_t *rows, const char *account_id) {
+    size_t i;
+
+    for (i = 0; i < json_array_size(rows); i++) {
+        json_t *item = json_array_get(rows, i);
+        const char *kind = json_string_value(json_object_get(item, "kind"));
+        const char *acct = json_string_value(json_object_get(item, "accountId"));
+
+        if (kind != NULL && acct != NULL && strcmp(kind, "sync.mail") == 0 && strcmp(acct, account_id) == 0) {
+            return item;
+        }
+    }
+    return NULL;
+}
+
+static void add_fixture_account(const char *id, const char *session_url, const char *ca) {
+    char body[1400];
+    json_t *root;
+
+    snprintf(body, sizeof(body),
+             "{\"kind\":\"jmap\",\"sessionUrl\":\"%s\",\"username\":\"u\",\"secret\":\"Zq9-sync-pw\","
+             "\"id\":\"%s\",\"name\":\"Box\",\"caFile\":\"%s\"}",
+             session_url, id, ca);
+    root = call_reply("account.add", body);
+    assert_ok(root);
+    json_decref(root);
+}
+
+void test_sync_session_stored(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char session_url[512];
+    char path[160];
+    char got[192];
+    json_t *rows;
+    json_t *item;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_sync_set_poll_ms(3600000);
+    snprintf(session_url, sizeof(session_url), "%s/.well-known/jmap", url);
+    add_fixture_account("box", session_url, ca);
+    db_path_for_cfg(path, sizeof(path));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM account_state WHERE account_id='box' AND session_state='state-1' "
+        "AND session_json LIKE '%apiUrl%'",
+        1, "box", got, sizeof(got)), got);
+    TEST_ASSERT_EQUAL_INT(2, scalar_int(path, "SELECT count(*) FROM remote_account WHERE account_id='box'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM remote_account WHERE id='box/a1' AND is_personal=1 "
+        "AND caps LIKE '%urn:ietf:params:jmap:mail%'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM remote_account WHERE id='box/a2' AND is_personal=1 "
+        "AND caps LIKE '%urn:ietf:params:jmap:mail%'"));
+    rows = activity_rows(1);
+    item = find_sync_act(rows, "box");
+    TEST_ASSERT_NOT_NULL(item);
+    TEST_ASSERT_EQUAL_STRING("done", json_string_value(json_object_get(item, "state")));
+    TEST_ASSERT_EQUAL_STRING("Session", json_string_value(json_object_get(item, "detail")));
+    json_decref(rows);
+}
+
+void test_sync_401_stops_account(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char session_url[512];
+    char path[160];
+    char got[192];
+    json_t *root;
+    int n;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_sync_set_poll_ms(3600000);
+    snprintf(session_url, sizeof(session_url), "%s/jmap/session?error=401", url);
+    add_fixture_account("e401", session_url, ca);
+    db_path_for_cfg(path, sizeof(path));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_account_state(path, "e401", "error:auth", got, sizeof(got)), got);
+    n = pav_sync_attempt_count("e401");
+    TEST_ASSERT_TRUE(n >= 1);
+    usleep(400000);
+    TEST_ASSERT_EQUAL_INT(n, pav_sync_attempt_count("e401"));
+    root = call_reply("sync.now", "{\"accountId\":\"e401\"}");
+    assert_ok(root);
+    json_decref(root);
+    TEST_ASSERT_EQUAL_INT(n + 1, pav_sync_attempt_count("e401"));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_account_state(path, "e401", "error:auth", got, sizeof(got)), got);
+    usleep(400000);
+    TEST_ASSERT_EQUAL_INT(n + 1, pav_sync_attempt_count("e401"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM account_state WHERE account_id='e401' AND state='error:auth'"));
+}
+
+void test_sync_locked_keyring_no_retry(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char session_url[512];
+    char path[160];
+    char got[192];
+    json_t *root;
+    int n;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_platform_fake_set_locked(0);
+    pav_sync_set_poll_ms(3600000);
+    snprintf(session_url, sizeof(session_url), "%s/jmap/session", url);
+    add_fixture_account("lock", session_url, ca);
+    db_path_for_cfg(path, sizeof(path));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM account_state WHERE account_id='lock' AND state='idle' "
+        "AND session_state='state-1'",
+        1, "lock", got, sizeof(got)), got);
+    n = pav_sync_attempt_count("lock");
+    TEST_ASSERT_EQUAL_INT(1, n);
+
+    pav_platform_fake_set_locked(1);
+    root = call_reply("sync.now", "{\"accountId\":\"lock\"}");
+    assert_ok(root);
+    json_decref(root);
+    TEST_ASSERT_EQUAL_INT(n + 1, pav_sync_attempt_count("lock"));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_account_state(path, "lock", "locked", got, sizeof(got)), got);
+    usleep(400000);
+    TEST_ASSERT_EQUAL_INT(n + 1, pav_sync_attempt_count("lock"));
+
+    pav_platform_fake_set_locked(0);
+    root = call_reply("sync.now", "{\"accountId\":\"lock\"}");
+    assert_ok(root);
+    json_decref(root);
+    TEST_ASSERT_EQUAL_INT(n + 2, pav_sync_attempt_count("lock"));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM account_state WHERE account_id='lock' AND state='idle' "
+        "AND session_state='state-1'",
+        1, "lock", got, sizeof(got)), got);
+    usleep(400000);
+    TEST_ASSERT_EQUAL_INT(n + 2, pav_sync_attempt_count("lock"));
+}
+
 static int seq_job(void *ctx, sqlite3 *db) {
     (void)db;
     g_seq[g_seq_n++] = *(int *)ctx;
@@ -6748,7 +6954,8 @@ void test_remote_accounts_from_session(void) {
 }
 
 void test_api_md_lists_every_event(void) {
-    static const char *const emitted[] = {"accounts.changed", "activity.changed", "link.clicked", "log.lines"};
+    static const char *const emitted[] = {
+        "accounts.changed", "activity.changed", "link.clicked", "log.lines", "sync.state"};
     FILE *f = fopen("docs/API.md", "rb");
     char line[2048];
     char heading[API_NAME_LEN] = "";
@@ -7152,6 +7359,9 @@ int main(void) {
     RUN_TEST(test_activity_events_throttled);
     RUN_TEST(test_activity_history_capped);
     RUN_TEST(test_sync_now_does_nothing);
+    RUN_TEST(test_sync_session_stored);
+    RUN_TEST(test_sync_401_stops_account);
+    RUN_TEST(test_sync_locked_keyring_no_retry);
     RUN_TEST(test_writes_are_serial_fifo);
     RUN_TEST(test_write_batch_one_transaction);
     RUN_TEST(test_failed_job_rolls_back_alone);

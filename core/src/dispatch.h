@@ -48,6 +48,10 @@ int pav_ui_log(const char *subsystem, int level, const char *message);
    caps. 0 queued, -1 not (core stopped, queue full). */
 int pav_core_post_capabilities(const char *id, json_t *caps, const char *checked);
 
+/* M-3a: a reduced sync completion. The core thread frees it with
+   pav_sync_result_free. 0 queued, -1 not (caller frees). */
+int pav_core_post_sync(void *result);
+
 int pav_activity_cmd_list(json_t *args, json_t **data, PavError *err);
 int pav_activity_cmd_cancel(json_t *args, json_t **data, PavError *err);
 int pav_activity_cmd_dismiss(json_t *args, json_t **data, PavError *err);

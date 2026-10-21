@@ -4,10 +4,10 @@ Status: v0.7 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 
 **Resume:** each phase's history is in its own document's Working log; this block is only the current state.
 
-- Last finished: E-4 (step 52), 2026-10-19, in [docs/E-TREE.md](docs/E-TREE.md). Andrew accepted the E-1 through E-4 windows on 2026-10-19.
-- Next: M-3 (step 53), in [docs/M-SYNC.md](docs/M-SYNC.md) (updated 2026-10-20). Its entry gate is K-3 and E-4 complete (done) plus K-3's exit gate run against the W-2 Stalwart container. The server half passed on 2026-10-19; the UI half is Andrew's to run in `make build` (see M-3 "Gate status" and the cold-start handoff there). H-4 (step 131) is code-complete and waiting for Andrew's acceptance; it does not block M-3. D-10 (module bars) is in progress, and the Accounts table (Tabulator) polish is paused with open issues in [docs/TABULATOR.md](docs/TABULATOR.md). Both continue in parallel, and M-3 does not depend on them.
-- Last full `make test`: 173 Unity tests, 2 Rust tests and 342 Vitest tests, exit 0 (2026-10-20).
-- `PAVILLION_API_VERSION` is 3. The phase stamp is `0.56.0` (56 Done rows), release date 2026-10-19.
+- Last finished: H-4 (step 131) and D-10 (step 134), 2026-10-21, in [docs/H-LOGGING.md](docs/H-LOGGING.md) and [docs/D-UI.md](docs/D-UI.md). Andrew accepted both windows the same day. E-4 (step 52) was the previous sequenced finish, 2026-10-19.
+- Next: M-3 (step 53), in [docs/M-SYNC.md](docs/M-SYNC.md). In progress. Last finished work item is M-3a (supervisor, stored Session, account states, `sync.now`). M-3b and M-3c are not started. Andrew's live-account report is the UI half of the entry gate (2026-10-21). Automated tests use the fixture. The Accounts table (Tabulator) polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md) and does not block M-3.
+- Last full `make test`: 176 Unity tests, 2 Rust tests and 349 Vitest tests, exit 0 (2026-10-21).
+- `PAVILLION_API_VERSION` is 3. The phase stamp is `0.58.0` (58 Done rows), release date 2026-10-21.
 
 **Read first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), one page with diagrams of the layers, the threads, and the data flow.
 
@@ -125,8 +125,8 @@ Row order decides what is next: the next phase is the first row, top to bottom, 
 | 50 | E-2 | Tree model, view state, three collapse behaviors | Medium | Done |
 | 51 | E-3 | Tree renderer states, badges, hover, menus | Medium | Done |
 | 52 | E-4 | Tree animation and the height test | Easy | Done |
-| 131 | H-4 | The log in SQLite (`log.db`), history, session filter, per-subsystem levels | Hard | |
-| 53 | M-3 | Sync supervisor, Identity and Mailbox sync, `mailbox.list` | Medium | |
+| 131 | H-4 | The log in SQLite (`log.db`), history, session filter, size cap | Hard | Done |
+| 53 | M-3 | Sync supervisor, Identity and Mailbox sync, `mailbox.list` | Medium | In progress |
 | 54 | E-7 | Real mailbox tree from `mailbox.list` | Hard | |
 | | | *Milestone 2: real accounts and mailbox trees (old P0)* | | |
 | 55 | L-2 | Mail schema and the blob store | Medium | |
@@ -138,7 +138,7 @@ Row order decides what is next: the next phase is the first row, top to bottom, 
 | 132 | D-8 | Settings → Formats: app-wide date, time, and datetime formats (Luxon) | Medium | |
 | 61 | N-3 | Message list (Tabulator) | Medium | |
 | 133 | D-9 | Icon Wizard (DRAFT spec; docs only): layered icons for accounts, later folders and labels | Medium | |
-| 134 | D-10 | Module top bars (DRAFT spec; docs only): Accounts Clone and search, Help bar with search and Back | Medium | |
+| 134 | D-10 | Module bars: Accounts Clone and search, Help bar with search and Back | Medium | Done |
 | 62 | Q-2 | Search UI and server search | Medium | |
 | 63 | N-4 | Reading pane: sandbox, remote content, `cid:`, links | Medium | |
 | 64 | M-6 | Mutation queue, conflicts, undo | Hard | |

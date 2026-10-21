@@ -4,6 +4,7 @@
 #include "account.h"
 #include "logring.h"
 #include "pav_logdb.h"
+#include "pav_sync.h"
 #include "themes.h"
 #include "window_state.h"
 #include "pav_secret.h"
@@ -226,6 +227,7 @@ static int reject_unknown_args(json_t *args, PavError *err) {
 static int cmd_sync_now(json_t *args, json_t **data, PavError *err) {
     const char *key;
     json_t *value;
+    const char *account_id = NULL;
 
     json_object_foreach(args, key, value) {
         if (strcmp(key, "accountId") == 0) {
@@ -233,6 +235,7 @@ static int cmd_sync_now(json_t *args, json_t **data, PavError *err) {
                 pav_error_set(err, "bad_args", "accountId must be a non-empty string", 0);
                 return -1;
             }
+            account_id = json_string_value(value);
         } else {
             char buf[128];
 
@@ -244,6 +247,12 @@ static int cmd_sync_now(json_t *args, json_t **data, PavError *err) {
     *data = json_object();
     if (*data == NULL) {
         pav_error_set(err, "internal", "out of memory", 0);
+        return -1;
+    }
+    if (pav_sync_now(account_id) != 0) {
+        json_decref(*data);
+        *data = NULL;
+        pav_error_set(err, "internal", "cannot sync", 0);
         return -1;
     }
     return 0;

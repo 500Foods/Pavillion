@@ -743,9 +743,9 @@ Stores one identity's signature.
 
 ### sync.now
 
-State: real (I-2)
+State: real (M-3)
 
-`{accountId?}`. `accountId`, when present, is a non-empty string. I-2 accepts it and does nothing. M-3 runs the sync.
+`{accountId?}`. `accountId`, when present, is a non-empty string. Starts a Session sync for every enabled JMAP account, or for `accountId` when that account is enabled. An unknown or disabled id does nothing. An empty profile records no activity.
 
 Result: `{}`.
 
@@ -948,6 +948,6 @@ State: planned (R-3)
 ### sync.state
 
 Kind: event
-State: planned (M-3)
+State: real (M-3)
 
-`{accountId, state:"idle"|"syncing"|"offline"|"error", detail?}`.
+`{accountId, state, detail}`. `state` is `idle`, `syncing`, `offline`, `locked`, `error:auth`, `error:server`, or `disabled`. `detail` is a short string and is empty when idle.

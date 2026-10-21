@@ -30,6 +30,10 @@ typedef struct PavReq {
     const char *upload_path;     /* NULL for body or no upload */
     /* Output, filled by the net thread on completion. */
     int status_code;
+    /* 0 when auth was applied or not required. PAV_SECRET_LOCKED, MISSING,
+       or FAILED when the header could not be built. Stays set when
+       status_code is forced to 0 on that path. */
+    int auth_rc;
     json_t *resp_headers;   /* caller reads Retry-After, Content-Type; net frees */
     char *body_out;         /* net-allocated; caller frees with pav_net_free */
     size_t body_out_len;
