@@ -55,6 +55,7 @@ add_library(pavillion_core STATIC
     src/logdb.c
     src/activity.c
     src/blobs.c
+    src/cache_usage.c
     src/secret.c
     src/auth_basic.c
     src/account.c

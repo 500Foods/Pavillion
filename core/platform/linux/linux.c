@@ -116,6 +116,7 @@ static const PavPlatform *linux_platform(void) {
         platform.on_network_change = linux_on_network;
         platform.on_resume = linux_on_resume;
         platform.srv_lookup = pav_os_srv_lookup;
+        platform.volume_free = pav_posix_volume_free;
         ready = 1;
     }
     return &platform;

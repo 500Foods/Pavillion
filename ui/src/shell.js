@@ -2828,6 +2828,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
     },
   });
   limitsSettings = createLimitsSettings(api, mountRoot, {
+    timeZone: () => logTimeZone,
     onError(text) {
       showBanner(text);
     },

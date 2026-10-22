@@ -54,6 +54,7 @@ static int cmd_prefs_ui_get(json_t *args, json_t **data, PavError *err);
 static int cmd_prefs_ui_set(json_t *args, json_t **data, PavError *err);
 static int cmd_status(json_t *args, json_t **data, PavError *err);
 static int cmd_sync_now(json_t *args, json_t **data, PavError *err);
+int pav_cache_usage(json_t *args, json_t **data, PavError *err);
 #ifndef NDEBUG
 int pav_cmd_secret_smoke(json_t *args, json_t **data, PavError *err);
 #endif
@@ -70,6 +71,7 @@ static const PavCommand k_commands[] = {
     {"activity.cancel", pav_activity_cmd_cancel, 0},
     {"activity.dismiss", pav_activity_cmd_dismiss, 0},
     {"activity.list", pav_activity_cmd_list, 0},
+    {"cache.usage", pav_cache_usage, PAV_CMD_WORKER | PAV_CMD_NET},
 #ifndef NDEBUG
     {"debug.activity_demo", pav_activity_cmd_demo, PAV_CMD_WORKER},
     {"debug.secret_smoke", pav_cmd_secret_smoke, 0},

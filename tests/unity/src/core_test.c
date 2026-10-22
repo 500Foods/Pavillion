@@ -5429,6 +5429,561 @@ void test_evict_clears_body_paths(void) {
     json_decref(rows);
 }
 
+static int using_has(json_t *root, const char *urn) {
+    size_t i;
+    json_t *item;
+
+    json_array_foreach(json_object_get(root, "using"), i, item) {
+        const char *text = json_string_value(item);
+
+        if (text != NULL && strcmp(text, urn) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static json_t *method_named(json_t *root, const char *name) {
+    size_t i;
+    json_t *call;
+
+    json_array_foreach(json_object_get(root, "methodCalls"), i, call) {
+        const char *have = json_string_value(json_array_get(call, 0));
+
+        if (have != NULL && strcmp(have, name) == 0) {
+            return call;
+        }
+    }
+    return NULL;
+}
+
+static void assert_blank_figure(json_t *row, const char *name) {
+    json_t *fig = json_object_get(row, name);
+
+    TEST_ASSERT_TRUE(json_is_object(fig));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(fig, "count")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(fig, "bytes")));
+}
+
+static json_t *usage_row(json_t *data, const char *id) {
+    size_t i;
+    json_t *row;
+
+    json_array_foreach(json_object_get(data, "accounts"), i, row) {
+        const char *have = json_string_value(json_object_get(row, "id"));
+
+        if (have != NULL && strcmp(have, id) == 0) {
+            return row;
+        }
+    }
+    return NULL;
+}
+
+void test_quota_request_is_a_get(void) {
+    json_error_t jerr;
+    json_t *root;
+    json_t *calls;
+    json_t *call;
+    json_t *args;
+    char *text = pav_quota_request("acc-1");
+
+    TEST_ASSERT_NOT_NULL(text);
+    root = json_loads(text, 0, &jerr);
+    free(text);
+    TEST_ASSERT_NOT_NULL(root);
+    calls = json_object_get(root, "methodCalls");
+    TEST_ASSERT_TRUE(json_is_array(calls));
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(calls));
+    call = json_array_get(calls, 0);
+    TEST_ASSERT_EQUAL_STRING("Quota/get", json_string_value(json_array_get(call, 0)));
+    args = json_array_get(call, 1);
+    TEST_ASSERT_EQUAL_STRING("acc-1", json_string_value(json_object_get(args, "accountId")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(args, "ids")));
+    TEST_ASSERT_EQUAL_STRING("q0", json_string_value(json_array_get(call, 2)));
+    json_decref(root);
+    TEST_ASSERT_NULL(pav_quota_request(NULL));
+}
+
+void test_quota_pick_prefers_mail(void) {
+    int64_t used = -1;
+    const char *mail =
+        "{\"methodResponses\":[[\"Quota/get\",{\"list\":["
+        "{\"resourceType\":\"count\",\"used\":3,\"types\":[\"Mail\"]},"
+        "{\"resourceType\":\"octets\",\"used\":99,\"types\":[\"Calendar\"]},"
+        "{\"resourceType\":\"octets\",\"used\":50,\"types\":[\"Mail\",\"Calendar\"]}"
+        "]},\"q0\"]]}";
+    const char *other =
+        "{\"methodResponses\":[[\"Quota/get\",{\"list\":["
+        "{\"resourceType\":\"octets\",\"used\":99,\"types\":[\"Calendar\"]}"
+        "]},\"q0\"]]}";
+
+    TEST_ASSERT_EQUAL_INT(1, pav_quota_pick_octets(mail, &used));
+    TEST_ASSERT_EQUAL_INT(50, (int)used);
+    used = -1;
+    TEST_ASSERT_EQUAL_INT(1, pav_quota_pick_octets(other, &used));
+    TEST_ASSERT_EQUAL_INT(99, (int)used);
+    TEST_ASSERT_EQUAL_INT(0, pav_quota_pick_octets("{}", &used));
+    TEST_ASSERT_EQUAL_INT(0, pav_quota_pick_octets(NULL, &used));
+}
+
+void test_usage_parse_classifies_quotas(void) {
+    PavUsageParse parsed;
+    const char *mixed =
+        "{\"methodResponses\":[[\"Quota/get\",{\"list\":[{"
+        "\"resourceType\":\"octets\",\"used\":5000,"
+        "\"types\":[\"Email\",\"SieveScript\",\"FileNode\",\"CalendarEvent\",\"ContactCard\"]"
+        "}]},\"q0\"],[\"Email/query\",{\"total\":12,\"ids\":[\"a\"]},\"m\"]]}";
+    const char *single_then_query =
+        "{\"methodResponses\":[[\"Quota/get\",{\"list\":["
+        "{\"resourceType\":\"count\",\"used\":3,\"types\":[\"Mail\"]},"
+        "{\"resourceType\":\"octets\",\"used\":40,\"types\":[\"Email\",\"Mail\"]}"
+        "]},\"q0\"],[\"Email/query\",{\"total\":7,\"ids\":[\"a\"]},\"m\"]]}";
+    const char *query_then_count =
+        "{\"methodResponses\":[[\"Email/query\",{\"total\":7,\"ids\":[\"a\"]},\"m\"],"
+        "[\"Quota/get\",{\"list\":[{\"resourceType\":\"count\",\"used\":3,\"types\":[\"Mail\"]}]},\"q0\"]]}";
+    const char *split =
+        "{\"methodResponses\":[[\"Quota/get\",{\"list\":["
+        "{\"resourceType\":\"octets\",\"used\":5000,\"types\":[\"Email\",\"SieveScript\"]},"
+        "{\"resourceType\":\"octets\",\"used\":40,\"types\":[\"Email\"]},"
+        "{\"resourceType\":\"count\",\"used\":4,\"types\":[\"Calendar\"]}"
+        "]},\"q0\"],[\"CalendarEvent/query\",{\"total\":9,\"ids\":[\"e\"]},\"e\"]]}";
+    const char *page =
+        "{\"methodResponses\":["
+        "[\"Email/query\",{\"total\":250,\"ids\":[\"a\",\"b\"]},\"q\"],"
+        "[\"Email/get\",{\"list\":[{\"id\":\"a\",\"size\":10},{\"id\":\"b\",\"size\":5}],\"notFound\":[]},\"g\"]]}";
+    const char *unsized =
+        "{\"methodResponses\":["
+        "[\"FileNode/query\",{\"total\":2,\"ids\":[\"a\",\"b\"]},\"q\"],"
+        "[\"FileNode/get\",{\"list\":[{\"id\":\"a\",\"size\":10},{\"id\":\"b\"}],\"notFound\":[\"c\"]},\"g\"]]}";
+
+    TEST_ASSERT_EQUAL_INT(-1, pav_usage_parse(NULL, &parsed));
+    TEST_ASSERT_EQUAL_INT(-1, pav_usage_parse("", &parsed));
+    TEST_ASSERT_EQUAL_INT(0, pav_usage_parse("{}", &parsed));
+    TEST_ASSERT_EQUAL_INT(0, parsed.mail.has_count);
+    TEST_ASSERT_EQUAL_INT(0, parsed.has_server_bytes);
+
+    TEST_ASSERT_EQUAL_INT(0, pav_usage_parse(mixed, &parsed));
+    TEST_ASSERT_EQUAL_INT(1, parsed.has_server_bytes);
+    TEST_ASSERT_EQUAL_INT(5000, (int)parsed.server_bytes);
+    TEST_ASSERT_EQUAL_INT(0, parsed.mail.has_bytes);
+    TEST_ASSERT_EQUAL_INT(1, parsed.mail.has_count);
+    TEST_ASSERT_EQUAL_INT(12, (int)parsed.mail.count);
+    TEST_ASSERT_EQUAL_INT(1, parsed.mail.count_from_query);
+
+    TEST_ASSERT_EQUAL_INT(0, pav_usage_parse(single_then_query, &parsed));
+    TEST_ASSERT_EQUAL_INT(0, parsed.has_server_bytes);
+    TEST_ASSERT_EQUAL_INT(1, parsed.mail.has_bytes);
+    TEST_ASSERT_EQUAL_INT(40, (int)parsed.mail.bytes);
+    TEST_ASSERT_EQUAL_INT(7, (int)parsed.mail.count);
+
+    TEST_ASSERT_EQUAL_INT(0, pav_usage_parse(query_then_count, &parsed));
+    TEST_ASSERT_EQUAL_INT(7, (int)parsed.mail.count);
+    TEST_ASSERT_EQUAL_INT(1, parsed.mail.count_from_query);
+    TEST_ASSERT_EQUAL_INT(0, parsed.mail.has_bytes);
+
+    TEST_ASSERT_EQUAL_INT(0, pav_usage_parse(split, &parsed));
+    TEST_ASSERT_EQUAL_INT(1, parsed.has_server_bytes);
+    TEST_ASSERT_EQUAL_INT(5000, (int)parsed.server_bytes);
+    TEST_ASSERT_EQUAL_INT(40, (int)parsed.mail.bytes);
+    TEST_ASSERT_EQUAL_INT(1, parsed.calendars.has_count);
+    TEST_ASSERT_EQUAL_INT(9, (int)parsed.calendars.count);
+
+    TEST_ASSERT_EQUAL_INT(0, pav_usage_parse(page, &parsed));
+    TEST_ASSERT_EQUAL_INT(1, parsed.page_ok);
+    TEST_ASSERT_EQUAL_INT(0, parsed.page_error);
+    TEST_ASSERT_EQUAL_INT(250, (int)parsed.page_total);
+    TEST_ASSERT_EQUAL_INT(2, parsed.page_ids);
+    TEST_ASSERT_EQUAL_INT(15, (int)parsed.page_bytes);
+    TEST_ASSERT_EQUAL_INT(2, parsed.page_sized);
+    TEST_ASSERT_EQUAL_INT(0, parsed.page_unsized);
+    TEST_ASSERT_EQUAL_INT(0, parsed.page_not_found);
+
+    TEST_ASSERT_EQUAL_INT(0, pav_usage_parse(unsized, &parsed));
+    TEST_ASSERT_EQUAL_INT(1, parsed.page_unsized);
+    TEST_ASSERT_EQUAL_INT(1, parsed.page_not_found);
+    TEST_ASSERT_EQUAL_INT(10, (int)parsed.page_bytes);
+    TEST_ASSERT_TRUE(parsed.page_list != parsed.page_ids || parsed.page_unsized > 0);
+}
+
+void test_usage_quick_request_matches_capabilities(void) {
+    PavUsageAsk ask;
+    json_t *root;
+    json_t *args;
+    json_t *call;
+    char *text;
+
+    memset(&ask, 0, sizeof(ask));
+    TEST_ASSERT_NULL(pav_usage_quick_request(NULL));
+    TEST_ASSERT_NULL(pav_usage_quick_request(&ask));
+
+    ask.quota_id = "q-acc";
+    ask.mail_id = "m-acc";
+    ask.contacts_id = "c-acc";
+    ask.calendars_id = "e-acc";
+    ask.files_id = "f-acc";
+    ask.files_urn = "urn:apache:jmap:files";
+    text = pav_usage_quick_request(&ask);
+    TEST_ASSERT_NOT_NULL(text);
+    root = json_loads(text, 0, NULL);
+    free(text);
+    TEST_ASSERT_NOT_NULL(root);
+    TEST_ASSERT_TRUE(using_has(root, "urn:ietf:params:jmap:core"));
+    TEST_ASSERT_TRUE(using_has(root, "urn:ietf:params:jmap:quota"));
+    TEST_ASSERT_TRUE(using_has(root, "urn:ietf:params:jmap:mail"));
+    TEST_ASSERT_TRUE(using_has(root, "urn:ietf:params:jmap:contacts"));
+    TEST_ASSERT_TRUE(using_has(root, "urn:ietf:params:jmap:calendars"));
+    TEST_ASSERT_TRUE(using_has(root, "urn:apache:jmap:files"));
+    TEST_ASSERT_FALSE(using_has(root, "urn:ietf:params:jmap:filenode"));
+    TEST_ASSERT_EQUAL_INT(5, (int)json_array_size(json_object_get(root, "methodCalls")));
+    call = method_named(root, "Quota/get");
+    TEST_ASSERT_NOT_NULL(call);
+    TEST_ASSERT_EQUAL_STRING("q-acc", json_string_value(json_object_get(json_array_get(call, 1), "accountId")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(json_array_get(call, 1), "ids")));
+    call = method_named(root, "Email/query");
+    args = json_array_get(call, 1);
+    TEST_ASSERT_EQUAL_STRING("m-acc", json_string_value(json_object_get(args, "accountId")));
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(args, "calculateTotal")));
+    TEST_ASSERT_EQUAL_INT(1, (int)json_integer_value(json_object_get(args, "limit")));
+    TEST_ASSERT_NULL(json_object_get(args, "position"));
+    TEST_ASSERT_NOT_NULL(method_named(root, "ContactCard/query"));
+    TEST_ASSERT_NOT_NULL(method_named(root, "CalendarEvent/query"));
+    TEST_ASSERT_NOT_NULL(method_named(root, "FileNode/query"));
+    json_decref(root);
+
+    memset(&ask, 0, sizeof(ask));
+    ask.mail_id = "only";
+    text = pav_usage_quick_request(&ask);
+    root = json_loads(text, 0, NULL);
+    free(text);
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(json_object_get(root, "methodCalls")));
+    TEST_ASSERT_NOT_NULL(method_named(root, "Email/query"));
+    TEST_ASSERT_NULL(method_named(root, "Quota/get"));
+    TEST_ASSERT_FALSE(using_has(root, "urn:ietf:params:jmap:quota"));
+    json_decref(root);
+}
+
+void test_usage_measure_request_uses_result_reference(void) {
+    json_t *root;
+    json_t *call;
+    json_t *args;
+    json_t *ref;
+    char *text;
+
+    TEST_ASSERT_NULL(pav_usage_measure_request(NULL, "mail", NULL, 0));
+    TEST_ASSERT_NULL(pav_usage_measure_request("acc", "contacts", NULL, 0));
+    TEST_ASSERT_NULL(pav_usage_measure_request("acc", "mail", NULL, -1));
+
+    text = pav_usage_measure_request("acc", "mail", NULL, 100);
+    TEST_ASSERT_NOT_NULL(text);
+    root = json_loads(text, 0, NULL);
+    free(text);
+    TEST_ASSERT_TRUE(using_has(root, "urn:ietf:params:jmap:mail"));
+    call = method_named(root, "Email/query");
+    args = json_array_get(call, 1);
+    TEST_ASSERT_EQUAL_INT(100, (int)json_integer_value(json_object_get(args, "limit")));
+    TEST_ASSERT_EQUAL_INT(100, (int)json_integer_value(json_object_get(args, "position")));
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(args, "calculateTotal")));
+    call = method_named(root, "Email/get");
+    args = json_array_get(call, 1);
+    ref = json_object_get(args, "#ids");
+    TEST_ASSERT_EQUAL_STRING("q", json_string_value(json_object_get(ref, "resultOf")));
+    TEST_ASSERT_EQUAL_STRING("Email/query", json_string_value(json_object_get(ref, "name")));
+    TEST_ASSERT_EQUAL_STRING("/ids", json_string_value(json_object_get(ref, "path")));
+    TEST_ASSERT_EQUAL_STRING("size", json_string_value(json_array_get(json_object_get(args, "properties"), 0)));
+    TEST_ASSERT_EQUAL_INT(4, (int)json_array_size(json_object_get(args, "properties")));
+    TEST_ASSERT_EQUAL_STRING("textBody", json_string_value(json_array_get(json_object_get(args, "properties"), 1)));
+    TEST_ASSERT_EQUAL_STRING("htmlBody", json_string_value(json_array_get(json_object_get(args, "properties"), 2)));
+    TEST_ASSERT_EQUAL_STRING("attachments", json_string_value(json_array_get(json_object_get(args, "properties"), 3)));
+    TEST_ASSERT_EQUAL_STRING("size", json_string_value(json_array_get(json_object_get(args, "bodyProperties"), 0)));
+    json_decref(root);
+
+    text = pav_usage_measure_request("acc", "files", "urn:apache:jmap:files", 0);
+    root = json_loads(text, 0, NULL);
+    free(text);
+    TEST_ASSERT_TRUE(using_has(root, "urn:apache:jmap:files"));
+    TEST_ASSERT_FALSE(using_has(root, "urn:ietf:params:jmap:filenode"));
+    call = method_named(root, "FileNode/get");
+    ref = json_object_get(json_array_get(call, 1), "#ids");
+    TEST_ASSERT_EQUAL_STRING("FileNode/query", json_string_value(json_object_get(ref, "name")));
+    json_decref(root);
+}
+
+void test_usage_measure_batch_packs_windows(void) {
+    int pos[2] = {0, 500};
+    int many[9] = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+    json_t *root;
+    json_t *calls;
+    json_t *call;
+    json_t *args;
+    json_t *ref;
+    char *text;
+
+    TEST_ASSERT_NULL(pav_usage_measure_batch("acc", "mail", NULL, 500, NULL, 2));
+    TEST_ASSERT_NULL(pav_usage_measure_batch("acc", "mail", NULL, 0, pos, 1));
+    TEST_ASSERT_NULL(pav_usage_measure_batch("acc", "mail", NULL, 500, pos, 0));
+    TEST_ASSERT_NULL(pav_usage_measure_batch("acc", "mail", NULL, 500, many, 9));
+
+    text = pav_usage_measure_batch("acc", "mail", NULL, 500, pos, 2);
+    TEST_ASSERT_NOT_NULL(text);
+    root = json_loads(text, 0, NULL);
+    free(text);
+    calls = json_object_get(root, "methodCalls");
+    TEST_ASSERT_EQUAL_INT(4, (int)json_array_size(calls));
+    call = json_array_get(calls, 0);
+    args = json_array_get(call, 1);
+    TEST_ASSERT_EQUAL_STRING("Email/query", json_string_value(json_array_get(call, 0)));
+    TEST_ASSERT_EQUAL_STRING("q0", json_string_value(json_array_get(call, 2)));
+    TEST_ASSERT_EQUAL_INT(500, (int)json_integer_value(json_object_get(args, "limit")));
+    TEST_ASSERT_EQUAL_INT(0, (int)json_integer_value(json_object_get(args, "position")));
+    call = json_array_get(calls, 1);
+    args = json_array_get(call, 1);
+    ref = json_object_get(args, "#ids");
+    TEST_ASSERT_EQUAL_STRING("g0", json_string_value(json_array_get(call, 2)));
+    TEST_ASSERT_EQUAL_STRING("q0", json_string_value(json_object_get(ref, "resultOf")));
+    call = json_array_get(calls, 2);
+    args = json_array_get(call, 1);
+    TEST_ASSERT_EQUAL_STRING("q1", json_string_value(json_array_get(call, 2)));
+    TEST_ASSERT_EQUAL_INT(500, (int)json_integer_value(json_object_get(args, "position")));
+    call = json_array_get(calls, 3);
+    ref = json_object_get(json_array_get(call, 1), "#ids");
+    TEST_ASSERT_EQUAL_STRING("q1", json_string_value(json_object_get(ref, "resultOf")));
+    json_decref(root);
+}
+
+void test_usage_parse_batch_sums_windows(void) {
+    const char *ok_body =
+        "{\"methodResponses\":["
+        "[\"Email/query\",{\"ids\":[\"a\",\"b\"],\"total\":4},\"q0\"],"
+        "[\"Email/get\",{\"list\":["
+        "{\"id\":\"a\",\"size\":10,\"textBody\":[{\"size\":3}],\"htmlBody\":[{\"size\":4}],\"attachments\":[{\"size\":2}]},"
+        "{\"id\":\"b\",\"size\":5,\"textBody\":[{\"size\":1}],\"htmlBody\":[],\"attachments\":[]}"
+        "],\"notFound\":[]},\"g0\"],"
+        "[\"Email/query\",{\"ids\":[\"c\",\"d\"]},\"q1\"],"
+        "[\"Email/get\",{\"list\":["
+        "{\"id\":\"c\",\"size\":1,\"textBody\":[],\"htmlBody\":[{\"size\":1}],\"attachments\":[{\"size\":0}]},"
+        "{\"id\":\"d\",\"size\":2,\"textBody\":[{\"size\":2}],\"htmlBody\":[{\"size\":2}],\"attachments\":[]}"
+        "],\"notFound\":[]},\"g1\"]"
+        "]}";
+    const char *same_id =
+        "{\"methodResponses\":["
+        "[\"Email/query\",{\"ids\":[\"a\",\"b\"],\"total\":4},\"q0\"],"
+        "[\"Email/get\",{\"list\":["
+        "{\"id\":\"a\",\"size\":10,\"textBody\":[{\"size\":1}],\"htmlBody\":[],\"attachments\":[]},"
+        "{\"id\":\"b\",\"size\":5,\"textBody\":[],\"htmlBody\":[],\"attachments\":[]}"
+        "],\"notFound\":[]},\"g0\"],"
+        "[\"Email/query\",{\"ids\":[\"a\",\"d\"]},\"q1\"],"
+        "[\"Email/get\",{\"list\":["
+        "{\"id\":\"a\",\"size\":1,\"textBody\":[],\"htmlBody\":[],\"attachments\":[]},"
+        "{\"id\":\"d\",\"size\":2,\"textBody\":[],\"htmlBody\":[],\"attachments\":[]}"
+        "],\"notFound\":[]},\"g1\"]"
+        "]}";
+    const char *missing_part =
+        "{\"methodResponses\":["
+        "[\"Email/query\",{\"ids\":[\"a\"],\"total\":1},\"q0\"],"
+        "[\"Email/get\",{\"list\":[{\"id\":\"a\",\"size\":10,\"htmlBody\":[{\"size\":4}],\"attachments\":[]}],"
+        "\"notFound\":[]},\"g0\"]"
+        "]}";
+    const char *files_body =
+        "{\"methodResponses\":["
+        "[\"FileNode/query\",{\"ids\":[\"f\"],\"total\":1},\"q0\"],"
+        "[\"FileNode/get\",{\"list\":[{\"id\":\"f\",\"size\":9}],\"notFound\":[]},\"g0\"]"
+        "]}";
+    PavUsageBatch batch;
+
+    TEST_ASSERT_EQUAL_INT(-1, pav_usage_parse_batch(NULL, "mail", &batch));
+    TEST_ASSERT_EQUAL_INT(-1, pav_usage_parse_batch("{}", "contacts", &batch));
+    TEST_ASSERT_EQUAL_INT(0, pav_usage_parse_batch(ok_body, "mail", &batch));
+    TEST_ASSERT_EQUAL_INT(1, batch.ok);
+    TEST_ASSERT_EQUAL_INT(2, batch.windows);
+    TEST_ASSERT_EQUAL_INT(4, batch.ids);
+    TEST_ASSERT_EQUAL_INT(18, (int)batch.bytes);
+    TEST_ASSERT_EQUAL_INT(13, (int)batch.body_bytes);
+    TEST_ASSERT_EQUAL_INT(2, (int)batch.attachment_bytes);
+    TEST_ASSERT_EQUAL_INT(2, (int)batch.attachment_count);
+    TEST_ASSERT_EQUAL_INT(1, batch.has_total);
+    TEST_ASSERT_EQUAL_INT(4, (int)batch.total);
+    TEST_ASSERT_EQUAL_INT(2, batch.last_ids);
+    TEST_ASSERT_EQUAL_STRING("a", batch.first_id);
+
+    TEST_ASSERT_EQUAL_INT(0, pav_usage_parse_batch(same_id, "mail", &batch));
+    TEST_ASSERT_EQUAL_INT(0, batch.ok);
+    TEST_ASSERT_EQUAL_INT(0, pav_usage_parse_batch(missing_part, "mail", &batch));
+    TEST_ASSERT_EQUAL_INT(0, batch.ok);
+    TEST_ASSERT_EQUAL_INT(0, pav_usage_parse_batch(files_body, "files", &batch));
+    TEST_ASSERT_EQUAL_INT(1, batch.ok);
+    TEST_ASSERT_EQUAL_INT(9, (int)batch.bytes);
+    TEST_ASSERT_EQUAL_INT(0, (int)batch.body_bytes);
+    TEST_ASSERT_EQUAL_INT(0, (int)batch.attachment_count);
+}
+
+int pav_posix_volume_free(const char *path, int64_t *out);
+
+void test_volume_free_reads_a_directory(void) {
+    int64_t bytes = 0;
+
+    TEST_ASSERT_EQUAL_INT(-1, pav_posix_volume_free(NULL, &bytes));
+    TEST_ASSERT_EQUAL_INT(-1, pav_posix_volume_free("", &bytes));
+    TEST_ASSERT_EQUAL_INT(-1, pav_posix_volume_free("/no/such/pav-volume", &bytes));
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+#ifndef _WIN32
+    TEST_ASSERT_EQUAL_INT(0, pav_posix_volume_free(g_cfg_dir, &bytes));
+    TEST_ASSERT_TRUE(bytes > 0);
+#else
+    if (pav_posix_volume_free(g_cfg_dir, &bytes) == 0) {
+        TEST_ASSERT_TRUE(bytes > 0);
+    }
+#endif
+}
+
+void test_cache_usage_sums_local_files(void) {
+    char body_a[256];
+    char body_b[256];
+    char sql[2048];
+    json_t *root;
+    json_t *data;
+    json_t *row;
+    int wrote;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(0, pav_path_join(body_a, sizeof(body_a), g_cfg_dir, "body-a"));
+    TEST_ASSERT_EQUAL_INT(0, pav_path_join(body_b, sizeof(body_b), g_cfg_dir, "body-b"));
+    write_private_text(body_a, "hello");
+    write_private_text(body_b, "abcd");
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_write("acct-a/ra", "same-blob", "blob-bytes", 10));
+    wrote = snprintf(sql, sizeof(sql),
+                     "INSERT INTO account_state (account_id, session_json) VALUES "
+                     "('acct-a', '{\"capabilities\":{}}'), ('acct-b', NULL);"
+                     "INSERT INTO remote_account (id, account_id, jmap_account_id) VALUES "
+                     "('acct-a/ra', 'acct-a', 'j1'), ('acct-b/ra', 'acct-b', 'j2');"
+                     "INSERT INTO email (rowid, ra_id, id, blob_id, body_state) VALUES "
+                     "(1, 'acct-a/ra', 'one', 'same-blob', 'fetched'),"
+                     "(2, 'acct-b/ra', 'two', NULL, 'fetched');"
+                     "INSERT INTO body_cache (email_rowid, text_plain_path) VALUES (1, '%s'), (2, '%s');"
+                     "INSERT INTO attachment (email_rowid, part_id, blob_id) VALUES (1, '1', 'same-blob');",
+                     body_a, body_b);
+    TEST_ASSERT_TRUE(wrote > 0 && (size_t)wrote < sizeof(sql));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_db_call(exec_sql_job, sql), g_sql_err);
+
+    root = call_reply("cache.usage", "{}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_INT(9, (int)json_integer_value(json_object_get(data, "bodiesBytes")));
+    TEST_ASSERT_EQUAL_INT(10, (int)json_integer_value(json_object_get(data, "blobsBytes")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(data, "volumeFreeBytes")));
+    row = usage_row(data, "acct-a");
+    TEST_ASSERT_NOT_NULL(row);
+    TEST_ASSERT_EQUAL_INT(5, (int)json_integer_value(json_object_get(row, "bodiesBytes")));
+    TEST_ASSERT_EQUAL_INT(10, (int)json_integer_value(json_object_get(row, "blobsBytes")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(row, "serverBytes")));
+    assert_blank_figure(row, "mail");
+    assert_blank_figure(row, "contacts");
+    assert_blank_figure(row, "calendars");
+    assert_blank_figure(row, "files");
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(data, "sizesCheckedAt")));
+    row = usage_row(data, "acct-b");
+    TEST_ASSERT_NOT_NULL(row);
+    TEST_ASSERT_EQUAL_INT(4, (int)json_integer_value(json_object_get(row, "bodiesBytes")));
+    TEST_ASSERT_EQUAL_INT(0, (int)json_integer_value(json_object_get(row, "blobsBytes")));
+    json_decref(root);
+
+    pav_platform_fake_set_volume_free(4096);
+    root = call_reply("cache.usage", "{}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    TEST_ASSERT_EQUAL_INT(4096, (int)json_integer_value(json_object_get(json_object_get(root, "data"), "volumeFreeBytes")));
+    json_decref(root);
+
+    root = call_reply("cache.usage", "{\"measure\":true}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    data = json_object_get(root, "data");
+    row = usage_row(data, "acct-a");
+    assert_blank_figure(row, "mail");
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(data, "sizesCheckedAt")));
+    json_decref(root);
+
+    root = call_reply("cache.usage", "{\"measure\":1}");
+    assert_call_error(root, "bad_args", "measure");
+    json_decref(root);
+
+    root = call_reply("cache.usage", "{\"nope\":1}");
+    assert_call_error(root, "bad_args", "nope");
+    json_decref(root);
+
+    root = call_reply("cache.usage", "{\"cancel\":true}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(json_object_get(root, "data"), "cancelled")));
+    json_decref(root);
+
+    root = call_reply("cache.usage", "{\"cancel\":1}");
+    assert_call_error(root, "bad_args", "cancel");
+    json_decref(root);
+
+    root = call_reply("cache.usage", "{\"measure\":true,\"cancel\":true}");
+    assert_call_error(root, "bad_args", "cancel");
+    json_decref(root);
+}
+
+void test_cache_usage_keeps_measured_sizes(void) {
+    json_t *root;
+    json_t *data;
+    json_t *row;
+    json_t *mail;
+    const char *sql =
+        "UPDATE account_state SET session_json = "
+        "'{\"capabilities\":{\"urn:ietf:params:jmap:mail\":{}},"
+        "\"primaryAccounts\":{\"urn:ietf:params:jmap:mail\":\"j1\"},"
+        "\"accounts\":{\"j1\":{\"isPersonal\":true}}}' "
+        "WHERE account_id = 'acct-a';"
+        "INSERT OR REPLACE INTO kv (key, value) VALUES ('limits.server', "
+        "'{\"checkedAt\":1710000000000,\"accounts\":{"
+        "\"acct-a\":{\"mailBytes\":42,\"mailBodiesBytes\":11,\"mailAttachmentsBytes\":30,"
+        "\"mailAttachmentsCount\":3,\"filesBytes\":7},"
+        "\"acct-imap\":{\"mailBytes\":99}}}');";
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    root = call_reply("account.add",
+                      "{\"kind\":\"jmap\",\"sessionUrl\":\"https://example.com/jmap\","
+                      "\"username\":\"a@example.com\",\"secret\":\"x\",\"id\":\"acct-a\"}");
+    assert_ok(root);
+    json_decref(root);
+    root = call_reply("account.add",
+                      "{\"kind\":\"imap\",\"sessionUrl\":\"https://example.com/jmap\","
+                      "\"username\":\"imap@example.com\",\"secret\":\"x\",\"id\":\"acct-imap\"}");
+    assert_ok(root);
+    json_decref(root);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_db_call(exec_sql_job, (void *)sql), g_sql_err);
+
+    root = call_reply("cache.usage", "{}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    data = json_object_get(root, "data");
+    TEST_ASSERT_TRUE(json_integer_value(json_object_get(data, "sizesCheckedAt")) == 1710000000000LL);
+    row = usage_row(data, "acct-a");
+    mail = json_object_get(row, "mail");
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(mail, "count")));
+    TEST_ASSERT_EQUAL_INT(42, (int)json_integer_value(json_object_get(mail, "bytes")));
+    TEST_ASSERT_EQUAL_INT(11, (int)json_integer_value(json_object_get(mail, "bodiesBytes")));
+    TEST_ASSERT_EQUAL_INT(30, (int)json_integer_value(json_object_get(mail, "attachmentsBytes")));
+    TEST_ASSERT_EQUAL_INT(3, (int)json_integer_value(json_object_get(mail, "attachmentsCount")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(json_object_get(row, "files"), "bytes")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(row, "serverBytes")));
+    row = usage_row(data, "acct-imap");
+    assert_blank_figure(row, "mail");
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(json_object_get(row, "mail"), "bodiesBytes")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(json_object_get(row, "mail"), "attachmentsBytes")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(json_object_get(row, "mail"), "attachmentsCount")));
+    assert_blank_figure(row, "files");
+    json_decref(root);
+
+    root = call_reply("cache.usage", "{\"measure\":true}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    data = json_object_get(root, "data");
+    TEST_ASSERT_TRUE(json_integer_value(json_object_get(data, "sizesCheckedAt")) == 1710000000000LL);
+    row = usage_row(data, "acct-a");
+    TEST_ASSERT_EQUAL_INT(42, (int)json_integer_value(json_object_get(json_object_get(row, "mail"), "bytes")));
+    json_decref(root);
+}
+
 void test_runtime_dir_removed_on_stop(void) {
     const PavPlatform *platform = pav_platform();
     char runtime[4096];
@@ -8171,8 +8726,8 @@ void test_remote_accounts_from_session(void) {
 
 void test_api_md_lists_every_event(void) {
     static const char *const emitted[] = {
-        "accounts.changed", "activity.changed", "link.clicked", "log.lines", "mail.mailboxes_changed",
-        "sync.state"};
+        "accounts.changed", "activity.changed", "cache.change", "link.clicked", "log.lines",
+        "mail.mailboxes_changed", "sync.state"};
     FILE *f = fopen("docs/API.md", "rb");
     char line[2048];
     char heading[API_NAME_LEN] = "";
@@ -8603,6 +9158,16 @@ int main(void) {
     RUN_TEST(test_blob_modes);
     RUN_TEST(test_evict_skips_flagged_and_drafts);
     RUN_TEST(test_evict_clears_body_paths);
+    RUN_TEST(test_quota_request_is_a_get);
+    RUN_TEST(test_quota_pick_prefers_mail);
+    RUN_TEST(test_usage_parse_classifies_quotas);
+    RUN_TEST(test_usage_quick_request_matches_capabilities);
+    RUN_TEST(test_usage_measure_request_uses_result_reference);
+    RUN_TEST(test_usage_measure_batch_packs_windows);
+    RUN_TEST(test_usage_parse_batch_sums_windows);
+    RUN_TEST(test_volume_free_reads_a_directory);
+    RUN_TEST(test_cache_usage_sums_local_files);
+    RUN_TEST(test_cache_usage_keeps_measured_sizes);
     RUN_TEST(test_runtime_dir_removed_on_stop);
     RUN_TEST(test_prefs_cache_round_trip);
     RUN_TEST(test_db_bind_never_concatenates);

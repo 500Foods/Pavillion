@@ -34,6 +34,9 @@ typedef struct PavPlatform {
     /* SRV lookup for name: the lowest-priority, highest-weight target (no
        trailing dot) and port. 0 found, 1 no record, -1 lookup failed. */
     int (*srv_lookup)(const char *name, char *target, size_t len, int *port);
+    /* 0 and *out is the free bytes available to this user on the volume
+       that holds path. path may be a file or a directory. -1 when unknown. */
+    int (*volume_free)(const char *path, int64_t *out);
 } PavPlatform;
 
 /* The first install wins. pavillion_start will not replace a test's fake. */
@@ -53,6 +56,8 @@ void pav_platform_fake_set_locked(int locked);
 /* The fake srv_lookup answers name with target:port. NULL target: no record.
    One entry; pav_platform_fake_reset clears it. */
 void pav_platform_fake_set_srv(const char *name, const char *target, int port);
+/* The next volume_free calls return bytes. pav_platform_fake_reset clears it. */
+void pav_platform_fake_set_volume_free(int64_t bytes);
 
 int pav_path_join(char *out, size_t len, const char *a, const char *b);
 int pav_path_is_absolute(const char *path);

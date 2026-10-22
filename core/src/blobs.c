@@ -86,6 +86,20 @@ void pav_blob_unbind(void) {
     g_root[0] = '\0';
 }
 
+int pav_blob_root(char *out, size_t len) {
+    size_t n;
+
+    if (out == NULL || len == 0 || g_root[0] == '\0') {
+        return -1;
+    }
+    n = strlen(g_root);
+    if (n >= len) {
+        return -1;
+    }
+    memcpy(out, g_root, n + 1);
+    return 0;
+}
+
 int pav_blob_path(const char *ra, const char *blob_id, char *out, size_t len) {
     char enc_ra[1400];
     char enc_id[1400];
@@ -762,6 +776,137 @@ int pav_runtime_open_prepare(void) {
         return -1;
     }
     return platform->mkdir_private(open_dir);
+}
+
+static int use_add(PavCacheUse **rows, size_t *n, size_t *cap, const char *id, int64_t bodies, int64_t blobs) {
+    PavCacheUse *row;
+    size_t i;
+
+    if (id == NULL || id[0] == '\0') {
+        return 0;
+    }
+    for (i = 0; i < *n; i++) {
+        if (strcmp((*rows)[i].account_id, id) == 0) {
+            (*rows)[i].bodies += bodies;
+            (*rows)[i].blobs += blobs;
+            return 0;
+        }
+    }
+    if (grow_ptr((void **)rows, cap, *n + 1, sizeof(**rows)) != 0) {
+        return -1;
+    }
+    row = &(*rows)[*n];
+    row->account_id = strdup(id);
+    if (row->account_id == NULL) {
+        return -1;
+    }
+    row->bodies = bodies;
+    row->blobs = blobs;
+    (*n)++;
+    return 0;
+}
+
+static const char k_usage_bodies[] =
+    "SELECT ra.account_id, b.text_plain_path, b.html_raw_path, b.html_sanitized_path "
+    "FROM body_cache b "
+    "JOIN email e ON e.rowid = b.email_rowid "
+    "JOIN remote_account ra ON ra.id = e.ra_id";
+
+static const char k_usage_blobs[] =
+    "SELECT account_id, ra_id, blob_id FROM ("
+    " SELECT ra.account_id AS account_id, e.ra_id AS ra_id, e.blob_id AS blob_id"
+    " FROM email e JOIN remote_account ra ON ra.id = e.ra_id"
+    " WHERE e.blob_id IS NOT NULL AND e.blob_id != ''"
+    " UNION"
+    " SELECT ra.account_id, e.ra_id, a.blob_id"
+    " FROM attachment a"
+    " JOIN email e ON e.rowid = a.email_rowid"
+    " JOIN remote_account ra ON ra.id = e.ra_id"
+    " WHERE a.blob_id IS NOT NULL AND a.blob_id != ''"
+    ")";
+
+void pav_cache_local_usage_free(PavCacheUse *rows, size_t n) {
+    size_t i;
+
+    if (rows == NULL) {
+        return;
+    }
+    for (i = 0; i < n; i++) {
+        free(rows[i].account_id);
+    }
+    free(rows);
+}
+
+int pav_cache_local_usage(PavCacheUse **out, size_t *n) {
+    static const char k_body_key[] = "cache.usage_bodies";
+    static const char k_blob_key[] = "cache.usage_blobs";
+    PavDbRead *read = NULL;
+    sqlite3_stmt *stmt = NULL;
+    PavCacheUse *rows = NULL;
+    size_t count = 0;
+    size_t cap = 0;
+    int rc;
+
+    if (out == NULL || n == NULL) {
+        return -1;
+    }
+    *out = NULL;
+    *n = 0;
+    if (pav_db_read_begin(&read) != 0) {
+        return -1;
+    }
+    if (pav_db_prepare(pav_db_read_handle(read), k_body_key, k_usage_bodies, &stmt) != 0) {
+        pav_db_read_end(read);
+        return -1;
+    }
+    while ((rc = pav_db_step(stmt)) == SQLITE_ROW) {
+        const char *id = (const char *)sqlite3_column_text(stmt, 0);
+        int64_t bytes = 0;
+        int p;
+
+        for (p = 0; p < 3; p++) {
+            bytes += file_bytes((const char *)sqlite3_column_text(stmt, 1 + p));
+        }
+        if (use_add(&rows, &count, &cap, id, bytes, 0) != 0) {
+            pav_cache_local_usage_free(rows, count);
+            pav_db_read_end(read);
+            return -1;
+        }
+    }
+    if (rc != SQLITE_DONE) {
+        pav_cache_local_usage_free(rows, count);
+        pav_db_read_end(read);
+        return -1;
+    }
+    if (pav_db_prepare(pav_db_read_handle(read), k_blob_key, k_usage_blobs, &stmt) != 0) {
+        pav_cache_local_usage_free(rows, count);
+        pav_db_read_end(read);
+        return -1;
+    }
+    while ((rc = pav_db_step(stmt)) == SQLITE_ROW) {
+        const char *id = (const char *)sqlite3_column_text(stmt, 0);
+        const char *ra = (const char *)sqlite3_column_text(stmt, 1);
+        const char *blob = (const char *)sqlite3_column_text(stmt, 2);
+        char path[4096];
+        int64_t bytes = 0;
+
+        if (ra != NULL && blob != NULL && pav_blob_path(ra, blob, path, sizeof(path)) == 0) {
+            bytes = file_bytes(path);
+        }
+        if (use_add(&rows, &count, &cap, id, 0, bytes) != 0) {
+            pav_cache_local_usage_free(rows, count);
+            pav_db_read_end(read);
+            return -1;
+        }
+    }
+    pav_db_read_end(read);
+    if (rc != SQLITE_DONE) {
+        pav_cache_local_usage_free(rows, count);
+        return -1;
+    }
+    *out = rows;
+    *n = count;
+    return 0;
 }
 
 void pav_runtime_open_remove(void) {

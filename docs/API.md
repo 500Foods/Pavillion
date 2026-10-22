@@ -582,6 +582,48 @@ State: planned (O-5)
 
 Retries a failed send.
 
+### cache.usage
+
+State: real (L-2)
+
+Bytes on disk for cached message text and documents, each account's server counts and sizes, and free space on the storage volume.
+
+Args: `{}`, `{measure?: boolean}`, or `{cancel: true}`. Any other key is `bad_args`. `measure` and `cancel` must be booleans. `cancel` true together with `measure` is `bad_args`. `{}` is the quick read. `{measure: true}` also walks the mail and file sizes the quota does not already split. `{cancel: true}` stops that walk and does not start another. Its result is `{"cancelled": true}`.
+
+Result:
+
+```json
+{
+  "bodiesBytes": 0,
+  "blobsBytes": 0,
+  "volumeFreeBytes": null,
+  "sizesCheckedAt": null,
+  "accounts": [
+    {
+      "id": "andrew-500foods-com",
+      "name": "Andrew",
+      "bodiesBytes": 0,
+      "blobsBytes": 0,
+      "serverBytes": null,
+      "mail": { "count": null, "bytes": null, "bodiesBytes": null, "attachmentsBytes": null, "attachmentsCount": null },
+      "contacts": { "count": null, "bytes": null },
+      "calendars": { "count": null, "bytes": null },
+      "files": { "count": null, "bytes": null }
+    }
+  ]
+}
+```
+
+`bodiesBytes` and `blobsBytes` are the files the cache limits measure. A missing file counts as 0. One blob file counts once. The totals are the sum of the account rows. Each store object is that account's count and size on the server. `null` means this read does not have the figure. `serverBytes` is the account-wide octet total when the server reports one quota for more than one kind. `volumeFreeBytes` is the free space on the volume that holds the blob directory, or the profile file when that directory is not there. Null when the platform cannot read it. The page builds two columns. Database is `mail.count`, contact `count`, and calendar `count`, and `mail.bodiesBytes` plus contact and calendar `bytes` when those sizes are integers. Document is `mail.attachmentsCount` plus file `count`, and `mail.attachmentsBytes` plus file `bytes` when those sizes are integers. A pool size, and the Document entry count, stay blank until the mail split for that pool is known. A Total row sums each column on its own, leaving out a missing figure. The two columns are not added together. `serverBytes` is not shown.
+
+For an account whose `kind` is missing or `jmap`, and whose stored session has an `https` `apiUrl`, the quick read posts `Quota/get` when `urn:ietf:params:jmap:quota` is present, and `Email/query`, `ContactCard/query`, `CalendarEvent/query`, and `FileNode/query` (`calculateTotal`, `limit` 1) for each capability the raw session advertises. A query `total` is the count and wins over a quota count. An octets or count quota is that column only when every type is the same kind: `Email` or `Mail`, `ContactCard` or `Contact`, `CalendarEvent` or `Calendar`, `FileNode` or `File`. Any other type, or a mix, stays in `serverBytes` and is not labeled as one store. A single-kind octets quota is that store's `bytes`. Calendars and contacts have no other size. A count of 0 is `bytes` 0.
+
+`measure` walks `Email/get` and `FileNode/get` when that store's bytes are still null. The mail get asks for `size`, `textBody`, `htmlBody`, and `attachments`, with `bodyProperties` of `size` only. It does not fetch body values. `mail.bytes` stays the whole message. `mail.bodiesBytes` is the decoded text plus the decoded HTML. `mail.attachmentsBytes` is the decoded attachment sizes. `mail.attachmentsCount` is how many of those attachment parts were counted. A missing part list, or a part without an integer `size`, fails that mail walk and keeps the previous split. A count of 0 is 0 for both. A single-kind octets quota does not skip the mail walk, because a quota does not separate bodies from attachments. The page size is the session's `maxObjectsInGet`, and at most 500. One request carries several windows: half of `maxCallsInRequest`, at most 8, and at most 4 for mail. At most 1,000 windows. A window that stops early (no ids before the total is covered, a missing integer `size`, a non-empty `notFound`, a repeated id, a short window before the total, or the window cap) leaves that store's bytes unset and keeps the previous value. While the walk runs, `cache.change` reports the account, the store, and the running sum, at most every 250 ms, and once more when a store finishes. Cancel stops the walk. A store that finished is kept. A store that did not finish keeps its previous size. The result may include `"cancelled": true`. The last finished walk is stored in `kv` key `limits.server`. `sizesCheckedAt` is its unix millisecond time, or null when none has finished. The quick read fills a null mail or file size from that cache when the session still advertises the store. It also fills `mail.bodiesBytes` and `mail.attachmentsBytes` from `mailBodiesBytes` and `mailAttachmentsBytes` when both are stored. It fills `mail.attachmentsCount` from `mailAttachmentsCount` when that integer is stored. A missing count does not drop the byte split.
+
+Any other `kind`, including `imap`, leaves the five server fields null. M-8 and the later calendar and contacts phases write the same fields. This command does not speak IMAP, CalDAV, or CardDAV. One account's failed read does not fail the command.
+
+Errors: `bad_args`, `not_ready`, `internal`.
+
 ### prefs.get
 
 State: real (G-2)
@@ -848,6 +890,13 @@ Kind: event
 State: real (I-1)
 
 `{activity}`. The activity object from `activity.list`. Posted on begin, on end, on dismiss, and on progress when at least 250 ms have passed since the last event for that same activity. Begin, end, and dismiss are not throttled.
+
+### cache.change
+
+Kind: event
+State: real (L-2)
+
+`{accountId, store, done, total, bytes, scanned, scanTotal}`. Posted while Check sizes walks one account. `store` is `mail` or `files`. `done` and `total` are that store. `bytes` is the running sum. `scanned` and `scanTotal` are the whole check. Posted at most every 250 ms, and once without that wait when a store finishes.
 
 ### accounts.changed
 

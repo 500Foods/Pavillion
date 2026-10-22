@@ -13,6 +13,9 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#ifndef _WIN32
+#include <sys/statvfs.h>
+#endif
 
 #include "pav_compat.h"
 #ifdef _WIN32
@@ -181,6 +184,43 @@ int64_t pav_posix_now_ms(void) {
         return -1;
     }
     return (int64_t)ts.tv_sec * 1000 + (int64_t)(ts.tv_nsec / 1000000L);
+}
+
+int pav_posix_volume_free(const char *path, int64_t *out) {
+    if (path == NULL || path[0] == '\0' || out == NULL) {
+        return -1;
+    }
+#ifdef _WIN32
+    {
+        ULARGE_INTEGER avail;
+
+        if (!GetDiskFreeSpaceExA(path, &avail, NULL, NULL)) {
+            return -1;
+        }
+        if (avail.QuadPart > (ULONGLONG)INT64_MAX) {
+            return -1;
+        }
+        *out = (int64_t)avail.QuadPart;
+        return 0;
+    }
+#else
+    {
+        struct statvfs st;
+        unsigned long long blocks;
+        unsigned long long frag;
+
+        if (statvfs(path, &st) != 0) {
+            return -1;
+        }
+        blocks = (unsigned long long)st.f_bavail;
+        frag = (unsigned long long)(st.f_frsize != 0 ? st.f_frsize : st.f_bsize);
+        if (frag == 0 || blocks > (unsigned long long)INT64_MAX / frag) {
+            return -1;
+        }
+        *out = (int64_t)(blocks * frag);
+        return 0;
+    }
+#endif
 }
 
 int64_t pav_now_ms(void) {

@@ -9,6 +9,9 @@ int pav_posix_write_private(const char *path, const void *buf, size_t n);
 /* Writes path.tmp, deletes it, and returns -1. path itself is left as it was. */
 int pav_posix_write_abort(const char *path, const void *buf, size_t n);
 int64_t pav_posix_now_ms(void);
+/* 0 and *out is f_bavail times the fragment size, or the Windows equivalent.
+   -1 when path is missing or the volume cannot be read. */
+int pav_posix_volume_free(const char *path, int64_t *out);
 
 /* SRV lookup (K-Q5): posix/srv_resolv.c or windows/srv_dnsapi.c. 0 found,
    1 no record, -1 lookup failed. */

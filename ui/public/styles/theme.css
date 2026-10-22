@@ -818,12 +818,68 @@
   display: grid;
   gap: 0.4rem;
   margin-bottom: 0.8rem;
-  width: 34rem;
+  width: auto;
+  max-width: 56rem;
 }
 
 .pav-root .limits-list input[type="number"] {
   flex: none;
   width: 8rem;
+}
+
+.pav-root .limits-used {
+  flex: none;
+  color: var(--pav-text-muted);
+  white-space: nowrap;
+}
+
+.pav-root .limits-check {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 0 0.6rem;
+}
+
+.pav-root .limits-progress {
+  flex: 1;
+  max-width: 12rem;
+  accent-color: var(--pav-status-running);
+}
+
+.pav-root .limits-checked {
+  margin: 0;
+  color: var(--pav-text-muted);
+}
+
+.pav-root .limits-accounts {
+  width: 100%;
+  max-width: 52rem;
+  margin: 0 0 0.8rem;
+  border-collapse: collapse;
+}
+
+.pav-root .limits-accounts th,
+.pav-root .limits-accounts td {
+  padding: 0.25rem 0.75rem 0.25rem 0;
+  font-weight: 400;
+  text-align: left;
+}
+
+.pav-root .limits-accounts .limits-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pav-root .limits-accounts .limits-kind {
+  display: block;
+  color: var(--pav-text-muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.pav-root .limits-accounts tfoot th,
+.pav-root .limits-accounts tfoot td {
+  border-top: 1px solid var(--pav-border);
 }
 
 .pav-root .zoom-wheel-switch {

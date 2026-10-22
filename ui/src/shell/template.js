@@ -256,16 +256,41 @@ export const shellMarkup = `<div class="shell">
             </div>
             <div class="settings-body">
               <div class="limits-list">
-                <label class="zoom"><span class="zoom-label">Message bodies</span>
+                <label class="zoom"><span class="zoom-label">Database</span>
                   <input id="limits-bodies" type="number" min="1" max="1048576" step="1" value="2048" inputmode="numeric" />
                   <span class="zoom-value">MB</span>
+                  <span id="limits-bodies-used" class="limits-used">0.0 MB on disk</span>
                 </label>
-                <label class="zoom"><span class="zoom-label">Attachments</span>
+                <label class="zoom"><span class="zoom-label">Document</span>
                   <input id="limits-blobs" type="number" min="1" max="1048576" step="1" value="4096" inputmode="numeric" />
                   <span class="zoom-value">MB</span>
+                  <span id="limits-blobs-used" class="limits-used">0.0 MB on disk</span>
                 </label>
               </div>
-              <p class="muted">Message bodies and attachments stay on this machine up to these sizes. Apply saves both. The next finished sync drops the oldest opened copies that are over a limit. Drafts, flagged messages, and mail waiting to send stay. The log size cap is on Logs.</p>
+              <div class="limits-check">
+                <button type="button" id="limits-measure">Check sizes</button>
+                <progress id="limits-progress" class="limits-progress" hidden value="0" max="1" aria-label="Size check progress"></progress>
+                <button type="button" id="limits-cancel" hidden>Cancel</button>
+                <p id="limits-checked" class="limits-checked" aria-live="polite"></p>
+              </div>
+              <table class="limits-accounts" id="limits-accounts" hidden>
+                <thead>
+                  <tr>
+                    <th>Account</th>
+                    <th class="limits-num">Database<span class="limits-kind">(Mail, Contacts, Calendars)</span></th>
+                    <th class="limits-num">Document<span class="limits-kind">(Attachments, Files)</span></th>
+                  </tr>
+                </thead>
+                <tbody id="limits-account-rows"></tbody>
+                <tfoot>
+                  <tr>
+                    <th scope="row">Total</th>
+                    <td id="limits-total-database" class="limits-num"></td>
+                    <td id="limits-total-document" class="limits-num"></td>
+                  </tr>
+                </tfoot>
+              </table>
+              <p class="muted">Database is message text, contacts, and calendars. Document is attachments and files. They stay on this machine up to these sizes. Beside each one is what is on disk now, and the free space on the volume that holds this storage. Each account lists how many of those entries are on the server, and their size. The Total row adds each column on its own. Database and Document are not added together. Database counts messages, contacts, and events. Document counts attachments and files. A size is shown after Check sizes has split mail into message text and attachments. A contact, calendar, or file size that was not reported is left out. A progress bar and Cancel show while that runs, and the line beside the button is when it last finished. Apply saves both limits. The next finished sync drops the oldest opened message text and documents that are over a limit. Drafts, flagged messages, and mail waiting to send stay. Contacts and calendars stay. The log size cap is on Logs.</p>
             </div>
             <div class="button-bar pav-module-footer" id="limits-footer" role="toolbar" aria-label="Limits actions"></div>
           </div>

@@ -496,6 +496,20 @@ static void *core_thread_main(void *arg) {
                 continue;
             }
             if (pav_command_is_worker(call->name)) {
+                char *preempt = NULL;
+
+                if (pav_cache_usage_preempt(call->name, call->args, &preempt)) {
+                    if (preempt == NULL) {
+                        fail_call_unlocked(call, "internal", "cannot cancel");
+                    } else {
+                        json_decref(call->args);
+                        call->args = NULL;
+                        call->reply = preempt;
+                        call->done = 1;
+                    }
+                    pthread_cond_broadcast(&g_core_cv);
+                    continue;
+                }
                 pthread_mutex_unlock(&g_core_mu);
                 if (worker_submit(call) != 0) {
                     pthread_mutex_lock(&g_core_mu);

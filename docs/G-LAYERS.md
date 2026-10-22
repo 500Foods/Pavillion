@@ -73,12 +73,14 @@ typedef struct PavPlatform {
     void (*on_network_change)(void (*cb)(void *), void *user);
     void (*on_resume)(void (*cb)(void *), void *user);
     int  (*srv_lookup)(const char *name, char *target, size_t len, int *port); /* 0 found, 1 none, -1 failed (K-Q5) */
+    int  (*volume_free)(const char *path, int64_t *out); /* 0 and free bytes, or -1 (L-2) */
 } PavPlatform;
 void pav_platform_install(const PavPlatform *p);
 const PavPlatform *pav_platform(void);
 ```
 
 - `srv_lookup` (K-Q5, Andrew 2026-10-19) is the one OS DNS call. Linux and macOS share `core/platform/posix/srv_resolv.c` (`res_query`, `ns_initparse`, `dn_expand`), linked with `-lresolv` on those two only. Windows uses `core/platform/windows/srv_dnsapi.c` (`DnsQuery_A` with `DNS_TYPE_SRV`, plain MinGW C), linked with `-ldnsapi`. Until G-6 the macOS and Windows host is the fake table with `srv_lookup` replaced by that OS lookup (`core/platform/fake/host.c`). CMake, the Makefile test link, and `build.rs` pick the library per OS.
+- `volume_free(path, *out)` (L-2) returns 0 and sets `*out` to the bytes available to this user on the volume that holds `path`. `path` may be a file or a directory. -1 when the volume cannot be read. Linux and macOS use `statvfs` (`f_bavail` times the fragment size) in `core/platform/posix/posix.c`. Windows uses `GetDiskFreeSpaceExA`. The fake returns -1 until `pav_platform_fake_set_volume_free`. `cache.usage` calls it for the blob directory, or the profile file when that directory is not there, and returns `volumeFreeBytes` or null.
 - Paths are joined only through `pav_path_join(out, len, a, b)`. Code never contains `/` literals for joining or `~` expansion.
 - The B-4 file-mode code (0600, 0700) moves behind `mkdir_private` and `write_private`. On Windows it becomes an ACL or a no-op.
 - Tests install `pav_platform_fake()`: an in-memory secret store, a temp root for every dir, a settable clock. Tests never touch the real keyring.

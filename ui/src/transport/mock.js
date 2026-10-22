@@ -98,6 +98,25 @@ export function mockTransport() {
         selftest: false,
       };
     }
+    if (cmd === "cache.usage") {
+      if (input.measure !== undefined && typeof input.measure !== "boolean") {
+        throw fail("bad_args", "measure is not a boolean");
+      }
+      if (input.cancel !== undefined && typeof input.cancel !== "boolean") {
+        throw fail("bad_args", "cancel is not a boolean");
+      }
+      if (input.cancel === true && input.measure !== undefined) {
+        throw fail("bad_args", "cancel cannot be combined with measure");
+      }
+      const extra = Object.keys(input).filter((key) => key !== "measure" && key !== "cancel");
+      if (extra.length > 0) {
+        throw fail("bad_args", `unknown argument ${extra[0]}`);
+      }
+      if (input.cancel === true) {
+        return { cancelled: true };
+      }
+      return { bodiesBytes: 0, blobsBytes: 0, sizesCheckedAt: null, accounts: [] };
+    }
     if (cmd === "prefs.get") {
       return structuredClone(prefs);
     }

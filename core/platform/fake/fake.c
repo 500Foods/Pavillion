@@ -35,6 +35,8 @@ static void *g_resume_user;
 static char g_srv_name[256];
 static char g_srv_target[256];
 static int g_srv_port;
+static int g_volume_set;
+static int64_t g_volume_free;
 
 static void secret_clear(FakeSecret *slot) {
     free(slot->service);
@@ -238,6 +240,8 @@ void pav_platform_fake_reset(void) {
     g_srv_name[0] = '\0';
     g_srv_target[0] = '\0';
     g_srv_port = 0;
+    g_volume_set = 0;
+    g_volume_free = 0;
 }
 
 void pav_platform_fake_set_srv(const char *name, const char *target, int port) {
@@ -254,6 +258,20 @@ static int fake_srv_lookup(const char *name, char *target, size_t len, int *port
     snprintf(target, len, "%s", g_srv_target);
     *port = g_srv_port;
     return 0;
+}
+
+static int fake_volume_free(const char *path, int64_t *out) {
+    (void)path;
+    if (!g_volume_set || out == NULL) {
+        return -1;
+    }
+    *out = g_volume_free;
+    return 0;
+}
+
+void pav_platform_fake_set_volume_free(int64_t bytes) {
+    g_volume_set = 1;
+    g_volume_free = bytes;
 }
 
 void pav_platform_fake_set_locked(int locked) {
@@ -280,6 +298,7 @@ const PavPlatform *pav_platform_fake(void) {
         platform.on_network_change = fake_on_network;
         platform.on_resume = fake_on_resume;
         platform.srv_lookup = fake_srv_lookup;
+        platform.volume_free = fake_volume_free;
         ready = 1;
     }
     return &platform;

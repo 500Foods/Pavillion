@@ -20,6 +20,11 @@ export function createApi(transport) {
         return call("system.status", {});
       },
     },
+    cache: {
+      usage(args) {
+        return call("cache.usage", args ?? {});
+      },
+    },
     prefs: {
       get() {
         return call("prefs.get", {});
