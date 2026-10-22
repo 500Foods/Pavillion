@@ -67,7 +67,8 @@ $(LIB): core/CMakeLists.txt core/include/pavillion.h core/include/pav_config.h \
 		core/src/account.c core/include/account.h \
 		core/src/net.c core/include/pav_net.h \
 	core/src/jmap.c core/include/pav_jmap.h \
-	core/src/sync.c core/include/pav_sync.h \
+	core/src/fts.c core/include/pav_fts.h \
+	core/src/sync.c core/src/sync_email.c core/include/pav_sync.h \
 	core/src/account_test.c
 	cmake -S core -B $(BUILD_DIR)
 	cmake --build $(BUILD_DIR)

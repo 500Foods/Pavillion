@@ -41,6 +41,9 @@
 
 #include "pav_compat.h"
 
+static int fixture_email_hold(int hold);
+static int g_email_hold;
+
 /* File modes are a no-op on Windows (G Lock), so mode checks are skipped there. */
 #ifdef _WIN32
 #define ASSERT_MODE(want, st) ((void)(st))
@@ -246,6 +249,10 @@ static void remove_cfg_dir(void) {
 }
 
 void tearDown(void) {
+    if (g_email_hold) {
+        g_email_hold = 0;
+        (void)fixture_email_hold(0);
+    }
     unsetenv("PAVILLION_DEBUG");
     unsetenv("PAVILLION_SELFTEST");
     pav_platform_fake_reset();
@@ -4571,6 +4578,25 @@ static int scalar_int(const char *path, const char *sql) {
     return value;
 }
 
+static int64_t scalar_i64(const char *path, const char *sql) {
+    sqlite3 *db = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int64_t value = 0;
+
+    if (sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, NULL) != SQLITE_OK) {
+        if (db != NULL) {
+            sqlite3_close(db);
+        }
+        return 0;
+    }
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW) {
+        value = sqlite3_column_int64(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+    return value;
+}
+
 static int journal_is_wal(const char *path) {
     sqlite3 *db = NULL;
     sqlite3_stmt *stmt = NULL;
@@ -4651,6 +4677,22 @@ static int wait_account_state(const char *path, const char *id, const char *stat
     return wait_count(path, sql, 1, id, why, why_n);
 }
 
+static int wait_count_tries(const char *path, const char *sql, int expect, const char *id, char *why, size_t why_n,
+                            int tries) {
+    int i;
+
+    for (i = 0; i < tries; i++) {
+        if (scalar_int(path, sql) == expect) {
+            return 0;
+        }
+        usleep(50000);
+    }
+    if (why != NULL && why_n > 0) {
+        account_state_text(path, id, why, why_n);
+    }
+    return -1;
+}
+
 static void assert_ok(json_t *root);
 
 static json_t *find_sync_act(json_t *rows, const char *account_id) {
@@ -4666,6 +4708,23 @@ static json_t *find_sync_act(json_t *rows, const char *account_id) {
         }
     }
     return NULL;
+}
+
+/* activity.list orders by id. A later sync.now is the last matching row. */
+static json_t *find_sync_act_last(json_t *rows, const char *account_id) {
+    size_t i;
+    json_t *found = NULL;
+
+    for (i = 0; i < json_array_size(rows); i++) {
+        json_t *item = json_array_get(rows, i);
+        const char *kind = json_string_value(json_object_get(item, "kind"));
+        const char *acct = json_string_value(json_object_get(item, "accountId"));
+
+        if (kind != NULL && acct != NULL && strcmp(kind, "sync.mail") == 0 && strcmp(acct, account_id) == 0) {
+            found = item;
+        }
+    }
+    return found;
 }
 
 static void add_fixture_account(const char *id, const char *session_url, const char *ca) {
@@ -4729,7 +4788,7 @@ void test_sync_session_stored(void) {
     item = find_sync_act(rows, "box");
     TEST_ASSERT_NOT_NULL(item);
     TEST_ASSERT_EQUAL_STRING("done", json_string_value(json_object_get(item, "state")));
-    TEST_ASSERT_EQUAL_STRING("Mailboxes", json_string_value(json_object_get(item, "detail")));
+    TEST_ASSERT_EQUAL_STRING("Messages", json_string_value(json_object_get(item, "detail")));
     json_decref(rows);
 }
 
@@ -6401,6 +6460,52 @@ void test_account_add_rolls_back_on_profile_write_failure(void) {
     pavillion_stop();
 }
 
+static int exec_sql(const char *path, const char *sql);
+
+void test_account_state_restored_on_boot(void) {
+    json_t *root = NULL;
+    json_t *accounts;
+    char db_path[160];
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_platform_fake_set_locked(0);
+    root = call_reply("account.add",
+        "{\"kind\":\"jmap\",\"sessionUrl\":\"https://example.com/jmap\","
+        "\"username\":\"alice\",\"secret\":\"p@ssw0rd\",\"id\":\"wipe\"}");
+    assert_ok(root);
+    json_decref(root);
+    snprintf(db_path, sizeof(db_path), "%s/default.sqlite", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(1,
+        scalar_int(db_path, "SELECT count(*) FROM account_state WHERE account_id='wipe'"));
+    pavillion_stop();
+    TEST_ASSERT_EQUAL_INT(1,
+        exec_sql(db_path, "DELETE FROM account_state WHERE account_id='wipe'"));
+    TEST_ASSERT_EQUAL_INT(0,
+        scalar_int(db_path, "SELECT count(*) FROM account_state WHERE account_id='wipe'"));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(1,
+        scalar_int(db_path, "SELECT count(*) FROM account_state WHERE account_id='wipe'"));
+    root = call_reply("account.list", "{}");
+    assert_ok(root);
+    accounts = json_object_get(json_object_get(root, "data"), "accounts");
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(accounts));
+    json_decref(root);
+    root = call_reply("account.remove", "{\"id\":\"wipe\"}");
+    assert_ok(root);
+    json_decref(root);
+    pavillion_stop();
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT(0,
+        scalar_int(db_path, "SELECT count(*) FROM account_state WHERE account_id='wipe'"));
+    root = call_reply("account.list", "{}");
+    assert_ok(root);
+    accounts = json_object_get(json_object_get(root, "data"), "accounts");
+    TEST_ASSERT_EQUAL_INT(0, (int)json_array_size(accounts));
+    json_decref(root);
+    pavillion_stop();
+}
+
 void test_account_remove_purges(void) {
     json_t *root = NULL;
     char db_path[160];
@@ -7577,7 +7682,7 @@ void test_sync_mailboxes_initial(void) {
     item = find_sync_act(rows, "init");
     TEST_ASSERT_NOT_NULL(item);
     TEST_ASSERT_EQUAL_STRING("done", json_string_value(json_object_get(item, "state")));
-    TEST_ASSERT_EQUAL_STRING("Mailboxes", json_string_value(json_object_get(item, "detail")));
+    TEST_ASSERT_EQUAL_STRING("Messages", json_string_value(json_object_get(item, "detail")));
     json_decref(rows);
 }
 
@@ -7709,6 +7814,412 @@ void test_sync_mailboxes_delta_rename(void) {
     after = trace_count("Mailbox/changes");
     TEST_ASSERT_TRUE(after > before);
     TEST_ASSERT_EQUAL_INT(n + 1, pav_sync_attempt_count("delta"));
+}
+
+static int g_msg_watch;
+static int g_msg_hits;
+static char g_msg_expect[80];
+static char g_msg_first[4096];
+
+static int fixture_email_hold(int hold) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char cmd[1600];
+    const char *sink;
+    int n;
+
+    if (url == NULL || ca == NULL) {
+        return -1;
+    }
+#ifdef _WIN32
+    sink = "NUL";
+#else
+    sink = "/dev/null";
+#endif
+    n = snprintf(cmd, sizeof(cmd),
+                 "curl -fsS -X POST --data '' --max-time 10 --cacert \"%s\" -o %s \"%s/jmap/proxy?emailHold=%d\"", ca,
+                 sink, url, hold ? 1 : 0);
+    if (n < 0 || n >= (int)sizeof(cmd)) {
+        return -1;
+    }
+    return system(cmd) == 0 ? 0 : -1;
+}
+
+static void msg_event_cb(const char *name, const char *json, void *user) {
+    (void)user;
+    pthread_mutex_lock(&g_ev_test_mu);
+    if (g_msg_watch && name != NULL && json != NULL && strcmp(name, "mail.messages_changed") == 0 &&
+        strstr(json, g_msg_expect) != NULL) {
+        if (g_msg_hits == 0) {
+            snprintf(g_msg_first, sizeof(g_msg_first), "%s", json);
+        }
+        g_msg_hits++;
+        pthread_cond_signal(&g_ev_test_cv);
+    }
+    pthread_mutex_unlock(&g_ev_test_mu);
+}
+
+static void msg_watch_begin(const char *account_id) {
+    pthread_mutex_lock(&g_ev_test_mu);
+    g_msg_hits = 0;
+    g_msg_first[0] = '\0';
+    snprintf(g_msg_expect, sizeof(g_msg_expect), "\"accountId\":\"%s\"", account_id);
+    g_msg_watch = 1;
+    pthread_mutex_unlock(&g_ev_test_mu);
+    pav_on_event(msg_event_cb, NULL);
+}
+
+static int msg_watch_end(void) {
+    struct timespec ts;
+    int hits;
+    int rc;
+
+    pthread_mutex_lock(&g_ev_test_mu);
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 2;
+    while (g_msg_watch && g_msg_hits == 0) {
+        rc = pthread_cond_timedwait(&g_ev_test_cv, &g_ev_test_mu, &ts);
+        if (rc != 0) {
+            break;
+        }
+    }
+    g_msg_watch = 0;
+    hits = g_msg_hits;
+    pthread_mutex_unlock(&g_ev_test_mu);
+    pav_on_event(NULL, NULL);
+    return hits;
+}
+
+static void start_email_account(const char *id, const char *query, char *path, size_t path_n) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char session_url[512];
+    int n;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_sync_set_poll_ms(3600000);
+    n = snprintf(session_url, sizeof(session_url), "%s/jmap/session%s", url, query != NULL ? query : "");
+    TEST_ASSERT_TRUE(n > 0 && n < (int)sizeof(session_url));
+    add_fixture_account(id, session_url, ca);
+    db_path_for_cfg(path, path_n);
+}
+
+static char *load_trace(void) {
+    FILE *f;
+    long n;
+    char *buf;
+
+    f = fopen("build/fixture-run/mailstate.json", "rb");
+    if (f == NULL) {
+        return NULL;
+    }
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return NULL;
+    }
+    n = ftell(f);
+    if (n < 0 || n > 8 * 1024 * 1024 || fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return NULL;
+    }
+    buf = malloc((size_t)n + 1);
+    if (buf == NULL) {
+        fclose(f);
+        return NULL;
+    }
+    if (fread(buf, 1, (size_t)n, f) != (size_t)n) {
+        free(buf);
+        fclose(f);
+        return NULL;
+    }
+    buf[n] = '\0';
+    fclose(f);
+    return buf;
+}
+
+static int collect_email_queries(int *pos, int *lim, int cap) {
+    char *buf = load_trace();
+    const char *p;
+    int n = 0;
+
+    if (buf == NULL) {
+        return -1;
+    }
+    p = buf;
+    while (n < cap) {
+        const char *hit = strstr(p, "Email/query:");
+        int at = 0;
+        int a;
+        int b;
+
+        if (hit == NULL) {
+            break;
+        }
+        hit += strlen("Email/query:");
+        if (sscanf(hit, "%d:%d%n", &a, &b, &at) == 2 && at > 0) {
+            pos[n] = a;
+            lim[n] = b;
+            n++;
+            p = hit + (size_t)at;
+        } else {
+            p = hit;
+        }
+    }
+    free(buf);
+    return n;
+}
+
+static void assert_backfill_trace(void) {
+    int pos[160];
+    int lim[160];
+    int n;
+    int at = 0;
+    int i;
+    static const int want[] = {0, 500, 1000, 1500};
+    char why[80];
+
+    n = collect_email_queries(pos, lim, 160);
+    TEST_ASSERT_TRUE(n >= 0);
+    for (i = 0; i < n && at < 4; i++) {
+        if (lim[i] == 500 && pos[i] == want[at]) {
+            at++;
+        }
+    }
+    snprintf(why, sizeof(why), "backfill matched %d of 4 pages", at);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(4, at, why);
+}
+
+static void assert_first_page_trace(void) {
+    int pos[160];
+    int lim[160];
+    int n;
+    int i;
+    int saw = 0;
+
+    n = collect_email_queries(pos, lim, 160);
+    TEST_ASSERT_TRUE(n >= 0);
+    for (i = 0; i < n; i++) {
+        if (!saw && pos[i] == 0 && lim[i] == 2) {
+            saw = 1;
+        } else if (saw && pos[i] == 2 && lim[i] == 2) {
+            return;
+        }
+    }
+    TEST_FAIL_MESSAGE("Email/query:0:2 then Email/query:2:2 not in the trace");
+}
+
+static void assert_limit_trace(void) {
+    int pos[160];
+    int lim[160];
+    int n;
+    int i;
+    int anchor = -1;
+    int saw0 = 0;
+    int saw2 = 0;
+    int saw4 = 0;
+    char why[64];
+
+    n = collect_email_queries(pos, lim, 160);
+    TEST_ASSERT_TRUE(n >= 0);
+    for (i = 0; i < n; i++) {
+        if (lim[i] > 2) {
+            anchor = i;
+        }
+    }
+    for (i = anchor + 1; i < n; i++) {
+        snprintf(why, sizeof(why), "Email/query:%d:%d after the anchor", pos[i], lim[i]);
+        TEST_ASSERT_TRUE_MESSAGE(lim[i] <= 2, why);
+        if (pos[i] == 0) {
+            saw0 = 1;
+        }
+        if (pos[i] == 2) {
+            saw2 = 1;
+        }
+        if (pos[i] == 4) {
+            saw4 = 1;
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(saw0 && saw2 && saw4, "positions 0, 2, and 4 were not all queried");
+}
+
+/* 2,000 headers, four pages of 500, newest page first. */
+void test_email_backfill_pages(void) {
+    char path[160];
+    char got[192];
+    char sql[192];
+    json_t *rows;
+    json_t *item;
+    json_t *prog;
+    int64_t hi;
+    int64_t lo;
+    int hits;
+
+    (void)fixture_email_hold(0);
+    g_email_hold = 0;
+    msg_watch_begin("back");
+    start_email_account("back", "?emails=2000", path, sizeof(path));
+    snprintf(sql, sizeof(sql), "SELECT count(*) FROM email WHERE ra_id='back/a1'");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count_tries(path, sql, 2000, "back", got, sizeof(got), 1200), got);
+    hits = msg_watch_end();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM account_state WHERE account_id='back' AND state='idle'", 1, "back", got, sizeof(got)),
+        got);
+    TEST_ASSERT_TRUE(hits >= 4);
+    TEST_ASSERT_EQUAL_INT(2000, scalar_int(path, "SELECT count(*) FROM email WHERE ra_id='back/a1'"));
+    TEST_ASSERT_EQUAL_INT(0, scalar_int(path, "SELECT count(*) FROM email WHERE ra_id='back/a2'"));
+    hi = scalar_i64(path, "SELECT received_at FROM email WHERE ra_id='back/a1' AND id='e1999'");
+    lo = scalar_i64(path, "SELECT received_at FROM email WHERE ra_id='back/a1' AND id='e0'");
+    TEST_ASSERT_TRUE(hi > lo);
+    TEST_ASSERT_TRUE(hi != 0 && lo != 0);
+    rows = activity_rows(1);
+    item = find_sync_act(rows, "back");
+    TEST_ASSERT_NOT_NULL(item);
+    TEST_ASSERT_EQUAL_STRING("done", json_string_value(json_object_get(item, "state")));
+    TEST_ASSERT_EQUAL_STRING("Messages", json_string_value(json_object_get(item, "detail")));
+    prog = json_object_get(item, "progress");
+    TEST_ASSERT_TRUE(json_is_object(prog));
+    TEST_ASSERT_EQUAL_INT(2000, (int)json_integer_value(json_object_get(prog, "done")));
+    TEST_ASSERT_EQUAL_INT(2000, (int)json_integer_value(json_object_get(prog, "total")));
+    TEST_ASSERT_EQUAL_STRING("messages", json_string_value(json_object_get(prog, "unit")));
+    json_decref(rows);
+    assert_backfill_trace();
+}
+
+/* First page is the newest headers. A cap of 2 stores e3 before e0. */
+void test_email_initial_first_page(void) {
+    char path[160];
+    char got[192];
+    char text[256];
+    int64_t hi;
+    int64_t lo;
+    int hits;
+
+    msg_watch_begin("efirst");
+    start_email_account("efirst", "?maxObjectsInGet=2&emails=4", path, sizeof(path));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM email WHERE ra_id='efirst/a1'", 4, "efirst", got, sizeof(got)), got);
+    hits = msg_watch_end();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM account_state WHERE account_id='efirst' AND state='idle'", 1, "efirst", got,
+        sizeof(got)), got);
+    TEST_ASSERT_TRUE(hits >= 1);
+    TEST_ASSERT_NOT_NULL(strstr(g_msg_first, "\"e3\""));
+    TEST_ASSERT_EQUAL_INT(4, scalar_int(path, "SELECT count(*) FROM email WHERE ra_id='efirst/a1'"));
+    TEST_ASSERT_EQUAL_INT(0, scalar_int(path, "SELECT count(*) FROM email WHERE ra_id='efirst/a2'"));
+    hi = scalar_i64(path, "SELECT received_at FROM email WHERE ra_id='efirst/a1' AND id='e3'");
+    lo = scalar_i64(path, "SELECT received_at FROM email WHERE ra_id='efirst/a1' AND id='e0'");
+    TEST_ASSERT_TRUE(hi > lo);
+    TEST_ASSERT_TRUE(hi != 0 && lo != 0);
+    scalar_text(path, "SELECT subject FROM email WHERE ra_id='efirst/a1' AND id='e3'", text, sizeof(text));
+    TEST_ASSERT_EQUAL_STRING("Hello 3", text);
+    scalar_text(path, "SELECT from_json FROM email WHERE ra_id='efirst/a1' AND id='e3'", text, sizeof(text));
+    TEST_ASSERT_NOT_NULL(strstr(text, "ann@example.com"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM email WHERE ra_id='efirst/a1' AND id='e0' AND seen=1 AND flagged=1"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM email WHERE ra_id='efirst/a1' AND id='e3' AND seen=1 AND flagged=0"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM email WHERE ra_id='efirst/a1' AND id='e3' AND body_state='none'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM email_mailbox WHERE ra_id='efirst/a1' AND mailbox_id='in' "
+        "AND email_rowid=(SELECT rowid FROM email WHERE ra_id='efirst/a1' AND id='e3')"));
+    scalar_text(path, "SELECT email_ids FROM thread WHERE ra_id='efirst/a1' AND id='t3'", text, sizeof(text));
+    TEST_ASSERT_EQUAL_STRING("[\"e3\"]", text);
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM email_fts WHERE email_fts MATCH '\"Hello 3\"'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM sync_state WHERE ra_id='efirst/a1' AND type='Email' AND state='em-1'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM sync_state WHERE ra_id='efirst/a2' AND type='Email' AND state='em-1'"));
+    assert_first_page_trace();
+}
+
+/* Every Email/query after the last oversized page stays within maxObjectsInGet. */
+void test_email_batches_respect_max_objects(void) {
+    char path[160];
+    char got[192];
+
+    start_email_account("elim", "?maxObjectsInGet=2&emails=5", path, sizeof(path));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM email WHERE ra_id='elim/a1'", 5, "elim", got, sizeof(got)), got);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM account_state WHERE account_id='elim' AND state='idle'", 1, "elim", got, sizeof(got)),
+        got);
+    assert_limit_trace();
+}
+
+/* A cancel drops the held page and leaves no Email state. sync.now stores the rest. */
+void test_email_sync_cancel_resumes(void) {
+    char path[160];
+    char got[192];
+    char body[128];
+    char why[64];
+    json_t *rows;
+    json_t *item;
+    json_t *root;
+    const char *act;
+    int n;
+    int i;
+    int ready = 0;
+
+    TEST_ASSERT_EQUAL_INT(0, fixture_email_hold(0));
+    TEST_ASSERT_EQUAL_INT(0, fixture_email_hold(1));
+    g_email_hold = 1;
+    start_email_account("can", "?maxObjectsInGet=2&emails=6", path, sizeof(path));
+    for (i = 0; i < 200; i++) {
+        int rows_n = scalar_int(path, "SELECT count(*) FROM email WHERE ra_id='can/a1'");
+        int syncing = scalar_int(path,
+            "SELECT count(*) FROM account_state WHERE account_id='can' AND state='syncing'");
+
+        if (rows_n >= 2 && syncing == 1) {
+            ready = 1;
+            break;
+        }
+        usleep(50000);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(ready, "sync did not pause after the first page");
+    rows = activity_rows(0);
+    item = find_sync_act(rows, "can");
+    TEST_ASSERT_NOT_NULL(item);
+    act = json_string_value(json_object_get(item, "id"));
+    TEST_ASSERT_NOT_NULL(act);
+    snprintf(body, sizeof(body), "{\"id\":\"%s\"}", act);
+    json_decref(rows);
+    root = call_reply("activity.cancel", body);
+    assert_ok(root);
+    json_decref(root);
+    TEST_ASSERT_EQUAL_INT(0, fixture_email_hold(0));
+    g_email_hold = 0;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM account_state WHERE account_id='can' AND state='idle'", 1, "can", got, sizeof(got)),
+        got);
+    n = scalar_int(path, "SELECT count(*) FROM email WHERE ra_id='can/a1'");
+    snprintf(why, sizeof(why), "count %d", n);
+    TEST_ASSERT_TRUE_MESSAGE(n >= 2 && n < 6, why);
+    TEST_ASSERT_EQUAL_INT(0, scalar_int(path,
+        "SELECT count(*) FROM sync_state WHERE ra_id='can/a1' AND type='Email'"));
+    rows = activity_rows(1);
+    item = find_sync_act(rows, "can");
+    TEST_ASSERT_NOT_NULL(item);
+    TEST_ASSERT_EQUAL_STRING("cancelled", json_string_value(json_object_get(item, "state")));
+    json_decref(rows);
+    root = call_reply("sync.now", "{\"accountId\":\"can\"}");
+    assert_ok(root);
+    json_decref(root);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count_tries(path,
+        "SELECT count(*) FROM email WHERE ra_id='can/a1'", 6, "can", got, sizeof(got), 400), got);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM account_state WHERE account_id='can' AND state='idle'", 1, "can", got, sizeof(got)),
+        got);
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM sync_state WHERE ra_id='can/a1' AND type='Email' AND state='em-1'"));
+    rows = activity_rows(1);
+    item = find_sync_act_last(rows, "can");
+    TEST_ASSERT_NOT_NULL(item);
+    TEST_ASSERT_EQUAL_STRING("done", json_string_value(json_object_get(item, "state")));
+    json_decref(rows);
 }
 
 void test_mailbox_list_tree_shape(void) {
@@ -8727,7 +9238,7 @@ void test_remote_accounts_from_session(void) {
 void test_api_md_lists_every_event(void) {
     static const char *const emitted[] = {
         "accounts.changed", "activity.changed", "cache.change", "link.clicked", "log.lines",
-        "mail.mailboxes_changed", "sync.state"};
+        "mail.mailboxes_changed", "mail.messages_changed", "sync.state"};
     FILE *f = fopen("docs/API.md", "rb");
     char line[2048];
     char heading[API_NAME_LEN] = "";
@@ -9140,6 +9651,10 @@ int main(void) {
     RUN_TEST(test_mailbox_list_tree_shape);
     RUN_TEST(test_sync_mailboxes_cannot_calculate);
     RUN_TEST(test_sync_mailboxes_delta_rename);
+    RUN_TEST(test_email_backfill_pages);
+    RUN_TEST(test_email_initial_first_page);
+    RUN_TEST(test_email_batches_respect_max_objects);
+    RUN_TEST(test_email_sync_cancel_resumes);
     RUN_TEST(test_recorded_mailbox_get_replay);
     RUN_TEST(test_recorded_session_keeps_mail_account);
     RUN_TEST(test_writes_are_serial_fifo);
@@ -9186,6 +9701,7 @@ int main(void) {
     RUN_TEST(test_account_rejects_http_url);
     RUN_TEST(test_account_numbers_never_reused);
     RUN_TEST(test_account_add_rolls_back_on_profile_write_failure);
+    RUN_TEST(test_account_state_restored_on_boot);
     RUN_TEST(test_account_remove_purges);
     RUN_TEST(test_account_remove_not_found);
     RUN_TEST(test_account_update_patch);

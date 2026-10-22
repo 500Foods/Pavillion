@@ -89,3 +89,21 @@ test("D-UI Tooltips: delegation covers data-pav-tip and icon-only buttons added 
   expect(tip.hidden).toBe(true);
   tips.destroy();
 });
+
+test("an open tooltip follows a later data-pav-tip", async () => {
+  vi.useFakeTimers();
+  const root = document.createElement("div");
+  document.body.append(root);
+  const tips = createTooltip(root);
+  const host = document.createElement("span");
+  host.setAttribute("data-pav-tip", "25%");
+  root.append(host);
+  host.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+  vi.advanceTimersByTime(500);
+  const tip = root.querySelector(".pav-tooltip");
+  expect(tip.textContent).toBe("25%");
+  host.setAttribute("data-pav-tip", "40%");
+  await Promise.resolve();
+  expect(tip.textContent).toBe("40%");
+  tips.destroy();
+});

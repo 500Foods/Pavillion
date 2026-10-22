@@ -31,6 +31,7 @@ static const char *const k_fetch_allowed[] = {"none", "recent", "all", NULL};
 
 static int db_insert_account_state_job(void *ctx, sqlite3 *db);
 static int db_delete_account_state_job(void *ctx, sqlite3 *db);
+static int db_ensure_state_job(void *ctx, sqlite3 *db);
 static int db_purge_local_job(void *ctx, sqlite3 *db);
 
 static int cfg_enum_check(const char *val, const char *const *allowed) {
@@ -204,6 +205,66 @@ static int db_insert_account_state_job(void *ctx, sqlite3 *db) {
     }
     rc = pav_db_step(stmt);
     return rc == SQLITE_DONE ? 0 : -1;
+}
+
+typedef struct EnsureState {
+    const char *id;
+    int created;
+} EnsureState;
+
+static int db_ensure_state_job(void *ctx, sqlite3 *db) {
+    EnsureState *job = ctx;
+    sqlite3_stmt *stmt = NULL;
+    int rc;
+
+    if (job == NULL || job->id == NULL) {
+        return -1;
+    }
+    rc = pav_db_prepare(db, "account.ensure_state",
+                        "INSERT OR IGNORE INTO account_state (account_id, state) VALUES (?, 'idle')",
+                        &stmt);
+    if (rc != 0 || pav_db_bind_text(stmt, 1, job->id) != 0) {
+        return -1;
+    }
+    rc = pav_db_step(stmt);
+    if (rc != SQLITE_DONE) {
+        return -1;
+    }
+    job->created = sqlite3_changes(db);
+    return 0;
+}
+
+int pav_account_ensure_states(json_t *doc) {
+    json_t *accounts;
+    size_t i;
+    size_t n;
+
+    if (!json_is_object(doc)) {
+        return 0;
+    }
+    accounts = json_object_get(doc, "accounts");
+    if (!json_is_array(accounts)) {
+        return 0;
+    }
+    n = json_array_size(accounts);
+    for (i = 0; i < n; i++) {
+        json_t *acct = json_array_get(accounts, i);
+        const char *id = json_string_value(json_object_get(acct, "id"));
+        EnsureState job;
+
+        if (id == NULL || id[0] == '\0') {
+            continue;
+        }
+        job.id = id;
+        job.created = 0;
+        if (pav_db_call(db_ensure_state_job, &job) != 0) {
+            return -1;
+        }
+        if (job.created > 0) {
+            pav_log("store", PAV_INFO, 1, "account state restored for %s", id);
+        }
+    }
+    return 0;
 }
 
 static int db_delete_account_state_job(void *ctx, sqlite3 *db) {

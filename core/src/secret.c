@@ -77,11 +77,8 @@ int pav_secret_get(const char *service, const char *user, char **out) {
             *out = NULL;
         }
         pav_log("secret", PAV_WARN, 1, "secret %s", secret_name(code));
-    } else {
-        pav_log("secret", PAV_DEBUG, 0, "secret get ok");
-        if (platform->secret_resaved != NULL && platform->secret_resaved()) {
-            pav_log("secret", PAV_INFO, 0, "snapshot re-saved with work factor 0");
-        }
+    } else if (platform->secret_resaved != NULL && platform->secret_resaved()) {
+        pav_log("secret", PAV_INFO, 0, "snapshot re-saved with work factor 0");
     }
     return code;
 }

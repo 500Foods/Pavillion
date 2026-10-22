@@ -135,6 +135,8 @@ int pav_db_read_begin(PavDbRead **out) {
     }
     pthread_mutex_unlock(&g_mu);
     read->slot = slot;
+    /* A statement left stepped on this connection keeps the old WAL snapshot. */
+    pav_db_cache_reset(g_db[slot]);
     if (sqlite3_exec(g_db[slot], "BEGIN", NULL, NULL, NULL) != SQLITE_OK) {
         pthread_mutex_lock(&g_mu);
         g_used[slot] = 0;
@@ -155,6 +157,7 @@ void pav_db_read_end(PavDbRead *read) {
     }
     slot = read->slot;
     if (slot >= 0 && slot < POOL_N && g_db[slot] != NULL) {
+        pav_db_cache_reset(g_db[slot]);
         sqlite3_exec(g_db[slot], "ROLLBACK", NULL, NULL, NULL);
     }
     pthread_mutex_lock(&g_mu);

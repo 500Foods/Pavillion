@@ -12,11 +12,6 @@
 
 #include <errno.h>
 #include <pthread.h>
-#ifdef _WIN32
-#include <winsock2.h>
-#else
-#include <sys/select.h>
-#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -768,24 +763,17 @@ static void *server_thread_main(void *arg) {
 
             if (still_running) {
                 long timeout_ms = -1;
+                int numfds = 0;
+
                 curl_multi_timeout(s->multi, &timeout_ms);
                 if (timeout_ms < 0) timeout_ms = 100;
                 if (timeout_ms > 500) timeout_ms = 500;
-                fd_set fdread, fdwrite, fdexcep;
-                int fdmax = -1;
-                FD_ZERO(&fdread);
-                FD_ZERO(&fdwrite);
-                FD_ZERO(&fdexcep);
-                CURLMcode mc = curl_multi_fdset(s->multi, &fdread, &fdwrite, &fdexcep, &fdmax);
-                if (mc == CURLM_OK && fdmax >= 0) {
-                    struct timeval tv;
-                    tv.tv_sec = timeout_ms / 1000;
-                    tv.tv_usec = (timeout_ms % 1000) * 1000;
-                    select(fdmax + 1, &fdread, &fdwrite, &fdexcep, &tv);
-                } else if (mc == CURLM_OK) {
+                /* poll, not select: another thread can curl_multi_wakeup this wait. */
+                if (curl_multi_poll(s->multi, NULL, 0, (int)timeout_ms, &numfds) != CURLM_OK) {
                     struct timespec ts;
-                    ts.tv_sec = timeout_ms / 1000;
-                    ts.tv_nsec = (timeout_ms % 1000) * 1000000L;
+
+                    ts.tv_sec = 0;
+                    ts.tv_nsec = 10000000L;
                     nanosleep(&ts, NULL);
                 }
             }
@@ -822,11 +810,16 @@ static void *server_thread_main(void *arg) {
         it = next;
     }
     s->active_head = NULL;
-    pthread_mutex_unlock(&s->mu);
+    {
+        CURLM *multi = s->multi;
 
-    if (s->multi) {
-        curl_multi_cleanup(s->multi);
+        /* Retire the pointer under the same lock wakeup holds, then
+           destroy it. A wakeup after this sees NULL. */
         s->multi = NULL;
+        pthread_mutex_unlock(&s->mu);
+        if (multi) {
+            curl_multi_cleanup(multi);
+        }
     }
     s->running = 0;
     pav_log("http", PAV_DEBUG, 1, "server thread stopped: %s", s->key);
@@ -890,6 +883,28 @@ int pav_net_start(void) {
     return 0;
 }
 
+/* The owner thread never calls curl while holding s->mu. Wakeup stays
+   inside that lock so it cannot run after curl_multi_cleanup. */
+static void server_wakeup_locked(PavNetServer *s) {
+    if (s != NULL && s->multi != NULL) {
+        curl_multi_wakeup(s->multi);
+    }
+}
+
+void pav_net_wakeup(void) {
+    int i;
+
+    pthread_mutex_lock(&g_reg_mu);
+    for (i = 0; i < g_server_count; i++) {
+        PavNetServer *s = g_servers[i];
+
+        pthread_mutex_lock(&s->mu);
+        server_wakeup_locked(s);
+        pthread_mutex_unlock(&s->mu);
+    }
+    pthread_mutex_unlock(&g_reg_mu);
+}
+
 void pav_net_stop(void) {
     int i;
 
@@ -911,6 +926,7 @@ void pav_net_stop(void) {
         pthread_mutex_lock(&s->mu);
         s->stop = 1;
         pthread_cond_broadcast(&s->cv);
+        server_wakeup_locked(s);
         pthread_mutex_unlock(&s->mu);
     }
     pthread_mutex_unlock(&g_reg_mu);

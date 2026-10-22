@@ -31,7 +31,7 @@ function running(kind) {
   };
 }
 
-test("Update calls sync.now and stays still until a sync activity is running", async () => {
+test("Update calls sync.now and shows the pie before a sync activity is running", async () => {
   const transport = mockTransport();
   const el = document.createElement("div");
   document.body.append(el);
@@ -48,11 +48,13 @@ test("Update calls sync.now and stays still until a sync activity is running", a
   await Promise.resolve();
   expect(transport.seen.some((item) => item.cmd === "sync.now" && item.args.accountId === undefined)).toBe(true);
   expect(update.classList.contains("is-busy")).toBe(false);
+  expect(update.querySelector(".update-pie").hidden).toBe(false);
 
   transport.emit("activity.changed", { activity: running("sync.mail") });
   expect(update.classList.contains("is-busy")).toBe(true);
-  expect(update.getAttribute("aria-label")).toBe("1 syncing");
+  expect(update.getAttribute("aria-label")).toBe("1 syncing, 25%");
   expect(root.querySelector(".update-badge").hidden).toBe(true);
+  expect(update.querySelector(".update-pie").hidden).toBe(false);
   const account = root.querySelector(".activity-account-name");
   expect(account.textContent).toBe("Pavillion");
   expect(root.querySelector(".activity-account-num").textContent).toBe("000");
@@ -131,5 +133,31 @@ test("reduced motion shows the sync count and debug Help can run the demo", asyn
   expect(update.classList.contains("is-busy")).toBe(true);
   expect(root.querySelector(".update-badge").hidden).toBe(false);
   expect(root.querySelector(".update-badge").textContent).toBe("1");
-  expect(update.getAttribute("aria-label")).toBe("1 syncing");
+  expect(update.getAttribute("aria-label")).toBe("1 syncing, 25%");
+  expect(update.querySelector(".update-pie").hidden).toBe(false);
+});
+
+test("Update again cancels the running sync and hides the pie", async () => {
+  const transport = mockTransport();
+  const el = document.createElement("div");
+  document.body.append(el);
+  await mount(el, createApi(transport), { hostServices: { setRootFontSize() {} } });
+  const root = el.querySelector(".pav-root");
+  const update = root.querySelector("#update");
+  const pie = update.querySelector(".update-pie");
+
+  update.click();
+  await Promise.resolve();
+  expect(pie.hidden).toBe(false);
+  update.click();
+  expect(pie.hidden).toBe(true);
+  expect(transport.seen.some((item) => item.cmd === "activity.cancel")).toBe(false);
+
+  transport.emit("activity.changed", { activity: running("sync.mail") });
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(transport.seen.some((item) => item.cmd === "activity.cancel" && item.args.id === "act-9")).toBe(true);
+  expect(pie.hidden).toBe(true);
+  expect(root.querySelector("#banner").hidden).toBe(true);
+  expect(update.getAttribute("aria-label")).toBe("1 syncing, 25%");
 });

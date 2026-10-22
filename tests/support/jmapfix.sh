@@ -25,6 +25,11 @@
 #   ?slow=1              -> delay the response by 2 seconds
 #   ?proxy=cut           -> set the cut and close without responding
 #   ?proxy=restore       -> clear the cut, then serve the request
+#   ?emails=N            -> on GET /jmap/session, a1's Inbox then has N generated
+#                           messages (0 clears them). Capped at 5000.
+#   ?emailHold=1|0       -> on POST /jmap/proxy, hold or release Email/query
+#                           pages whose position is past 0. A held page waits
+#                           up to 15 seconds.
 #
 # A method call whose arguments carry "__error": "cannotCalculateChanges" or
 # "stateMismatch" answers that error for that call only.
@@ -402,7 +407,7 @@ EOF
 }
 
 serve_api() {
-  local tmp out qerr domain d statef rec mbxcap
+  local tmp out qerr domain d statef rec mbxcap emailn
   tmp=$(mktemp "$run/api.XXXXXX")
   read_body "$tmp"
   qerr=$(qget error || true)
@@ -411,6 +416,20 @@ serve_api() {
   d=test-a.local
   case " $DOMAINS " in *" $domain "*) d=$domain ;; esac
   statef="$run/mailstate.json"
+  # A backfill page waits here, before the state lock, so another connection
+  # can clear the hold. The first page (position 0) does not wait. No sleep
+  # unless the hold file exists.
+  # Keep the select on the call. Mapping to a boolean leaves a false
+  # element, and `length > 0` would then wait on a position-0 page too.
+  if [ -f "$run/email-hold" ] && jq -e '
+      [.methodCalls[]? | select(.[0] == "Email/query" and ((.[1].position // 0) > 0))] | length > 0
+    ' "$tmp" >/dev/null 2>&1; then
+    _i=0
+    while [ -f "$run/email-hold" ] && [ "$_i" -lt 150 ]; do
+      sleep 0.1
+      _i=$((_i + 1))
+    done
+  fi
   if ! lock_mailstate; then
     rm -f "$tmp"
     send_json 503 '{"error": {"code": "serverFail", "description": "state lock"}}'
@@ -430,7 +449,14 @@ serve_api() {
       ''|*[!0-9]*) mbxcap=500 ;;
     esac
   fi
-  out=$(jq -c -s --arg qerr "$qerr" --arg domain "$d" --argjson mbxcap "$mbxcap" --slurpfile st "$statef" --slurpfile recorded "$rec" "$JQ_LIB"'
+  emailn=0
+  if [ -f "$run/email-count" ]; then
+    read -r emailn < "$run/email-count" || emailn=0
+    case "$emailn" in
+      ''|*[!0-9]*) emailn=0 ;;
+    esac
+  fi
+  out=$(jq -c -s --arg qerr "$qerr" --arg domain "$d" --argjson mbxcap "$mbxcap" --argjson emailn "$emailn" --slurpfile st "$statef" --slurpfile recorded "$rec" "$JQ_LIB"'
     def errbody($c):
       if $c == "cannotCalculateChanges" then {code: "cannotCalculateChanges", description: "server cannot calculate changes"}
       else {code: "stateMismatch", description: "state has changed"} end;
@@ -438,7 +464,7 @@ serve_api() {
     def pystr: if type == "string" then . elif . == null then "None"
       elif . == true then "True" elif . == false then "False" else tojson end;
     def note($state; $name):
-      $state | .trace = (((.trace // []) + [$name])[-40:]);
+      $state | .trace = (((.trace // []) + [$name])[-120:]);
     def changes_since($revs; $since):
       ($revs | to_entries | map(select(.value.state == $since)) | .[0].key) as $idx
       | if $idx == null then null
@@ -486,6 +512,38 @@ serve_api() {
         [$m, {accountId: acct_of($a), created: {}, updated: {}, destroyed: {}, notFound: {}, state: "state-1"}]
       elif $m == "Capability/get" then [$m, {}]
       else ["error", {code: "unknownMethod", description: ("unknown method " + ($m | pystr))}]
+      end;
+    def eindex($id):
+      if ($id | type) != "string" or ($id | test("^e[0-9]+$") | not) then null
+      else ($id[1:] | tonumber) end;
+    def eobj($i):
+      {
+        id: ("e" + ($i | tostring)),
+        threadId: ("t" + ($i | tostring)),
+        mailboxIds: {in: true},
+        keywords: (if ($i % 5) == 0 then {"$seen": true, "$flagged": true} else {"$seen": true} end),
+        size: (1000 + $i),
+        receivedAt: ((1700000000 + $i) | todate),
+        sentAt: ((1700000000 + $i - 30) | todate),
+        messageId: [("<e" + ($i | tostring) + "@test-a.local>")],
+        inReplyTo: null,
+        references: null,
+        subject: ("Hello " + ($i | tostring)),
+        from: [{name: "Ann", email: "ann@example.com"}],
+        to: [{name: "Andrew", email: "andrew@test-a.local"}],
+        cc: [{name: "Bea", email: "bea@example.com"}],
+        bcc: [],
+        replyTo: [{name: "Ann", email: "ann@example.com"}],
+        preview: ("preview " + ($i | tostring)),
+        hasAttachment: (if ($i % 7) == 0 then true else false end),
+        blobId: ("b" + ($i | tostring))
+      };
+    def qids($n; $pos; $lim; $desc):
+      if $n <= 0 or $lim <= 0 then []
+      else
+        [range(0; $lim) |
+          (if $desc then ($n - 1 - $pos - .) else ($pos + .) end) as $i |
+          select($i >= 0 and $i < $n) | ("e" + ($i | tostring))]
       end;
     def one($state; $m; $a):
       acct_of($a) as $aid
@@ -548,6 +606,37 @@ serve_api() {
                      created:{}, updated:(reduce $done.updated[] as $id ({}; .[$id] = null)),
                      destroyed:($done.destroyed // []), notFound:$done.notFound}]]
           end
+        elif $m == "Email/query" or $m == "Email/get" or $m == "Thread/get" then
+          (if $aid == "a1" and $emailn > 0 then $emailn else 0 end) as $n
+          | if $m == "Email/query" then
+              (($a.position // 0) | if . < 0 then 0 else . end) as $pos
+              | (($a.limit // 500) | if . < 1 then 1 else . end) as $ask
+              | (if $ask > $mbxcap then $mbxcap else $ask end) as $lim
+              | ((($a.sort // []) | if type == "array" and length > 0 then .[0] else {} end)) as $sort
+              | ($sort.property == "receivedAt" and $sort.isAscending == false) as $desc
+              | (if $n > 0 and (($a.filter.inMailbox // "") == "in") then $n else 0 end) as $total
+              | (qids($total; $pos; $lim; $desc)) as $ids
+              | [note($state; ("Email/query:" + ($pos | tostring) + ":" + ($ask | tostring))),
+                 [$m, {accountId:$aid, queryState:"em-1", canCalculateChanges:false,
+                       position:$pos, ids:$ids, total:$total}]]
+            elif $m == "Email/get" then
+              (if ($a.ids | type) == "array" then $a.ids else [] end) as $ids
+              | (reduce $ids[] as $id ({list:[], notFound:[]};
+                  (eindex($id)) as $i
+                  | if $i == null or $n <= 0 or $i < 0 or $i >= $n then .notFound += [$id]
+                    else .list += [eobj($i)] end)) as $p
+              | [note($state; "Email/get"),
+                 [$m, {accountId:$aid, state:"em-1", list:$p.list, notFound:$p.notFound}]]
+            else
+              (if ($a.ids | type) == "array" then $a.ids else [] end) as $ids
+              | (reduce $ids[] as $id ({list:[], notFound:[]};
+                  if ($id | type) == "string" and ($id | test("^t[0-9]+$")) and $n > 0
+                     and (($id[1:] | tonumber) < $n) then
+                    .list += [{id:$id, emailIds:[("e" + $id[1:])]}]
+                  else .notFound += [$id] end)) as $p
+              | [note($state; "Thread/get"),
+                 [$m, {accountId:$aid, state:"th-1", list:$p.list, notFound:$p.notFound}]]
+            end
         else
           [$state, canned($m; $a)]
         end;
@@ -556,6 +645,20 @@ serve_api() {
         to_entries | sort_by(.key) | map({key: .key, value: (.value | canon)}) | from_entries
       elif type == "array" then map(canon)
       else . end;
+    def pointer($obj; $path):
+      if $obj == null or ($path | type) != "string" then null
+      else reduce ($path | split("/") | map(select(length > 0)))[] as $p
+        ($obj; if . == null then null else .[$p] end)
+      end;
+    def deref($args; $done):
+      if ($args | type) != "object" then {}
+      else reduce ($args | keys_unsorted[]) as $k ({};
+        if ($k | startswith("#")) and (($args[$k] | type) == "object") then
+          ($done[$args[$k].resultOf] // null) as $prev
+          | .[$k[1:]] = (if $prev == null or ($prev.name != $args[$k].name) then null
+                        else pointer($prev.args; $args[$k].path) end)
+        else .[$k] = $args[$k] end)
+      end;
     def recorded_for($m; $a):
       first(($recorded[0] // [])[]
         | select((.method // "") == $m)
@@ -567,7 +670,7 @@ serve_api() {
       | if ($req | type) != "object" then {fail:"DROP"}
         elif ($req | has("methodCalls")) and ($req.methodCalls | type) != "array" then {fail:"DROP"}
         else
-          reduce ($req.methodCalls // [])[] as $call ({st:$st[0], res:[]};
+          reduce ($req.methodCalls // [])[] as $call ({st:$st[0], res:[], done:{}};
             if ($call | type) != "array" or ($call | length) < 3 then
               .res += [["error", {code:"invalidRequest"}, null]]
             elif (($call[0] == "Identity/get") or ($call[0] == "Identity/changes"))
@@ -579,14 +682,17 @@ serve_api() {
                  and ($call[1].__error == "cannotCalculateChanges" or $call[1].__error == "stateMismatch") then
               .res += [["error", {error: errbody($call[1].__error)}, $call[2]]]
             else
-              (if ($call[1] | type) == "object" then $call[1] else {} end) as $args
-              | (recorded_for($call[0]; $args)) as $hit
+              (if ($call[1] | type) == "object" then $call[1] else {} end) as $raw
+              | (deref($raw; .done)) as $args
+              | (recorded_for($call[0]; $raw)) as $hit
               | if $hit != null then
                   .res += [[$call[0], $hit, $call[2]]]
+                  | .done[$call[2]] = {name: $call[0], args: $hit}
                 else
                   one(.st; $call[0]; $args) as $got
                   | .st = $got[0]
                   | .res += [$got[1] + [$call[2]]]
+                  | .done[$call[2]] = {name: $got[1][0], args: $got[1][1]}
                 end
             end)
           | {state:.st, body:{methodResponses:.res, sessionState:"state-1"}}
@@ -677,6 +783,15 @@ do_get() {
       fi
       if [ "$cap" -lt 1 ] || [ "$cap" -gt 500 ]; then cap=500; fi
       printf '%s\n' "$cap" > "$run/mbx-cap"
+      ecn=0
+      if qn=$(qget emails || true); then
+        case "$qn" in
+          ''|*[!0-9]*) ecn=0 ;;
+          *) ecn=$qn ;;
+        esac
+      fi
+      if [ "$ecn" -gt 5000 ]; then ecn=5000; fi
+      printf '%s\n' "$ecn" > "$run/email-count"
       # The file names apiUrl after the fixture domain. That name does not
       # resolve. Serve the host the client actually connected to, port included.
       # maxObjectsInGet lives on the core capability. A query argument can
@@ -709,6 +824,10 @@ do_post() {
       elif [ "$(qget restore || true)" = "1" ]; then
         rm -f "$run/proxy-cut"
       fi
+      case "$(qget emailHold || true)" in
+        1) : > "$run/email-hold" ;;
+        0) rm -f "$run/email-hold" ;;
+      esac
       send_json 200 '{"ok": true}'
       ;;
     /jmap/upload) serve_upload ;;

@@ -8,6 +8,7 @@ import {
   preferActivity,
   progressText,
   syncingCount,
+  syncSnapshot,
 } from "./format.js";
 
 const STAMP = Date.parse("2026-10-14T17:04:01.123Z");
@@ -66,4 +67,16 @@ test("a late event does not rewind progress or a finished row", () => {
     { state: "queued", kind: "sync.contacts" },
     { state: "running", kind: "body.fetch" },
   ])).toBe(1);
+});
+
+test("a sync snapshot sums running sync progress and ignores other work", () => {
+  expect(syncSnapshot([
+    { id: "a", state: "running", kind: "sync.mail", progress: { done: 1, total: 4 } },
+    { id: "b", state: "running", kind: "sync.contacts", progress: { done: 1, total: 4 } },
+    { id: "c", state: "queued", kind: "sync.files", progress: { done: 0, total: 4 } },
+    { id: "d", state: "running", kind: "body.fetch", progress: { done: 3, total: 3 } },
+  ])).toEqual({ count: 2, ids: ["a", "b"], turn: 25 });
+  expect(syncSnapshot([
+    { id: "a", state: "running", kind: "sync.mail", progress: { done: 2, total: -1 } },
+  ])).toEqual({ count: 1, ids: ["a"], turn: null });
 });

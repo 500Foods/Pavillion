@@ -61,8 +61,14 @@
   background: var(--pav-tree-bg-hover);
 }
 
-.pav-root .tree button[aria-busy="true"] .tree-row-status .icon {
-  animation: pav-tree-spin 0.8s linear infinite;
+.pav-root .tree-sync-pie {
+  display: block;
+  box-sizing: border-box;
+  width: var(--pav-tree-icon-size);
+  height: var(--pav-tree-icon-size);
+  border: 1px solid var(--pav-text-muted);
+  border-radius: 50%;
+  background: conic-gradient(var(--pav-status-running) var(--pav-sync-turn, 0%), var(--pav-border) 0);
 }
 
 .pav-root .tree button[aria-disabled="true"] {
@@ -291,17 +297,7 @@
   pointer-events: none;
 }
 
-@keyframes pav-tree-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .pav-root .tree button[aria-busy="true"] .tree-row-status .icon {
-    animation: none;
-  }
-
   .pav-root .tree-row-badge-total,
   .pav-root .tree-row-badge-size {
     transition: none;

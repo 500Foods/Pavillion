@@ -8,7 +8,7 @@ import {
   preferActivity,
   progressText,
   stateLabel,
-  syncingCount,
+  syncSnapshot,
 } from "./format.js";
 
 function text(el, value) {
@@ -317,7 +317,7 @@ export function createActivityView(pane, api, options) {
     if (stopped || typeof opts.onSync !== "function") {
       return;
     }
-    opts.onSync(syncingCount(records.values()));
+    opts.onSync(syncSnapshot(records.values()));
   }
 
   function filterVisible(activity) {

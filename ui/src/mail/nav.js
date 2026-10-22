@@ -7,7 +7,7 @@ import { createTreeController } from "../tree/tree.js";
 const ACCOUNT_ICON = "fa-sharp-duotone fa-solid fa-user";
 const FOLDER_ICON = "fa-sharp-duotone fa-solid fa-folder";
 const ERROR_ICON = "fa-sharp-duotone fa-solid fa-circle-exclamation";
-const SYNC_ICON = "fa-solid fa-spinner";
+const TIP_PERIOD_MS = 1000;
 
 const ROLE_ICONS = {
   inbox: "fa-sharp-duotone fa-solid fa-inbox",
@@ -22,7 +22,7 @@ const DEFAULT_REGIONS = ["leading", "label", "status", "count", "hover"];
 
 export function mapSyncState(state) {
   if (state === "syncing") {
-    return { state: "syncing", stateIcon: SYNC_ICON };
+    return { state: "syncing", stateIcon: "" };
   }
   if (
     state === "error" ||
@@ -71,6 +71,7 @@ export function createMailNav(api, container, options = {}) {
 
   let numbers = new Map();
   let syncByAccount = new Map();
+  let progressByAccount = new Map();
   let stopped = false;
   /* The shell defers until the Mail nav is visible. A Contacts-only restore
      must not build this tree during the first paint: the icon kit then
@@ -135,9 +136,15 @@ export function createMailNav(api, container, options = {}) {
         if (typeof prev.stateIcon === "string") {
           next.stateIcon = prev.stateIcon;
         }
+        if (prev.state === "syncing") {
+          next.syncTurn = prev.syncTurn;
+          next.syncTip = prev.syncTip;
+        }
       } else if (pending) {
         next.state = pending.state;
         next.stateIcon = pending.stateIcon;
+        next.syncTurn = pending.syncTurn;
+        next.syncTip = pending.syncTip;
       }
     } else if (next.kind === "mailbox") {
       next.icon = ROLE_ICONS[next.role] || FOLDER_ICON;
@@ -154,7 +161,9 @@ export function createMailNav(api, container, options = {}) {
       old.icon !== node.icon ||
       old.swatch !== node.swatch ||
       old.state !== node.state ||
-      old.stateIcon !== node.stateIcon
+      old.stateIcon !== node.stateIcon ||
+      old.syncTurn !== node.syncTurn ||
+      old.syncTip !== node.syncTip
     );
   }
 
@@ -265,22 +274,126 @@ export function createMailNav(api, container, options = {}) {
     reload(accountId);
   }
 
+  function fractionTurn(progress) {
+    if (!progress || !Number.isFinite(progress.done)) {
+      return null;
+    }
+    if (!Number.isFinite(progress.total) || progress.total <= 0) {
+      return null;
+    }
+    const raw = (progress.done / progress.total) * 100;
+    if (!Number.isFinite(raw)) {
+      return null;
+    }
+    return Math.max(0, Math.min(100, raw));
+  }
+
+  function tipFor(turn) {
+    if (turn === null) {
+      return "Syncing";
+    }
+    return `${Math.round(turn)}%`;
+  }
+
+  function remember(accountId) {
+    const current = syncByAccount.get(accountId);
+    if (!current || current.state !== "syncing") {
+      return;
+    }
+    const progress = progressByAccount.get(accountId);
+    syncByAccount.set(accountId, {
+      state: "syncing",
+      stateIcon: "",
+      syncTurn: progress ? progress.turn : null,
+      syncTip: progress ? progress.shown : "Syncing",
+    });
+  }
+
+  function noteProgress(accountId, progress) {
+    const turn = fractionTurn(progress);
+    const tip = tipFor(turn);
+    const now = Date.now();
+    const prev = progressByAccount.get(accountId);
+    const shown = prev ? prev.shown : "";
+    const tipAt = prev ? prev.tipAt : 0;
+    const percent = turn === null ? null : Math.round(turn);
+    const becameKnown = shown === "Syncing" && tip !== "Syncing";
+    const due =
+      tip !== shown &&
+      (tipAt === 0 || becameKnown || percent === 100 || now - tipAt >= TIP_PERIOD_MS);
+    progressByAccount.set(accountId, {
+      turn,
+      shown: due ? tip : shown || tip,
+      tipAt: due ? now : tipAt,
+    });
+    remember(accountId);
+  }
+
+  function paintProgress(accountId) {
+    if (!tree.getNode(accountId) || tree.getNode(accountId).state !== "syncing") {
+      return;
+    }
+    const progress = progressByAccount.get(accountId);
+    if (!progress) {
+      return;
+    }
+    tree.patchNode(accountId, {
+      id: accountId,
+      state: "syncing",
+      stateIcon: "",
+      syncTurn: progress.turn,
+      syncTip: progress.shown,
+    });
+  }
+
   function onSync(payload) {
     const accountId = payload && typeof payload.accountId === "string" ? payload.accountId : "";
     if (!accountId) {
       return;
     }
     const state = payload && typeof payload.state === "string" ? payload.state : "idle";
+    const prev = syncByAccount.get(accountId);
+    if (state === "syncing") {
+      if (!prev || prev.state !== "syncing") {
+        progressByAccount.delete(accountId);
+      }
+    } else {
+      progressByAccount.delete(accountId);
+    }
     const mapped = mapSyncState(state);
-    syncByAccount.set(accountId, mapped);
+    syncByAccount.set(accountId, {
+      state: mapped.state,
+      stateIcon: mapped.stateIcon,
+      syncTurn: null,
+      syncTip: state === "syncing" ? "Syncing" : "",
+    });
+    remember(accountId);
+    const view = syncByAccount.get(accountId);
     if (!tree.getNode(accountId)) {
       return;
     }
-    tree.patchNode(accountId, { id: accountId, state: mapped.state, stateIcon: mapped.stateIcon });
+    tree.patchNode(accountId, { id: accountId, ...view });
+  }
+
+  function onActivity(payload) {
+    const activity = payload && payload.activity;
+    if (!activity || typeof activity.accountId !== "string" || activity.accountId === "") {
+      return;
+    }
+    if (typeof activity.kind !== "string" || !activity.kind.startsWith("sync.")) {
+      return;
+    }
+    const state = activity.state;
+    if (state !== "running" && state !== "queued" && state !== "done" && state !== "failed" && state !== "cancelled") {
+      return;
+    }
+    noteProgress(activity.accountId, activity.progress);
+    paintProgress(activity.accountId);
   }
 
   stops.push(api.on("mail.mailboxes_changed", onMailboxes));
   stops.push(api.on("sync.state", onSync));
+  stops.push(api.on("activity.changed", onActivity));
   stops.push(api.on("accounts.changed", () => {
     if (!armed) {
       return;

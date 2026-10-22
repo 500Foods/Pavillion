@@ -241,6 +241,19 @@ export function createTooltip(root) {
     };
   }
 
+  const tipWatch = new MutationObserver(() => {
+    if (!anchor || tip.hidden) {
+      return;
+    }
+    const text = tipText(hosts, anchor);
+    if (typeof text !== "string" || text === "" || tip.textContent === text) {
+      return;
+    }
+    tip.textContent = text;
+    place(tip, anchor);
+  });
+  tipWatch.observe(root, { subtree: true, attributes: true, attributeFilter: ["data-pav-tip"] });
+
   root.addEventListener("pointerover", onOver);
   root.addEventListener("pointerout", onOut);
   root.addEventListener("focusin", onFocusIn);
@@ -253,6 +266,7 @@ export function createTooltip(root) {
     hide,
     destroy() {
       hide();
+      tipWatch.disconnect();
       hosts.clear();
       tip.remove();
       root.removeEventListener("pointerover", onOver);

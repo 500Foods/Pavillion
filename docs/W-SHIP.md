@@ -108,7 +108,7 @@ Revert green: [run 38962706169](https://github.com/500Foods/Pavillion/actions/ru
 - [x] `tests/stalwart/compose.yaml`, `config.json`, `VERSION`, and `seed.sh` (pins `stalwartlabs/stalwart:v0.16.26`). `seed.sh` provisions the two domains and five accounts through the admin API (Lock) and checks `andrew@test-a.local`'s Session.
 - [x] `make it-up`, `make it-seed`, `make it-down`, `make test-it`.
 - [x] Record the first real Session and responses from the container into `tests/support/fixtures/` with `tests/support/record.sh`, scrubbed of secrets. Landed in M-3c (2026-10-21).
-- [~] Seed the `tests/corpus/` messages into the container. Deferred to M-4 ([M-SYNC.md](M-SYNC.md)). Mailboxes landed in M-3c: `seed.sh` creates a missing role and a mailbox named Later.
+- [x] Seed the `tests/corpus/` messages into the container. Landed in M-4 (2026-10-22): `seed.sh` imports each message into Inbox when its subject is absent, and a second seed imports nothing. Mailboxes landed in M-3c: `seed.sh` creates a missing role and a mailbox named Later.
 - [x] A smoke Unity test `test_fixture_server_session`; integration smoke `it_session_lists_mail_capability` is skipped until M-2 (`account.test`) exists.
 
 **Done means:** `make test` runs against the fixture server, and `make it-up && make it-seed && PAVILLION_IT=1 make test-it` passes against Stalwart.

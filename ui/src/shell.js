@@ -10,6 +10,7 @@ import { createTabs, KIND_ICONS } from "./shell/tabs.js";
 import { createFeatureEditor } from "./shell/features.js";
 import { createRailDrag } from "./shell/rail-drag.js";
 import { createActivityView } from "./activity/view.js";
+import { createUpdatePie } from "./activity/update-pie.js";
 import { createAccountsView } from "./settings/accounts.js";
 import { createLogSettings } from "./settings/log.js";
 import { createLimitsSettings } from "./settings/limits.js";
@@ -1056,9 +1057,7 @@ function applyChords() {
           return;
         }
         if (key === "update") {
-          if (api) {
-            api.sync.now({}).catch((err) => showBanner(messageOf(err)));
-          }
+          toggleUpdate();
           return;
         }
         showNav(key);
@@ -1205,6 +1204,11 @@ let logTimeZone = "America/Vancouver";
 let mailTree = null;
 let mailNav = null;
 let syncing = 0;
+let syncTurn = null;
+let syncIds = [];
+let stopRequested = false;
+let updatePie = null;
+const cancelSent = new Set();
 let motionQuery = null;
 let onMotion = null;
 
@@ -2069,6 +2073,63 @@ function reducedMotion() {
   return Boolean(motionQuery && motionQuery.matches);
 }
 
+function syncPayload(payload) {
+  if (typeof payload === "number") {
+    return { count: payload > 0 ? payload : 0, ids: [], turn: null };
+  }
+  const count = payload && Number.isFinite(payload.count) && payload.count > 0 ? payload.count : 0;
+  const ids = payload && Array.isArray(payload.ids)
+    ? payload.ids.filter((id) => typeof id === "string" && id !== "")
+    : [];
+  const turn = payload && Number.isFinite(payload.turn) ? payload.turn : null;
+  return { count, ids, turn };
+}
+
+function cancelRunningSync() {
+  if (!api) {
+    return;
+  }
+  for (const id of syncIds) {
+    if (cancelSent.has(id)) {
+      continue;
+    }
+    cancelSent.add(id);
+    api.activity.cancel(id).catch((err) => {
+      if (err && err.code === "not_found") {
+        return;
+      }
+      showBanner(messageOf(err));
+    });
+  }
+}
+
+function toggleUpdate() {
+  if (!api || !mountRoot) {
+    return;
+  }
+  const pieOn = updatePie && updatePie.shown();
+  if (syncing > 0 || pieOn) {
+    stopRequested = true;
+    if (updatePie) {
+      updatePie.hide();
+    }
+    cancelRunningSync();
+    paintUpdate();
+    return;
+  }
+  stopRequested = false;
+  cancelSent.clear();
+  if (updatePie) {
+    updatePie.start();
+  }
+  api.sync.now({}).catch((err) => {
+    if (!stopRequested && updatePie) {
+      updatePie.hide();
+    }
+    showBanner(messageOf(err));
+  });
+}
+
 function paintUpdate() {
   if (!mountRoot) {
     return;
@@ -2078,10 +2139,15 @@ function paintUpdate() {
     return;
   }
   const n = syncing > 0 ? syncing : 0;
-  const label = n === 0 ? "Update" : `${n} syncing`;
+  const pieOn = updatePie && updatePie.shown();
+  const pct = n > 0 && Number.isFinite(syncTurn) ? `${Math.round(syncTurn)}%` : "";
+  const label = n === 0 ? "Update" : (pct ? `${n} syncing, ${pct}` : `${n} syncing`);
   button.setAttribute("aria-label", label);
   if (widgets) {
-    widgets.tooltips.bind(button, label);
+    const tip = pieOn || n > 0
+      ? (n > 0 ? `${label}. Click again to stop.` : "Click again to stop.")
+      : label;
+    widgets.tooltips.bind(button, tip);
   }
   const badge = button.querySelector(".update-badge");
   if (n > 0) {
@@ -2099,8 +2165,10 @@ function paintUpdate() {
 
 function bindUpdate() {
   const button = mountRoot.querySelector("#update");
+  const pie = button.querySelector(".update-pie");
+  updatePie = pie ? createUpdatePie(pie, { reducedMotion, onChange: paintUpdate }) : null;
   button.addEventListener("click", () => {
-    api.sync.now({}).catch((err) => showBanner(messageOf(err)));
+    toggleUpdate();
   });
   const view = mountRoot.ownerDocument.defaultView;
   if (view && typeof view.matchMedia === "function") {
@@ -2234,6 +2302,14 @@ export function stopShell() {
   motionQuery = null;
   onMotion = null;
   syncing = 0;
+  syncTurn = null;
+  syncIds = [];
+  stopRequested = false;
+  cancelSent.clear();
+  if (updatePie) {
+    updatePie.destroy();
+    updatePie = null;
+  }
   if (mountRoot && onZoomWheel) {
     mountRoot.removeEventListener("wheel", onZoomWheel, true);
   }
@@ -2402,8 +2478,26 @@ export async function startShell(surface, nextApi, nextHost, result) {
       ui.activity.history = value === true;
       persistLayout();
     },
-    onSync(count) {
-      syncing = count;
+    onSync(payload) {
+      const snap = syncPayload(payload);
+      const prev = syncing;
+      syncing = snap.count;
+      syncTurn = snap.turn;
+      syncIds = snap.ids;
+      if (snap.count === 0) {
+        if (prev > 0 && !stopRequested && updatePie) {
+          updatePie.finish();
+        }
+        stopRequested = false;
+        cancelSent.clear();
+      } else if (stopRequested) {
+        if (updatePie) {
+          updatePie.hide();
+        }
+        cancelRunningSync();
+      } else if (updatePie) {
+        updatePie.follow(snap.turn);
+      }
       paintUpdate();
     },
     onError(text) {

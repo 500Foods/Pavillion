@@ -22,7 +22,6 @@ const ICON_MAP = {
 };
 
 const STATE_ICONS = {
-  syncing: "fa-solid fa-spinner",
   error: "fa-sharp-duotone fa-solid fa-circle-exclamation",
 };
 
@@ -109,7 +108,50 @@ function isErrorState(state) {
   );
 }
 
+function syncTurnOf(node) {
+  const turn = node.syncTurn;
+  if (!Number.isFinite(turn)) {
+    return null;
+  }
+  return Math.max(0, Math.min(100, turn));
+}
+
+function turnCss(turn) {
+  if (turn === null || turn <= 0) {
+    return "0%";
+  }
+  const rounded = Math.round(Math.min(100, turn) * 10) / 10;
+  return `${rounded}%`;
+}
+
+function syncTipOf(node) {
+  if (typeof node.syncTip === "string" && node.syncTip !== "") {
+    return node.syncTip;
+  }
+  const turn = syncTurnOf(node);
+  if (turn === null) {
+    return "Syncing";
+  }
+  return `${Math.round(turn)}%`;
+}
+
+function applySyncPie(pie, node) {
+  pie.style.setProperty("--pav-sync-turn", turnCss(syncTurnOf(node)));
+  pie.setAttribute("data-pav-tip", syncTipOf(node));
+}
+
+function buildSyncPie(node) {
+  const pie = document.createElement("span");
+  pie.className = "tree-sync-pie";
+  pie.setAttribute("aria-hidden", "true");
+  applySyncPie(pie, node);
+  return pie;
+}
+
 function buildStatusIcon(node) {
+  if (node.state === "syncing") {
+    return buildSyncPie(node);
+  }
   const state = node.state || "idle";
   const iconClass = node.stateIcon || STATE_ICONS[state];
   if (!iconClass) {
@@ -252,8 +294,20 @@ function placeRegion(row, kind, region) {
 }
 
 function syncStatus(row, node) {
-  const icon = buildStatusIcon(node);
   const region = row.querySelector("[data-region='status']");
+  if (node.state === "syncing") {
+    const existing = region && region.querySelector(".tree-sync-pie");
+    if (existing) {
+      applySyncPie(existing, node);
+    } else if (!region) {
+      placeRegion(row, "status", regionEl("status", node, buildSyncPie(node)));
+    } else {
+      region.replaceChildren(buildSyncPie(node));
+    }
+    row.setAttribute("aria-busy", "true");
+    return;
+  }
+  const icon = buildStatusIcon(node);
   if (!icon) {
     if (region) {
       region.remove();
@@ -263,11 +317,7 @@ function syncStatus(row, node) {
   } else {
     region.replaceChildren(icon);
   }
-  if (node.state === "syncing") {
-    row.setAttribute("aria-busy", "true");
-  } else {
-    row.removeAttribute("aria-busy");
-  }
+  row.removeAttribute("aria-busy");
 }
 
 /* Patch a single rendered row to update badges/metadata without a full

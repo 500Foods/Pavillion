@@ -7,7 +7,8 @@
 # changed, since 443 picks up a new certificate on restart; create missing
 # accounts; check andrew's Session with --cacert; as each user, Mailbox/get
 # then Mailbox/set for any missing role (inbox, drafts, sent, junk, trash,
-# archive) and for a mailbox named Later under Inbox.
+# archive) and for a mailbox named Later under Inbox. Then import each
+# tests/corpus message into that user's Inbox when its subject is absent.
 #
 # Environment (defaults): PAV_STALWART_ADMIN_PW (required; the Makefile sets
 # it), PAV_STALWART_PASS (pavtest-pw, used for all five accounts; Stalwart
@@ -36,7 +37,8 @@ done
 [ "${#pass}" -ge 8 ] || { echo "seed: PAV_STALWART_PASS must be at least 8 characters" >&2; exit 1; }
 
 body=$(mktemp)
-trap 'rm -f "$body"' EXIT
+corpus_tmp=""
+trap 'rm -f "$body"; [ -n "$corpus_tmp" ] && rm -f "$corpus_tmp"' EXIT
 
 # Until the seeded certificate is served, 443 has Stalwart's self-signed one,
 # so the admin calls skip verification only in that case.
@@ -222,6 +224,84 @@ ensure_mailboxes() {
   echo "seed: $user created mailbox Later"
 }
 
+# import_one USER AID INBOX SUBJECT SRC
+# SRC empty builds a text/html message from tests/corpus/hostile.html.
+# A subject already in the account is left alone.
+import_one() {
+  local user=$1 aid=$2 inbox=$3 subj=$4 src=$5
+  local got kind n upload sess blob blob_id created bad
+  got=$(user_jmap "$user" "$(jq -nc --arg id "$aid" --arg s "$subj" \
+    '[["Email/query", {accountId:$id, filter:{subject:$s}, limit:1}, "q"]]')")
+  kind=$(method_name "$got")
+  [ "$kind" = "Email/query" ] || { echo "seed: $user Email/query failed ($(method_error "$got"))" >&2; return 1; }
+  n=$(jq -r '.methodResponses[0][1].ids // [] | length' <<<"$got")
+  if [ "$n" != "0" ]; then
+    echo "seed: $user already has $subj"
+    return 0
+  fi
+  corpus_tmp=$(mktemp)
+  if [ -n "$src" ]; then
+    cp "$src" "$corpus_tmp"
+  else
+    [ -f "$here/../corpus/hostile.html" ] || { echo "seed: tests/corpus/hostile.html is missing" >&2; return 1; }
+    {
+      printf 'From: Pavillion Corpus <corpus@pavillion.test>\r\n'
+      printf 'To: %s\r\n' "$user"
+      printf 'Subject: %s\r\n' "$subj"
+      printf 'Message-ID: <corpus-hostile.html@pavillion.test>\r\n'
+      printf 'Date: Tue, 14 Nov 2023 22:13:20 +0000\r\n'
+      printf 'MIME-Version: 1.0\r\n'
+      printf 'Content-Type: text/html; charset=utf-8\r\n'
+      printf 'Content-Transfer-Encoding: 8bit\r\n'
+      printf '\r\n'
+      cat "$here/../corpus/hostile.html"
+    } > "$corpus_tmp"
+  fi
+  sess=$(user_session "$user")
+  upload=$(jq -r --arg id "$aid" '.uploadUrl // empty | split("{accountId}") | join($id)' <<<"$sess")
+  if [ -z "$upload" ]; then
+    echo "seed: $user has no uploadUrl" >&2
+    rm -f "$corpus_tmp"
+    corpus_tmp=""
+    return 1
+  fi
+  blob=$(printf 'user = "%s:%s"\n' "$user" "$pass" | curl -sS --fail-with-body --max-time 30 --cacert "$ca" --config - \
+    -H 'Content-Type: message/rfc822' --data-binary "@$corpus_tmp" "$upload")
+  rm -f "$corpus_tmp"
+  corpus_tmp=""
+  blob_id=$(jq -r '.blobId // empty' <<<"$blob")
+  [ -n "$blob_id" ] || { echo "seed: $user upload failed" >&2; return 1; }
+  created=$(user_jmap "$user" "$(jq -nc --arg id "$aid" --arg b "$blob_id" --arg box "$inbox" \
+    '[["Email/import", {accountId:$id, emails:{c1:{blobId:$b, mailboxIds:{($box):true}, keywords:{"$seen":true}, receivedAt:"2023-11-14T22:13:20Z"}}}, "i"]]')")
+  kind=$(method_name "$created")
+  [ "$kind" = "Email/import" ] || { echo "seed: $user Email/import failed ($(method_error "$created"))" >&2; return 1; }
+  bad=$(jq -r '.methodResponses[0][1].notCreated // {} | keys | length' <<<"$created")
+  [ "$bad" = "0" ] || { echo "seed: $user Email/import rejected $subj" >&2; return 1; }
+  echo "seed: $user imported $subj"
+}
+
+# import_corpus USER: Inbox gets each tests/corpus message that is not there yet.
+import_corpus() {
+  local user=$1
+  local sess aid inbox got kind eml subj
+  sess=$(user_session "$user")
+  aid=$(jq -r '.primaryAccounts["urn:ietf:params:jmap:mail"] // empty' <<<"$sess")
+  [ -n "$aid" ] || { echo "seed: $user has no mail account" >&2; return 1; }
+  got=$(user_jmap "$user" "$(jq -nc --arg id "$aid" '[["Mailbox/get", {accountId:$id}, "m"]]')")
+  kind=$(method_name "$got")
+  [ "$kind" = "Mailbox/get" ] || { echo "seed: $user Mailbox/get failed ($(method_error "$got"))" >&2; return 1; }
+  inbox=$(jq -r '[.methodResponses[0][1].list[]? | select(.role == "inbox") | .id][0] // empty' <<<"$got")
+  [ -n "$inbox" ] || { echo "seed: $user has no Inbox" >&2; return 1; }
+  import_one "$user" "$aid" "$inbox" "Pavillion corpus hostile.html" ""
+  for eml in "$here/../corpus/"*.eml; do
+    [ -f "$eml" ] || continue
+    subj=$(awk '$0 ~ /^[Ss]ubject:/ { sub(/^[Ss]ubject:[[:space:]]*/, ""); gsub(/\r/, ""); print; exit }' "$eml")
+    [ -n "$subj" ] || subj=$(basename "$eml")
+    import_one "$user" "$aid" "$inbox" "$subj" "$eml"
+  done
+}
+
 for a in "${accounts[@]}"; do
   ensure_mailboxes "$a"
+  import_corpus "$a"
 done

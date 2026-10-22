@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { expect, test } from "vitest";
-import { createTree, renderRow } from "./render.js";
+import { createTree, patchRow, renderRow } from "./render.js";
 
 function placeholderNodes() {
   return [
@@ -46,6 +46,32 @@ test("renderRow marks syncing nodes as aria-busy", () => {
   const node = { id: "inbox", kind: "mailbox", label: "Inbox", selected: false, hasChildren: false, state: "syncing", level: 1 };
   const row = renderRow(node, ["label"]);
   expect(row.getAttribute("aria-busy")).toBe("true");
+});
+
+test("a syncing row shows a pie and a later patch keeps that element", () => {
+  const node = {
+    id: "foods",
+    kind: "account",
+    label: "Foods",
+    selected: false,
+    hasChildren: false,
+    state: "syncing",
+    syncTurn: 25,
+    syncTip: "25%",
+    level: 1,
+  };
+  const row = renderRow(node, ["status"]);
+  const pie = row.querySelector(".tree-sync-pie");
+  expect(pie).not.toBeNull();
+  expect(row.querySelector("i.fa-spinner")).toBeNull();
+  expect(pie.style.getPropertyValue("--pav-sync-turn")).toBe("25%");
+  expect(pie.getAttribute("data-pav-tip")).toBe("25%");
+  expect(row.getAttribute("aria-busy")).toBe("true");
+
+  patchRow({ state: "syncing", syncTurn: 40.24, syncTip: "25%" }, row);
+  expect(row.querySelector(".tree-sync-pie")).toBe(pie);
+  expect(pie.style.getPropertyValue("--pav-sync-turn")).toBe("40.2%");
+  expect(pie.getAttribute("data-pav-tip")).toBe("25%");
 });
 
 test("renderRow marks unread rows with the unread class", () => {

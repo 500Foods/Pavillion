@@ -971,14 +971,14 @@ State: real (M-3)
 ### mail.messages_changed
 
 Kind: event
-State: planned (M-4)
+State: real (M-4)
 
-`{accountId, created, updated, destroyed}`. Emitted after rules, or after the page budget.
+`{accountId, created, updated, destroyed}`. `created`, `updated`, and `destroyed` are arrays of server email ids. Emitted once per page that stored rows. An empty page does not emit it. `destroyed` is empty on the initial sync.
 
 ### mail.new_mail
 
 Kind: event
-State: planned (M-4)
+State: planned (N-8)
 
 `{accountId, mailboxId, summaries}`. Inbox-role mail (and mailboxes marked notify) after rules have filed it.
 

@@ -1,6 +1,6 @@
 # M — SYNC
 
-**Status:** M-1, M-2, and M-3 complete (M-3 on 2026-10-21). M-4 through M-8 are not started. The index names the next phase.
+**Status:** M-1 through M-4 complete (M-4 on 2026-10-22). M-5 through M-8 are not started. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The network and the sync engine: HTTP through libcurl, JMAP session discovery, initial and delta sync, the mutation queue, and push. Mail first; contacts, calendars, and files reuse the same engine with their own types ([S-CONTACTS.md](S-CONTACTS.md), [T-CALENDAR.md](T-CALENDAR.md), [U-FILES.md](U-FILES.md)). Tasks ([X-TASKS.md](X-TASKS.md)) sync over CalDAV after T-7, on that DAV client, not as a JMAP tasks capability. Notes ([Y-NOTES.md](Y-NOTES.md)) reuse the files sync of one account. Sending is [O-COMPOSE.md](O-COMPOSE.md).
@@ -14,7 +14,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | M-1 | Per-server network threads, a curl multi handle each, caps, retries, redaction | Hard | Complete |
 | M-2 | JMAP session discovery, `account.test`, remote accounts, capabilities | Medium | Complete |
 | M-3 | Sync supervisor, Identity and Mailbox sync, `mailbox.list`, `sync.state` | Medium | Complete |
-| M-4 | Email initial sync: headers, first page, background backfill, threads | Medium | Not started |
+| M-4 | Email initial sync: headers, first page, background backfill, threads | Medium | Complete |
 | M-5 | Delta sync: `/changes`, `cannotCalculateChanges`, deletes | Medium | Not started |
 | M-6 | Mutation queue: optimistic apply, `ifInState`, conflicts, coalescing, undo | Hard | Not started |
 | M-7 | Push: EventSource, debounce, backoff, polling fallback, network and resume | Medium | Not started |
@@ -394,7 +394,7 @@ M-4 stays after L-2. Corpus messages stay in M-4. The poll stays 2 minutes until
 ## M-4: Email initial sync
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Complete (2026-10-22, step 56). `make test`: 206 Unity, 2 Rust, 366 Vitest, exit 0. The container exit gate passed the same day. This exit gate is not a window, and the window was not launched. CI waits on Andrew's push. The phase stamp is `0.62.0`.
 
 **Goal:** Headers for every message are in the store, newest first, without blocking the UI.
 
@@ -402,16 +402,32 @@ M-4 stays after L-2. Corpus messages stay in M-4. The poll stays 2 minutes until
 
 **Work items:**
 
-- [ ] Per mailbox `Email/query` + `Email/get` (header properties) with back-references, first page 500 for Inbox and Sent, then others, then backfill in pages of 500. Batch to server limits.
-- [ ] Write `email`, `email_mailbox`, `thread` rows as one `pav_db_write` job per page (L Lock write queue). Insert header-only FTS rows (Q-1 owns the index; this phase calls `pav_fts_index_headers` as a stub that Q-1 fills, or inserts directly if Q-1 already landed).
-- [ ] `Thread/get` for thread membership as needed.
-- [ ] Events `mail.messages_changed` per page; activity progress `done/total` from the query's `total`.
-- [ ] Moved from M-3: make `tests/stalwart/seed.sh` import the `tests/corpus/` messages into the container's mailboxes (idempotent), so the exit gate has a seeded mailbox.
-- [ ] Unity on fixtures: `test_email_initial_first_page`, `test_email_backfill_pages`, `test_email_batches_respect_max_objects`, `test_email_sync_cancel_resumes`.
+- [x] Per mailbox `Email/query` + `Email/get` (header properties) with back-references, first page 500 for Inbox and Sent, then others, then backfill in pages of 500. Batch to server limits.
+- [x] Write `email`, `email_mailbox`, `thread` rows as one `pav_db_write` job per page (L Lock write queue). Insert header-only FTS rows (Q-1 owns the index; this phase calls `pav_fts_index_headers` as a stub that Q-1 fills, or inserts directly if Q-1 already landed).
+- [x] `Thread/get` for thread membership as needed.
+- [x] Events `mail.messages_changed` per page; activity progress `done/total` from the query's `total`.
+- [x] Moved from M-3: make `tests/stalwart/seed.sh` import the `tests/corpus/` messages into the container's mailboxes (idempotent), so the exit gate has a seeded mailbox.
+- [x] Unity on fixtures: `test_email_initial_first_page`, `test_email_backfill_pages`, `test_email_batches_respect_max_objects`, `test_email_sync_cancel_resumes`.
 
 **Done means:** A fixture account with 2,000 messages lands in four pages, first page first.
 
 **Exit gate:** `make test` exits 0. Against the container's seeded mailbox, message counts per mailbox in the store equal the server's.
+
+**Accomplished:** `core/src/sync_email.c` (included from `sync.c`) walks each mailbox with `Email/query` and `Email/get` of the header properties, Inbox and Sent first, then the others, then the rest of each mailbox. The page is the Session's `maxObjectsInGet`, also limited by `maxObjectsInQuery`, and at most 500. One `pav_db_call` per page writes `email`, `email_mailbox`, and `thread`. `pav_fts_index_headers` stores the header row. `Thread/get` is a second request. Each page that stores rows emits `mail.messages_changed`. The activity progress is messages done and total. `Email` `sync_state` is written when the walk finishes. A cancel drops the in-flight page, leaves that state unset, and `sync.now` runs the initial walk again. The fixture generates the messages and can hold a backfill page. `seed.sh` imports each `tests/corpus/` message into Inbox when the subject is absent. A second seed imports nothing. Help's developer Mail sync page describes the walk.
+
+**Lessons learned:**
+
+- `length > 0` on a jq array of booleans is true when the only element is `false`. The hold check has to `select` the `Email/query` calls whose position is past 0. Mapping every call to a boolean made a position-0 page wait the full 15 seconds.
+- The hold toggle is `POST /jmap/proxy?emailHold=1`. A GET is 404, and `curl -f` then looks like a failed release.
+- `activity.list` orders by id. After a cancel and `sync.now`, the finished `sync.mail` row is the last match, not the first.
+- `Email` state is written once, at the end of the walk. A missing row means the initial walk has not finished. M-5 uses that row for `/changes` and must not treat a missing row as already synced. Cancel does not write it, so the next `sync.now` upserts from the start.
+- A first sync that stores messages ends the activity with detail `Messages`. A later sync that already has `Email` state skips the email walk and can still end on `Mailboxes`.
+- Do not apply the mailbox page-count cap to email pages. `Thread/get` cannot use a JSON Pointer wildcard, so it is its own request, and the page is written after it returns.
+- Statement-cache keys are the pointer, not the text. The email statements use their own literals. `received_at` does not fit in a 32-bit `sqlite3_column_int`. Contentless FTS is read with `MATCH`.
+- The fixture generates mail only for account `a1` and `inMailbox` `in`. A Session GET without `?emails=` writes `email-count` 0. `sync_email.c` is included from `sync.c` and is not a second CMake source.
+- Stalwart's upload URL contains `{accountId}`. `Email/import` takes `keywords` `{"$seen": true}` as a JSON string inside the jq program. A second `make it-seed` finds the subject and imports nothing.
+
+**Handoff:** M-4 is complete (2026-10-22, step 56). The index names M-5 next (step 57). M-5 was not started. `mail.new_mail` stays planned for N-8 and is not emitted. The poll stays 2 minutes until M-7. The container was left up. CI for this close-out waits on Andrew's push. The agent does not commit.
 
 ## M-5: Delta sync
 
@@ -527,3 +543,4 @@ M-4 stays after L-2. Corpus messages stay in M-4. The poll stays 2 minutes until
 - 2026-10-21 M-3 in progress. M-3g finished: a saved tree already at the page cap asks `Mailbox/query` for `total` (one id) and walks again when that total is larger. The 11:28 rebuild only did changes (courses POST 328, foods POST 425 then 490, then `mailboxes changed`). The store was still foods 500 and courses 5. Unity: `test_sync_mailboxes_refill`. `make test`: 184 Unity, 2 Rust, 349 Vitest, exit 0. The phase exit gate was not run. The window was not launched. Help was not opened in the window.
 - 2026-10-21 M-3 in progress. The 11:41 restart walked foods: posts of 2656, 183341, 369, and 13790 bytes, then one `mailboxes changed`. Courses went idle without that line. Update at 11:41:32 posted courses 328 and foods 331 then 193, with no further walk. Read-only store after the 11:43 poll: foods 537 mailboxes, 511 with a parent, 58241 emails, 4 identities; courses 5 mailboxes, 1 email, 3 identities; both idle. The phase exit gate was not run.
 - 2026-10-21 M-3 complete, step 53. Andrew accepted the window the same day. The 11:52 restart kept foods at 537 mailboxes and courses at 5; foods emails moved from 58241 to 58244; Update stayed on changes. The container exit gate added `andrew@test-a.local` as `m3gate` in a temporary workdir. The first sync went idle with 7 mailboxes. `Mailbox/set` created one mailbox. `mail.mailboxes_changed` fired and `mailbox.list` showed it in 119 seconds, inside one poll. The mailbox and the temporary account were removed. The live profile was not opened. Stamp `0.59.0`. `make test`: 184 Unity, 2 Rust, 349 Vitest, exit 0. E-7 was not started. The container was left up.
+- 2026-10-22 M-4 complete, step 56. Header sync walks Inbox and Sent first, then the other mailboxes, in pages of at most 500, and writes `email`, `email_mailbox`, and `thread` as one job per page. A fixture account of 2,000 messages landed in four pages, newest first. `mail.messages_changed` is real. Cancel drops the held page and leaves `Email` state unset; `sync.now` upserts the rest. `seed.sh` imports the corpus into Inbox and a second seed imports nothing. Against the container, `andrew@test-a.local` as `m4gate` in a temporary workdir went idle with the server's counts: Inbox 1, and Later, Drafts, Sent Items, Archive, Junk Mail, and Deleted Items 0. `account.remove` deleted the keyring entry. The live profile was not opened. The window was not launched. Stamp `0.62.0`. `make test`: 206 Unity, 2 Rust, 366 Vitest, exit 0. M-5 was not started. The container was left up.

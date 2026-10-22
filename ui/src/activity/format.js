@@ -216,12 +216,46 @@ export function preferActivity(prev, next) {
   return next;
 }
 
+function runningSync(activity) {
+  return Boolean(activity && activity.state === "running" && typeof activity.kind === "string" && activity.kind.startsWith("sync."));
+}
+
 export function syncingCount(activities) {
   let n = 0;
   for (const activity of activities) {
-    if (activity && activity.state === "running" && typeof activity.kind === "string" && activity.kind.startsWith("sync.")) {
+    if (runningSync(activity)) {
       n += 1;
     }
   }
   return n;
+}
+
+/* count matches syncingCount. turn is sum(done) / sum(total) when any
+   running sync has a positive total, otherwise null. */
+export function syncSnapshot(activities) {
+  const ids = [];
+  let count = 0;
+  let done = 0;
+  let total = 0;
+  let known = false;
+  for (const activity of activities) {
+    if (!runningSync(activity)) {
+      continue;
+    }
+    count += 1;
+    if (typeof activity.id === "string" && activity.id !== "") {
+      ids.push(activity.id);
+    }
+    const progress = activity.progress;
+    if (progress && Number.isFinite(progress.total) && progress.total > 0) {
+      known = true;
+      done += Number.isFinite(progress.done) ? progress.done : 0;
+      total += progress.total;
+    }
+  }
+  return {
+    count,
+    ids,
+    turn: known && total > 0 ? (done / total) * 100 : null,
+  };
 }

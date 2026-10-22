@@ -13,6 +13,9 @@ int pav_net_start(void);
 /* Stop all net threads and flush queued requests. */
 void pav_net_stop(void);
 
+/* Wake every server thread blocked in curl_multi_poll. Safe from another thread. */
+void pav_net_wakeup(void);
+
 /* Get or create the net thread for the endpoint (scheme+host+port) of url. */
 PavNetServer *pav_net_server_for(const char *url);
 

@@ -4,10 +4,10 @@ Status: v0.7 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 
 **Resume:** each phase's history is in its own document's Working log; this block is only the current state.
 
-- Last finished: L-2 (step 55), 2026-10-22, in [docs/L-STORE.md](docs/L-STORE.md). Andrew accepted the Limits layout the same day. The caps are Database and Document. Beside each cap is the size on disk and the free space on the blob volume. Each account row is those two pools, and a Total row sums each column on its own. The Document count stays blank until Check sizes has counted attachment parts. `make test` is 202 Unity, 2 Rust, and 363 Vitest, exit 0. His 2026-10-21 launch applied migration 2. CI on `abba579` (run 39797701301) is green for `fedora`, `macos-core`, and `windows-core`.
-- Next: M-4 (step 56), in [docs/M-SYNC.md](docs/M-SYNC.md). Not started. The entry gate is met: L-2 and E-7 are Done. Andrew accepted the startup window on 2026-10-22. The cover shows the version for at least two seconds. The line fades in over 0.4 s and the cover fades out over 0.4 s after the restored tabs have painted. The kit script is inserted after the first paint, and the shell does not wait on it. The mail tree is built only when Mail is showing. That diff, and this L-2 close, are uncommitted. Commit them on their own before M-4 source edits. The agent does not commit. The Accounts table polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md).
-- Last full `make test`: 202 Unity tests, 2 Rust tests and 363 Vitest tests, exit 0 (2026-10-22, L-2). The phase stamp is `0.61.0`. This sitting's startup edits are not in that count.
-- `PAVILLION_API_VERSION` is 3. The phase stamp is `0.61.0` (61 Done rows), release date 2026-10-22.
+- Last finished: M-4 (step 56), 2026-10-22, in [docs/M-SYNC.md](docs/M-SYNC.md). Headers sync newest first, Inbox and Sent before the other mailboxes, in pages of at most 500. A fixture account of 2,000 messages landed in four pages. `mail.messages_changed` is real. `make test` is 206 Unity, 2 Rust, and 366 Vitest, exit 0. Against the container, `andrew@test-a.local` stored the server's counts (Inbox 1, six other mailboxes 0). The temporary account was removed. The live profile was not opened. The window was not launched. CI waits on Andrew's push.
+- Next: M-5 (step 57), in [docs/M-SYNC.md](docs/M-SYNC.md). Not started. The entry gate is M-4, which is Done. The agent does not commit. The Accounts table polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md).
+- Last full `make test`: 206 Unity tests, 2 Rust tests and 366 Vitest tests, exit 0 (2026-10-22, M-4). The phase stamp is `0.62.0`. The Vitest count includes the splash-screen tests from `054e656`, which were outside the L-2 count of 363.
+- `PAVILLION_API_VERSION` is 3. The phase stamp is `0.62.0` (62 Done rows), release date 2026-10-22.
 
 **Read first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), one page with diagrams of the layers, the threads, and the data flow.
 
@@ -130,7 +130,7 @@ Row order decides what is next: the next phase is the first row, top to bottom, 
 | 54 | E-7 | Real mailbox tree from `mailbox.list` | Hard | Done |
 | | | *Milestone 2: real accounts and mailbox trees (old P0)* | | |
 | 55 | L-2 | Mail schema and the blob store | Medium | Done |
-| 56 | M-4 | Email initial sync | Medium | |
+| 56 | M-4 | Email initial sync | Medium | Done |
 | 57 | M-5 | Delta sync | Medium | |
 | 58 | N-1 | Body fetch and MIME (GMime) | Medium | |
 | 59 | N-2 | The HTML sanitizer and the hostile corpus | Hard | |

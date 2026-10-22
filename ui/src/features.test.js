@@ -508,6 +508,10 @@ test("an Update shortcut runs sync and does nothing while Update is hidden", asy
   key(root, "9", { ctrlKey: true });
   expect(seen.includes("sync.now")).toBe(true);
   expect(root.querySelector('[data-tab-id="update:home"]')).toBeNull();
+  const nows = seen.filter((cmd) => cmd === "sync.now").length;
+  key(root, "9", { ctrlKey: true });
+  expect(seen.filter((cmd) => cmd === "sync.now").length).toBe(nows);
+  expect(root.querySelector("#update .update-pie").hidden).toBe(true);
 });
 
 test("Add explains itself in a tooltip", async () => {

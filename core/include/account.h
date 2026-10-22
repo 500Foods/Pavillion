@@ -14,6 +14,9 @@ int pav_account_test(json_t *args, json_t **data, PavError *err);
 /* K-Q6: give each account without "email" its default (the username when it
    is an address, else ""). Returns how many changed. */
 int pav_account_migrate_email(json_t *doc);
+/* Insert an idle account_state row for each account still in the profile.
+   An existing row is left alone. 0, or -1 if a write fails. */
+int pav_account_ensure_states(json_t *doc);
 /* The saved secret of account id (free with pav_secret_free). 0, or -1 with err. */
 int pav_account_saved_secret(const char *id, char **out, PavError *err);
 /* K-Q10: known capability words of raw, or NULL when raw is not an array. */

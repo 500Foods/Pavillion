@@ -1397,6 +1397,11 @@
   animation: spin 0.8s linear infinite;
 }
 
+.pav-root #update.is-busy .icon,
+.pav-root #update.is-busy svg {
+  animation: none;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -1419,6 +1424,27 @@
 
 .pav-root #update {
   position: relative;
+}
+
+.pav-root .update-pie {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom) * 1.45);
+  height: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom) * 1.45);
+  box-sizing: border-box;
+  border: 2px solid var(--pav-status-running);
+  border-radius: 50%;
+  background: conic-gradient(var(--pav-status-running) var(--pav-sync-turn, 0%), transparent 0);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.pav-root #update .icon,
+.pav-root #update svg {
+  position: relative;
+  z-index: 1;
 }
 
 .pav-root .update-badge {

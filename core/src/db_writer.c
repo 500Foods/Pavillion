@@ -48,6 +48,19 @@ static int64_t mono_ms(void) {
     return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
+static void checkpoint_passive(sqlite3 *db) {
+    sqlite3_exec(db, "PRAGMA wal_checkpoint(PASSIVE)", NULL, NULL, NULL);
+    atomic_fetch_add(&g_checkpoints, 1);
+}
+
+/* Copy committed frames into the database file. A reader opened on the file
+   alone cannot see rows that exist only in the WAL, and the automatic
+   checkpoint waits for about 1000 pages. Mailbox sync of one account stays
+   under that, so the tree and the message walk would both see an empty store. */
+static void checkpoint_committed(sqlite3 *db) {
+    sqlite3_exec(db, "PRAGMA wal_checkpoint(PASSIVE)", NULL, NULL, NULL);
+}
+
 static int apply_pragmas(sqlite3 *db) {
     static const char *const k_sql[] = {
         "PRAGMA journal_mode=WAL",
@@ -66,12 +79,8 @@ static int apply_pragmas(sqlite3 *db) {
             return -1;
         }
     }
+    checkpoint_committed(db);
     return 0;
-}
-
-static void checkpoint_passive(sqlite3 *db) {
-    sqlite3_exec(db, "PRAGMA wal_checkpoint(PASSIVE)", NULL, NULL, NULL);
-    atomic_fetch_add(&g_checkpoints, 1);
 }
 
 static DbJob *take_unlocked(void) {
@@ -137,6 +146,7 @@ static int run_one(sqlite3 *db, DbJob *job) {
         pav_db_tx_rollback(db);
         return -1;
     }
+    checkpoint_committed(db);
     return 0;
 }
 
@@ -176,6 +186,7 @@ static void run_batch(DbJob **jobs, int n) {
         pav_db_tx_rollback(db);
     }
     if (failed < 0) {
+        checkpoint_committed(db);
         for (i = 0; i < n; i++) {
             jobs[i]->rc = 0;
         }
@@ -204,6 +215,7 @@ static void run_batch(DbJob **jobs, int n) {
             jobs[0]->rc = -1;
             return;
         }
+        checkpoint_committed(db);
         jobs[0]->rc = 0;
         return;
     }

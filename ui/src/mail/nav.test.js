@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { createApi } from "../api.js";
 import { createMailNav } from "./nav.js";
 
@@ -185,6 +185,66 @@ test("a list failure is a warning and leaves the tree", async () => {
   nav.stop();
 });
 
+test("activity progress fills the pie and updates the tooltip on a period", async () => {
+  const now = vi.spyOn(Date, "now");
+  now.mockReturnValue(1_000_000);
+  const el = document.createElement("div");
+  const raw = transport();
+  const api = createApi(raw);
+  const nav = createMailNav(api, el);
+  await settled();
+
+  raw.emit("sync.state", { accountId: "foods", state: "syncing" });
+  await settled();
+  const pie = row(el, "foods").querySelector(".tree-sync-pie");
+  expect(pie.getAttribute("data-pav-tip")).toBe("Syncing");
+  expect(pie.style.getPropertyValue("--pav-sync-turn")).toBe("0%");
+
+  raw.emit("activity.changed", {
+    activity: { id: "1", kind: "sync.mail", accountId: "foods", state: "running", progress: { done: 0, total: null, unit: "messages" } },
+  });
+  await settled();
+  expect(pie.getAttribute("data-pav-tip")).toBe("Syncing");
+
+  now.mockReturnValue(1_000_200);
+  raw.emit("activity.changed", {
+    activity: { id: "1", kind: "sync.mail", accountId: "foods", state: "running", progress: { done: 2, total: 8, unit: "messages" } },
+  });
+  await settled();
+  expect(pie.style.getPropertyValue("--pav-sync-turn")).toBe("25%");
+  expect(pie.getAttribute("data-pav-tip")).toBe("25%");
+
+  now.mockReturnValue(1_000_400);
+  raw.emit("activity.changed", {
+    activity: { id: "1", kind: "sync.mail", accountId: "foods", state: "running", progress: { done: 4, total: 8, unit: "messages" } },
+  });
+  await settled();
+  expect(pie.style.getPropertyValue("--pav-sync-turn")).toBe("50%");
+  expect(pie.getAttribute("data-pav-tip")).toBe("25%");
+
+  now.mockReturnValue(1_001_500);
+  raw.emit("activity.changed", {
+    activity: { id: "1", kind: "sync.mail", accountId: "foods", state: "running", progress: { done: 6, total: 8, unit: "messages" } },
+  });
+  await settled();
+  expect(pie.style.getPropertyValue("--pav-sync-turn")).toBe("75%");
+  expect(pie.getAttribute("data-pav-tip")).toBe("75%");
+
+  raw.emit("mail.mailboxes_changed", { accountId: "foods" });
+  await settled();
+  const kept = row(el, "foods").querySelector(".tree-sync-pie");
+  expect(kept.getAttribute("data-pav-tip")).toBe("75%");
+  expect(kept.style.getPropertyValue("--pav-sync-turn")).toBe("75%");
+
+  raw.emit("sync.state", { accountId: "foods", state: "idle" });
+  await settled();
+  expect(row(el, "foods").querySelector(".tree-sync-pie")).toBeNull();
+  expect(row(el, "foods").getAttribute("aria-busy")).toBeNull();
+
+  nav.stop();
+  now.mockRestore();
+});
+
 function debugMarks(raw) {
   return raw.calls
     .filter((call) => call.cmd === "log.client" && call.args.level === "debug")
@@ -244,7 +304,10 @@ test("a deferred nav lists mailboxes on start and keeps earlier sync state", asy
   await nav.start();
   await settled();
   expect(raw.calls.filter((call) => call.cmd === "mailbox.list")).toHaveLength(1);
-  expect(row(el, "foods").querySelector("i.fa-spinner")).not.toBeNull();
+  const pie = row(el, "foods").querySelector(".tree-sync-pie");
+  expect(pie).not.toBeNull();
+  expect(pie.getAttribute("data-pav-tip")).toBe("Syncing");
+  expect(row(el, "foods").querySelector("i.fa-spinner")).toBeNull();
 
   await nav.start();
   await settled();

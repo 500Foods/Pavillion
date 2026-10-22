@@ -337,6 +337,9 @@ static void core_boot(void) {
         publish_boot("error", profile->name, profile->id, err);
         return;
     }
+    if (pav_account_ensure_states((json_t *)profile->doc) != 0) {
+        pav_log("core", PAV_ERROR, 1, "cannot restore account state for %s", profile->id);
+    }
     pav_log("core", PAV_INFO, 2, "core ready: profile %s, %d accounts", profile->id, (int)profile->account_count);
     if (pav_sync_boot((json_t *)profile->doc, profile->id) != 0) {
         pav_log("core", PAV_ERROR, 1, "cannot start sync for %s", profile->id);

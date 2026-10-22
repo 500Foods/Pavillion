@@ -94,6 +94,7 @@ export const shellMarkup = `<div class="shell">
             <i class="icon fa-sharp-duotone fa-solid fa-gear" data-icon-definition="fa-sharp-duotone fa-solid fa-gear" aria-hidden="true"></i>
           </button>
           <button type="button" id="update" data-rail="update" aria-label="Update">
+            <span class="update-pie" hidden aria-hidden="true"></span>
             <i class="icon fa-sharp-duotone fa-solid fa-up-down" data-icon-definition="fa-sharp-duotone fa-solid fa-up-down" aria-hidden="true"></i>
             <span class="update-badge" hidden></span>
           </button>

@@ -1,10 +1,11 @@
 #define _POSIX_C_SOURCE 200809L
 
-/* M-3 supervisor. PavSup stays on the core thread. The net thread only
-   reads a SyncReq. It parses the Session or a type response there and posts
-   the rows. The request stays allocated until the callback and the supervisor
-   have each released it, so a cancel cannot free it while the callback still
-   runs. The net callback never takes the core lock while it holds g_sync_mu. */
+/* M-4 supervisor. PavSup stays on the core thread. The net thread only
+   reads a SyncReq. It parses the Session, a type response, or an email page
+   there and posts the rows. The request stays allocated until the callback
+   and the supervisor have each released it, so a cancel cannot free it while
+   the callback still runs. The net callback never takes the core lock while
+   it holds g_sync_mu. */
 
 #include "pav_sync.h"
 
@@ -12,6 +13,7 @@
 #include "pav_activity.h"
 #include "pav_blob.h"
 #include "pav_db.h"
+#include "pav_fts.h"
 #include "pav_jmap.h"
 #include "pav_net.h"
 #include "pav_platform.h"
@@ -42,6 +44,10 @@
 #define PAV_SUBMISSION_URN "urn:ietf:params:jmap:submission"
 #define SYNC_KIND_SESSION 0
 #define SYNC_KIND_TYPES 1
+#define SYNC_KIND_EMAIL 2
+#define PAV_SYNC_EMAIL_SLOTS 16
+#define PAV_SYNC_EMAIL_REQ_MAX 10000
+#define PAV_SYNC_EMAIL_PARSE_MAX 4000
 #define TYPE_SKIP 0
 #define TYPE_GET 1
 #define TYPE_CHANGES 2
@@ -49,6 +55,13 @@
 #define TYPE_QUERY 4
 
 typedef struct SyncReq SyncReq;
+typedef struct EmailWalk EmailWalk;
+
+typedef struct EmailSlot {
+    char mailbox_id[128];
+    int position;
+    int limit;
+} EmailSlot;
 
 typedef struct SupRemote {
     struct SupRemote *next;
@@ -75,6 +88,7 @@ typedef struct SupRemote {
     char mbx_anchor[128];
     int mbx_probe;
     int mbx_stored;
+    EmailWalk *email;
 } SupRemote;
 
 typedef struct PavSup {
@@ -94,6 +108,9 @@ typedef struct PavSup {
     int redirects;
     int attempts;
     int saw_mailbox;
+    int saw_email;
+    int email_done;
+    int email_total;
     uint64_t generation;
     int64_t activity_id;
     SyncReq *inflight;
@@ -200,6 +217,9 @@ struct SyncReq {
     char jmap_id[128];
     int mbx_mode;
     int idn_mode;
+    int email_mode;
+    EmailSlot email_slots[PAV_SYNC_EMAIL_SLOTS];
+    int email_slot_n;
     char *body;
     PavReq req;
 };
@@ -291,6 +311,8 @@ static void drop_inflight(PavSup *s) {
     }
     req->req.cancelled = 1;
     sync_req_release(req);
+    /* The net thread only notices cancelled once it leaves poll. */
+    pav_net_wakeup();
 }
 
 static void emit_state(const char *id, const char *state, const char *detail) {
@@ -320,8 +342,10 @@ static int step_done(sqlite3_stmt *stmt) {
 
 /* The writer already wraps this job in one transaction. A nested BEGIN
    fails, the batch rolls the update back, and the row stays at the idle
-   inserted by account.add. A zero-row update means the account is gone:
-   leave the remotes alone and let the writer commit. */
+   inserted by account.add. A zero-row update means the row is gone: leave
+   the remotes alone and let the writer commit. Do not insert here. A late
+   Session must not recreate an account that was removed. Boot seeds a row
+   for each account still in the profile. */
 static int write_state_job(void *ctx, sqlite3 *db) {
     StateWrite *w = ctx;
     sqlite3_stmt *stmt = NULL;
@@ -351,6 +375,7 @@ static int write_state_job(void *ctx, sqlite3 *db) {
         return -1;
     }
     if (sqlite3_changes(db) == 0) {
+        pav_log("sync", PAV_WARN, 1, "account state missing for %s", w->account_id);
         return 0;
     }
     if (w->session_json == NULL) {
@@ -600,6 +625,9 @@ static void start_connect(PavSup *s, int follow) {
         s->generation++;
         s->redirects = 0;
         s->saw_mailbox = 0;
+        s->saw_email = 0;
+        s->email_done = 0;
+        s->email_total = 0;
         copy_fit(s->current_url, sizeof(s->current_url), s->session_url);
         drop_inflight(s);
         replaced = s->activity_id;
@@ -1167,6 +1195,13 @@ static void free_type_result(TypeResult *t) {
     free(t);
 }
 
+static void email_on_done(SyncReq *owned, int stopped);
+static void free_email_result(void *result);
+static void apply_email(PavSup *s, void *result);
+static void email_result_ids(const void *result, const char **account_id, uint64_t *generation);
+static void clear_email_walk(SupRemote *remote);
+static void begin_email(PavSup *s, SupRemote *remote);
+
 void pav_sync_result_free(void *result) {
     SyncResult *r = result;
 
@@ -1175,6 +1210,10 @@ void pav_sync_result_free(void *result) {
     }
     if (r->kind == SYNC_KIND_TYPES) {
         free_type_result(result);
+        return;
+    }
+    if (r->kind == SYNC_KIND_EMAIL) {
+        free_email_result(result);
         return;
     }
     free(r->session_json);
@@ -1239,6 +1278,10 @@ static void sync_on_done(PavReq *req, void *user) {
 
     (void)req;
     stopped = sync_stopped();
+    if (owned->kind == SYNC_KIND_EMAIL) {
+        email_on_done(owned, stopped);
+        return;
+    }
     if (owned->kind == SYNC_KIND_TYPES) {
         type_on_done(owned, stopped);
         return;
@@ -1371,6 +1414,8 @@ void pav_sync_on_result(void *result) {
 
         account_id = t->account_id;
         generation = t->generation;
+    } else if (kind == SYNC_KIND_EMAIL) {
+        email_result_ids(result, &account_id, &generation);
     } else {
         SyncResult *r = result;
 
@@ -1393,6 +1438,8 @@ void pav_sync_on_result(void *result) {
     pthread_mutex_unlock(&g_sync_mu);
     if (kind == SYNC_KIND_TYPES) {
         apply_types(s, result);
+    } else if (kind == SYNC_KIND_EMAIL) {
+        apply_email(s, result);
     } else {
         apply_result(s, result);
     }
@@ -1408,12 +1455,14 @@ static void free_sup_remote_list(SupRemote *list) {
     while (list != NULL) {
         SupRemote *next = list->next;
 
+        clear_email_walk(list);
         free(list);
         list = next;
     }
 }
 
 static void reset_sup_remote(SupRemote *remote) {
+    clear_email_walk(remote);
     remote->mbx_pages = 0;
     remote->idn_pages = 0;
     remote->mbx_resyncs = 0;
@@ -1502,7 +1551,9 @@ static void merge_sup_remotes(PavSup *s, const SyncResult *r) {
 }
 
 static void finish_sync_ok(PavSup *s) {
-    if (s->saw_mailbox && s->activity_id > 0) {
+    if (s->saw_email && s->activity_id > 0) {
+        pav_activity_progress(s->activity_id, s->email_done, s->email_total, "messages", "Messages");
+    } else if (s->saw_mailbox && s->activity_id > 0) {
         pav_activity_progress(s->activity_id, 0, -1, NULL, "Mailboxes");
     }
     publish_state(s, "idle", "", 0, PAV_ACT_DONE);
@@ -2226,6 +2277,9 @@ static void apply_session_ok(PavSup *s, SyncResult *r) {
     copy_fit(s->state, sizeof(s->state), "syncing");
     s->auto_retry = 0;
     s->saw_mailbox = 0;
+    s->saw_email = 0;
+    s->email_done = 0;
+    s->email_total = 0;
     if (https) {
         copy_fit(s->api_url, sizeof(s->api_url), r->api_url);
     }
@@ -2517,11 +2571,15 @@ static void apply_types(PavSup *s, TypeResult *t) {
         return;
     }
     if (next_mbx == TYPE_SKIP && next_idn == TYPE_SKIP) {
-        begin_remote(s, remote->next);
+        begin_email(s, remote);
         return;
     }
     start_type_request(s, remote, next_mbx, next_idn, mbx_fetch, mbx_fetch_n, idn_fetch, idn_fetch_n);
 }
+
+#define PAV_SYNC_EMAIL_INCLUDED
+#include "sync_email.c"
+#undef PAV_SYNC_EMAIL_INCLUDED
 
 static void start_delta(PavSup *s) {
     int64_t replaced = 0;
@@ -2539,6 +2597,9 @@ static void start_delta(PavSup *s) {
     replaced = s->activity_id;
     s->activity_id = 0;
     s->saw_mailbox = 0;
+    s->saw_email = 0;
+    s->email_done = 0;
+    s->email_total = 0;
     s->auto_retry = 0;
     copy_fit(s->state, sizeof(s->state), "syncing");
     for (cur = s->remotes; cur != NULL; cur = cur->next) {
