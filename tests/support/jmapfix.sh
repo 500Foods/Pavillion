@@ -8,6 +8,10 @@
 #
 # socat terminates TLS and forks one `jmapfix.sh --handle` per connection.
 # Each connection carries one request and is closed after the response.
+# The handler reads the whole Content-Length body before it writes a
+# response. Leaving those bytes unread makes close() send RST. Windows
+# then discards the response that was already sent, and curl reports
+# CURLE_PARTIAL_FILE with 0 bytes. Linux usually still delivers it.
 # State shared across requests lives in build/fixture-run/ and is reset on
 # every start: proxy-cut (flag file), events.count, blobs/<blobId>, and
 # mailstate.json (Identity and Mailbox objects, changed by Mailbox/set).
@@ -309,8 +313,26 @@ serve_download() {
   cat "$f"
 }
 
+# Set by slurp_body. read_body copies this file; it does not read stdin again.
+body_file=""
+
+# Take the request body off the socket before any reply. See the note at the
+# top: an unread body becomes a RST, and Windows curl then sees a partial file.
+slurp_body() {
+  body_file="$run/body.$$"
+  if [ "${content_length:-0}" -gt 0 ] 2>/dev/null; then
+    head -c "$content_length" > "$body_file"
+  else
+    : > "$body_file"
+  fi
+}
+
 read_body() {
   local out=$1
+  if [ -n "${body_file:-}" ] && [ -f "$body_file" ]; then
+    cat "$body_file" > "$out"
+    return
+  fi
   if [ "${content_length:-0}" -gt 0 ] 2>/dev/null; then
     head -c "$content_length" > "$out"
   else
@@ -874,6 +896,10 @@ handle() {
       [ "$version" = "HTTP/1.1" ] && printf 'HTTP/1.1 100 Continue\r\n\r\n'
       ;;
   esac
+
+  # After 100 Continue, so a client that waits for it still sends the body.
+  slurp_body
+  trap 'rm -f "$body_file"' EXIT
 
   path=${target%%\?*}
   path=${path%%#*}

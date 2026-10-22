@@ -3977,6 +3977,8 @@ void test_jmap_post_url_outlives_call(void) {
     JmapWait w;
     char session[512];
     struct timespec ts;
+    int done;
+    int status;
 
     TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
     TEST_ASSERT_EQUAL_INT(0, pav_net_start());
@@ -3999,12 +4001,16 @@ void test_jmap_post_url_outlives_call(void) {
     pthread_mutex_lock(&w.mu);
     while (!w.done && pthread_cond_timedwait(&w.cv, &w.mu, &ts) == 0) {
     }
+    done = w.done;
+    status = w.status;
     pthread_mutex_unlock(&w.mu);
-    TEST_ASSERT_TRUE_MESSAGE(w.done, "jmap post did not finish");
-    TEST_ASSERT_TRUE(w.status > 0);
+    /* Stop before the asserts. A failure longjmps out, and a retry still
+       in flight would call back into this stack frame. */
     pav_net_stop();
     pthread_mutex_destroy(&w.mu);
     pthread_cond_destroy(&w.cv);
+    TEST_ASSERT_TRUE_MESSAGE(done, "jmap post did not finish");
+    TEST_ASSERT_TRUE(status > 0);
 }
 
 #ifndef _WIN32
