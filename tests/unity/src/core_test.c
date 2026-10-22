@@ -7836,9 +7836,12 @@ static int fixture_email_hold(int hold) {
 #else
     sink = "/dev/null";
 #endif
+    /* cmd.exe does not treat '' as an empty word. `--data ''` makes that
+       curl read stdin, and it sits there until --max-time. */
     n = snprintf(cmd, sizeof(cmd),
-                 "curl -fsS -X POST --data '' --max-time 10 --cacert \"%s\" -o %s \"%s/jmap/proxy?emailHold=%d\"", ca,
-                 sink, url, hold ? 1 : 0);
+                 "curl -fsS -X POST --data \"{}\" --max-time 10 --cacert \"%s\" -o %s "
+                 "\"%s/jmap/proxy?emailHold=%d\" < %s",
+                 ca, sink, url, hold ? 1 : 0, sink);
     if (n < 0 || n >= (int)sizeof(cmd)) {
         return -1;
     }
