@@ -72,6 +72,10 @@ export function createMailNav(api, container, options = {}) {
   let numbers = new Map();
   let syncByAccount = new Map();
   let stopped = false;
+  /* The shell defers until the Mail nav is visible. A Contacts-only restore
+     must not build this tree during the first paint: the icon kit then
+     replaces every row icon on the main thread. */
+  let armed = options.defer !== true;
   let generation = 0;
   let readySettled = false;
   let resolveReady = () => {};
@@ -86,6 +90,20 @@ export function createMailNav(api, container, options = {}) {
     }
     readySettled = true;
     resolveReady();
+  }
+
+  /* Boot timing. The core already times the commands. These lines say when
+     the page sent them, when it resumed, and when the tree was drawn. */
+  function mark(message) {
+    const write = api.log && api.log.client;
+    if (typeof write !== "function") {
+      return;
+    }
+    try {
+      void Promise.resolve(write.call(api.log, { subsystem: "mail", level: "debug", message })).catch(() => {});
+    } catch {
+      /* A mark must not change the reload. */
+    }
   }
 
   function nodeMap() {
@@ -190,9 +208,13 @@ export function createMailNav(api, container, options = {}) {
   async function reload(accountId) {
     const gen = ++generation;
     const scope = typeof accountId === "string" && accountId !== "" ? accountId : "";
+    const label = scope || "all";
     try {
+      mark(`reload ${gen} account.list sent ${label}`);
       const listed = await api.account.list();
+      mark(`reload ${gen} account.list returned ${label}`);
       if (stopped || gen !== generation) {
+        mark(`reload ${gen} dropped after account.list`);
         return;
       }
       const nextNumbers = new Map();
@@ -203,12 +225,17 @@ export function createMailNav(api, container, options = {}) {
         }
       }
       numbers = nextNumbers;
+      mark(`reload ${gen} mailbox.list sent ${label}`);
       const result = await api.mailbox.list(scope ? { accountId: scope } : {});
+      mark(`reload ${gen} mailbox.list returned ${label}`);
       if (stopped || gen !== generation) {
+        mark(`reload ${gen} dropped after mailbox.list`);
         return;
       }
       const nodes = result && Array.isArray(result.nodes) ? result.nodes : [];
+      mark(`reload ${gen} render started ${nodes.length}`);
       apply(nodes, scope);
+      mark(`reload ${gen} render finished ${nodes.length}`);
     } catch (err) {
       if (stopped || gen !== generation) {
         return;
@@ -223,13 +250,18 @@ export function createMailNav(api, container, options = {}) {
       /* A newer reload owns the first paint. This one settles it when it is
          still the latest, including a failed list. */
       if (stopped || gen === generation) {
+        mark(`reload ${gen} ready`);
         settleReady();
       }
     }
   }
 
   function onMailboxes(payload) {
+    if (!armed) {
+      return;
+    }
     const accountId = payload && typeof payload.accountId === "string" ? payload.accountId : "";
+    mark(`mailboxes changed ${accountId || "all"}`);
     reload(accountId);
   }
 
@@ -250,13 +282,25 @@ export function createMailNav(api, container, options = {}) {
   stops.push(api.on("mail.mailboxes_changed", onMailboxes));
   stops.push(api.on("sync.state", onSync));
   stops.push(api.on("accounts.changed", () => {
+    if (!armed) {
+      return;
+    }
     reload();
   }));
-  reload();
+  if (armed) {
+    reload();
+  }
 
   return {
     tree,
     reload,
+    start() {
+      if (!armed) {
+        armed = true;
+        reload();
+      }
+      return ready;
+    },
     ready,
     stop() {
       stopped = true;

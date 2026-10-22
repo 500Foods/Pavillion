@@ -1,6 +1,6 @@
 # L — STORE
 
-**Status:** L-1 complete (2026-10-18), step 42. The phase stamp at that close was `0.46`. `make test` was 81 Unity tests and 134 Vitest tests. L-2 is in progress (2026-10-22), step 55. Andrew accepted the Limits layout the same day. The work items are checked. The row stays in progress until the push is green. L-3 is not started. The index names the next phase.
+**Status:** L-1 complete (2026-10-18), step 42. The phase stamp at that close was `0.46`. `make test` was 81 Unity tests and 134 Vitest tests. L-2 is complete (2026-10-22), step 55. Andrew accepted the Limits layout the same day. CI on `abba579` (run 39797701301) is green for `fedora`, `macos-core`, and `windows-core`. The phase stamp is `0.61.0`. L-3 is not started. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The SQLite schema, migrations, the statement helpers, the blob and cache directories, and their eviction. The open and close are [C-CORE.md](C-CORE.md) C-4. Account configuration is the profile ([B-CONFIG.md](B-CONFIG.md)); this store holds what sync learns and what the user does with mail.
@@ -12,7 +12,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
 | L-1 | Migration runner, statement helpers, schema v1 (accounts, mailboxes, identities, sync state) | Medium | Complete |
-| L-2 | Schema v2: mail (email, threads, bodies, attachments, FTS, queue, outbox, drafts) and the blob store | Medium | In progress |
+| L-2 | Schema v2: mail (email, threads, bodies, attachments, FTS, queue, outbox, drafts) and the blob store | Medium | Complete |
 | L-3 | PIM migration: contacts, calendars, files, tasks, notes, rules and script runs (CLI tables are V-2) | Medium | Not started |
 
 Kind: **Easy** is one module and a test. **Medium** is the database driver or the filesystem.
@@ -181,7 +181,7 @@ CREATE TABLE rule_run (id INTEGER PRIMARY KEY, rule_id TEXT, ra_id TEXT, email_i
 ## L-2: Mail schema and the blob store
 
 **Kind:** Medium
-**Status:** In progress (2026-10-22). Andrew accepted the Limits layout on 2026-10-22. Every work item is checked. `make test` is 202 Unity tests, 2 Rust tests, and 363 Vitest tests, exit 0. His 2026-10-21 launch applied migration 2. The sequence row stays in progress until he pushes this tree and `fedora`, `macos-core`, and `windows-core` are green. The phase stamp stays `0.60.0`. Do not start M-4 in this sitting.
+**Status:** Complete (2026-10-22). Andrew accepted the Limits layout on 2026-10-22. Every work item is checked. `make test` is 202 Unity tests, 2 Rust tests, and 363 Vitest tests, exit 0. His 2026-10-21 launch applied migration 2. CI on `abba579` (run 39797701301) is green for `fedora`, `macos-core`, and `windows-core`. The phase stamp is `0.61.0`. The same day he accepted a startup change that is not part of this phase. That change is uncommitted. M-4 was not started in this sitting.
 
 **Goal:** The mail tables and the blob directory exist with their helpers before sync writes email.
 
@@ -200,7 +200,7 @@ CREATE TABLE rule_run (id INTEGER PRIMARY KEY, rule_id TEXT, ra_id TEXT, email_i
 
 **Done means:** The v2 schema is in place and blobs can be written, found, and evicted.
 
-**Exit gate:** `make test` exits 0. A v1 database from L-1's `make dev` run migrates to v2 on the next launch. The local half has passed. The CI half has not: this tree is uncommitted, and `origin/main` is one commit ahead.
+**Exit gate:** `make test` exits 0. A v1 database migrates to v2 on the next launch. Andrew's 2026-10-21 launch applied migration 2. CI on `abba579` (https://github.com/500Foods/Pavillion/actions/runs/39797701301) is green for `fedora`, `macos-core`, and `windows-core`. `2234482` is a README line-count commit after that merge and does not change this phase.
 
 **Accomplished:** Schema v2 is in `002_mail.sql`. Blobs are sharded files under the profile, written through `write_private`, and `pav_cache_evict` drops the oldest opened message text and documents over `preferences.cache`. Drafts, flagged mail, and the outbox stay. Contacts and calendars stay in SQLite. The runtime `open` directory is removed on stop. Settings → Limits edits `bodiesMb` and `blobsMb`, labeled Database and Document. Beside each cap is the size on disk and the free space on the blob volume. Each account row is those two pools, and a Total row sums each column on its own. `cache.usage` is the quick read and, with `measure`, the mail and file walk. The mail walk also stores `mailBodiesBytes`, `mailAttachmentsBytes`, and `mailAttachmentsCount`. `volumeFreeBytes` is optional. `PAVILLION_API_VERSION` stays 3. Help already describes this page. `make test` is 202 Unity tests, 2 Rust tests, and 363 Vitest tests, exit 0. Andrew's 2026-10-21 launch applied migration 2. He accepted the Limits layout on 2026-10-22, including a blank Document count until Check sizes has counted attachment parts.
 
@@ -216,7 +216,16 @@ CREATE TABLE rule_run (id INTEGER PRIMARY KEY, rule_id TEXT, ra_id TEXT, email_i
 - The page sums the pools. The command returns the parts. The labels are Database and Document. The stored keys stay `bodiesMb` and `blobsMb`.
 - Do not launch `make dev`. Andrew runs it and accepts the window.
 
-**Handoff:** M-4 is next, step 56, in [M-SYNC.md](M-SYNC.md). Do not start it in this sitting. Its entry gate is L-2 and E-7. E-7 is complete. L-2's work items are checked and Limits is accepted. The sequence row stays In progress until Andrew pushes this tree and `fedora`, `macos-core`, and `windows-core` are green. The phase stamp stays `0.60.0` until that row is marked Done. `origin/main` is one commit ahead (`72514e5`). Pull before committing. Do not commit `PAVILLION_BUILD`. `core/src/cache_usage.c` is new and untracked. The agent does not commit.
+**Handoff:** M-4 is next, step 56, in [M-SYNC.md](M-SYNC.md). Its entry gate is L-2 and E-7. Both are complete. Do not start M-4 in this sitting. The next session may start it. The phase stamp is `0.61.0`. `origin/main` is `2234482`, a README line-count commit on the L-2 merge `abba579`. Do not commit `PAVILLION_BUILD`. The agent does not commit.
+
+Andrew accepted the startup window on 2026-10-22. That work is not L-2 and not M-4. It is uncommitted, together with this close. Commit it on its own before M-4 source edits, or leave it and do not describe it as M-4. The files are `ui/index.html`, `ui/public/styles/theme.css`, `ui/public/styles/light.css`, `ui/src/main.js`, `ui/src/shell.js`, `ui/src/mail/nav.js`, `ui/src/mail/nav.test.js`, `ui/src/shell/session.test.js`, and `ui/src/help/pages.js`.
+
+Startup lessons, for the next session:
+
+- The shell does not wait on the Font Awesome kit. The loader fetches `pro-plus.min.js` and runs it by inserting an inline script. The kit config says `asyncLoading.enabled` is false, and that loader does not read the flag. The script is inserted after the first paint. A multi-second gap before `mailbox.list` resumed lined up with the kit running during the first layout. That gap was not traced into the kit.
+- The mail tree is built only when the Mail nav is showing. A Contacts-only restore does not call `mailbox.list`. `sync.state` that arrives early is applied when the nodes are built.
+- The splash background is immediate. The version line fades in over 0.4 s. Fade-out waits until the restored tabs have painted and at least 2 s have passed, then takes 0.4 s. The cover does not wait for the kit.
+- `cache.usage` at startup runs on a worker. The shell does not wait for it. The `headerTooltip` warning is the accounts table and stays with the paused Tabulator polish.
 
 M-4 writes headers into `email`, `email_mailbox`, and `thread` through `pav_db_write`, one job per page. Do not edit `002_mail.sql`. Q-1 has not landed, so the header FTS call is a stub until that phase. Importing `tests/corpus/` stays in `tests/stalwart/seed.sh` and is an M-4 work item. The Check sizes walk is not the sync walk. After a finished sync, `pav_cache_evict` still drops the oldest opened message text and documents that are over the caps. Bodies refetch on open.
 
@@ -263,3 +272,5 @@ None. L-Q1 was answered on 2026-10-21: keep 2048 MB of bodies and 4096 MB of blo
 - 2026-10-22 L-2 still in progress. Andrew rejected that layout. The caps are now Database and Document. Beside each cap is the on-disk size and the free space on the blob volume, on one line. The account table is two columns, Database (mail, contacts, calendars) and Document (attachments, files). Each cell is the entry count and the size. Check sizes also counts attachment parts. A pool size stays blank until the mail split is known, and so does the Document entry count. `make test` is 202 Unity tests, 2 Rust tests, and 363 Vitest tests, exit 0. The phase stamp stays `0.60.0`. Do not mark the row Done. Do not start M-4. The window has not been accepted.
 - 2026-10-22 L-2 still in progress. The account table has a Total row. It sums the Database column on its own and the Document column on its own. A missing figure is left out of that sum. The two columns are not added together. `make test` is 202 Unity tests, 2 Rust tests, and 363 Vitest tests, exit 0. The phase stamp stays `0.60.0`. Do not mark the row Done. Do not start M-4. The window has not been accepted.
 - 2026-10-22 L-2 still in progress. Andrew accepted the Limits layout, including a blank Document count until Check sizes has counted attachment parts. Every work item is checked. Accomplished, Lessons learned, and Handoff are written. `make test` is 202 Unity tests, 2 Rust tests, and 363 Vitest tests, exit 0. The tree is uncommitted, and `origin/main` is one commit ahead (`72514e5`). The row stays In progress until that push is green on `fedora`, `macos-core`, and `windows-core`. The phase stamp stays `0.60.0`. Do not mark the row Done. Do not start M-4.
+- 2026-10-22 L-2 complete, step 55. Andrew asked to close it. CI on `abba579` (run 39797701301) is green for `fedora`, `macos-core`, and `windows-core`. `make test` on that close is 202 Unity tests, 2 Rust tests, and 363 Vitest tests, exit 0. The phase stamp is `0.61.0`. M-4 is next and is not started. The same sitting left an uncommitted startup change: the Font Awesome kit waits until after the first paint, and the mail tree is built only when Mail is showing. That window has not been accepted. Do not start M-4 until it is.
+- 2026-10-22 Andrew accepted the startup window. The cover shows the version for at least two seconds, fades the line in over 0.4 s, and fades out over 0.4 s after the restored tabs have painted. The kit script is still inserted after the first paint, and the shell does not wait on it. The mail tree is built only when Mail is showing. That diff is uncommitted and is not M-4. M-4's entry gate is met. M-4 was not started. The last full `make test` is still the L-2 run. File-scoped Vitest covered the nav defer, the contacts-only restore, the theme sheets, and Help. CI has not seen this diff or the stamp bump.

@@ -1448,6 +1448,9 @@ function showNav(section) {
   for (const body of mountRoot.querySelectorAll("[data-nav]")) {
     body.hidden = body.dataset.nav !== navSection;
   }
+  if (navSection === "mail" && mailNav) {
+    void mailNav.start();
+  }
 }
 
 function paintSessionRestore() {
@@ -2486,9 +2489,12 @@ export async function startShell(surface, nextApi, nextHost, result) {
   if (mailNavEl) {
     const mailTreeContainer = mailNavEl.querySelector("#mail-tree");
     if (mailTreeContainer) {
+      /* defer: the tree starts after openInitialTabs, and only when this
+         pane is showing. Contacts-only startup skips mailbox.list. */
       mailNav = createMailNav(api, mailTreeContainer, {
         id: "mail",
         label: "Mail",
+        defer: true,
         state: ui.trees && ui.trees.mail,
         regions: ["leading", "label", "status", "count", "hover"],
         onPersist(treeId, patch) {
@@ -2505,10 +2511,6 @@ export async function startShell(surface, nextApi, nextHost, result) {
       mailTree = mailNav.tree;
     }
   }
-  if (mailNav) {
-    await mailNav.ready;
-  }
-
   function bindMailTree() {
     if (!mailTree || !mountRoot) {
       return;
@@ -2838,6 +2840,17 @@ export async function startShell(surface, nextApi, nextHost, result) {
     accountsView.refresh();
   }
   await openInitialTabs();
+  const mailPane = mountRoot && mountRoot.querySelector('[data-nav="mail"]');
+  if (mailNav && mailPane && !mailPane.hidden) {
+    await mailNav.start();
+    if (alive(mine)) {
+      try {
+        void Promise.resolve(log("ui", "debug", "mail nav ready")).catch(() => {});
+      } catch {
+        /* The mark must not stop the shell. */
+      }
+    }
+  }
   if (activityView) {
     await activityView.ready();
   }

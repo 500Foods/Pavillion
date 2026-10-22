@@ -179,9 +179,76 @@ test("a list failure is a warning and leaves the tree", async () => {
   await settled();
 
   expect(row(el, "foods")).toBe(foods);
-  const warnings = raw.calls.filter((call) => call.cmd === "log.client");
-  expect(warnings.length).toBeGreaterThan(0);
-  expect(warnings.at(-1).args.message).toBe("mailbox tree failed: internal");
+  const messages = raw.calls.filter((call) => call.cmd === "log.client").map((call) => call.args.message);
+  expect(messages).toContain("mailbox tree failed: internal");
+
+  nav.stop();
+});
+
+function debugMarks(raw) {
+  return raw.calls
+    .filter((call) => call.cmd === "log.client" && call.args.level === "debug")
+    .map((call) => call.args.message);
+}
+
+test("a reload marks the lists, the render, and a mailbox change", async () => {
+  const el = document.createElement("div");
+  const raw = transport();
+  const api = createApi(raw);
+  const nav = createMailNav(api, el);
+  await settled();
+
+  expect(debugMarks(raw)).toEqual([
+    "reload 1 account.list sent all",
+    "reload 1 account.list returned all",
+    "reload 1 mailbox.list sent all",
+    "reload 1 mailbox.list returned all",
+    "reload 1 render started 5",
+    "reload 1 render finished 5",
+    "reload 1 ready",
+  ]);
+
+  raw.emit("mail.mailboxes_changed", { accountId: "foods" });
+  await settled();
+
+  expect(debugMarks(raw).slice(7)).toEqual([
+    "mailboxes changed foods",
+    "reload 2 account.list sent foods",
+    "reload 2 account.list returned foods",
+    "reload 2 mailbox.list sent foods",
+    "reload 2 mailbox.list returned foods",
+    "reload 2 render started 3",
+    "reload 2 render finished 3",
+    "reload 2 ready",
+  ]);
+
+  nav.stop();
+});
+
+test("a deferred nav lists mailboxes on start and keeps earlier sync state", async () => {
+  const el = document.createElement("div");
+  const raw = transport();
+  const api = createApi(raw);
+  const nav = createMailNav(api, el, { defer: true });
+  await settled();
+
+  expect(raw.calls.some((call) => call.cmd === "mailbox.list")).toBe(false);
+  expect(row(el, "foods")).toBeNull();
+
+  raw.emit("mail.mailboxes_changed", { accountId: "foods" });
+  raw.emit("accounts.changed", {});
+  raw.emit("sync.state", { accountId: "foods", state: "syncing" });
+  await settled();
+  expect(raw.calls.some((call) => call.cmd === "mailbox.list")).toBe(false);
+
+  await nav.start();
+  await settled();
+  expect(raw.calls.filter((call) => call.cmd === "mailbox.list")).toHaveLength(1);
+  expect(row(el, "foods").querySelector("i.fa-spinner")).not.toBeNull();
+
+  await nav.start();
+  await settled();
+  expect(raw.calls.filter((call) => call.cmd === "mailbox.list")).toHaveLength(1);
 
   nav.stop();
 });

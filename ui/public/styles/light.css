@@ -102,4 +102,7 @@
 html[data-pav-theme="light"] {
   color-scheme: light;
   background: #f7f4f2;
+  --pav-surface-canvas: #f7f4f2;
+  --pav-text: #1c1212;
+  --pav-font: "Vanadium Sans", system-ui, sans-serif;
 }

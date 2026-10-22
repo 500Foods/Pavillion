@@ -592,3 +592,40 @@ test("a tab change is written on the session interval", async () => {
   expect(saved.session.tabs[0].context).toEqual({ mailboxId: "sent" });
   expect(saved.session.shutdown).toBe("open");
 });
+
+test("a contacts-only restore lists mailboxes when Mail is shown", async () => {
+  const el = document.createElement("div");
+  document.body.append(el);
+  const transport = mockTransport();
+  const api = createApi(transport);
+  await api.prefs.ui.set({
+    session: {
+      restore: true,
+      shutdown: "clean",
+      tabs: [
+        tab({
+          id: "contacts:home",
+          section: "contacts",
+          kind: "home",
+          key: "",
+          title: "Contacts",
+          order: 1,
+          active: true,
+        }),
+      ],
+    },
+  });
+  await mount(el, api);
+  expect(ids()).toEqual(["contacts:home"]);
+  expect(document.querySelector('[data-nav="contacts"]').hidden).toBe(false);
+  expect(document.querySelector('[data-nav="mail"]').hidden).toBe(true);
+  expect(transport.seen.some((call) => call.cmd === "mailbox.list")).toBe(false);
+
+  document.querySelector('.nav-buttons [data-section="mail"]').click();
+  await new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+  expect(document.querySelector('[data-nav="mail"]').hidden).toBe(false);
+  expect(transport.seen.some((call) => call.cmd === "mailbox.list")).toBe(true);
+  expect(document.querySelector('[data-nav="mail"] [role="treeitem"][data-node-id="inbox"]')).not.toBeNull();
+});

@@ -12,7 +12,7 @@ export const helpPages = [
         id: "build",
         title: "This build",
         paragraphs: [
-          `This copy is Pavillion ${APP_VERSION}. The window title shows the same number.`,
+          `This copy is Pavillion ${APP_VERSION}. The window title shows the same number. Startup covers the window with that line for at least two seconds, longer if the restored tabs are not painted yet, then fades it out.`,
           "The middle number is how many plan steps are complete. It moves when a phase is accepted. The last number counts builds. make dev, make build, and make mini add one before they compile. Accepting a phase leaves that count in place.",
         ],
       },
@@ -317,7 +317,7 @@ export const helpPages = [
         id: "logging",
         title: "Logging",
         paragraphs: [
-          "Everything that logs goes through pav_log in the core: C, the Rust shell (subsystem shell), and the UI through log.client (user actions at INFO, navigation at DEBUG, at most 50 lines a second; console.warn and console.error are forwarded too). bypass.test.js fails on any new direct stderr, println!, or console call; the allowed ones are --help, --version, the API version mismatch line, and pav_log's own stderr copy.",
+          "Everything that logs goes through pav_log in the core: C, the Rust shell (subsystem shell), and the UI through log.client (user actions at INFO, navigation at DEBUG, at most 50 lines a second; console.warn and console.error are forwarded too). Startup writes DEBUG marks for the mail-nav reload (mailboxes changed, account.list, mailbox.list, tree render, ready) and for the Font Awesome kit. The kit script is inserted after the first paint. The shell does not wait on that load. The mail tree is built only when the Mail nav is showing, so a Contacts-only restore does not call mailbox.list. A splash covers the window until that restore has painted. bypass.test.js fails on any new direct stderr, println!, or console call; the allowed ones are --help, --version, the API version mismatch line, and pav_log's own stderr copy.",
           "Lines are stored in <profile id>.log.db next to the store (UTC milliseconds), batched about every 100 ms; an ERROR waits for its commit. The file is trimmed to preferences.log_max_mb at shutdown. log.query pages history; log.export writes UTC lines.",
           "pav_log redacts every line before it is stored: the rest of an Authorization header, Basic and Bearer credentials, URL query strings and fragments, user:password@ in URLs, the value after a secret-named key (password, secret, token, key), and email addresses at INFO and above. Identical consecutive lines collapse into one plus a \"previous line repeated N times\" line, flushed by a different line, 1 s of quiet, a flush, or shutdown. Callers still pass ids, never content.",
         ],
