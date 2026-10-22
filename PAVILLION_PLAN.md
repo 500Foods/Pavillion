@@ -4,9 +4,9 @@ Status: v0.7 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 
 **Resume:** each phase's history is in its own document's Working log; this block is only the current state.
 
-- Last finished: M-4 (step 56), 2026-10-22, in [docs/M-SYNC.md](docs/M-SYNC.md). Headers sync newest first, Inbox and Sent before the other mailboxes, in pages of at most 500. A fixture account of 2,000 messages landed in four pages. `mail.messages_changed` is real. `make test` is 206 Unity, 2 Rust, and 366 Vitest, exit 0. Against the container, `andrew@test-a.local` stored the server's counts (Inbox 1, six other mailboxes 0). The temporary account was removed. The live profile was not opened. The window was not launched. CI waits on Andrew's push.
+- Last finished: M-4 (step 56), 2026-10-22, in [docs/M-SYNC.md](docs/M-SYNC.md). Headers sync newest first, Inbox and Sent before the other mailboxes, in pages of at most 500. A fixture account of 2,000 messages landed in four pages. `mail.messages_changed` is real. Andrew accepted the window the same day. The Windows sync wait is 30 seconds. `make test` is 207 Unity, 2 Rust, and 376 Vitest, exit 0. Against the container, `andrew@test-a.local` stored the server's counts (Inbox 1, six other mailboxes 0). The temporary account was removed. The live profile was not opened. Andrew's push of the wait change is what the three CI jobs run.
 - Next: M-5 (step 57), in [docs/M-SYNC.md](docs/M-SYNC.md). Not started. The entry gate is M-4, which is Done. The agent does not commit. The Accounts table polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md).
-- Last full `make test`: 206 Unity tests, 2 Rust tests and 366 Vitest tests, exit 0 (2026-10-22, M-4). The phase stamp is `0.62.0`. The Vitest count includes the splash-screen tests from `054e656`, which were outside the L-2 count of 363.
+- Last full `make test`: 207 Unity tests, 2 Rust tests and 376 Vitest tests, exit 0 (2026-10-22, M-4). The phase stamp is `0.62.0`. The Vitest count includes the splash-screen tests from `054e656`, which were outside the L-2 count of 363.
 - `PAVILLION_API_VERSION` is 3. The phase stamp is `0.62.0` (62 Done rows), release date 2026-10-22.
 
 **Read first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), one page with diagrams of the layers, the threads, and the data flow.

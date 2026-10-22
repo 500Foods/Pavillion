@@ -4654,18 +4654,35 @@ static void account_state_text(const char *path, const char *id, char *out, size
     sqlite3_close(db);
 }
 
+/* 50 ms steps. Eight seconds is enough on Linux and macOS. On the Windows
+   runner a cap of 2 turns one mailbox list plus a short last email page into
+   more round trips than that. The account was still syncing, with no error.
+   The 2,000-message walk on that runner finishes in about 13 seconds. Thirty
+   seconds still ends before a hung transfer's 60 second timeout. */
+#define SYNC_WAIT_STEPS 600
+
+static void explain_wait(const char *path, const char *id, int count, char *why, size_t why_n) {
+    char state[160];
+
+    if (why == NULL || why_n == 0) {
+        return;
+    }
+    account_state_text(path, id, state, sizeof(state));
+    snprintf(why, why_n, "count=%d %s", count, state);
+}
+
 static int wait_count(const char *path, const char *sql, int expect, const char *id, char *why, size_t why_n) {
     int i;
+    int last = -1;
 
-    for (i = 0; i < 160; i++) {
-        if (scalar_int(path, sql) == expect) {
+    for (i = 0; i < SYNC_WAIT_STEPS; i++) {
+        last = scalar_int(path, sql);
+        if (last == expect) {
             return 0;
         }
         usleep(50000);
     }
-    if (why != NULL && why_n > 0) {
-        account_state_text(path, id, why, why_n);
-    }
+    explain_wait(path, id, last, why, why_n);
     return -1;
 }
 
@@ -4680,16 +4697,16 @@ static int wait_account_state(const char *path, const char *id, const char *stat
 static int wait_count_tries(const char *path, const char *sql, int expect, const char *id, char *why, size_t why_n,
                             int tries) {
     int i;
+    int last = -1;
 
     for (i = 0; i < tries; i++) {
-        if (scalar_int(path, sql) == expect) {
+        last = scalar_int(path, sql);
+        if (last == expect) {
             return 0;
         }
         usleep(50000);
     }
-    if (why != NULL && why_n > 0) {
-        account_state_text(path, id, why, why_n);
-    }
+    explain_wait(path, id, last, why, why_n);
     return -1;
 }
 
@@ -8170,7 +8187,7 @@ void test_email_sync_cancel_resumes(void) {
     TEST_ASSERT_EQUAL_INT(0, fixture_email_hold(1));
     g_email_hold = 1;
     start_email_account("can", "?maxObjectsInGet=2&emails=6", path, sizeof(path));
-    for (i = 0; i < 200; i++) {
+    for (i = 0; i < SYNC_WAIT_STEPS; i++) {
         int rows_n = scalar_int(path, "SELECT count(*) FROM email WHERE ra_id='can/a1'");
         int syncing = scalar_int(path,
             "SELECT count(*) FROM account_state WHERE account_id='can' AND state='syncing'");

@@ -340,6 +340,7 @@ export const helpPages = [
           "Identity/get is sent with the submission capability. Stalwart rejects the method without it. A mail account that does not advertise submission syncs mailboxes only.",
           "Mailbox sync asks Mailbox/query for a page of ids, then Mailbox/get for those ids, and repeats until the server's total is stored. The page size is the Session's maxObjectsInGet, and at most 500. A stored tree that already has that many mailboxes is checked against the server total, and a larger total walks the list again.",
           "Header sync then asks Email/query for each mailbox, newest first, Inbox and Sent before the others. The first page is that same cap, and the rest of the mailbox follows in pages of that size. Email/get asks for header fields only, in the same request. Each page that stores messages emits mail.messages_changed. The activity total starts as the sum of the folder counts. The first page of a folder replaces that folder's count with the query total. The mail nav draws that progress as a pie on the account row. The Update button draws the same percent behind its icon and puts it in the tooltip. A second click cancels the running sync. Quitting wakes the transfer so an in-flight request is dropped instead of waiting out the poll.",
+          "Unity's sync waits allow 30 seconds. A page cap of 2 on the Windows fixture needs more round trips than 8 seconds, and the account is still syncing when that shorter wait ends.",
         ],
       },
       {
