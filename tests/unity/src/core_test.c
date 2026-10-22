@@ -7836,8 +7836,7 @@ static int fixture_email_hold(int hold) {
 #else
     sink = "/dev/null";
 #endif
-    /* cmd.exe does not treat '' as an empty word. `--data ''` makes that
-       curl read stdin, and it sits there until --max-time. */
+    /* cmd.exe keeps the single quotes, so --data '' posts two apostrophes. */
     n = snprintf(cmd, sizeof(cmd),
                  "curl -fsS -X POST --data \"{}\" --max-time 10 --cacert \"%s\" -o %s "
                  "\"%s/jmap/proxy?emailHold=%d\" < %s",
