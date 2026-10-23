@@ -1,6 +1,6 @@
 # N — MAIL
 
-**Status:** N-3a complete (2026-10-23). N-1 is in progress. The index names the phase. Scoped 2026-10-16 from plan §6, §7, §10, §13.
+**Status:** N-1 complete (2026-10-23). The index names the next phase. Scoped 2026-10-16 from plan §6, §7, §10, §13.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Reading and organizing mail: MIME, the sanitizer, the message list, the reading pane, threads, unified views, flags and moves, attachments, notifications, shortcuts, and folder retention. Sync is [M-SYNC.md](M-SYNC.md). Compose is [O-COMPOSE.md](O-COMPOSE.md). Search is [Q-SEARCH.md](Q-SEARCH.md). The mailbox tree is [E-TREE.md](E-TREE.md). The isolation rules are the [F-HARDEN.md](F-HARDEN.md) Lock and are not restated here.
@@ -11,7 +11,7 @@ One phase is one session. Do not start the next one in the same conversation.
 
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
-| N-1 | Body fetch and MIME with GMime; `message.get` text, parts, headers | Medium | In progress |
+| N-1 | Body fetch and MIME with GMime; `message.get` text, parts, headers | Medium | Done |
 | N-2 | The HTML sanitizer in the core and the hostile corpus | Hard | Not started |
 | N-3a | Message list: From and Subject for the selected folder | Medium | Done |
 | N-3 | Message list: the remaining columns, selection, live row updates | Medium | Not started |
@@ -109,7 +109,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 ## N-1: Body fetch and MIME
 
 **Kind:** Medium
-**Status:** In progress. Last finished work item: the Unity corpus tests. `make test` is 230 Unity, 2 Rust, and 380 Vitest, exit 0 (2026-10-23). macOS and Windows CI failed in `mime.c` on the iconv pointer type; the cast is gone and Darwin links `-liconv`. That is not proven until the next push. The stamp stays `0.64.0`.
+**Status:** Complete (2026-10-23, step 58). `make test`: 230 Unity, 2 Rust, 380 Vitest, exit 0 (2026-10-23). CI on `5342f9d` is green: fedora, macos-core, windows-core. The phase stamp is `0.65.0`. The agent does not commit this close-out.
 
 **Goal:** Opening a message fetches its body once and returns text, parts, and headers.
 
@@ -127,6 +127,32 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 **Done means:** Every corpus message parses to the expected text and parts.
 
 **Exit gate:** `make test` exits 0 with the corpus tests.
+
+**Accomplished:** `message.get` is real. The argument is `{id, allowRemote}`. `id` is `msg:<ra_id>:<emailId>`, compared the same way as a mailbox id, without splitting on the colon. A missing or empty id, an id that does not start with `msg:`, a non-boolean `allowRemote`, or any other key is `bad_args`. An id that is not a stored row is `not_found`. `allowRemote` defaults to false and does not change the bytes.
+
+A row whose `body_state` is `fetched`, and whose body files are still on disk, is returned from the cache. Any other state fetches. The request is `Email/get` for that id, with `textBody`, `htmlBody`, `bodyStructure`, `bodyValues`, `attachments`, `header:List-Id:asText`, and `header:Authentication-Results:asText`, plus `fetchTextBodyValues`, `fetchHTMLBodyValues`, and `maxBodyValueBytes` of 2 MB. Complete body values are stored. A used value that is missing or truncated leaves `body_state` unchanged, and the same fetch downloads the raw blob. GMime 3 parses that blob. Text and HTML are cut on a UTF-8 boundary at 2 MB. Undecodable bytes become U+FFFD. The raw blob stays.
+
+The store writes `body_cache` (`text_plain_path`, `html_raw_path`, `html_sanitized_path` null, `has_remote` 0, `sanitizer_version` 0) and replaces the `attachment` rows. An attachment row is part id, name, mime, size, cid, and disposition. `local_path` stays null. Schema v3 adds `list_id` and `auth_summary` on `email`. A stored body sets `body_state` to `fetched`. A failed fetch sets `failed`.
+
+The result is the Lock's `MessageDetail`. `htmlSanitized` is null. `hasRemote` is false. `date` is `sent_at`, then `received_at`, then null. `identityHint` is the identity on that remote account whose email equals the first From address, or null. Strings are data.
+
+After a sync reaches idle, `fetchBodies` of `none` fetches nothing. `recent` takes messages received in the last 30 days. `all` takes every unfetched or evicted row. At most two run at once, as activity `body.fetch`. Prefetch waits while that account is syncing, and while a `message.get` for it holds the account slot. `activity.cancel` on that id stops the transfer.
+
+Unity covers the ten corpus files (plain, alternative, newsletter, cid signature, malformed, ISO-8859-1, Windows-1252, Shift_JIS, missing charset, and a generated huge attachment), the `Email/get` request, a cached `message.get`, bad arguments, a JMAP body apply, the prefetch window, a prefetch that ends `body.fetch`, and `message.get` against the fixture. `make test` is 230 Unity, 2 Rust, and 380 Vitest, exit 0 (2026-10-23). CI on `5342f9d` is green: fedora, macos-core, windows-core.
+
+Help's developer Mail sync page describes `message.get`, including the 2 MB cap and that attachment bytes stay on the server. The user Mail page still describes the From and Subject list. The reading pane is N-4.
+
+**Lessons learned:**
+
+- glibc, the current Apple SDK, and MinGW declare `iconv` with `char **`. The call passes `char **`. A `const char **` cast fails the MinGW build and warns on Apple. `iconv` is in glibc. `build.rs` links `iconv` on macOS and Windows, and the Unity link line in the Makefile does the same.
+- Fedora's GMime 3 package is `gmime30-devel`, pkg-config `gmime-3.0`. `gmime-devel` is 2.6. macOS CI installs `gmime` from Homebrew and points `PKG_CONFIG_PATH` at it. Windows CI installs `mingw-w64-ucrt-x86_64-gmime`. A local 3.2.15 under `~/.local` is preferred when that `.pc` file exists.
+- `submit_json` keeps a completion callback that is already set. `message.get` leaves it empty and gets `on_net`. Prefetch sets `prefetch_on_net` first. Overwriting that callback left the `body.fetch` activity running after the body was stored.
+- The net thread does not call `pav_net_request` while it holds the server mutex. When a prefetch finishes, it posts kind 5 to the core thread, and `pav_body_take_core` starts the next fetch there. Kind 4 is the download continuation and uses the same post. `pav_sync_result_free` frees both kinds.
+- The splash sits at `z-index: 100`, above the column chooser at 50. WebKit paints a scroller's bar over a fixed cover. While `#splash` is in the document, the nav, the pane, and the message list set `overflow: hidden`.
+- The fake keyring is process-wide and capped. `test_prefetch_ends_body_fetch` removes the secret it stored during `tearDown`.
+- `Email/get` with body values stores the message when those values are complete. A missing or truncated value leaves `body_state` unchanged, and the same fetch downloads the blob for GMime. Render text and HTML stop at 2 MB on a UTF-8 boundary. Attachment rows are metadata. `local_path` stays null.
+
+**Handoff:** N-1 is complete (2026-10-23, step 58). Andrew asked for this close-out the same day. The exit gate is the suite. The index names N-2 next (step 59, [N-MAIL.md](N-MAIL.md)). N-2 was not started. `htmlSanitized` stays null until N-2. Attachment bytes stay on the server for N-7. The reading pane stays in N-4. `$deleted` stays in the list for N-3 and N-5. `PAVILLION_API_VERSION` stays 3. The phase stamp is `0.65.0`. `make test`: 230 Unity, 2 Rust, 380 Vitest, exit 0. CI on `5342f9d` is green: fedora, macos-core, windows-core. Tip `43f5d6e` is the README line count only. This close-out is not in that commit. The agent does not commit.
 
 ## N-2: The HTML sanitizer
 
@@ -360,3 +386,4 @@ Andrew opened the live profile on 2026-10-23. The count is there and the list fi
 - 2026-10-23 N-3a complete, step 135. Andrew accepted the window. The count is there and the list fills immediately. Sent, with more than 3700 messages, renders at once. `$deleted` stays in the list for N-3 and N-5. Stamp `0.64.0`. `make test`: 213 Unity, 2 Rust, 380 Vitest, exit 0. CI on `e30fdd1` is green: fedora, macos-core, windows-core. The index names N-1 next. N-1 was not started. This close-out is not in that commit.
 - 2026-10-23 N-1 in progress. GMime 3 parses the corpus, `message.get` returns text, parts, and headers, and idle prefetch follows `fetchBodies`. `htmlSanitized` stays null. `make test`: 229 Unity, 2 Rust, 380 Vitest, exit 0. CI is not pushed. Stamp stays `0.64.0`.
 - 2026-10-23 N-1 still in progress. macOS and Windows CI failed in `mime.c`: iconv wants `char **`, and macOS needs `-liconv`. Prefetch left `body.fetch` running because `submit_json` replaced its completion callback; the callback stays, and the next prefetch is posted to the core thread. The splash is `z-index: 100`. While it is up, the nav, the pane, and the message list do not scroll, because WebKit paints those bars over a fixed cover. The prefetch test removes its fake-keyring secret in `tearDown`. `make test`: 230 Unity, 2 Rust, 380 Vitest, exit 0. Stamp stays `0.64.0`. CI is not pushed.
+- 2026-10-23 N-1 complete, step 58. GMime 3 parses the corpus. `message.get` returns text, parts, and headers. `htmlSanitized` stays null. Prefetch follows `fetchBodies`, at most two, as `body.fetch`. Stamp `0.65.0`. `make test`: 230 Unity, 2 Rust, 380 Vitest, exit 0. CI on `5342f9d` is green: fedora, macos-core, windows-core. The index names N-2 next. N-2 was not started. This close-out is not in that commit.

@@ -31,6 +31,33 @@
       <p>Pavillion</p>
     </div>
     <div id="app"></div>
+    <script>
+      /* The stylesheets above have loaded: a classic script waits for them.
+         Tell the shell the cover is laid out. The window stays hidden until
+         then, so the first frame is this cover. A hidden WebKit view may not
+         run animation frames, so the timer is the signal in that case. */
+      (function () {
+        var sent = false;
+        function reveal() {
+          if (sent) {
+            return;
+          }
+          var internals = window.__TAURI_INTERNALS__;
+          if (!internals || typeof internals.invoke !== "function") {
+            return;
+          }
+          sent = true;
+          internals.invoke("plugin:event|emit", {
+            event: "pav-splash-painted",
+            payload: {},
+          });
+        }
+        requestAnimationFrame(function () {
+          requestAnimationFrame(reveal);
+        });
+        setTimeout(reveal, 32);
+      })();
+    </script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

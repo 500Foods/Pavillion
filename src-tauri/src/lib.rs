@@ -8,6 +8,11 @@ struct EventNote { name: String, json: String }
 struct SchemeOut { status: i32, headers_json: *mut c_char, body: *mut c_void, body_len: usize }
 static EVENT_TX: Mutex<Option<tauri::async_runtime::Sender<EventNote>>> = Mutex::new(None);
 static WINDOW_READY: AtomicBool = AtomicBool::new(false);
+/* Shown only after the saved rectangle is applied and the cover is laid out.
+   A missed signal still shows the window. */
+static WINDOW_PLACED: AtomicBool = AtomicBool::new(false);
+static WINDOW_PAINTED: AtomicBool = AtomicBool::new(false);
+static WINDOW_SHOWN: AtomicBool = AtomicBool::new(false);
 #[used]
 static STRONGHOLD_KEEP: (
     unsafe extern "C" fn(*const c_char, *const u8, usize, *const c_char, *const c_char, *const c_char) -> i32,
@@ -112,12 +117,37 @@ fn report_window(window: &tauri::WebviewWindow) {
     }
 }
 
+fn reveal_window(window: &tauri::WebviewWindow) {
+    if WINDOW_SHOWN.swap(true, Ordering::SeqCst) { return; }
+    let _ = window.show();
+    WINDOW_READY.store(true, Ordering::SeqCst);
+}
+fn try_reveal(window: &tauri::WebviewWindow) {
+    if WINDOW_PLACED.load(Ordering::SeqCst) && WINDOW_PAINTED.load(Ordering::SeqCst) {
+        reveal_window(window);
+    }
+}
+fn note_splash_painted(window: &tauri::WebviewWindow) {
+    WINDOW_PAINTED.store(true, Ordering::SeqCst);
+    try_reveal(window);
+}
+fn arm_reveal_timeout(window: tauri::WebviewWindow) {
+    let built = std::thread::Builder::new().name("splash-reveal".into()).stack_size(512 * 1024).spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        if WINDOW_SHOWN.load(Ordering::SeqCst) { return; }
+        shell_warn!("splash did not paint; showing the window");
+        WINDOW_PAINTED.store(true, Ordering::SeqCst);
+        try_reveal(&window);
+    });
+    if built.is_err() { shell_warn!("cannot wait for the splash"); }
+}
 fn apply_initial(window: &tauri::WebviewWindow) {
     let data = match core_data("window.initial", &json!({"monitors": monitor_list(window)})) {
         Ok(data) => data,
         Err(err) => {
             shell_warn!("cannot read window: {}", err_str(Some(&err), "message", "core call failed"));
-            let _ = window.show();
+            WINDOW_PLACED.store(true, Ordering::SeqCst);
+            try_reveal(window);
             return;
         }
     };
@@ -130,8 +160,8 @@ fn apply_initial(window: &tauri::WebviewWindow) {
         let _ = window.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(x as f64, y as f64)));
     }
     if data.get("maximized").and_then(Value::as_bool) == Some(true) { let _ = window.maximize(); }
-    let _ = window.show();
-    WINDOW_READY.store(true, Ordering::SeqCst);
+    WINDOW_PLACED.store(true, Ordering::SeqCst);
+    try_reveal(window);
 }
 
 fn writes_clean_session(cmd: &str, args: &Value) -> bool {
@@ -468,7 +498,13 @@ fn build_app(workdir: &str, single_instance: bool) -> Result<tauri::App, tauri::
         let name = scheme.to_string();
         builder = builder.register_uri_scheme_protocol(scheme, move |_ctx, request| scheme_reply(&name, &request));
     }
-    builder.setup(move |app| {
+    builder.on_page_load(|webview, payload| {
+        if payload.event() != tauri::webview::PageLoadEvent::Finished || webview.label() != "main" { return; }
+        let url = payload.url().as_str();
+        if url.starts_with("about:") { return; }
+        let Some(window) = webview.get_webview_window("main") else { return };
+        note_splash_painted(&window);
+    }).setup(move |app| {
         IN_BUILD.store(false, Ordering::SeqCst);
         start_core(&workdir);
         start_events(app.handle());
@@ -479,6 +515,9 @@ fn build_app(workdir: &str, single_instance: bool) -> Result<tauri::App, tauri::
                 report_window(&watch);
             }
         });
+        let painted = window.clone();
+        app.listen("pav-splash-painted", move |_| note_splash_painted(&painted));
+        arm_reveal_timeout(window.clone());
         apply_initial(&window);
         app.listen("pav-quit-began", |_| note_page(PAGE_BEGAN));
         app.listen("pav-quit-stuck", |_| {

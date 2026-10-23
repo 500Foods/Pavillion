@@ -2271,6 +2271,8 @@
 
 /* Startup cover. The background is immediate. The line fades in, then the
    cover stays until the shell is ready and at least two seconds have passed.
+   The shell shows the window only after this cover has been laid out. The
+   webview background is the same black.
    z-index is above the widgets (the column chooser is 50). WebKit still
    paints a scroller's bar over a fixed cover, so the nav, the pane, and the
    message list do not scroll while this node exists. */
