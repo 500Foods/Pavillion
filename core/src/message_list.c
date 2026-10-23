@@ -4,6 +4,7 @@
 #include "dispatch.h"
 #include "pav_blob.h"
 #include "pav_db.h"
+#include "pav_search.h"
 
 #include <jansson.h>
 #include <sqlite3.h>
@@ -108,14 +109,17 @@ static int copy_col(char *dst, size_t n, sqlite3_stmt *stmt, int col) {
     return 0;
 }
 
-static int take_view(json_t *args, const char **id, PavError *err) {
+static int take_view(json_t *args, int *search, const char **id, const char **query, PavError *err) {
     const char *key;
     json_t *value;
     json_t *view = NULL;
     int saw_view = 0;
     int saw_kind = 0;
+    int kind_search = 0;
 
+    *search = 0;
     *id = NULL;
+    *query = NULL;
     if (!json_is_object(args)) {
         pav_error_set(err, "bad_args", "arguments are not an object", 0);
         return -1;
@@ -137,7 +141,11 @@ static int take_view(json_t *args, const char **id, PavError *err) {
     }
     json_object_foreach(view, key, value) {
         if (strcmp(key, "kind") == 0) {
-            if (!json_is_string(value) || strcmp(json_string_value(value), "mailbox") != 0) {
+            const char *kind = json_string_value(value);
+
+            if (kind != NULL && strcmp(kind, "search") == 0) {
+                kind_search = 1;
+            } else if (kind == NULL || strcmp(kind, "mailbox") != 0) {
                 pav_error_set(err, "bad_args", "view.kind must be mailbox", 0);
                 return -1;
             }
@@ -154,6 +162,14 @@ static int take_view(json_t *args, const char **id, PavError *err) {
                 return -1;
             }
             *id = text;
+        } else if (strcmp(key, "query") == 0) {
+            const char *text = json_string_value(value);
+
+            if (text == NULL) {
+                pav_error_set(err, "bad_args", "view.query must be a string", 0);
+                return -1;
+            }
+            *query = text;
         } else {
             char buf[128];
 
@@ -164,6 +180,22 @@ static int take_view(json_t *args, const char **id, PavError *err) {
     }
     if (!saw_kind) {
         pav_error_set(err, "bad_args", "view.kind must be mailbox", 0);
+        return -1;
+    }
+    if (kind_search) {
+        if (*id != NULL) {
+            pav_error_set(err, "bad_args", "unknown argument view.id", 0);
+            return -1;
+        }
+        if (*query == NULL) {
+            pav_error_set(err, "bad_args", "view.query must be a string", 0);
+            return -1;
+        }
+        *search = 1;
+        return 0;
+    }
+    if (*query != NULL) {
+        pav_error_set(err, "bad_args", "unknown argument view.query", 0);
         return -1;
     }
     if (*id == NULL) {
@@ -197,6 +229,8 @@ static void fail_read(PavDbRead *read, json_t *root, PavError *err, const char *
 
 int pav_cmd_message_list(json_t *args, json_t **data, PavError *err) {
     const char *node_id = NULL;
+    const char *search_query = NULL;
+    int search = 0;
     PavDbRead *read = NULL;
     sqlite3 *db;
     sqlite3_stmt *stmt = NULL;
@@ -216,8 +250,11 @@ int pav_cmd_message_list(json_t *args, json_t **data, PavError *err) {
         return -1;
     }
     *data = NULL;
-    if (take_view(args, &node_id, err) != 0) {
+    if (take_view(args, &search, &node_id, &search_query, err) != 0) {
         return -1;
+    }
+    if (search) {
+        return pav_cmd_message_search(search_query, data, err);
     }
     {
         PavConfigLoad *load = pav_core_load();

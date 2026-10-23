@@ -938,3 +938,143 @@ int pav_sanitize(const char *html, size_t html_len, const PavSanitizeOpts *opts,
     }
     return 0;
 }
+
+static int is_block_tag(const char *tag) {
+    static const char *const blocks[] = {
+        "address", "article", "blockquote", "br",    "dd", "div", "dl",  "dt", "figcaption", "h1", "h2",
+        "h3",      "h4",      "h5",         "h6",    "hr", "li",  "ol",  "p",  "pre",        "section", "table",
+        "td",      "th",      "title",      "tr",    "ul",
+    };
+    size_t i;
+
+    for (i = 0; i < sizeof(blocks) / sizeof(blocks[0]); i++) {
+        if (strcmp(tag, blocks[i]) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int skip_text_tag(const char *tag) {
+    if (strcmp(tag, "style") == 0 || strcmp(tag, "script") == 0) {
+        return 1;
+    }
+    return listed(tag, k_drop, sizeof(k_drop) / sizeof(k_drop[0]));
+}
+
+static int append_capped(char **buf, size_t *len, size_t cap, const char *s, size_t n) {
+    size_t room;
+    size_t take;
+    char *next;
+
+    if (n == 0 || *len >= cap) {
+        return 0;
+    }
+    room = cap - *len;
+    take = n < room ? n : room;
+    while (take > 0 && ((unsigned char)s[take - 1] & 0xc0) == 0x80) {
+        take--;
+    }
+    if (take > 0 && ((unsigned char)s[take - 1] & 0xc0) == 0xc0) {
+        take--;
+    }
+    if (take == 0) {
+        return 0;
+    }
+    next = realloc(*buf, *len + take + 1);
+    if (next == NULL) {
+        return -1;
+    }
+    *buf = next;
+    memcpy(*buf + *len, s, take);
+    *len += take;
+    (*buf)[*len] = '\0';
+    return 0;
+}
+
+static int walk_text(lxb_dom_node_t *node, char **buf, size_t *len, size_t cap) {
+    for (; node != NULL; node = node->next) {
+        if (*len >= cap) {
+            return 0;
+        }
+        if (node->type == LXB_DOM_NODE_TYPE_TEXT || node->type == LXB_DOM_NODE_TYPE_CDATA_SECTION) {
+            lxb_dom_character_data_t *cd = lxb_dom_interface_character_data(node);
+
+            if (cd->data.data != NULL && cd->data.length > 0) {
+                if (append_capped(buf, len, cap, (const char *)cd->data.data, cd->data.length) != 0) {
+                    return -1;
+                }
+            }
+            continue;
+        }
+        if (node->type != LXB_DOM_NODE_TYPE_ELEMENT) {
+            continue;
+        }
+        {
+            lxb_dom_element_t *el = lxb_dom_interface_element(node);
+            size_t nlen = 0;
+            const lxb_char_t *qname = lxb_dom_element_qualified_name(el, &nlen);
+            char tag[64];
+
+            if (fold_copy(qname, nlen, tag, sizeof(tag)) != 0) {
+                continue;
+            }
+            if (skip_text_tag(tag)) {
+                continue;
+            }
+            if (is_block_tag(tag) && *len > 0 && (*buf)[*len - 1] != '\n' && (*buf)[*len - 1] != ' ') {
+                if (append_capped(buf, len, cap, "\n", 1) != 0) {
+                    return -1;
+                }
+            }
+            if (walk_text(node->first_child, buf, len, cap) != 0) {
+                return -1;
+            }
+        }
+    }
+    return 0;
+}
+
+int pav_html_text(const char *html, size_t html_len, size_t cap, char **out) {
+    lxb_html_document_t *doc;
+    lxb_status_t status;
+    char *buf;
+    size_t len = 0;
+
+    if (out == NULL) {
+        return -1;
+    }
+    *out = NULL;
+    buf = malloc(1);
+    if (buf == NULL) {
+        return -1;
+    }
+    buf[0] = '\0';
+    if (html == NULL) {
+        if (html_len != 0) {
+            free(buf);
+            return -1;
+        }
+        *out = buf;
+        return 0;
+    }
+    if (html_len == 0 || cap == 0) {
+        *out = buf;
+        return 0;
+    }
+    doc = lxb_html_document_create();
+    if (doc == NULL) {
+        free(buf);
+        return -1;
+    }
+    lxb_html_document_scripting_set(doc, 1);
+    status = lxb_html_document_parse(doc, (const lxb_char_t *)html, html_len);
+    if (status != LXB_STATUS_OK || walk_text(lxb_dom_interface_node(doc)->first_child, &buf, &len, cap) != 0) {
+        lxb_html_document_destroy(doc);
+        free(buf);
+        return -1;
+    }
+    lxb_html_document_destroy(doc);
+    *out = buf;
+    return 0;
+}

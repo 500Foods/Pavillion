@@ -72,6 +72,8 @@ $(LIB): core/CMakeLists.txt core/include/pavillion.h core/include/pav_config.h \
 		core/src/net.c core/include/pav_net.h \
 	core/src/jmap.c core/include/pav_jmap.h \
 	core/src/fts.c core/include/pav_fts.h \
+	core/src/query.c core/include/pav_query.h \
+	core/src/search.c core/include/pav_search.h \
 	core/src/sync.c core/src/sync_email.c core/src/sync_delta.c core/include/pav_sync.h \
 	core/src/message_list.c \
 	core/src/mime.c core/include/pav_mime.h \

@@ -18,7 +18,10 @@
 #include "pav_blob.h"
 #include "pav_sync.h"
 #include "pav_body.h"
+#include "pav_fts.h"
 #include "pav_mime.h"
+#include "pav_query.h"
+#include "pav_search.h"
 #include "pavillion.h"
 #include "logring.h"
 #include "unity.h"
@@ -10780,6 +10783,639 @@ void test_message_get_from_fixture(void) {
     json_decref(root);
 }
 
+static void assert_term(const PavQuery *query, int index, int kind, int neg, const char *text) {
+    int got_kind = 0;
+    int got_neg = 0;
+    const char *got = NULL;
+
+    TEST_ASSERT_EQUAL_INT(0, pav_query_term(query, 0, index, &got_kind, &got_neg, &got));
+    TEST_ASSERT_EQUAL_INT(kind, got_kind);
+    TEST_ASSERT_EQUAL_INT(neg, got_neg);
+    TEST_ASSERT_EQUAL_STRING(text, got);
+}
+
+static void assert_fts(const char *text, const char *match_expect, const char *only_expect) {
+    PavQuery *query = NULL;
+    char *match = NULL;
+    char *only_not = NULL;
+    char err[64];
+
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pav_query_parse(text, &query, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, pav_query_fts(query, &match, &only_not));
+    if (match_expect == NULL) {
+        TEST_ASSERT_NULL(match);
+    } else {
+        TEST_ASSERT_EQUAL_STRING(match_expect, match);
+    }
+    if (only_expect == NULL) {
+        TEST_ASSERT_NULL(only_not);
+    } else {
+        TEST_ASSERT_EQUAL_STRING(only_expect, only_not);
+    }
+    free(match);
+    free(only_not);
+    pav_query_free(query);
+}
+
+void test_query_parse_all_keys(void) {
+    PavQuery *query = NULL;
+    char err[128];
+    char *long_query;
+    const char *text = "from:ann to:bob cc:cara subject:hi has:attachment is:unread is:flagged is:answered "
+                       "before:2026-10-01 after:2026-09-01 in:Inbox account:001 \"exact phrase\" bare -secret";
+
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pav_query_parse(text, &query, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(1, pav_query_groups(query));
+    TEST_ASSERT_EQUAL_INT(7, pav_query_terms(query, 0));
+    assert_term(query, 0, PAV_Q_FROM, 0, "ann");
+    assert_term(query, 1, PAV_Q_TO, 0, "bob");
+    assert_term(query, 2, PAV_Q_CC, 0, "cara");
+    assert_term(query, 3, PAV_Q_SUBJECT, 0, "hi");
+    assert_term(query, 4, PAV_Q_PHRASE, 0, "exact phrase");
+    assert_term(query, 5, PAV_Q_WORD, 0, "bare");
+    assert_term(query, 6, PAV_Q_WORD, 1, "secret");
+    TEST_ASSERT_EQUAL_INT(1, pav_query_attachment(query));
+    TEST_ASSERT_EQUAL_INT(0, pav_query_seen(query));
+    TEST_ASSERT_EQUAL_INT(1, pav_query_flagged(query));
+    TEST_ASSERT_EQUAL_INT(1, pav_query_answered(query));
+    TEST_ASSERT_EQUAL_STRING("2026-10-01", pav_query_before_day(query));
+    TEST_ASSERT_EQUAL_STRING("2026-09-01", pav_query_after_day(query));
+    TEST_ASSERT_EQUAL_STRING("Inbox", pav_query_mailbox(query));
+    TEST_ASSERT_EQUAL_STRING("001", pav_query_account(query));
+    pav_query_free(query);
+
+    query = NULL;
+    TEST_ASSERT_EQUAL_INT(0, pav_query_parse("is:read is:unread", &query, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(2, pav_query_seen(query));
+    pav_query_free(query);
+
+    query = NULL;
+    TEST_ASSERT_EQUAL_INT(0, pav_query_parse("foo:bar", &query, err, sizeof(err)));
+    assert_term(query, 0, PAV_Q_WORD, 0, "foo:bar");
+    pav_query_free(query);
+
+    query = NULL;
+    TEST_ASSERT_EQUAL_INT(-1, pav_query_parse("before:2026-02-31", &query, err, sizeof(err)));
+    TEST_ASSERT_NULL(query);
+    TEST_ASSERT_EQUAL_INT(-1, pav_query_parse("", &query, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(-1, pav_query_parse(NULL, &query, err, sizeof(err)));
+    long_query = malloc((size_t)PAV_QUERY_MAX + 2);
+    TEST_ASSERT_NOT_NULL(long_query);
+    memset(long_query, 'a', (size_t)PAV_QUERY_MAX + 1);
+    long_query[PAV_QUERY_MAX + 1] = '\0';
+    TEST_ASSERT_EQUAL_INT(-1, pav_query_parse(long_query, &query, err, sizeof(err)));
+    free(long_query);
+}
+
+void test_query_negation_and_or(void) {
+    assert_fts("hello -world", "( \"hello\" NOT \"world\" )", NULL);
+    assert_fts("hello OR world", "( \"hello\" ) OR ( \"world\" )", NULL);
+    assert_fts("from:ann subject:hi -secret", "( from_text : \"ann\" subject : \"hi\" NOT \"secret\" )", NULL);
+    assert_fts("-secret", NULL, "\"secret\"");
+    assert_fts("from:ann -from:bob", "( from_text : \"ann\" NOT from_text : \"bob\" )", NULL);
+    assert_fts("cats OR dogs", "( \"cats\" ) OR ( \"dogs\" )", NULL);
+    assert_fts("hello OR -world", NULL, NULL);
+    assert_fts("-hello OR -world", NULL, NULL);
+    assert_fts("-hello -world", NULL, "\"hello\" OR \"world\"");
+}
+
+static void assert_midnight(const char *zone, int year, int month, int day, int hour) {
+    int64_t ms = 0;
+    time_t sec;
+    struct tm tm;
+
+    TEST_ASSERT_EQUAL_INT(0, pav_local_day_utc_ms(zone, year, month, day, &ms));
+    TEST_ASSERT_EQUAL_INT(0, (int)(ms % 1000));
+    sec = (time_t)(ms / 1000);
+    TEST_ASSERT_NOT_NULL(gmtime_r(&sec, &tm));
+    TEST_ASSERT_EQUAL_INT(hour, tm.tm_hour);
+    TEST_ASSERT_EQUAL_INT(0, tm.tm_min);
+    TEST_ASSERT_EQUAL_INT(0, tm.tm_sec);
+    TEST_ASSERT_EQUAL_INT(day, tm.tm_mday);
+    TEST_ASSERT_EQUAL_INT(month, tm.tm_mon + 1);
+    TEST_ASSERT_EQUAL_INT(year, tm.tm_year + 1900);
+}
+
+void test_query_dates_local_day(void) {
+    int64_t ms = 0;
+
+    assert_midnight("America/Vancouver", 2026, 10, 1, 7);
+    assert_midnight("America/Vancouver", 2026, 9, 1, 7);
+    assert_midnight("America/Vancouver", 2026, 1, 15, 8);
+    assert_midnight("America/Vancouver", 2026, 3, 8, 8);
+    assert_midnight("America/Vancouver", 2026, 3, 9, 7);
+    assert_midnight("America/Vancouver", 2026, 11, 1, 7);
+    assert_midnight("America/Vancouver", 2026, 11, 2, 8);
+    assert_midnight(NULL, 2026, 10, 1, 7);
+    assert_midnight("UTC", 2026, 1, 1, 0);
+    TEST_ASSERT_EQUAL_INT(-1, pav_local_day_utc_ms("America/Vancouver", 2026, 2, 31, &ms));
+    TEST_ASSERT_EQUAL_INT(-1, pav_local_day_utc_ms("Not/AZone", 2026, 1, 1, &ms));
+}
+
+void test_query_to_jmap_filter(void) {
+    PavQuery *query = NULL;
+    json_t *got = NULL;
+    json_t *expect = NULL;
+    json_error_t jerr;
+    char err[128];
+    char *dump;
+    const char *expect_text =
+        "{\"operator\":\"AND\",\"conditions\":["
+        "{\"operator\":\"AND\",\"conditions\":["
+        "{\"from\":\"ann\"},{\"subject\":\"hi\"},"
+        "{\"operator\":\"NOT\",\"conditions\":[{\"text\":\"secret\"}]}]},"
+        "{\"hasAttachment\":true},{\"notKeyword\":\"$seen\"},"
+        "{\"before\":\"2026-10-01T07:00:00Z\"},{\"after\":\"2026-09-01T07:00:00Z\"},"
+        "{\"inMailbox\":\"Inbox\"}]}";
+
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pav_query_parse("from:ann subject:hi -secret has:attachment is:unread "
+                                             "before:2026-10-01 after:2026-09-01 in:Inbox account:001",
+                                             &query, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, pav_query_jmap(query, "America/Vancouver", &got, err, sizeof(err)));
+    expect = json_loads(expect_text, 0, &jerr);
+    TEST_ASSERT_NOT_NULL_MESSAGE(expect, jerr.text);
+    TEST_ASSERT_TRUE(json_equal(expect, got));
+    dump = json_dumps(got, JSON_COMPACT);
+    TEST_ASSERT_NOT_NULL(dump);
+    TEST_ASSERT_NULL(strstr(dump, "account"));
+    free(dump);
+    json_decref(expect);
+    json_decref(got);
+    pav_query_free(query);
+
+    query = NULL;
+    got = NULL;
+    TEST_ASSERT_EQUAL_INT(0, pav_query_parse("cc:bob", &query, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, pav_query_jmap(query, "America/Vancouver", &got, err, sizeof(err)));
+    expect = json_loads("{\"cc\":\"bob\"}", 0, &jerr);
+    TEST_ASSERT_TRUE(json_equal(expect, got));
+    json_decref(expect);
+    json_decref(got);
+    pav_query_free(query);
+}
+
+typedef struct BodySetJob {
+    int64_t rowid;
+    const char *old_body;
+    const char *new_body;
+} BodySetJob;
+
+static int set_body_job(void *ctx, sqlite3 *db) {
+    BodySetJob *job = ctx;
+
+    return pav_fts_set_body(db, job->rowid, job->old_body, job->new_body);
+}
+
+static int fts_count(const char *match) {
+    PavDbRead *read = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int n;
+    int rc;
+
+    TEST_ASSERT_EQUAL_INT(0, pav_db_read_begin(&read));
+    rc = sqlite3_prepare_v2(pav_db_read_handle(read), "SELECT count(*) FROM email_fts WHERE email_fts MATCH ?1", -1,
+                            &stmt, NULL);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, rc);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_bind_text(stmt, 1, match, -1, SQLITE_TRANSIENT));
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    n = sqlite3_column_int(stmt, 0);
+    sqlite3_finalize(stmt);
+    pav_db_read_end(read);
+    return n;
+}
+
+void test_fts_body_reinsert(void) {
+    BodySetJob job;
+    char html_path[256];
+    char *html_text = NULL;
+    char *raw;
+    const char *second = "From: Ann <a@b>\nSubject: other\nMIME-Version: 1.0\n"
+                         "Content-Type: text/plain; charset=utf-8\n\nzetaunique\n";
+    json_t *root;
+    const char *sql = "INSERT INTO account_state (account_id) VALUES ('q1');"
+                      "INSERT INTO remote_account (id, account_id, jmap_account_id) VALUES ('q1/a', 'q1', 'a');"
+                      "INSERT INTO email (rowid, ra_id, id, subject, from_json, to_json, cc_json, received_at, seen, "
+                      "body_state) VALUES "
+                      "(1, 'q1/a', 'e1', 'subj', '[]', '[]', '[]', 1, 0, 'none'),"
+                      "(2, 'q1/a', 'e2', 'keep', '[]', '[]', '[]', 2, 0, 'none');"
+                      "INSERT INTO email_fts (rowid, subject, from_text, to_text, body) VALUES "
+                      "(1, 'subj', '', '', ''), (2, 'keep', '', '', '');";
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_db_call(exec_sql_job, (void *)sql), g_sql_err);
+    job.rowid = 1;
+    job.old_body = "";
+    job.new_body = "alpha";
+    TEST_ASSERT_EQUAL_INT(0, pav_db_call(set_body_job, &job));
+    TEST_ASSERT_EQUAL_INT(1, fts_count("alpha"));
+    TEST_ASSERT_EQUAL_INT(0, fts_count("beta"));
+    job.old_body = "alpha";
+    job.new_body = "beta";
+    TEST_ASSERT_EQUAL_INT(0, pav_db_call(set_body_job, &job));
+    TEST_ASSERT_EQUAL_INT(0, fts_count("alpha"));
+    TEST_ASSERT_EQUAL_INT(1, fts_count("beta"));
+
+    snprintf(html_path, sizeof(html_path), "%s/body.html", g_cfg_dir);
+    {
+        FILE *f = fopen(html_path, "wb");
+        const char *html = "<html><body><p>VisibleBody</p><script>NotInIndex</script></body></html>";
+
+        TEST_ASSERT_NOT_NULL(f);
+        TEST_ASSERT_EQUAL_INT(strlen(html), fwrite(html, 1, strlen(html), f));
+        fclose(f);
+    }
+    TEST_ASSERT_EQUAL_INT(0, pav_fts_body_text(NULL, html_path, &html_text));
+    TEST_ASSERT_NOT_NULL(strstr(html_text, "VisibleBody"));
+    TEST_ASSERT_NULL(strstr(html_text, "NotInIndex"));
+    free(html_text);
+
+    raw = slurp("tests/corpus/plain.eml");
+    TEST_ASSERT_NOT_NULL(raw);
+    TEST_ASSERT_EQUAL_INT(0, pav_body_store_bytes(2, "q1/a", raw, strlen(raw)));
+    free(raw);
+    root = call_reply("search.run", "{\"query\":\"Hello\",\"server\":false}");
+    assert_ok(root);
+    TEST_ASSERT_EQUAL_INT(1, (int)json_integer_value(json_object_get(json_object_get(root, "data"), "total")));
+    TEST_ASSERT_EQUAL_STRING("e2", json_string_value(json_object_get(
+                                       json_array_get(json_object_get(json_object_get(root, "data"), "messages"), 0),
+                                       "id")));
+    json_decref(root);
+    TEST_ASSERT_EQUAL_INT(0, pav_body_store_bytes(2, "q1/a", second, strlen(second)));
+    root = call_reply("search.run", "{\"query\":\"Hello\",\"server\":false}");
+    assert_ok(root);
+    TEST_ASSERT_EQUAL_INT(0, (int)json_integer_value(json_object_get(json_object_get(root, "data"), "total")));
+    json_decref(root);
+    root = call_reply("search.run", "{\"query\":\"zetaunique\",\"server\":false}");
+    assert_ok(root);
+    TEST_ASSERT_EQUAL_INT(1, (int)json_integer_value(json_object_get(json_object_get(root, "data"), "total")));
+    json_decref(root);
+}
+
+static void add_profile_account(const char *id, const char *number, const char *name) {
+    PavConfigLoad *load = pav_core_load();
+    json_t *accounts;
+    json_t *obj;
+
+    TEST_ASSERT_NOT_NULL(load);
+    TEST_ASSERT_NOT_NULL(load->profile);
+    accounts = json_object_get((json_t *)load->profile->doc, "accounts");
+    TEST_ASSERT_TRUE(json_is_array(accounts));
+    obj = json_pack("{s:s,s:s,s:s}", "id", id, "number", number, "name", name);
+    TEST_ASSERT_NOT_NULL(obj);
+    TEST_ASSERT_EQUAL_INT(0, json_array_append_new(accounts, obj));
+}
+
+static int reply_total(json_t *root) {
+    return (int)json_integer_value(json_object_get(json_object_get(root, "data"), "total"));
+}
+
+static void assert_search_total(const char *args, int total) {
+    json_t *root = call_reply("search.run", args);
+
+    assert_ok(root);
+    TEST_ASSERT_EQUAL_INT(total, reply_total(root));
+    json_decref(root);
+}
+
+void test_search_run_local(void) {
+    int64_t sept = 0;
+    int64_t oct = 0;
+    char sql[4096];
+    int wrote;
+    json_t *root;
+    json_t *data;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    add_profile_account("foods", "001", "Foods");
+    add_profile_account("courses", "002", "Courses");
+    TEST_ASSERT_EQUAL_INT(0, pav_local_day_utc_ms("America/Vancouver", 2026, 9, 1, &sept));
+    TEST_ASSERT_EQUAL_INT(0, pav_local_day_utc_ms("America/Vancouver", 2026, 10, 1, &oct));
+    wrote = snprintf(
+        sql, sizeof(sql),
+        "INSERT INTO account_state (account_id) VALUES ('foods'), ('courses');"
+        "INSERT INTO remote_account (id, account_id, jmap_account_id, name) VALUES "
+        "('foods/a1', 'foods', 'a1', 'Foods RA'), ('courses/b1', 'courses', 'b1', 'Courses RA');"
+        "INSERT INTO mailbox (ra_id, id, name, role) VALUES "
+        "('foods/a1', 'in', 'Inbox', 'inbox'), ('foods/a1', 'other', 'Other', NULL), "
+        "('courses/b1', 'in', 'Inbox', 'inbox');"
+        "INSERT INTO email (rowid, ra_id, id, subject, from_json, received_at, seen, has_attachment, body_state) "
+        "VALUES "
+        "(1, 'foods/a1', 'hello-only', 'hello there', '[{\"name\":\"Ann\",\"email\":\"ann@example.com\"}]', %lld, 0, "
+        "0, 'none'),"
+        "(2, 'foods/a1', 'both', 'hello world', '[]', %lld, 1, 1, 'none'),"
+        "(3, 'foods/a1', 'dogs', 'dogs', '[]', %lld, 0, 0, 'none'),"
+        "(4, 'foods/a1', 'cats', 'cats', '[]', %lld, 0, 0, 'none'),"
+        "(5, 'foods/a1', 'phrase', 'exact phrase here', '[]', %lld, 0, 0, 'none'),"
+        "(6, 'courses/b1', 'courses-hello', 'hello courses', '[]', %lld, 0, 0, 'none');"
+        "INSERT INTO email_mailbox (email_rowid, ra_id, mailbox_id, received_at) VALUES "
+        "(1, 'foods/a1', 'in', %lld), (2, 'foods/a1', 'in', %lld), (3, 'foods/a1', 'other', %lld), "
+        "(4, 'foods/a1', 'in', %lld), (5, 'foods/a1', 'in', %lld), (6, 'courses/b1', 'in', %lld);"
+        "INSERT INTO email_fts (rowid, subject, from_text, to_text, body) VALUES "
+        "(1, 'hello there', 'Ann <ann@example.com>', '', ''),"
+        "(2, 'hello world', '', '', ''),"
+        "(3, 'dogs', '', '', ''),"
+        "(4, 'cats', '', '', ''),"
+        "(5, 'exact phrase here', '', '', ''),"
+        "(6, 'hello courses', '', '', '');",
+        (long long)(oct - 1), (long long)oct, (long long)sept, (long long)(sept - 1), (long long)sept,
+        (long long)sept, (long long)(oct - 1), (long long)oct, (long long)sept, (long long)(sept - 1),
+        (long long)sept, (long long)sept);
+    TEST_ASSERT_TRUE(wrote > 0 && (size_t)wrote < sizeof(sql));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_db_call(exec_sql_job, sql), g_sql_err);
+
+    assert_search_total("{\"query\":\"hello -world\",\"server\":false}", 2);
+    assert_search_total("{\"query\":\"cats OR dogs\",\"server\":false}", 2);
+    assert_search_total("{\"query\":\"\\\"exact phrase\\\"\",\"server\":false}", 1);
+    assert_search_total("{\"query\":\"from:ann\",\"server\":false}", 1);
+    assert_search_total("{\"query\":\"is:unread\",\"server\":false}", 5);
+    assert_search_total("{\"query\":\"has:attachment\",\"server\":false}", 1);
+    assert_search_total("{\"query\":\"in:Inbox\",\"server\":false}", 5);
+    assert_search_total("{\"query\":\"in:inbox\",\"server\":false}", 5);
+    assert_search_total("{\"query\":\"in:MissingBox\",\"server\":false}", 0);
+    assert_search_total("{\"query\":\"before:2026-10-01 after:2026-09-01\",\"server\":false}", 4);
+    assert_search_total("{\"query\":\"hello\",\"server\":false}", 3);
+    root = call_reply("search.run", "{\"query\":\"hello\",\"server\":false}");
+    assert_ok(root);
+    data = json_object_get(root, "data");
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(data, "accountId")));
+    json_decref(root);
+
+    root = call_reply("search.run", "{\"query\":\"hello\",\"server\":false,\"scope\":{\"accountIds\":[\"courses\"]}}");
+    assert_ok(root);
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_STRING("courses", json_string_value(json_object_get(data, "accountId")));
+    TEST_ASSERT_EQUAL_INT(1, reply_total(root));
+    TEST_ASSERT_EQUAL_STRING(
+        "courses-hello",
+        json_string_value(json_object_get(json_array_get(json_object_get(data, "messages"), 0), "id")));
+    json_decref(root);
+
+    root = call_reply("search.run",
+                      "{\"query\":\"hello\",\"server\":false,\"scope\":{\"mailboxId\":\"mbx:foods/a1:in\"}}");
+    assert_ok(root);
+    TEST_ASSERT_EQUAL_INT(2, reply_total(root));
+    json_decref(root);
+
+    assert_search_total("{\"query\":\"account:001 hello\",\"server\":false}", 2);
+    root = call_reply("search.run", "{\"query\":\"account:001 hello\",\"server\":false}");
+    assert_ok(root);
+    TEST_ASSERT_EQUAL_STRING("foods", json_string_value(json_object_get(json_object_get(root, "data"), "accountId")));
+    json_decref(root);
+    assert_search_total("{\"query\":\"account:1 hello\",\"server\":false}", 2);
+    assert_search_total("{\"query\":\"account:Foods hello\",\"server\":false}", 2);
+    assert_search_total("{\"query\":\"account:Nope\",\"server\":false}", 0);
+
+    root = call_reply("search.run", "{\"query\":\"hello\",\"server\":false,\"limit\":1}");
+    assert_ok(root);
+    TEST_ASSERT_EQUAL_INT(3, reply_total(root));
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(json_object_get(json_object_get(root, "data"), "messages")));
+    json_decref(root);
+
+    root = call_reply("search.run", "{\"query\":\"hello OR -world\",\"server\":false}");
+    assert_call_error(root, "bad_args", "exclusion");
+    json_decref(root);
+    root = call_reply("search.run", "{\"query\":\"hello\",\"server\":true}");
+    assert_call_error(root, "bad_args", "server search is not available");
+    json_decref(root);
+    root = call_reply("search.run", "{\"query\":\"hello\"}");
+    assert_call_error(root, "bad_args", "server");
+    json_decref(root);
+    root = call_reply("search.run", "{\"query\":\"\",\"server\":false}");
+    assert_call_error(root, "bad_args", "empty");
+    json_decref(root);
+    root = call_reply("search.run", "{\"query\":\"hello\",\"server\":false,\"scope\":{\"mailboxId\":\"mbx:nope\"}}");
+    assert_call_error(root, "not_found", "mailbox");
+    json_decref(root);
+    root = call_reply("search.run", "{\"query\":\"hello\",\"server\":false,\"scope\":{\"accountIds\":[]}}");
+    assert_call_error(root, "bad_args", "empty");
+    json_decref(root);
+    root = call_reply("search.run", "{\"query\":\"hello\",\"server\":false,\"scope\":{\"accountIds\":[\"missing\"]}}");
+    assert_call_error(root, "not_found", "account");
+    json_decref(root);
+
+    root = call_reply("message.list", "{\"view\":{\"kind\":\"search\",\"query\":\"hello\"}}");
+    assert_ok(root);
+    data = json_object_get(root, "data");
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(data, "accountId")));
+    TEST_ASSERT_EQUAL_INT(3, reply_total(root));
+    TEST_ASSERT_NOT_NULL(json_array_get(json_object_get(data, "messages"), 0));
+    json_decref(root);
+    root = call_reply("message.list", "{\"view\":{\"kind\":\"unified\",\"id\":\"mbx:foods/a1:in\"}}");
+    assert_call_error(root, "bad_args", "mailbox");
+    json_decref(root);
+    root = call_reply("message.list", "{\"view\":{\"kind\":\"mailbox\",\"id\":\"mbx:foods/a1:in\"},\"offset\":0}");
+    assert_call_error(root, "bad_args", "offset");
+    json_decref(root);
+}
+
+static void wait_rebuild(const char *id) {
+    int i;
+
+    for (i = 0; i < 200; i++) {
+        json_t *rows = activity_rows(1);
+        json_t *item = find_act(rows, id);
+        const char *state = item != NULL ? json_string_value(json_object_get(item, "state")) : NULL;
+
+        if (state != NULL && strcmp(state, "done") == 0) {
+            json_decref(rows);
+            return;
+        }
+        if (state != NULL && strcmp(state, "failed") == 0) {
+            json_decref(rows);
+            TEST_FAIL_MESSAGE("index rebuild failed");
+        }
+        json_decref(rows);
+        usleep(20000);
+    }
+    TEST_FAIL_MESSAGE("index rebuild did not finish");
+}
+
+void test_index_rebuild(void) {
+    json_t *root;
+    json_t *rows;
+    json_t *item;
+    const char *id;
+    const char *id2;
+    const char *sql = "INSERT INTO account_state (account_id) VALUES ('q1');"
+                      "INSERT INTO remote_account (id, account_id, jmap_account_id) VALUES ('q1/a', 'q1', 'a');"
+                      "INSERT INTO email (rowid, ra_id, id, subject, from_json, to_json, cc_json, received_at, seen, "
+                      "body_state) VALUES "
+                      "(1, 'q1/a', 'a', 'rebuildalpha', '[]', '[]', '[]', 1, 0, 'none'),"
+                      "(2, 'q1/a', 'b', 'rebuildbeta', '[]', '[]', '[]', 2, 0, 'none');"
+                      "INSERT INTO email_fts (rowid, subject, from_text, to_text, body) VALUES "
+                      "(1, 'rebuildalpha', '', '', ''), (2, 'rebuildbeta', '', '', '');";
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    root = call_reply("index.rebuild", "{}");
+    assert_ok(root);
+    id = json_string_value(json_object_get(json_object_get(root, "data"), "activityId"));
+    TEST_ASSERT_NOT_NULL(id);
+    id = strdup(id);
+    json_decref(root);
+    TEST_ASSERT_NOT_NULL(id);
+    wait_rebuild(id);
+    free((void *)id);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_db_call(exec_sql_job, (void *)sql), g_sql_err);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(
+        0, pav_db_call(exec_sql_job, "INSERT INTO email_fts(email_fts) VALUES('delete-all');"), g_sql_err);
+    root = call_reply("search.run", "{\"query\":\"rebuildalpha\",\"server\":false}");
+    assert_ok(root);
+    TEST_ASSERT_EQUAL_INT(0, reply_total(root));
+    json_decref(root);
+
+    root = call_reply("index.rebuild", "{}");
+    assert_ok(root);
+    id = json_string_value(json_object_get(json_object_get(root, "data"), "activityId"));
+    TEST_ASSERT_NOT_NULL(id);
+    id = strdup(id);
+    json_decref(root);
+    {
+        json_t *again = call_reply("index.rebuild", "{}");
+        const char *second;
+
+        assert_ok(again);
+        second = json_string_value(json_object_get(json_object_get(again, "data"), "activityId"));
+        TEST_ASSERT_NOT_NULL(second);
+        id2 = strdup(second);
+        json_decref(again);
+    }
+    rows = activity_rows(0);
+    item = find_act(rows, id);
+    if (item != NULL && strcmp(json_string_value(json_object_get(item, "state")), "running") == 0) {
+        TEST_ASSERT_EQUAL_STRING(id, id2);
+    }
+    json_decref(rows);
+    wait_rebuild(id);
+    wait_rebuild(id2);
+    free((void *)id);
+    free((void *)id2);
+    root = call_reply("search.run", "{\"query\":\"rebuildalpha\",\"server\":false}");
+    assert_ok(root);
+    TEST_ASSERT_EQUAL_INT(1, reply_total(root));
+    json_decref(root);
+    root = call_reply("search.run", "{\"query\":\"rebuildbeta\",\"server\":false}");
+    assert_ok(root);
+    TEST_ASSERT_EQUAL_INT(1, reply_total(root));
+    json_decref(root);
+    root = call_reply("index.rebuild", "{\"extra\":1}");
+    assert_call_error(root, "bad_args", "extra");
+    json_decref(root);
+}
+
+static int under_valgrind(void) {
+#if defined(__linux__)
+    FILE *f = fopen("/proc/self/maps", "r");
+    char line[512];
+
+    if (f == NULL) {
+        return 0;
+    }
+    while (fgets(line, sizeof(line), f) != NULL) {
+        if (strstr(line, "vgpreload") != NULL) {
+            fclose(f);
+            return 1;
+        }
+    }
+    fclose(f);
+#endif
+    return 0;
+}
+
+typedef struct CorpusJob {
+    int n;
+    int unique_at;
+} CorpusJob;
+
+static int seed_corpus_job(void *ctx, sqlite3 *db) {
+    CorpusJob *job = ctx;
+    sqlite3_stmt *email = NULL;
+    sqlite3_stmt *fts = NULL;
+    int i;
+
+    if (sqlite3_exec(db,
+                     "INSERT INTO account_state (account_id) VALUES ('q1');"
+                     "INSERT INTO remote_account (id, account_id, jmap_account_id) VALUES ('q1/a', 'q1', 'a');",
+                     NULL, NULL, NULL) != SQLITE_OK) {
+        return -1;
+    }
+    if (sqlite3_prepare_v2(db,
+                           "INSERT INTO email (ra_id, id, subject, from_json, received_at, seen, body_state) "
+                           "VALUES ('q1/a', ?, ?, '[]', ?, 0, 'none')",
+                           -1, &email, NULL) != SQLITE_OK ||
+        sqlite3_prepare_v2(db,
+                           "INSERT INTO email_fts (rowid, subject, from_text, to_text, body) VALUES (?, ?, '', '', '')",
+                           -1, &fts, NULL) != SQLITE_OK) {
+        sqlite3_finalize(email);
+        sqlite3_finalize(fts);
+        return -1;
+    }
+    for (i = 0; i < job->n; i++) {
+        char id[32];
+        const char *subject = i == job->unique_at ? "zzuniqueq1token" : "bulk";
+        sqlite3_int64 rowid;
+
+        snprintf(id, sizeof(id), "m%d", i);
+        if (sqlite3_bind_text(email, 1, id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+            sqlite3_bind_text(email, 2, subject, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+            sqlite3_bind_int64(email, 3, i) != SQLITE_OK || sqlite3_step(email) != SQLITE_DONE) {
+            sqlite3_finalize(email);
+            sqlite3_finalize(fts);
+            return -1;
+        }
+        rowid = sqlite3_last_insert_rowid(db);
+        sqlite3_reset(email);
+        sqlite3_clear_bindings(email);
+        if (sqlite3_bind_int64(fts, 1, rowid) != SQLITE_OK ||
+            sqlite3_bind_text(fts, 2, subject, -1, SQLITE_TRANSIENT) != SQLITE_OK || sqlite3_step(fts) != SQLITE_DONE) {
+            sqlite3_finalize(email);
+            sqlite3_finalize(fts);
+            return -1;
+        }
+        sqlite3_reset(fts);
+        sqlite3_clear_bindings(fts);
+    }
+    sqlite3_finalize(email);
+    sqlite3_finalize(fts);
+    return 0;
+}
+
+void test_search_200k_under_100ms(void) {
+    CorpusJob job;
+    json_t *root;
+    struct timespec t0;
+    struct timespec t1;
+    int64_t elapsed_ms;
+    char note[64];
+
+    if (under_valgrind()) {
+        TEST_IGNORE_MESSAGE("skipped under valgrind");
+    }
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    job.n = 200000;
+    job.unique_at = 123456;
+    TEST_ASSERT_EQUAL_INT(0, pav_db_call(seed_corpus_job, &job));
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    root = call_reply("search.run", "{\"query\":\"zzuniqueq1token\",\"server\":false}");
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    assert_ok(root);
+    elapsed_ms = (int64_t)(t1.tv_sec - t0.tv_sec) * 1000 + (t1.tv_nsec - t0.tv_nsec) / 1000000;
+    snprintf(note, sizeof(note), "search took %lld ms", (long long)elapsed_ms);
+    TEST_ASSERT_TRUE_MESSAGE(elapsed_ms < 100, note);
+    TEST_ASSERT_EQUAL_INT(1, reply_total(root));
+    TEST_ASSERT_EQUAL_STRING(
+        "m123456", json_string_value(json_object_get(
+                       json_array_get(json_object_get(json_object_get(root, "data"), "messages"), 0), "id")));
+    json_decref(root);
+}
+
 int main(void) {
     setvbuf(stdout, NULL, _IONBF, 0); /* keep results visible if a test crashes */
     pav_platform_install(pav_platform_fake());
@@ -11023,5 +11659,13 @@ int main(void) {
     RUN_TEST(test_sanitize_extra_property);
     RUN_TEST(test_sanitize_bad_pane);
     RUN_TEST(test_sanitize_selectors);
+    RUN_TEST(test_query_parse_all_keys);
+    RUN_TEST(test_query_negation_and_or);
+    RUN_TEST(test_query_dates_local_day);
+    RUN_TEST(test_query_to_jmap_filter);
+    RUN_TEST(test_fts_body_reinsert);
+    RUN_TEST(test_search_run_local);
+    RUN_TEST(test_index_rebuild);
+    RUN_TEST(test_search_200k_under_100ms);
     return UNITY_END();
 }

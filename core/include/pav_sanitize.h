@@ -26,6 +26,11 @@ int pav_sanitize(const char *html, size_t html_len, const PavSanitizeOpts *opts,
 
 void pav_sanitize_result_free(char *html, char **links, size_t nlinks);
 
+/* Plain text from the same parse the sanitizer uses. script, style, and the
+   drop-with-content tags are skipped with their contents. *out is malloc'd
+   and capped at cap bytes. 0, or -1. */
+int pav_html_text(const char *html, size_t html_len, size_t cap, char **out);
+
 /* 1 when name may be stored in preferences.mail.cssExtra. */
 int pav_css_property_extra_ok(const char *name);
 

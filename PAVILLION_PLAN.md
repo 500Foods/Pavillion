@@ -5,8 +5,8 @@ Status: v0.7 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 **Resume:** each phase's history is in its own document's Working log; this block is only the current state.
 
 - Last finished: N-2 (step 59), 2026-10-23, in [docs/N-MAIL.md](docs/N-MAIL.md). The HTML sanitizer and the hostile corpus. `pav_sanitize` is in the core. `message.get` still returns `htmlSanitized` null. Andrew asked for this close-out the same day. The in-progress notes are `b923040`. This close-out is not in that commit. The agent does not commit. CI on the code is green at `75b0c5a`: fedora, macos-core, windows-core, run [40016164091](https://github.com/500Foods/Pavillion/actions/runs/40016164091). Settings → Mail was not opened in the window.
-- Next: Q-1 (step 60), not started, in [docs/Q-SEARCH.md](docs/Q-SEARCH.md). FTS5 indexing and local search. Entry gate is N-1 complete. The Q lock indexes body text from plain text or from the sanitizer's tree walk, capped at 256 KB. N-2 does not extract that text. `message.get` stays null until N-4. Do not show the window from the page, and do not touch the quit path. The Accounts table polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md).
-- Last full `make test`: 239 Unity tests, 2 Rust tests and 384 Vitest tests, exit 0 (2026-10-23, N-2). The phase stamp is `0.66.0`.
+- Next: Q-1 (step 60), in progress, in [docs/Q-SEARCH.md](docs/Q-SEARCH.md). The four work items are checked. `search.run` with `server` false, and `message.list` view kind `search`, answer the local syntax. `index.rebuild` is an activity. Body text is indexed when a body is fetched. `make test`: 247 Unity, 2 Rust, 384 Vitest, exit 0 (2026-10-23). The 200k timing test passed. CI has not run. Accomplished is unwritten. The phase stamp stays `0.66.0`. Do not mark the row Done. Do not start Q-2. Do not show the window. The Accounts table polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md). The agent does not commit.
+- Last full `make test`: 247 Unity tests, 2 Rust tests and 384 Vitest tests, exit 0 (2026-10-23, Q-1, not accepted). The phase stamp is `0.66.0`.
 - `PAVILLION_API_VERSION` is 3. The phase stamp is `0.66.0` (66 Done rows), release date 2026-10-23.
 
 **Read first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), one page with diagrams of the layers, the threads, and the data flow.
@@ -135,7 +135,7 @@ Row order decides what is next: the next phase is the first row, top to bottom, 
 | 135 | N-3a | Message list, From and Subject | Medium | Done |
 | 58 | N-1 | Body fetch and MIME (GMime) | Medium | Done |
 | 59 | N-2 | The HTML sanitizer and the hostile corpus | Hard | Done |
-| 60 | Q-1 | FTS5 indexing and local search | Medium | |
+| 60 | Q-1 | FTS5 indexing and local search | Medium | In progress |
 | 132 | D-8 | Settings → Formats: app-wide date, time, and datetime formats (Luxon) | Medium | |
 | 61 | N-3 | Message list (Tabulator) | Medium | |
 | 133 | D-9 | Icon Wizard (DRAFT spec; docs only): layered icons for accounts, later folders and labels | Medium | |

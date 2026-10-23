@@ -4,6 +4,7 @@
 
 #include "pav_activity.h"
 #include "pav_db.h"
+#include "pav_fts.h"
 #include "pav_platform.h"
 #include "pavillion.h"
 
@@ -546,8 +547,10 @@ static int evict_bodies(int64_t limit, int *removed) {
     size_t n = 0;
     int64_t total = 0;
     int64_t *ids = NULL;
+    size_t *pick = NULL;
     int kept = 0;
     size_t i;
+    int j;
     int rc = 0;
 
     if (load_bodies(&rows, &n, &total) != 0) {
@@ -559,29 +562,52 @@ static int evict_bodies(int64_t limit, int *removed) {
     }
     qsort(rows, n, sizeof(*rows), cmp_body);
     ids = calloc(n, sizeof(*ids));
-    if (ids == NULL) {
+    pick = calloc(n, sizeof(*pick));
+    if (ids == NULL || pick == NULL) {
+        free(ids);
+        free(pick);
         free_bodies(rows, n);
         return -1;
     }
     for (i = 0; i < n && total > limit; i++) {
-        int p;
-
         if (rows[i].protect || rows[i].bytes <= 0) {
             continue;
         }
+        pick[kept] = i;
+        ids[kept] = rows[i].rowid;
+        total -= rows[i].bytes;
+        kept++;
+    }
+    if (kept == 0) {
+        free(ids);
+        free(pick);
+        free_bodies(rows, n);
+        return 0;
+    }
+    /* The index delete has to read the body files, so it runs before unlink. */
+    if (pav_fts_clear_bodies(ids, kept) != 0) {
+        free(ids);
+        free(pick);
+        free_bodies(rows, n);
+        return -1;
+    }
+    for (j = 0; j < kept; j++) {
+        BodyCand *row = &rows[pick[j]];
+        int p;
+        int failed = 0;
+
         for (p = 0; p < 3; p++) {
-            if (rows[i].paths[p] != NULL && remove(rows[i].paths[p]) != 0 && errno != ENOENT) {
-                rc = -1;
+            if (row->paths[p] != NULL && remove(row->paths[p]) != 0 && errno != ENOENT) {
+                failed = 1;
             }
         }
-        if (rc != 0) {
+        if (failed) {
+            rc = -1;
             break;
         }
-        total -= rows[i].bytes;
-        ids[kept++] = rows[i].rowid;
         *removed += 1;
     }
-    if (rc == 0 && kept > 0) {
+    {
         BodyUpdate job;
 
         job.ids = ids;
@@ -591,6 +617,7 @@ static int evict_bodies(int64_t limit, int *removed) {
         }
     }
     free(ids);
+    free(pick);
     free_bodies(rows, n);
     return rc;
 }

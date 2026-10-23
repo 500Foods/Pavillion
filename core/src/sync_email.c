@@ -1310,71 +1310,10 @@ static void start_email_query(PavSup *s, SupRemote *remote) {
     }
 }
 
-static int fts_take_text(sqlite3_stmt *stmt, int col, size_t max, char **out) {
-    const char *raw;
-
-    raw = (const char *)sqlite3_column_text(stmt, col);
-    *out = NULL;
-    if (raw == NULL || raw[0] == '\0') {
-        return 0;
-    }
-    *out = dup_capped(raw, max);
-    return *out != NULL ? 0 : -1;
-}
-
-static void release_fts_bits(char *subject, char *from_json, char *to_json, char *cc_json, char *from_text,
-                             char *to_text, json_t *from, json_t *to, json_t *cc) {
-    free(subject);
-    free(from_json);
-    free(to_json);
-    free(cc_json);
-    free(from_text);
-    free(to_text);
-    json_decref(from);
-    json_decref(to);
-    json_decref(cc);
-}
-
-/* email_fts is contentless. The delete has to repeat the subject and the
-   address text that pav_fts_index_headers stored. */
+/* email_fts is contentless. The delete repeats the stored header text and,
+   once the body has been fetched, the indexed body. */
 static int delete_email_fts(sqlite3 *db, int64_t rowid) {
-    sqlite3_stmt *stmt = NULL;
-    char *subject = NULL;
-    char *from_json = NULL;
-    char *to_json = NULL;
-    char *cc_json = NULL;
-    json_t *from = NULL;
-    json_t *to = NULL;
-    json_t *cc = NULL;
-    char *from_text = NULL;
-    char *to_text = NULL;
-    int rc;
-
-    if (pav_db_prepare(db, "sync.email_fts_src",
-                       "SELECT subject, from_json, to_json, cc_json FROM email WHERE rowid = ?", &stmt) != 0 ||
-        pav_db_bind_int64(stmt, 1, rowid) != 0 || pav_db_step(stmt) != SQLITE_ROW ||
-        fts_take_text(stmt, 0, 16384, &subject) != 0 || fts_take_text(stmt, 1, 65536, &from_json) != 0 ||
-        fts_take_text(stmt, 2, 65536, &to_json) != 0 || fts_take_text(stmt, 3, 65536, &cc_json) != 0) {
-        release_fts_bits(subject, from_json, to_json, cc_json, NULL, NULL, NULL, NULL, NULL);
-        return -1;
-    }
-    if (from_json != NULL && (from = json_loads(from_json, 0, NULL)) == NULL) {
-        release_fts_bits(subject, from_json, to_json, cc_json, NULL, NULL, NULL, NULL, NULL);
-        return -1;
-    }
-    if (to_json != NULL && (to = json_loads(to_json, 0, NULL)) == NULL) {
-        release_fts_bits(subject, from_json, to_json, cc_json, NULL, NULL, from, NULL, NULL);
-        return -1;
-    }
-    if (cc_json != NULL && (cc = json_loads(cc_json, 0, NULL)) == NULL) {
-        release_fts_bits(subject, from_json, to_json, cc_json, NULL, NULL, from, to, NULL);
-        return -1;
-    }
-    from_text = addresses_text(from, NULL);
-    to_text = addresses_text(to, cc);
-    rc = pav_fts_delete(db, rowid, subject, from_text, to_text);
-    release_fts_bits(subject, from_json, to_json, cc_json, from_text, to_text, from, to, cc);
-    return rc;
+    return pav_fts_remove(db, rowid);
 }
 
 static int clear_email_job(void *ctx, sqlite3 *db) {
@@ -1586,9 +1525,9 @@ static int store_email_row(sqlite3 *db, const char *ra, EmailPage *page, EmailRo
                            int thread_n, int skip_thread) {
     sqlite3_stmt *stmt = NULL;
     int64_t rowid = 0;
+    char *kept_body = NULL;
     int rc;
     int found = 0;
-    int replace;
     int i;
 
     if (pav_db_prepare(db, "sync.email_find", "SELECT rowid FROM email WHERE ra_id = ? AND id = ?", &stmt) != 0 ||
@@ -1603,6 +1542,12 @@ static int store_email_row(sqlite3 *db, const char *ra, EmailPage *page, EmailRo
         return -1;
     }
     if (found) {
+        /* Drop the old index text before the header columns change. The body
+           stays, and the insert below puts it back with the new headers. */
+        if (pav_fts_indexed_body(db, rowid, &kept_body) != 0 || pav_fts_remove(db, rowid) != 0) {
+            free(kept_body);
+            return -1;
+        }
         if (pav_db_prepare(db, "sync.email_upd",
                            "UPDATE email SET thread_id=?, blob_id=?, message_id=?, in_reply_to=?, refs=?, "
                            "subject=?, from_json=?, to_json=?, cc_json=?, bcc_json=?, reply_to_json=?, "
@@ -1610,10 +1555,10 @@ static int store_email_row(sqlite3 *db, const char *ra, EmailPage *page, EmailRo
                            "answered=?, forwarded=?, draft=?, junk=?, keywords=? WHERE rowid=?",
                            &stmt) != 0 ||
             bind_email_values(stmt, 1, row) != 0 || pav_db_bind_int64(stmt, 24, rowid) != 0 || step_done(stmt) != 0) {
+            free(kept_body);
             return -1;
         }
         row->is_new = 0;
-        replace = 1;
     } else {
         if (pav_db_prepare(db, "sync.email_ins",
                            "INSERT INTO email (ra_id, id, thread_id, blob_id, message_id, in_reply_to, refs, "
@@ -1628,13 +1573,14 @@ static int store_email_row(sqlite3 *db, const char *ra, EmailPage *page, EmailRo
         }
         rowid = (int64_t)sqlite3_last_insert_rowid(db);
         row->is_new = 1;
-        replace = 0;
     }
     if (rowid <= 0) {
+        free(kept_body);
         return -1;
     }
     if (pav_db_prepare(db, "sync.email_unlink", "DELETE FROM email_mailbox WHERE email_rowid = ?", &stmt) != 0 ||
         pav_db_bind_int64(stmt, 1, rowid) != 0 || step_done(stmt) != 0) {
+        free(kept_body);
         return -1;
     }
     for (i = 0; i < row->box_n; i++) {
@@ -1645,6 +1591,7 @@ static int store_email_row(sqlite3 *db, const char *ra, EmailPage *page, EmailRo
         }
         known = mailbox_known(db, ra, row->boxes[i].id);
         if (known < 0) {
+            free(kept_body);
             return -1;
         }
         if (known == 0) {
@@ -1657,12 +1604,17 @@ static int store_email_row(sqlite3 *db, const char *ra, EmailPage *page, EmailRo
             pav_db_bind_int64(stmt, 1, rowid) != 0 || pav_db_bind_text(stmt, 2, ra) != 0 ||
             pav_db_bind_text(stmt, 3, row->boxes[i].id) != 0 ||
             pav_db_bind_int64(stmt, 4, row->received_at) != 0 || step_done(stmt) != 0) {
+            free(kept_body);
             return -1;
         }
     }
-    if (pav_fts_index_headers(db, rowid, row->subject, row->from_text, row->to_text, replace) != 0) {
+    if (pav_fts_insert(db, rowid, row->subject, row->from_text, row->to_text,
+                       kept_body != NULL ? kept_body : "") != 0) {
+        free(kept_body);
         return -1;
     }
+    free(kept_body);
+    kept_body = NULL;
     /* A delta fetch writes headers only. Thread/get owns membership. */
     if (skip_thread) {
         return 0;

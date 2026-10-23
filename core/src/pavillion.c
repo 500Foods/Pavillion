@@ -14,6 +14,7 @@
 #include "pav_config.h"
 #include "pav_net.h"
 #include "pav_sanitize.h"
+#include "pav_search.h"
 #include "pav_platform.h"
 #include "pav_store.h"
 #include "pav_sync.h"
@@ -214,6 +215,7 @@ static void profile_lock_release(void) {
 }
 
 static void core_release_profile(void) {
+    pav_search_shutdown();
     pav_activity_shutdown();
     pav_blob_unbind();
     pav_store_close(g_store);

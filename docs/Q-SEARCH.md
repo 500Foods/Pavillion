@@ -1,6 +1,6 @@
 # Q — SEARCH
 
-**Status:** Not started (scoped 2026-10-16 from old plan §4, §6.6, §13).
+**Status:** Q-1 in progress (2026-10-23). Scoped 2026-10-16 from old plan §4, §6.6, §13.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Local full-text search over mail with FTS5, the query syntax, and a server search that widens the result. Contacts search reuses the index pattern in [S-CONTACTS.md](S-CONTACTS.md). (There is no letter P, so the docs never collide with the Lua `P` table or the old roadmap's P0–P6.)
@@ -11,7 +11,7 @@ One phase is one session. Do not start the next one in the same conversation.
 
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
-| Q-1 | FTS5 indexing, the query parser, local `search.run` | Medium | Not started |
+| Q-1 | FTS5 indexing, the query parser, local `search.run` | Medium | In progress |
 | Q-2 | Search UI, server search merge, saved searches | Medium | Not started |
 
 Kind: **Easy** is one module and a test. **Medium** crosses one boundary.
@@ -41,7 +41,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 ## Q-1: FTS5 indexing and local search
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** In progress (2026-10-23). Last finished work item: the Unity tests. `make test`: 247 Unity, 2 Rust, 384 Vitest, exit 0. The 200k timing test passed. CI has not run. The phase stamp stays `0.66.0`. Accomplished is unwritten. The window was not opened.
 
 **Goal:** A query in the syntax returns matching local messages quickly.
 
@@ -49,10 +49,10 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Work items:**
 
-- [ ] `core/src/fts.c`: header insert, body reinsert, delete, rebuild; hook into M-4, M-5, and N-1 (replacing any stub).
-- [ ] `core/src/query.c`: tokenizer, AST, FTS and SQL compilation, JMAP filter compilation.
-- [ ] `search.run {query, scope, server:false, limit}` and the `search` view kind for `message.list`.
-- [ ] Unity: `test_query_parse_all_keys`, `test_query_negation_and_or`, `test_query_dates_local_day`, `test_query_to_jmap_filter`, `test_fts_body_reinsert`, `test_search_200k_under_100ms` (generated corpus; skipped under valgrind).
+- [x] `core/src/fts.c`: header insert, body reinsert, delete, rebuild; hook into M-4, M-5, and N-1 (replacing any stub).
+- [x] `core/src/query.c`: tokenizer, AST, FTS and SQL compilation, JMAP filter compilation.
+- [x] `search.run {query, scope, server:false, limit}` and the `search` view kind for `message.list`.
+- [x] Unity: `test_query_parse_all_keys`, `test_query_negation_and_or`, `test_query_dates_local_day`, `test_query_to_jmap_filter`, `test_fts_body_reinsert`, `test_search_200k_under_100ms` (generated corpus; skipped under valgrind).
 
 **Done means:** Local search answers the syntax within budget.
 
@@ -81,3 +81,4 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 ## Working log
 
 - 2026-10-16 Opened from old plan §4, §6.6, §13. Decisions: one AST for local and server, extra keys (`cc`, `is:read`, `is:answered`, `account:`, `-`, `OR`, phrases), local-day dates, search as a view kind, saved searches.
+- 2026-10-23 Q-1 in progress. Last finished work item: the Unity tests. Header rows are replaced on sync, body text is reinserted when a body is fetched, eviction clears the indexed body before the files go, and `index.rebuild` rewrites the index as an activity. `search.run` requires `server: false`. `message.list` accepts view kind `search`. `make test`: 247 Unity, 2 Rust, 384 Vitest, exit 0. `test_search_200k_under_100ms` passed. `test_search_run_local` and `test_index_rebuild` are in the same run. Help → Developer has Local search. Accomplished is unwritten. CI has not run. The phase stamp stays `0.66.0`. The window was not opened. Do not mark the row Done. Do not start Q-2.

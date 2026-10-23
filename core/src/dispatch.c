@@ -4,6 +4,7 @@
 #include "account.h"
 #include "logring.h"
 #include "pav_logdb.h"
+#include "pav_search.h"
 #include "pav_sync.h"
 #include "themes.h"
 #include "window_state.h"
@@ -78,6 +79,7 @@ static const PavCommand k_commands[] = {
 #endif
     {"export.write_text", cmd_export_write_text, 0},
     {"identity.list", pav_cmd_identity_list, 0},
+    {"index.rebuild", pav_cmd_index_rebuild, 0},
     {"log.client", cmd_log_client, 0},
     {"log.export", cmd_log_export, 0},
     {"log.query", cmd_log_query, 0},
@@ -92,6 +94,7 @@ static const PavCommand k_commands[] = {
     {"prefs.set", cmd_prefs_set, 0},
     {"prefs.ui.get", cmd_prefs_ui_get, 0},
     {"prefs.ui.set", cmd_prefs_ui_set, 0},
+    {"search.run", pav_cmd_search_run, 0},
     {"sync.now", cmd_sync_now, 0},
     {"system.status", cmd_status, 0},
     {"themes.ensure", pav_themes_ensure, 0},

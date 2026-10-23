@@ -62,6 +62,8 @@ add_library(pavillion_core STATIC
      src/net.c
      src/jmap.c
      src/fts.c
+     src/query.c
+     src/search.c
      src/sync.c
      src/message_list.c
      src/mime.c

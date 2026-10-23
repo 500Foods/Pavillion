@@ -404,6 +404,16 @@ Result: `{identities:[{accountId, raId, id, name, email, replyTo, bcc, mayDelete
 
 Errors: `bad_args`, `not_ready`, `internal`.
 
+### index.rebuild
+
+State: real (Q-1)
+
+Args: `{}`.
+
+Result: `{activityId}`. `activityId` is `act-<n>`. The activity kind is `index.rebuild`, the title is `Rebuild`, and it is cancellable. A rebuild that is already running returns that same id. The work deletes the full-text index and inserts it again from the stored messages, in batches, and reports progress in messages. Cancel leaves a partial index. Body text is indexed only when `body_state` is `fetched`.
+
+Errors: `bad_args`, `not_ready`, `internal`.
+
 ### link.open
 
 State: planned (N-4)
@@ -584,7 +594,7 @@ State: real (N-3a)
 
 One folder's stored messages, newest `receivedAt` first. The page loads this one reply. It does not ask again while scrolling.
 
-Args: `{view:{kind:"mailbox", id}}`. `id` is the mailbox tree node id (`mbx:<ra_id>:<mailboxId>`). Any other key, any other `view` key, a `kind` other than `mailbox`, or a missing id is `bad_args`. An id that is not a stored mailbox is `not_found`.
+Args: `{view:{kind:"mailbox", id}}` or `{view:{kind:"search", query}}`. `id` is the mailbox tree node id (`mbx:<ra_id>:<mailboxId>`). Any other key, any other `view` key, a `kind` other than `mailbox` or `search`, a missing mailbox id, or a missing search query is `bad_args`. An id that is not a stored mailbox is `not_found`.
 
 Result:
 
@@ -598,7 +608,9 @@ Result:
 }
 ```
 
-`messages` is at most `preferences.cache.listRows` (default 10,000, from 1 to 10,000). `total` is the folder count, including rows past that cap. Order is `received_at` descending, then `email.rowid` descending. `from` is the first address's name, or its email when the name is empty, or `""` when both are empty. `subject` is `""` when the stored subject is null. `accountId` is the profile account that owns the folder. Strings are data. The reply stays under 2 MB: a further row that would pass that is left out, and `total` does not change. `unified`, `search`, `offset`, `limit`, and `threaded` are later (N-3, N-6, Q-1) and are `bad_args` until then.
+`messages` is at most `preferences.cache.listRows` (default 10,000, from 1 to 10,000). For a mailbox, `total` is the folder count, including rows past that cap, and the order is `received_at` descending, then `email.rowid` descending. `from` is the first address's name, or its email when the name is empty, or `""` when both are empty. `subject` is `""` when the stored subject is null. `accountId` is the profile account that owns the folder. Strings are data. The reply stays under 2 MB: a further row that would pass that is left out, and `total` does not change.
+
+A search view is `{view:{kind:"search", query}}`. `query` is the local search syntax. There is no `id`. `accountId` is null. `total` is the match count. Order is bm25, then `received_at` descending, then `email.rowid` descending. The same cap and the same 2 MB cut apply. `unified`, `offset`, `limit`, and `threaded` are later (N-3, N-6) and are `bad_args`.
 
 Errors: `bad_args`, `not_found`, `not_ready`, `internal`, `too_large`.
 
@@ -821,9 +833,15 @@ Saves one script. `minApi` is optional.
 
 ### search.run
 
-State: planned (Q-1)
+State: real (Q-1)
 
-`{query, scope, server, limit}`. Local FTS5 when `server` is false.
+Args: `{query, scope?, server, limit?}`. `query` is required, non-empty, and at most 2000 bytes. `server` is required and must be false. `true` is `bad_args` (`server search is not available`) until Q-2. `limit` is an integer from 1 to 1000. Omitted, it is 100. `scope` is `{accountIds?, mailboxId?}`. Omitted or `{}` searches every account. `accountIds` is profile account ids, at most 64, and an empty array is `bad_args`. An id that is not in `account_state` or `remote_account` is `not_found`. `mailboxId` is `mbx:<ra_id>:<mailbox id>`. A missing mailbox is `not_found`.
+
+The query syntax is `from:`, `to:`, `cc:`, `subject:`, `has:attachment`, `is:unread`, `is:read`, `is:flagged`, `is:answered`, `before:YYYY-MM-DD`, `after:YYYY-MM-DD`, `in:<mailbox name or role>`, `account:<number|name>`, `"exact phrase"`, bare words, `-word`, and `OR`. An unknown `key:` is text. Dates are local days in the profile timezone. `before:` is strictly before local midnight. `after:` is at or after it. `account:` is not an error when nothing matches. An `in:` that matches nothing is an empty result.
+
+Result: the same shape as `message.list`: `{accountId, total, messages:[{id, from, subject}]}`. `accountId` is the one profile account the search is pinned to, or null. `total` is the full match count. `messages` is the first page, ranked by bm25, then `received_at` descending, then `email.rowid` descending, and also cut so the reply stays under 2 MB. Message ids are the stored email ids.
+
+Errors: `bad_args`, `not_found`, `not_ready`, `internal`, `too_large`.
 
 ### sender.allow_remote
 

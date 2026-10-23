@@ -9,6 +9,7 @@
 #include "pav_activity.h"
 #include "pav_blob.h"
 #include "pav_db.h"
+#include "pav_fts.h"
 #include "pav_jmap.h"
 #include "pav_mime.h"
 #include "pav_platform.h"
@@ -548,6 +549,7 @@ typedef struct StoreCtx {
     int headers_only;
     int64_t now_ms;
     const char *state;
+    const char *old_body;
 } StoreCtx;
 
 static int store_job(void *ctx, sqlite3 *db) {
@@ -585,6 +587,18 @@ static int store_job(void *ctx, sqlite3 *db) {
         return -1;
     }
     stmt = NULL;
+    {
+        char *body = NULL;
+
+        /* Files were written before this job. old_body is the text the index
+           held before that overwrite. */
+        if (pav_fts_body_text(s->text_path, s->html_path, &body) != 0 ||
+            pav_fts_set_body(db, s->rowid, s->old_body != NULL ? s->old_body : "", body != NULL ? body : "") != 0) {
+            free(body);
+            return -1;
+        }
+        free(body);
+    }
     if (pav_db_prepare(db, "body.attach.clear", "DELETE FROM attachment WHERE email_rowid = ?", &stmt) != 0 ||
         pav_db_bind_int64(stmt, 1, s->rowid) != 0 || pav_db_step(stmt) != SQLITE_DONE) {
         return -1;
@@ -642,6 +656,7 @@ static int store_doc(int64_t rowid, const char *ra, const PavMimeDoc *doc, int h
     char html_path[4096];
     char *list_id;
     char *auth;
+    char *old_body = NULL;
     int rc;
 
     if (doc == NULL || ra == NULL || ra[0] == '\0' || rowid <= 0) {
@@ -668,16 +683,26 @@ static int store_doc(int64_t rowid, const char *ra, const PavMimeDoc *doc, int h
     text_path[0] = '\0';
     html_path[0] = '\0';
     if (!headers_only) {
+        /* Capture the indexed body before the files change. A fetched row
+           reads those files, so a later read would see the new text. */
+        if (pav_fts_indexed_body_read(rowid, &old_body) != 0) {
+            free(list_id);
+            free(auth);
+            return -1;
+        }
         if (write_body_file(ra, rowid, "text", doc->text, text_path, sizeof(text_path)) != 0 ||
             write_body_file(ra, rowid, "html", doc->html, html_path, sizeof(html_path)) != 0) {
+            free(old_body);
             free(list_id);
             free(auth);
             return -1;
         }
         ctx.text_path = text_path[0] != '\0' ? text_path : NULL;
         ctx.html_path = html_path[0] != '\0' ? html_path : NULL;
+        ctx.old_body = old_body;
     }
     rc = pav_db_call(store_job, &ctx);
+    free(old_body);
     free(list_id);
     free(auth);
     return rc;
