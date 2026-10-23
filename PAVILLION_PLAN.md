@@ -4,8 +4,8 @@ Status: v0.7 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 
 **Resume:** each phase's history is in its own document's Working log; this block is only the current state.
 
-- Last finished: N-1 (step 58), 2026-10-23, in [docs/N-MAIL.md](docs/N-MAIL.md). Body fetch and MIME. `message.get` returns text, parts, and headers. `htmlSanitized` stays null. CI on `5342f9d` is green: fedora, macos-core, windows-core. This close-out is not in that commit. The agent does not commit.
-- Next: N-2 (step 59), not started, in [docs/N-MAIL.md](docs/N-MAIL.md). The HTML sanitizer and the hostile corpus. Entry gate is N-1 complete. The Accounts table polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md).
+- Last finished: N-1 (step 58), 2026-10-23, in [docs/N-MAIL.md](docs/N-MAIL.md). Body fetch and MIME. `message.get` returns text, parts, and headers. `htmlSanitized` stays null. Andrew committed the close-out and the splash reveal as `9b3bf9a` and accepted the splash window the same day. The window stays hidden until the cover is laid out. CI on the code is green at `5342f9d`: fedora, macos-core, windows-core. CI on `9b3bf9a` is green too: fedora, macos-core, windows-core, run [40000886287](https://github.com/500Foods/Pavillion/actions/runs/40000886287). The agent does not commit.
+- Next: N-2 (step 59), in progress, in [docs/N-MAIL.md](docs/N-MAIL.md). The HTML sanitizer and the hostile corpus. The Lock names lexbor v3.0.0, `pane_id`, the CSS property list, and Settings → Mail `preferences.mail.cssExtra`. No work item is finished. Entry gate is N-1 complete. Do not fold the splash reveal into N-2. Do not show the window from the page, and do not touch the quit path. The Accounts table polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md).
 - Last full `make test`: 230 Unity tests, 2 Rust tests and 380 Vitest tests, exit 0 (2026-10-23, N-1). The phase stamp is `0.65.0`.
 - `PAVILLION_API_VERSION` is 3. The phase stamp is `0.65.0` (65 Done rows), release date 2026-10-23.
 
@@ -134,7 +134,7 @@ Row order decides what is next: the next phase is the first row, top to bottom, 
 | 57 | M-5 | Delta sync | Medium | Done |
 | 135 | N-3a | Message list, From and Subject | Medium | Done |
 | 58 | N-1 | Body fetch and MIME (GMime) | Medium | Done |
-| 59 | N-2 | The HTML sanitizer and the hostile corpus | Hard | |
+| 59 | N-2 | The HTML sanitizer and the hostile corpus | Hard | In progress |
 | 60 | Q-1 | FTS5 indexing and local search | Medium | |
 | 132 | D-8 | Settings → Formats: app-wide date, time, and datetime formats (Luxon) | Medium | |
 | 61 | N-3 | Message list (Tabulator) | Medium | |

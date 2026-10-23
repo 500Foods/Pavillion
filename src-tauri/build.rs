@@ -171,12 +171,17 @@ fn main() {
     let build_dir = repo.join(&dir_name);
     println!("cargo:rustc-link-search=native={}", build_dir.display());
     println!("cargo:rustc-link-lib=static=pavillion_core");
+    println!("cargo:rustc-link-search=native={}", build_dir.join("lexbor").display());
+    println!("cargo:rustc-link-lib=static:+whole-archive=lexbor_static");
     println!("cargo:rustc-link-lib=pthread");
     println!("cargo:rustc-link-lib=jansson");
     println!("cargo:rustc-link-lib=sqlite3");
     // srv_lookup (G Lock): the target OS picks the DNS library.
     match std::env::var("CARGO_CFG_TARGET_OS").as_deref() {
-        Ok("linux") | Ok("macos") => println!("cargo:rustc-link-lib=resolv"),
+        Ok("linux") | Ok("macos") => {
+            println!("cargo:rustc-link-lib=resolv");
+            println!("cargo:rustc-link-lib=m");
+        }
         Ok("windows") => println!("cargo:rustc-link-lib=dnsapi"),
         _ => {}
     }

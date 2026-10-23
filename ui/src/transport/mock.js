@@ -24,6 +24,7 @@ const PREF_KEYS = [
   "chrome",
   "logLevel",
   "cache",
+  "mail",
 ];
 
 function defaultPrefs() {
@@ -41,7 +42,42 @@ function defaultPrefs() {
     chrome: "system",
     logLevel: "info",
     cache: { bodiesMb: 2048, blobsMb: 4096, listRows: 10000 },
+    mail: { cssExtra: [] },
   };
+}
+
+const CSS_EXTRA_MAX = 32;
+const CSS_EXTRA_NAME = /^[a-z][a-z0-9-]{0,39}$/;
+
+function takeMail(value) {
+  if (!isObject(value)) {
+    throw fail("bad_args", "mail must be an object");
+  }
+  const keys = Object.keys(value);
+  if (keys.length === 0) {
+    throw fail("bad_args", "mail is empty");
+  }
+  for (const key of keys) {
+    if (key !== "cssExtra") {
+      throw fail("bad_args", `unknown preference mail.${key}`);
+    }
+  }
+  const names = value.cssExtra;
+  if (!Array.isArray(names)) {
+    throw fail("bad_args", "cssExtra must be an array");
+  }
+  if (names.length > CSS_EXTRA_MAX) {
+    throw fail("bad_args", "cssExtra has too many names");
+  }
+  for (const name of names) {
+    if (typeof name !== "string") {
+      throw fail("bad_args", "cssExtra names must be strings");
+    }
+    if (!CSS_EXTRA_NAME.test(name) || name === "position" || name === "behavior") {
+      throw fail("bad_args", "cssExtra has a name outside the rule");
+    }
+  }
+  return { cssExtra: names.slice() };
 }
 
 function defaultUi() {
@@ -125,12 +161,18 @@ export function mockTransport() {
       if (keys.length === 0) {
         throw fail("bad_args", "nothing to save");
       }
+      const next = {};
       for (const key of keys) {
+        if (key === "mail") {
+          next.mail = takeMail(input.mail);
+          continue;
+        }
         if (!PREF_KEYS.includes(key)) {
           throw fail("bad_args", `unknown preference ${key}`);
         }
+        next[key] = input[key];
       }
-      Object.assign(prefs, structuredClone(input));
+      Object.assign(prefs, structuredClone(next));
       return structuredClone(prefs);
     }
     if (cmd === "prefs.ui.get") {

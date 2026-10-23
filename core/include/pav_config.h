@@ -59,7 +59,7 @@ typedef struct PavProfile {
     int bodies_mb;     /* preferences.cache.bodiesMb, default 2048 */
     int blobs_mb;      /* preferences.cache.blobsMb, default 4096 */
     int list_rows;     /* preferences.cache.listRows, default 10000 */
-    int cache_filled;  /* parse inserted a missing cache object or key */
+    int cache_filled;  /* parse inserted a missing cache key or preferences.mail.cssExtra */
     size_t account_count;
     char resolved_logs[4096];
     char resolved_blobs[4096];

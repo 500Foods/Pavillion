@@ -77,6 +77,7 @@ export const shellMarkup = `<div class="shell">
               <button type="button" data-heading="zoom">Zooms</button>
               <button type="button" data-heading="log">Logs</button>
               <button type="button" data-heading="limits">Limits</button>
+              <button type="button" data-heading="mail">Mail</button>
             </div>
           </div>
         </div>
@@ -298,6 +299,20 @@ export const shellMarkup = `<div class="shell">
               <p class="muted">Database is message text, contacts, and calendars. Document is attachments and files. They stay on this machine up to these sizes. Beside each one is what is on disk now, and the free space on the volume that holds this storage. Each account lists how many of those entries are on the server, and their size. The Total row adds each column on its own. Database and Document are not added together. Database counts messages, contacts, and events. Document counts attachments and files. A size is shown after Check sizes has split mail into message text and attachments. A contact, calendar, or file size that was not reported is left out. A progress bar and Cancel show while that runs, and the line beside the button is when it last finished. Message list is how many messages a folder shows, newest first. It starts at 10000 and is a whole number from 1 to 10000. It is not a disk size. Apply saves these limits. The next finished sync drops the oldest opened message text and documents that are over a limit. Drafts, flagged messages, and mail waiting to send stay. Contacts and calendars stay. The log size cap is on Logs.</p>
             </div>
             <div class="button-bar pav-module-footer" id="limits-footer" role="toolbar" aria-label="Limits actions"></div>
+          </div>
+          <div data-settings="mail" hidden>
+            <div class="button-bar pav-module-toolbar" id="mail-toolbar" role="toolbar" aria-label="Mail">
+              <button type="button" class="help-jump" data-help-page="settings" data-help-section="mail" aria-label="Help for Mail">
+                <i class="icon fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="settings-body">
+              <label class="mail-css-extra">Extra CSS properties
+                <textarea id="mail-css-extra" rows="8" spellcheck="false" aria-label="Extra CSS properties"></textarea>
+              </label>
+              <p class="muted">One property name per line. The built-in list stays fixed. A name starts with a lowercase letter and may continue with lowercase letters, digits, and hyphens. position, behavior, and a name that starts with a hyphen are refused. At most 32 names. Apply saves the list. An empty box clears it.</p>
+            </div>
+            <div class="button-bar pav-module-footer" id="mail-footer" role="toolbar" aria-label="Mail actions"></div>
           </div>
           <div data-settings="theme" hidden>
             <div class="button-bar settings-bar" role="toolbar" aria-label="Themes">

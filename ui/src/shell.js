@@ -14,6 +14,7 @@ import { createUpdatePie } from "./activity/update-pie.js";
 import { createAccountsView } from "./settings/accounts.js";
 import { createLogSettings } from "./settings/log.js";
 import { createLimitsSettings } from "./settings/limits.js";
+import { createMailSettings } from "./settings/mail.js";
 import { createHelpView } from "./help/view.js";
 import { createBackTracker } from "./help/back.js";
 import { createLogView } from "./log/view.js";
@@ -1201,6 +1202,7 @@ let helpBack = createBackTracker();
 let accountsView = null;
 let logSettings = null;
 let limitsSettings = null;
+let mailSettings = null;
 let logTimeZone = "America/Vancouver";
 let mailTree = null;
 let mailNav = null;
@@ -1494,6 +1496,9 @@ function applyHomeContext(entry) {
       }
       if (ctx.heading === "limits" && limitsSettings) {
         limitsSettings.refresh();
+      }
+      if (ctx.heading === "mail" && mailSettings) {
+        mailSettings.refresh();
       }
     }
   }
@@ -1961,6 +1966,9 @@ function bindSettings() {
       if (button.dataset.heading === "limits" && limitsSettings) {
         limitsSettings.refresh();
       }
+      if (button.dataset.heading === "mail" && mailSettings) {
+        mailSettings.refresh();
+      }
       showNav("settings");
       openHome("settings", { heading: button.dataset.heading });
     });
@@ -2291,6 +2299,10 @@ export function stopShell() {
   if (limitsSettings) {
     limitsSettings.destroy();
     limitsSettings = null;
+  }
+  if (mailSettings) {
+    mailSettings.destroy();
+    mailSettings = null;
   }
   if (mailList) {
     mailList.stop();
@@ -2942,6 +2954,12 @@ export async function startShell(surface, nextApi, nextHost, result) {
     },
   });
   limitsSettings.refresh();
+  mailSettings = createMailSettings(api, mountRoot, {
+    onError(text) {
+      showBanner(text);
+    },
+  });
+  mailSettings.refresh();
   if (mountRoot.querySelector("[data-settings='accounts']")) {
     accountsView.refresh();
   }

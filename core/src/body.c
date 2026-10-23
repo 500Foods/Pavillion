@@ -1,5 +1,5 @@
 /* N-1. Fetch one message body, cache the render text, and answer message.get.
-   htmlSanitized stays null until N-2. Attachment bytes stay on the server. */
+   htmlSanitized stays null until N-4. Attachment bytes stay on the server. */
 
 #define _POSIX_C_SOURCE 200809L
 

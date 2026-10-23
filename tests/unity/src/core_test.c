@@ -22,6 +22,7 @@
 #include "pavillion.h"
 #include "logring.h"
 #include "unity.h"
+#include "sanitize_test.h"
 
 #include <jansson.h>
 
@@ -591,6 +592,13 @@ void test_parse_index_and_profile(void) {
     TEST_ASSERT_EQUAL_INT(4096, profile->blobs_mb);
     TEST_ASSERT_EQUAL_INT(1, profile->cache_filled);
     TEST_ASSERT_EQUAL_UINT(0, (unsigned)profile->account_count);
+    {
+        json_t *mail = json_object_get(json_object_get((json_t *)profile->doc, "preferences"), "mail");
+        json_t *extra = json_is_object(mail) ? json_object_get(mail, "cssExtra") : NULL;
+
+        TEST_ASSERT_TRUE(json_is_array(extra));
+        TEST_ASSERT_EQUAL_UINT(0, (unsigned)json_array_size(extra));
+    }
 
     pav_index_free(index);
     pav_profile_free(profile);
@@ -694,6 +702,9 @@ static const char k_default_profile[] =
     "      \"bodiesMb\": 2048,\n"
     "      \"blobsMb\": 4096,\n"
     "      \"listRows\": 10000\n"
+    "    },\n"
+    "    \"mail\": {\n"
+    "      \"cssExtra\": []\n"
     "    },\n"
     "    \"window\": {\n"
     "      \"maximized\": false,\n"
@@ -6182,6 +6193,198 @@ void test_prefs_cache_round_trip(void) {
     free(text);
 }
 
+static char *replace_once(const char *src, const char *from, const char *to) {
+    const char *hit = strstr(src, from);
+    size_t head;
+    size_t nfrom;
+    size_t nto;
+    char *out;
+
+    if (src == NULL || from == NULL || to == NULL || hit == NULL) {
+        return NULL;
+    }
+    head = (size_t)(hit - src);
+    nfrom = strlen(from);
+    nto = strlen(to);
+    out = malloc(head + nto + strlen(hit + nfrom) + 1);
+    if (out == NULL) {
+        return NULL;
+    }
+    memcpy(out, src, head);
+    memcpy(out + head, to, nto);
+    memcpy(out + head + nto, hit + nfrom, strlen(hit + nfrom) + 1);
+    return out;
+}
+
+void test_profile_mail_css_extra_fill(void) {
+    PavProfile *profile = NULL;
+    char err[256];
+    char *nomail;
+    char *bad;
+
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pav_profile_parse(k_default_profile, &profile, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(0, profile->cache_filled);
+    pav_profile_free(profile);
+    profile = NULL;
+
+    nomail = replace_once(k_default_profile, "    \"mail\": {\n      \"cssExtra\": []\n    },\n", "");
+    TEST_ASSERT_NOT_NULL(nomail);
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pav_profile_parse(nomail, &profile, err, sizeof(err)));
+    TEST_ASSERT_EQUAL_INT(1, profile->cache_filled);
+    {
+        json_t *extra = json_object_get(
+            json_object_get(json_object_get((json_t *)profile->doc, "preferences"), "mail"), "cssExtra");
+
+        TEST_ASSERT_TRUE(json_is_array(extra));
+        TEST_ASSERT_EQUAL_UINT(0, (unsigned)json_array_size(extra));
+    }
+    pav_profile_free(profile);
+    profile = NULL;
+    free(nomail);
+
+    bad = replace_once(k_default_profile, "\"cssExtra\": []", "\"cssExtra\": [\"position\"]");
+    TEST_ASSERT_NOT_NULL(bad);
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(-1, pav_profile_parse(bad, &profile, err, sizeof(err)));
+    TEST_ASSERT_NULL(profile);
+    TEST_ASSERT_NOT_NULL(strstr(err, "outside the rule"));
+    free(bad);
+
+    bad = replace_once(k_default_profile, "\"cssExtra\": []", "\"cssExtra\": {}");
+    TEST_ASSERT_NOT_NULL(bad);
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(-1, pav_profile_parse(bad, &profile, err, sizeof(err)));
+    TEST_ASSERT_NULL(profile);
+    TEST_ASSERT_NOT_NULL(strstr(err, "not an array"));
+    free(bad);
+
+    bad = replace_once(k_default_profile, "    \"mail\": {\n      \"cssExtra\": []\n    },\n",
+                       "    \"mail\": {\n      \"split\": 0.5,\n      \"min\": 0.25,\n      \"max\": 0.75,\n"
+                       "      \"cssExtra\": [\"gap\"]\n    },\n");
+    TEST_ASSERT_NOT_NULL(bad);
+    err[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, pav_profile_parse(bad, &profile, err, sizeof(err)));
+    {
+        int changed = 0;
+
+        err[0] = '\0';
+        TEST_ASSERT_EQUAL_INT(0, pav_profile_migrate_ui(profile, &changed, err, sizeof(err)));
+        TEST_ASSERT_EQUAL_INT(1, changed);
+    }
+    {
+        json_t *prefs = json_object_get((json_t *)profile->doc, "preferences");
+        json_t *mail = json_object_get(prefs, "mail");
+        json_t *ui_mail = json_object_get(json_object_get(prefs, "ui"), "mail");
+
+        TEST_ASSERT_NOT_NULL(json_object_get(ui_mail, "split"));
+        TEST_ASSERT_NULL(json_object_get(mail, "split"));
+        TEST_ASSERT_EQUAL_STRING("gap", json_string_value(json_array_get(json_object_get(mail, "cssExtra"), 0)));
+    }
+    pav_profile_free(profile);
+    free(bad);
+}
+
+void test_prefs_mail_css_extra(void) {
+    json_t *root;
+    json_t *extra;
+    char dir[160];
+    char path[320];
+    char *text;
+    char big[2048];
+    size_t used;
+    int i;
+    int n;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    root = call_reply("prefs.get", "{}");
+    extra = json_object_get(json_object_get(json_object_get(root, "data"), "mail"), "cssExtra");
+    TEST_ASSERT_TRUE(json_is_array(extra));
+    TEST_ASSERT_EQUAL_UINT(0, (unsigned)json_array_size(extra));
+    json_decref(root);
+
+    root = call_reply("prefs.set", "{\"mail\":{\"cssExtra\":[\"gap\",\"color\",\"gap\"]}}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    extra = json_object_get(json_object_get(json_object_get(root, "data"), "mail"), "cssExtra");
+    TEST_ASSERT_EQUAL_UINT(3, (unsigned)json_array_size(extra));
+    TEST_ASSERT_EQUAL_STRING("gap", json_string_value(json_array_get(extra, 0)));
+    TEST_ASSERT_EQUAL_STRING("color", json_string_value(json_array_get(extra, 1)));
+    TEST_ASSERT_EQUAL_STRING("gap", json_string_value(json_array_get(extra, 2)));
+    json_decref(root);
+
+    pavillion_stop();
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    root = call_reply("prefs.get", "{}");
+    extra = json_object_get(json_object_get(json_object_get(root, "data"), "mail"), "cssExtra");
+    TEST_ASSERT_EQUAL_UINT(3, (unsigned)json_array_size(extra));
+    TEST_ASSERT_EQUAL_STRING("gap", json_string_value(json_array_get(extra, 0)));
+    TEST_ASSERT_EQUAL_STRING("color", json_string_value(json_array_get(extra, 1)));
+    TEST_ASSERT_EQUAL_STRING("gap", json_string_value(json_array_get(extra, 2)));
+    json_decref(root);
+
+    root = call_reply("prefs.set", "{\"mail\":{\"cssExtra\":[]}}");
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    extra = json_object_get(json_object_get(json_object_get(root, "data"), "mail"), "cssExtra");
+    TEST_ASSERT_EQUAL_UINT(0, (unsigned)json_array_size(extra));
+    json_decref(root);
+
+    root = call_reply("prefs.set", "{\"mail\":{}}");
+    assert_call_error(root, "bad_args", "empty");
+    json_decref(root);
+    root = call_reply("prefs.set", "{\"mail\":{\"nope\":[]}}");
+    assert_call_error(root, "bad_args", "mail.nope");
+    json_decref(root);
+    root = call_reply("prefs.set", "{\"mail\":1}");
+    assert_call_error(root, "bad_args", "object");
+    json_decref(root);
+    root = call_reply("prefs.set", "{\"mail\":{\"cssExtra\":\"gap\"}}");
+    assert_call_error(root, "bad_args", "array");
+    json_decref(root);
+    root = call_reply("prefs.set", "{\"mail\":{\"cssExtra\":[1]}}");
+    assert_call_error(root, "bad_args", "string");
+    json_decref(root);
+    root = call_reply("prefs.set", "{\"mail\":{\"cssExtra\":[\"position\"]}}");
+    assert_call_error(root, "bad_args", "outside the rule");
+    json_decref(root);
+    root = call_reply("prefs.set", "{\"mail\":{\"cssExtra\":[\"behavior\"]}}");
+    assert_call_error(root, "bad_args", "outside the rule");
+    json_decref(root);
+    root = call_reply("prefs.set", "{\"mail\":{\"cssExtra\":[\"-moz-binding\"]}}");
+    assert_call_error(root, "bad_args", "outside the rule");
+    json_decref(root);
+    root = call_reply("prefs.set", "{\"mail\":{\"cssExtra\":[\"Gap\"]}}");
+    assert_call_error(root, "bad_args", "outside the rule");
+    json_decref(root);
+    root = call_reply("prefs.set", "{\"mail\":{\"cssExtra\":[\"\"]}}");
+    assert_call_error(root, "bad_args", "outside the rule");
+    json_decref(root);
+
+    used = (size_t)snprintf(big, sizeof(big), "{\"mail\":{\"cssExtra\":[");
+    for (i = 0; i < 33; i++) {
+        n = snprintf(big + used, sizeof(big) - used, "%s\"p%d\"", i ? "," : "", i);
+        TEST_ASSERT_TRUE(n > 0 && (size_t)n < sizeof(big) - used);
+        used += (size_t)n;
+    }
+    TEST_ASSERT_TRUE(used + 3 < sizeof(big));
+    memcpy(big + used, "]}}", 4);
+    root = call_reply("prefs.set", big);
+    assert_call_error(root, "bad_args", "too many");
+    json_decref(root);
+
+    root = call_reply("prefs.get", "{}");
+    extra = json_object_get(json_object_get(json_object_get(root, "data"), "mail"), "cssExtra");
+    TEST_ASSERT_EQUAL_UINT(0, (unsigned)json_array_size(extra));
+    json_decref(root);
+
+    TEST_ASSERT_EQUAL_INT(0, pav_path_join(dir, sizeof(dir), g_cfg_dir, "profiles"));
+    TEST_ASSERT_EQUAL_INT(0, pav_path_join(path, sizeof(path), dir, "default.json"));
+    text = slurp(path);
+    TEST_ASSERT_NOT_NULL(strstr(text, "\"cssExtra\": []"));
+    free(text);
+}
+
 void test_db_bind_never_concatenates(void) {
     char path[160];
     sqlite3 *db = NULL;
@@ -10754,6 +10957,8 @@ int main(void) {
     RUN_TEST(test_cache_usage_keeps_measured_sizes);
     RUN_TEST(test_runtime_dir_removed_on_stop);
     RUN_TEST(test_prefs_cache_round_trip);
+    RUN_TEST(test_profile_mail_css_extra_fill);
+    RUN_TEST(test_prefs_mail_css_extra);
     RUN_TEST(test_db_bind_never_concatenates);
     RUN_TEST(test_secret_roundtrip);
     RUN_TEST(test_secret_missing);
@@ -10811,5 +11016,12 @@ int main(void) {
     RUN_TEST(test_account_icon_field);
     RUN_TEST(test_account_capabilities_stored);
     RUN_TEST(test_remote_accounts_from_session);
+    RUN_TEST(test_sanitize_links_and_remote);
+    RUN_TEST(test_sanitize_newsletter);
+    RUN_TEST(test_sanitize_hostile_dir);
+    RUN_TEST(test_sanitize_huge);
+    RUN_TEST(test_sanitize_extra_property);
+    RUN_TEST(test_sanitize_bad_pane);
+    RUN_TEST(test_sanitize_selectors);
     return UNITY_END();
 }

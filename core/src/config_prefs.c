@@ -11,6 +11,63 @@ static const char *const k_blob_keys[] = {
     "zoom", "nav", "mail", "contacts", "files", "icons", "fontawesome_kit", "fonts", NULL,
 };
 
+/* An old preferences.mail is the split {split,min,max}. N-2 stores
+   preferences.mail.cssExtra in that same object. The layout keys move
+   under ui. cssExtra stays. */
+static int move_mail_layout(json_t *prefs, json_t *ui, int *changed, char *err, size_t err_len) {
+    json_t *outside = json_object_get(prefs, "mail");
+    json_t *ui_mail;
+    static const char *const k_layout[] = {"split", "min", "max", NULL};
+    size_t i;
+    int layout = 0;
+
+    if (!json_is_object(outside)) {
+        return 0;
+    }
+    for (i = 0; k_layout[i] != NULL; i++) {
+        if (json_object_get(outside, k_layout[i]) != NULL) {
+            layout = 1;
+            break;
+        }
+    }
+    if (!layout) {
+        return 0;
+    }
+    ui_mail = json_object_get(ui, "mail");
+    if (ui_mail == NULL) {
+        ui_mail = json_object();
+        if (ui_mail == NULL || json_object_set_new(ui, "mail", ui_mail) != 0) {
+            cfg_err(err, err_len, "out of memory");
+            return -1;
+        }
+        *changed = 1;
+    } else if (!json_is_object(ui_mail)) {
+        cfg_err(err, err_len, "preferences.ui.mail is not an object");
+        return -1;
+    }
+    for (i = 0; k_layout[i] != NULL; i++) {
+        json_t *value = json_object_get(outside, k_layout[i]);
+
+        if (value == NULL) {
+            continue;
+        }
+        if (json_object_get(ui_mail, k_layout[i]) == NULL) {
+            json_incref(value);
+            if (json_object_set_new(ui_mail, k_layout[i], value) != 0) {
+                json_decref(value);
+                cfg_err(err, err_len, "out of memory");
+                return -1;
+            }
+        }
+        if (json_object_del(outside, k_layout[i]) != 0) {
+            cfg_err(err, err_len, "out of memory");
+            return -1;
+        }
+        *changed = 1;
+    }
+    return 0;
+}
+
 static int move_blob_key(json_t *prefs, json_t *ui, const char *key, int *changed, char *err,
                          size_t err_len) {
     json_t *outside = json_object_get(prefs, key);
@@ -66,6 +123,12 @@ int pav_profile_migrate_ui(PavProfile *profile, int *changed, char *err, size_t 
         *changed = 1;
     }
     for (i = 0; k_blob_keys[i] != NULL; i++) {
+        if (strcmp(k_blob_keys[i], "mail") == 0) {
+            if (move_mail_layout(prefs, ui, changed, err, err_len) != 0) {
+                return -1;
+            }
+            continue;
+        }
         if (move_blob_key(prefs, ui, k_blob_keys[i], changed, err, err_len) != 0) {
             return -1;
         }

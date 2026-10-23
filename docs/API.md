@@ -546,7 +546,7 @@ State: real (N-1)
 
 One stored message. Args: `{id, allowRemote}`. `id` is `msg:<ra_id>:<emailId>`, the same non-splitting shape as a mailbox id. `allowRemote` is a boolean and defaults to false. It is accepted and does not change the bytes in this phase. Any other key, a missing or empty id, an id that does not start with `msg:`, or a non-boolean `allowRemote` is `bad_args`. A well-formed id that is not a stored row is `not_found`.
 
-A cached body is returned when `body_state` is `fetched` and every stored body file is still on disk. Anything else fetches. `htmlSanitized` is null until N-2. `hasRemote` is false until N-2. Attachment rows carry part id, name, mime, size, cid, and disposition. Their bytes are not downloaded.
+A cached body is returned when `body_state` is `fetched` and every stored body file is still on disk. Anything else fetches. `htmlSanitized` is null until N-4. `hasRemote` is false until N-4. N-2 builds the sanitizer. This command does not call it. Attachment rows carry part id, name, mime, size, cid, and disposition. Their bytes are not downloaded.
 
 Result:
 
@@ -698,7 +698,8 @@ Result:
   "windowY": null,
   "chrome": "system",
   "logLevel": "info",
-  "cache": { "bodiesMb": 2048, "blobsMb": 4096, "listRows": 10000 }
+  "cache": { "bodiesMb": 2048, "blobsMb": 4096, "listRows": 10000 },
+  "mail": { "cssExtra": [] }
 }
 ```
 
@@ -712,7 +713,7 @@ State: real (G-2)
 
 Writes the same fields. Keys that are absent stay as stored. `{}` is `bad_args`. An unknown key is `bad_args`. Profile fields are written once. `logLevel` is written on the index and applied to the running process as the view default; it does not change what is captured. A request that only sets `logLevel` does not write the profile.
 
-Args: any subset of the `prefs.get` result. Booleans are JSON booleans. Width, height, and coordinates are integers. `windowX` or `windowY` set to null clears that coordinate. Strings must be non-empty and fit the profile field (`timezone` 63 bytes, `weekStart` 15, `timeFormat` 7, `theme` 15, `density` 15, `chrome` 15). Width and height are 200 to 10000. A set coordinate is -32000 to 32000. `chrome` is `system` or `hidden`. `logLevel` is `error`, `warn`, `info`, or `debug`. `cache` is an object with `bodiesMb`, `blobsMb`, `listRows`, or any subset of those. `bodiesMb` and `blobsMb` are integers from 1 to 1048576. `listRows` is an integer from 1 to 10000. An empty `cache` object, or any other cache key, is `bad_args`. Absent cache keys stay as stored.
+Args: any subset of the `prefs.get` result. Booleans are JSON booleans. Width, height, and coordinates are integers. `windowX` or `windowY` set to null clears that coordinate. Strings must be non-empty and fit the profile field (`timezone` 63 bytes, `weekStart` 15, `timeFormat` 7, `theme` 15, `density` 15, `chrome` 15). Width and height are 200 to 10000. A set coordinate is -32000 to 32000. `chrome` is `system` or `hidden`. `logLevel` is `error`, `warn`, `info`, or `debug`. `cache` is an object with `bodiesMb`, `blobsMb`, `listRows`, or any subset of those. `bodiesMb` and `blobsMb` are integers from 1 to 1048576. `listRows` is an integer from 1 to 10000. An empty `cache` object, or any other cache key, is `bad_args`. Absent cache keys stay as stored. `mail` is an object whose only key is `cssExtra`, an array of property names. A name matches `^[a-z][a-z0-9-]{0,39}$`. `position`, `behavior`, and a leading `-` are rejected. At most 32 names. Duplicates are allowed. An empty array clears the extras. An empty `mail` object, a non-string, an unknown mail key, or a name outside that rule is `bad_args`. The built-in CSS list does not change.
 
 Result: the `prefs.get` object after the write.
 

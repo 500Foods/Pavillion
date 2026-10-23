@@ -13,6 +13,7 @@
 #include "pav_cfg.h"
 #include "pav_config.h"
 #include "pav_net.h"
+#include "pav_sanitize.h"
 #include "pav_platform.h"
 #include "pav_store.h"
 #include "pav_sync.h"
@@ -1478,6 +1479,23 @@ static int store_index_log_level(const char *level, char *err, size_t err_len) {
     return 0;
 }
 
+static json_t *css_extra_copy(const PavProfile *profile) {
+    json_t *prefs;
+    json_t *mail;
+    json_t *extra;
+
+    if (profile == NULL || profile->doc == NULL) {
+        return json_array();
+    }
+    prefs = json_object_get((json_t *)profile->doc, "preferences");
+    mail = json_is_object(prefs) ? json_object_get(prefs, "mail") : NULL;
+    extra = json_is_object(mail) ? json_object_get(mail, "cssExtra") : NULL;
+    if (!json_is_array(extra)) {
+        return json_array();
+    }
+    return json_deep_copy(extra);
+}
+
 int pav_core_prefs_get_data(json_t **data, PavError *err) {
     PavProfile *profile;
     json_t *obj;
@@ -1495,15 +1513,39 @@ int pav_core_prefs_get_data(json_t **data, PavError *err) {
     {
         json_t *cache = json_object();
 
+        json_t *mail = json_object();
+        json_t *extra = css_extra_copy(profile);
+
         if (cache == NULL || json_object_set_new(cache, "bodiesMb", json_integer(profile->bodies_mb)) != 0 ||
             json_object_set_new(cache, "blobsMb", json_integer(profile->blobs_mb)) != 0 ||
             json_object_set_new(cache, "listRows", json_integer(profile->list_rows)) != 0) {
             json_decref(cache);
+            json_decref(mail);
+            json_decref(extra);
             json_decref(obj);
             pav_error_set(err, "internal", "out of memory", 0);
             return -1;
         }
-        if (json_set_or_oom(obj, "cache", cache, err) != 0 ||
+        if (mail == NULL || extra == NULL) {
+            json_decref(cache);
+            json_decref(mail);
+            json_decref(extra);
+            json_decref(obj);
+            pav_error_set(err, "internal", "out of memory", 0);
+            return -1;
+        }
+        if (json_object_set_new(mail, "cssExtra", extra) != 0) {
+            json_decref(cache);
+            json_decref(mail);
+            json_decref(obj);
+            pav_error_set(err, "internal", "out of memory", 0);
+            return -1;
+        }
+        if (json_set_or_oom(obj, "cache", cache, err) != 0) {
+            json_decref(mail);
+            return -1;
+        }
+        if (json_set_or_oom(obj, "mail", mail, err) != 0 ||
             json_set_or_oom(obj, "timezone", json_string(profile->timezone), err) != 0 ||
             json_set_or_oom(obj, "weekStart", json_string(profile->week_start), err) != 0 ||
             json_set_or_oom(obj, "timeFormat", json_string(profile->time_format), err) != 0 ||
@@ -1559,6 +1601,55 @@ static int take_cache_mb(json_t *value, int *out, const char *wire, PavError *er
         return -1;
     }
     *out = (int)number;
+    return 0;
+}
+
+static int css_extra_value_ok(json_t *value, PavError *err) {
+    size_t i;
+    json_t *item;
+
+    if (!json_is_array(value)) {
+        pav_error_set(err, "bad_args", "cssExtra must be an array", 0);
+        return -1;
+    }
+    if (json_array_size(value) > (size_t)PAV_CSS_EXTRA_MAX) {
+        pav_error_set(err, "bad_args", "cssExtra has too many names", 0);
+        return -1;
+    }
+    json_array_foreach(value, i, item) {
+        const char *name = json_string_value(item);
+
+        if (!json_is_string(item)) {
+            pav_error_set(err, "bad_args", "cssExtra names must be strings", 0);
+            return -1;
+        }
+        if (name == NULL || !pav_css_property_extra_ok(name)) {
+            pav_error_set(err, "bad_args", "cssExtra has a name outside the rule", 0);
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static int write_css_extra(PavProfile *profile, json_t *names, char *err, size_t err_len) {
+    json_t *prefs = cfg_obj(profile->doc, "preferences", 0);
+    json_t *mail;
+    json_t *copy;
+
+    if (prefs == NULL) {
+        snprintf(err, err_len, "%s", "missing profile fields");
+        return -1;
+    }
+    mail = cfg_obj(prefs, "mail", 1);
+    if (mail == NULL) {
+        snprintf(err, err_len, "%s", "preferences.mail is not an object");
+        return -1;
+    }
+    copy = json_deep_copy(names);
+    if (copy == NULL || json_object_set_new(mail, "cssExtra", copy) != 0) {
+        snprintf(err, err_len, "%s", "out of memory");
+        return -1;
+    }
     return 0;
 }
 
@@ -1717,6 +1808,8 @@ int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
     int list_set = 0;
     int list_rows = 0;
     int blobs_set = 0;
+    int css_extra_set = 0;
+    json_t *css_extra_in = NULL;
 
     if (data == NULL) {
         pav_error_set(err, "internal", "missing data", 0);
@@ -1833,6 +1926,33 @@ int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
                 pav_error_set(err, "bad_args", "cache is empty", 0);
                 return -1;
             }
+        } else if (strcmp(key, "mail") == 0) {
+            const char *mail_key;
+            json_t *mail_value;
+            int saw = 0;
+
+            if (!json_is_object(value)) {
+                pav_error_set(err, "bad_args", "mail must be an object", 0);
+                return -1;
+            }
+            json_object_foreach(value, mail_key, mail_value) {
+                saw = 1;
+                if (strcmp(mail_key, "cssExtra") == 0) {
+                    if (css_extra_value_ok(mail_value, err) != 0) {
+                        return -1;
+                    }
+                    css_extra_in = mail_value;
+                    css_extra_set = 1;
+                } else {
+                    snprintf(buf, sizeof(buf), "unknown preference mail.%s", mail_key);
+                    pav_error_set(err, "bad_args", buf, 0);
+                    return -1;
+                }
+            }
+            if (!saw) {
+                pav_error_set(err, "bad_args", "mail is empty", 0);
+                return -1;
+            }
         } else {
             snprintf(buf, sizeof(buf), "unknown preference %s", key);
             pav_error_set(err, "bad_args", buf, 0);
@@ -1849,7 +1969,7 @@ int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
         return -1;
     }
     profile_touched = window_touched || timezone != NULL || week_start != NULL || time_format != NULL ||
-                      theme != NULL || density != NULL || bodies_set || blobs_set || list_set;
+                      theme != NULL || density != NULL || bodies_set || blobs_set || list_set || css_extra_set;
     if (profile_touched && window_touched &&
         pav_profile_write_shell(profile, &shell, PAV_PREFS_WINDOW, errbuf, sizeof(errbuf)) != 0) {
         return fail_profile(err, errbuf);
@@ -1871,7 +1991,8 @@ int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
     }
     if ((bodies_set && write_cache_mb(profile, "bodiesMb", bodies_mb, errbuf, sizeof(errbuf)) != 0) ||
         (blobs_set && write_cache_mb(profile, "blobsMb", blobs_mb, errbuf, sizeof(errbuf)) != 0) ||
-        (list_set && write_cache_mb(profile, "listRows", list_rows, errbuf, sizeof(errbuf)) != 0)) {
+        (list_set && write_cache_mb(profile, "listRows", list_rows, errbuf, sizeof(errbuf)) != 0) ||
+        (css_extra_set && write_css_extra(profile, css_extra_in, errbuf, sizeof(errbuf)) != 0)) {
         return fail_profile(err, errbuf);
     }
     if (bodies_set) {

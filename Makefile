@@ -23,7 +23,7 @@ BUILD_START := $(shell date +%s)
 PRINT_ELAPSED = elapsed=$$(( $$(date +%s) - $(BUILD_START) )); printf 'build time    %dh%dm%ds\n' $$((elapsed / 3600)) $$(((elapsed % 3600) / 60)) $$((elapsed % 60))
 
 UNITY_DIR := tests/unity/framework/src
-TEST_SRC := tests/unity/src/core_test.c
+TEST_SRC := tests/unity/src/core_test.c tests/unity/src/sanitize_test.c
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
 PLATFORM_TEST_SRC := core/platform/fake/fake.c
@@ -41,7 +41,7 @@ else
 PLATFORM_TEST_LIBS :=
 endif
 
-.PHONY: all lib dev build test clean mini it-up it-seed it-down it-reset test-it
+.PHONY: all lib dev build test clean mini it-up it-seed it-down it-reset test-it fuzz-sanitize
 
 all: lib
 
@@ -77,15 +77,26 @@ $(LIB): core/CMakeLists.txt core/include/pavillion.h core/include/pav_config.h \
 	core/src/mime.c core/include/pav_mime.h \
 	core/src/body.c core/include/pav_body.h \
 	core/src/migrations/003_headers.sql \
-	core/src/account_test.c
+	core/src/account_test.c \
+	core/src/sanitize.c core/src/css_filter.c core/include/pav_sanitize.h \
+	third_party/lexbor/CMakeLists.txt third_party/lexbor/PAVILLION_PIN
 	cmake -S core -B $(BUILD_DIR)
 	cmake --build $(BUILD_DIR)
+
+LEXBOR_A := $(BUILD_DIR)/lexbor/liblexbor_static.a
+ifeq ($(UNAME_S),Darwin)
+LEXBOR_LINK := -Wl,-force_load,$(LEXBOR_A)
+else
+LEXBOR_LINK := -Wl,--whole-archive $(LEXBOR_A) -Wl,--no-whole-archive
+endif
 
 $(TEST_BIN): $(LIB) $(TEST_SRC) $(PLATFORM_TEST_SRC) $(UNITY_DIR)/unity.c $(UNITY_DIR)/unity.h \
 		$(UNITY_DIR)/unity_internals.h
 	$(CC) -std=c11 -Wall -Wextra -Wpedantic -pthread -DUNITY_INCLUDE_DOUBLE \
-		-Icore/include -Icore/src -I$(UNITY_DIR) $(PLATFORM_TEST_INC) $(CFLAGS) \
+		-Icore/include -Icore/src -I$(UNITY_DIR) -DLEXBOR_STATIC -Ithird_party/lexbor/source \
+		$(PLATFORM_TEST_INC) $(CFLAGS) \
 		-o $@ $(TEST_SRC) $(UNITY_DIR)/unity.c $(PLATFORM_TEST_SRC) $(LIB) \
+		$(LEXBOR_LINK) -lm \
 		-ljansson -lsqlite3 $(PLATFORM_TEST_LIBS) $(LDFLAGS) \
 		$(shell pkg-config --libs libsecret-1 2>/dev/null) \
 		$(shell pkg-config --libs libcurl 2>/dev/null) \
@@ -143,6 +154,14 @@ mini: PAVILLION_BUILD
 
 test: PAVILLION_BUILD $(TEST_BIN)
 	bash scripts/run-test.sh
+
+# Manual sanitizer fuzz (N-2, W Lock). Not part of test or all.
+fuzz-sanitize: $(LIB)
+	clang -std=c11 -O1 -g -fsanitize=fuzzer,address -DLEXBOR_STATIC \
+		-Icore/include -Ithird_party/lexbor/source \
+		-o $(BUILD_DIR)/sanitize_fuzz tests/fuzz/sanitize_fuzz.c \
+		core/src/sanitize.c core/src/css_filter.c \
+		$(LEXBOR_LINK) -lm
 
 # Integration tests against the Stalwart container (PAVILLION_IT=1).
 # Skipped until M-2 (account.test) exists; for now it only checks the

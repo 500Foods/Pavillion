@@ -2,6 +2,7 @@
 #include "pav_blob.h"
 #include "pav_cfg.h"
 #include "pav_platform.h"
+#include "pav_sanitize.h"
 #include "config_internal.h"
 
 #include <jansson.h>
@@ -188,6 +189,82 @@ static int fill_cache(json_t *prefs, PavProfile *profile, char *err, size_t err_
     return 0;
 }
 
+static int css_extra_names_ok(const json_t *extra, char *err, size_t err_len) {
+    size_t i;
+    json_t *item;
+
+    if (!json_is_array(extra)) {
+        cfg_err(err, err_len, "preferences.mail.cssExtra is not an array");
+        return -1;
+    }
+    if (json_array_size(extra) > (size_t)PAV_CSS_EXTRA_MAX) {
+        cfg_err(err, err_len, "preferences.mail.cssExtra has too many names");
+        return -1;
+    }
+    json_array_foreach((json_t *)extra, i, item) {
+        const char *name = json_string_value(item);
+
+        if (!json_is_string(item)) {
+            cfg_err(err, err_len, "preferences.mail.cssExtra names must be strings");
+            return -1;
+        }
+        if (name == NULL || !pav_css_property_extra_ok(name)) {
+            cfg_err(err, err_len, "preferences.mail.cssExtra has a name outside the rule");
+            return -1;
+        }
+    }
+    return 0;
+}
+
+/* Missing preferences.mail or cssExtra becomes []. An old profile is rewritten
+   once because this sets cache_filled. Call after fill_cache: that function
+   assigns cache_filled and would clear this flag. */
+static int fill_mail(json_t *prefs, PavProfile *profile, char *err, size_t err_len) {
+    json_t *mail = json_object_get(prefs, "mail");
+    int filled = 0;
+
+    if (mail == NULL) {
+        json_t *arr = json_array();
+
+        mail = json_object();
+        if (mail == NULL || arr == NULL) {
+            json_decref(mail);
+            json_decref(arr);
+            cfg_err(err, err_len, "out of memory");
+            return -1;
+        }
+        if (json_object_set_new(mail, "cssExtra", arr) != 0) {
+            json_decref(mail);
+            cfg_err(err, err_len, "out of memory");
+            return -1;
+        }
+        if (json_object_set_new(prefs, "mail", mail) != 0) {
+            cfg_err(err, err_len, "out of memory");
+            return -1;
+        }
+        filled = 1;
+    } else if (!json_is_object(mail)) {
+        cfg_err(err, err_len, "preferences.mail is not an object");
+        return -1;
+    } else {
+        json_t *extra = json_object_get(mail, "cssExtra");
+
+        if (extra == NULL) {
+            if (json_object_set_new(mail, "cssExtra", json_array()) != 0) {
+                cfg_err(err, err_len, "out of memory");
+                return -1;
+            }
+            filled = 1;
+        } else if (css_extra_names_ok(extra, err, err_len) != 0) {
+            return -1;
+        }
+    }
+    if (filled) {
+        profile->cache_filled = 1;
+    }
+    return 0;
+}
+
 int pav_profile_parse(const char *text, PavProfile **out, char *err, size_t err_len) {
     json_t *root;
     json_t *storage;
@@ -263,7 +340,7 @@ int pav_profile_parse(const char *text, PavProfile **out, char *err, size_t err_
     if (cfg_int_range(prefs, "log_max_mb", 10, 1, 100, 0, &profile->log_max_mb, err, err_len) != 0) {
         goto fail;
     }
-    if (fill_cache(prefs, profile, err, err_len) != 0) {
+    if (fill_cache(prefs, profile, err, err_len) != 0 || fill_mail(prefs, profile, err, err_len) != 0) {
         goto fail;
     }
     {
