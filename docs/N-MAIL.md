@@ -160,7 +160,7 @@ Help's developer Mail sync page describes `message.get`, including the 2 MB cap 
 ## N-2: The HTML sanitizer
 
 **Kind:** Hard
-**Status:** In progress (2026-10-23). Last finished work item: the libFuzzer target. `make test`: 239 Unity, 2 Rust, 384 Vitest, exit 0. `build/sanitize_fuzz -max_total_time=600` (seed 899505327, clang 22.1.8, default max_len 4096) ran 2350412 executions in 601 seconds, exit 0, no crash. Lexbor stays tag v3.0.0. Accomplished, Lessons learned, and Handoff are unwritten. CI has not run. The phase stamp stays `0.65.0`. `message.get` stays null until N-4.
+**Status:** In progress (2026-10-23). Last finished work item: the libFuzzer target. `make test`: 239 Unity, 2 Rust, 384 Vitest, exit 0. `build/sanitize_fuzz -max_total_time=600` (seed 899505327, clang 22.1.8, default max_len 4096) ran 2350412 executions in 601 seconds, exit 0, no crash. Lexbor stays tag v3.0.0. CI on `75b0c5a` is green: fedora, macos-core, windows-core, run [40016164091](https://github.com/500Foods/Pavillion/actions/runs/40016164091). Accomplished, Lessons learned, and Handoff are unwritten. The phase stamp stays `0.65.0`. `message.get` stays null until N-4.
 
 **Goal:** The core turns any HTML into a safe document per the Lock, proven against a hostile corpus.
 
@@ -393,3 +393,4 @@ Andrew opened the live profile on 2026-10-23. The count is there and the list fi
 - 2026-10-23 Andrew committed the N-1 close-out and the splash reveal as `9b3bf9a`, and accepted the splash window. The window stays hidden until the cover is laid out. WebKit's background is `#000000`. The page does not call `show()`. Lessons are in N-1, the L-STORE startup notes, and D-UI. This is not N-2. N-2 was not started.
 - 2026-10-23 N-2 in progress. The Lock records lexbor v3.0.0 (`2ae88a1c6b5261830eff73ee12bb3cdf805f3cfe`), `pane_id` and `extra_properties` on `pav_sanitize`, the CSS property list, and Settings → Mail `preferences.mail.cssExtra`. `message.get` stays null until N-4. No work item is finished.
 - 2026-10-23 N-2 work items checked. `make test`: 239 Unity, 2 Rust, 384 Vitest, exit 0. libFuzzer `build/sanitize_fuzz -max_total_time=600`, seed 899505327, clang 22.1.8, default max_len 4096, 2350412 runs in 601 seconds, exit 0, no crash. Lexbor stays v3.0.0. The phase stays in progress. Accomplished is unwritten. CI has not run. Stamp stays `0.65.0`. Settings → Mail was not opened in the window.
+- 2026-10-23 N-2 still in progress. CI on `75b0c5a` is green: fedora, macos-core, windows-core, run [40016164091](https://github.com/500Foods/Pavillion/actions/runs/40016164091). The run on `e9a2e28` failed because `third_party/` was ignored. Lexbor landed in `dce6854`. Accomplished is unwritten. Stamp stays `0.65.0`.
