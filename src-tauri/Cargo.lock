@@ -2991,7 +2991,7 @@ dependencies = [
 
 [[package]]
 name = "pavillion"
-version = "0.65.0"
+version = "0.66.0"
 dependencies = [
  "libc",
  "pav_stronghold",

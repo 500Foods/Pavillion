@@ -1,6 +1,6 @@
 # N — MAIL
 
-**Status:** N-1 complete (2026-10-23). The index names the next phase. Scoped 2026-10-16 from plan §6, §7, §10, §13.
+**Status:** N-2 complete (2026-10-23). The index names the next phase. Scoped 2026-10-16 from plan §6, §7, §10, §13.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Reading and organizing mail: MIME, the sanitizer, the message list, the reading pane, threads, unified views, flags and moves, attachments, notifications, shortcuts, and folder retention. Sync is [M-SYNC.md](M-SYNC.md). Compose is [O-COMPOSE.md](O-COMPOSE.md). Search is [Q-SEARCH.md](Q-SEARCH.md). The mailbox tree is [E-TREE.md](E-TREE.md). The isolation rules are the [F-HARDEN.md](F-HARDEN.md) Lock and are not restated here.
@@ -12,7 +12,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
 | N-1 | Body fetch and MIME with GMime; `message.get` text, parts, headers | Medium | Done |
-| N-2 | The HTML sanitizer in the core and the hostile corpus | Hard | In progress |
+| N-2 | The HTML sanitizer in the core and the hostile corpus | Hard | Done |
 | N-3a | Message list: From and Subject for the selected folder | Medium | Done |
 | N-3 | Message list: the remaining columns, selection, live row updates | Medium | Not started |
 | N-4 | Reading pane: sanitized HTML in the sandbox, remote content, `cid:`, links, plain text | Medium | Not started |
@@ -160,7 +160,7 @@ Help's developer Mail sync page describes `message.get`, including the 2 MB cap 
 ## N-2: The HTML sanitizer
 
 **Kind:** Hard
-**Status:** In progress (2026-10-23). Last finished work item: the libFuzzer target. `make test`: 239 Unity, 2 Rust, 384 Vitest, exit 0. `build/sanitize_fuzz -max_total_time=600` (seed 899505327, clang 22.1.8, default max_len 4096) ran 2350412 executions in 601 seconds, exit 0, no crash. Lexbor stays tag v3.0.0. CI on `75b0c5a` is green: fedora, macos-core, windows-core, run [40016164091](https://github.com/500Foods/Pavillion/actions/runs/40016164091). Accomplished, Lessons learned, and Handoff are unwritten. The phase stamp stays `0.65.0`. `message.get` stays null until N-4.
+**Status:** Complete (2026-10-23, step 59). `make test`: 239 Unity, 2 Rust, 384 Vitest, exit 0 (2026-10-23). libFuzzer: 2350412 runs in 601 seconds, seed 899505327, exit 0. CI on `75b0c5a` is green: fedora, macos-core, windows-core, run [40016164091](https://github.com/500Foods/Pavillion/actions/runs/40016164091). The phase stamp is `0.66.0`. Andrew asked for this close-out the same day. The agent does not commit. Settings → Mail was not opened in the window.
 
 **Goal:** The core turns any HTML into a safe document per the Lock, proven against a hostile corpus.
 
@@ -177,6 +177,33 @@ Help's developer Mail sync page describes `message.get`, including the 2 MB cap 
 **Done means:** The hostile corpus is inert by the checker, and the newsletter still looks like itself.
 
 **Exit gate:** `make test` exits 0 with the sanitizer suite. A 10-minute fuzz run finds no crash (logged in Accomplished).
+
+**Accomplished:** `pav_sanitize` is in the core. Lexbor tag v3.0.0, commit `2ae88a1c6b5261830eff73ee12bb3cdf805f3cfe`, is vendored at `third_party/lexbor` and linked as `liblexbor_static.a` with whole-archive. It is not a Fedora package. The options are `allow_remote`, `email_rowid` (zero or greater), `pane_id` (1 to 64 of `[A-Za-z0-9_-]`), and `extra_properties` (NULL, or a NULL-terminated list). Output is sanitized HTML, a link list, `has_remote`, and `sanitizer_version` 1. An `href` of http, https, or mailto becomes `pav-link://<paneId>/<n>`, and the list keeps the real URL at that index, up to 10000. Further hrefs are removed. `src`, CSS `url()`, and `background` allow `cid:` and `data:image` of png, gif, jpeg, or webp. http, https, and scheme-relative URLs are remote. A remote image becomes the 1×1 transparent GIF unless `allow_remote` is set. `has_remote` is 1 when any remote URL was seen, including when `allow_remote` kept it, and including a `url()` inside a dropped `@import`. An http href does not set `has_remote`.
+
+Script and the other drop-with-content tags go away with their content. Unknown tags unwrap. `noscript` is parsed as raw text and then unwrapped, so its text is escaped. Comments and processing instructions are removed. `title` stays as text with its attributes stripped. `html`, `head`, and `body` stay. The CSS filter keeps the Lock's property list, `@media` only, and drops every `position` value. Class and id tokens are prefixed with `m-`. `preferences.mail.cssExtra` is an array, default `[]`, edited on Settings → Mail. `prefs.set` accepts a `mail` object whose only key is `cssExtra`. A name matches `^[a-z][a-z0-9-]{0,39}$`. `position`, `behavior`, and a leading `-` are `bad_args`. At most 32 names. The filter unions the extras with the built-in list and still rejects a banned name. A missing `preferences.mail` or `cssExtra` is filled with `[]` and the profile is rewritten once. Layout keys `split`, `min`, and `max` still move under `preferences.ui.mail`. `cssExtra` stays.
+
+N-2 does not write `body_cache`. `message.get` still returns `htmlSanitized` null and `hasRemote` false. N-4 passes the pane id and `cssExtra` when it displays or caches.
+
+The hostile corpus is 21 files under `tests/corpus/hostile/`. The 10 MB document is generated in the Unity test. The checker walks the output and rejects an element, attribute, scheme, or property outside the allowlist. Remote counts and the link list are checked. A newsletter keeps `table`, `tbody`, `tr`, `td`, and its text, and a remote image becomes the placeholder. `make test` is 239 Unity, 2 Rust, and 384 Vitest, exit 0 (2026-10-23).
+
+`make fuzz-sanitize` builds `build/sanitize_fuzz` with clang `-fsanitize=fuzzer,address`. It is not part of `make test` or CI. `build/sanitize_fuzz -max_total_time=600` (seed 899505327, clang 22.1.8, default max_len 4096) ran 2350412 executions in 601 seconds, exit 0, no crash.
+
+CI on `75b0c5a` is green: fedora, macos-core, windows-core, run [40016164091](https://github.com/500Foods/Pavillion/actions/runs/40016164091). The run on `e9a2e28` failed because `third_party/` was gitignored. Lexbor is in the tree as of `dce6854`. Andrew committed the in-progress notes as `b923040`. This close-out is not in that commit.
+
+Help's Mail page and the Settings Mail topic describe `preferences.mail.cssExtra`. The developer Mail sync page says the sanitizer exists and that `message.get` still returns `htmlSanitized` null. Settings → Mail was covered by Vitest. The window was not opened.
+
+**Lessons learned:**
+
+- The pin is lexbor tag v3.0.0, commit `2ae88a1c6b5261830eff73ee12bb3cdf805f3cfe`. Andrew chose that tag knowing later master commits fix memory-safety bugs, including `character_data_replace` and `:lexbor-contains`. A crash is reported against this pin. The pin stays. The code does not call `lxb_dom_character_data_replace`. A style's text is replaced by unlinking its children and inserting a new text node. The code does not call the `:lexbor-contains` API. Scripting is set before parse. Serialization is `lxb_html_serialize_tree_str` on the document node, and those bytes are copied out before `lxb_html_document_destroy`. A `<` written back into a style element is escaped as the CSS hex `\3c `, because scripting serializes style text raw.
+- `liblexbor_static.a` is linked after `libpavillion_core.a` with `--whole-archive` (macOS `-force_load`, rustc `static:+whole-archive`). Lexbor objects are not copied into the core archive. Duplicate `.c` basenames collide. The static library is forced on, lexbor's own tests are off, and the link needs `-lm`.
+- `e9a2e28` added `third_party/` to `.gitignore`. All three CI jobs then failed in `make` because `third_party/lexbor/CMakeLists.txt` was not in the tree. The vendor tree is part of the commit. `dce6854` added it. `.gitignore` no longer ignores `third_party/`.
+- `pav_profile_migrate_ui` treated `preferences.mail` as an old layout blob and deleted the whole object when `preferences.ui.mail` already existed. That wiped `cssExtra` on every start. `move_mail_layout` copies only `split`, `min`, and `max` into `ui.mail` and leaves `cssExtra`. A new key on `preferences.mail` has to stay out of that move. `fill_mail` runs after `fill_cache`, because `fill_cache` assigns `cache_filled`. A missing `preferences.mail` or `cssExtra` is filled with `[]` and the profile is rewritten once.
+- Lexbor tokenizes `.1bad` as one DIMENSION. A number, percentage, dimension, or string outside a function and outside an attribute selector drops the whole rule. `position` is banned even when `cssExtra` names it. A name starting with `-`, and `behavior`, are rejected by `prefs.set`. The Unity checker does not run `pav_css_filter` a second time, or a class becomes `m-m-`. The substring `position:` is legal inside `background-position` and `list-style-position`.
+- The HTML parser inserts `tbody`. A newsletter looks like itself when `table`, `tbody`, `tr`, `td`, and the text survive, and a remote image is the 1×1 GIF unless `allow_remote`. An http href does not set `has_remote`. `has_remote` is set for a remote image, a CSS `url()`, or a `background`, including a `url()` inside a dropped `@import`, and including when `allow_remote` kept the URL. `pane_id` is per call. It is not the email rowid, and it is not stored in one cached HTML file. N-2 does not write `body_cache`.
+- `make fuzz-sanitize` needs clang with `-fsanitize=fuzzer,address`. It is not part of `make test` or CI. GCC rejects `fuzzer`. The 10-minute run used clang 22.1.8, seed 899505327, the default max length 4096, 2350412 runs, 601 seconds, exit 0. Tag v3.0.0 did not crash. The documented command has no `-max_len`.
+- Settings → Mail was checked with Vitest. The window was not opened. N-2's exit gate is `make test` and the fuzz run.
+
+**Handoff:** N-2 is complete (2026-10-23, step 59). Andrew asked for this close-out the same day. The agent does not commit it. The index names Q-1 next (step 60, [Q-SEARCH.md](Q-SEARCH.md)). Q-1 was not started. Its entry gate is N-1 complete. Its lock indexes `body` as plain text, or text extracted from HTML by the sanitizer's tree walk, capped at 256 KB. N-2 does not extract that text and does not write `html_sanitized_path`. `message.get` stays null until N-4. N-4 passes `pane_id` and `preferences.mail.cssExtra`. Lexbor stays tag v3.0.0. `third_party/lexbor` stays in the tree. `PAVILLION_API_VERSION` stays 3. The phase stamp is `0.66.0`. `make test`: 239 Unity, 2 Rust, 384 Vitest, exit 0. The 10-minute fuzz run found no crash. CI on `75b0c5a` is green: fedora, macos-core, windows-core. Do not show the window from the page. Do not touch the quit path. The Accounts table polish stays paused.
 
 ## N-3a: From and Subject
 
@@ -394,3 +421,4 @@ Andrew opened the live profile on 2026-10-23. The count is there and the list fi
 - 2026-10-23 N-2 in progress. The Lock records lexbor v3.0.0 (`2ae88a1c6b5261830eff73ee12bb3cdf805f3cfe`), `pane_id` and `extra_properties` on `pav_sanitize`, the CSS property list, and Settings → Mail `preferences.mail.cssExtra`. `message.get` stays null until N-4. No work item is finished.
 - 2026-10-23 N-2 work items checked. `make test`: 239 Unity, 2 Rust, 384 Vitest, exit 0. libFuzzer `build/sanitize_fuzz -max_total_time=600`, seed 899505327, clang 22.1.8, default max_len 4096, 2350412 runs in 601 seconds, exit 0, no crash. Lexbor stays v3.0.0. The phase stays in progress. Accomplished is unwritten. CI has not run. Stamp stays `0.65.0`. Settings → Mail was not opened in the window.
 - 2026-10-23 N-2 still in progress. CI on `75b0c5a` is green: fedora, macos-core, windows-core, run [40016164091](https://github.com/500Foods/Pavillion/actions/runs/40016164091). The run on `e9a2e28` failed because `third_party/` was ignored. Lexbor landed in `dce6854`. Accomplished is unwritten. Stamp stays `0.65.0`.
+- 2026-10-23 N-2 complete, step 59. `pav_sanitize` and the hostile corpus are in the tree. Lexbor stays v3.0.0. `message.get` stays null until N-4. Stamp `0.66.0`. `make test`: 239 Unity, 2 Rust, 384 Vitest, exit 0. libFuzzer 2350412 runs in 601 seconds, exit 0. CI on `75b0c5a` is green: fedora, macos-core, windows-core. The index names Q-1 next. Q-1 was not started. This close-out is not in `b923040`. The agent does not commit.
