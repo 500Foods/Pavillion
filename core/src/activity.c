@@ -3,6 +3,7 @@
 #include "pav_activity.h"
 
 #include "dispatch.h"
+#include "pav_body.h"
 #include "pav_db.h"
 #include "pav_platform.h"
 #include "pavillion.h"
@@ -980,6 +981,7 @@ int pav_activity_cmd_cancel(json_t *args, json_t **data, PavError *err) {
     obj = activity_json(a);
     pav_log("activity", PAV_INFO, 1, "cancel requested for %s", a->kind);
     pthread_mutex_unlock(&g_mu);
+    pav_body_cancel(id);
     if (obj == NULL) {
         pav_error_set(err, "internal", "out of memory", 0);
         return -1;

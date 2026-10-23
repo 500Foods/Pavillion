@@ -4,10 +4,10 @@ Status: v0.7 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 
 **Resume:** each phase's history is in its own document's Working log; this block is only the current state.
 
-- Last finished: M-5 (step 57), 2026-10-22, in [docs/M-SYNC.md](docs/M-SYNC.md). Delta sync is in. A flag and a delete from another client arrived on the next poll. Andrew accepted it on the log the same day. The tree total was not a useful check. `make test` is 212 Unity, 2 Rust, and 376 Vitest, exit 0. The container's seeded Inbox message is now seen and flagged.
-- Next: N-3a (step 135), in progress, in [docs/N-MAIL.md](docs/N-MAIL.md). From and Subject for the selected folder. The window is not accepted. Do not start N-1 or N-3. The agent does not commit. The Accounts table polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md).
-- Last full `make test`: 213 Unity tests, 2 Rust tests and 380 Vitest tests, exit 0 (2026-10-22, N-3a, in progress). The phase stamp is `0.63.0`.
-- `PAVILLION_API_VERSION` is 3. The phase stamp is `0.63.0` (63 Done rows), release date 2026-10-22.
+- Last finished: N-3a (step 135), 2026-10-23, in [docs/N-MAIL.md](docs/N-MAIL.md). From and Subject for the selected folder. Andrew accepted the window the same day. Sent, with more than 3700 messages, renders at once. `$deleted` stays in the list for N-3 and N-5. CI on `e30fdd1` is green: fedora, macos-core, windows-core.
+- Next: N-1 (step 58), in progress, in [docs/N-MAIL.md](docs/N-MAIL.md). Body fetch and MIME. The corpus tests and `message.get` are in. `make test` is 229 Unity, 2 Rust, and 380 Vitest, exit 0 (2026-10-23). CI is not green on a push. Do not start N-2. The agent does not commit. The Accounts table polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md).
+- Last full `make test`: 229 Unity tests, 2 Rust tests and 380 Vitest tests, exit 0 (2026-10-23, N-1 in progress). The phase stamp is `0.64.0`.
+- `PAVILLION_API_VERSION` is 3. The phase stamp is `0.64.0` (64 Done rows), release date 2026-10-23.
 
 **Read first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), one page with diagrams of the layers, the threads, and the data flow.
 
@@ -132,8 +132,8 @@ Row order decides what is next: the next phase is the first row, top to bottom, 
 | 55 | L-2 | Mail schema and the blob store | Medium | Done |
 | 56 | M-4 | Email initial sync | Medium | Done |
 | 57 | M-5 | Delta sync | Medium | Done |
-| 135 | N-3a | Message list, From and Subject | Medium | In progress |
-| 58 | N-1 | Body fetch and MIME (GMime) | Medium | |
+| 135 | N-3a | Message list, From and Subject | Medium | Done |
+| 58 | N-1 | Body fetch and MIME (GMime) | Medium | In progress |
 | 59 | N-2 | The HTML sanitizer and the hostile corpus | Hard | |
 | 60 | Q-1 | FTS5 indexing and local search | Medium | |
 | 132 | D-8 | Settings → Formats: app-wide date, time, and datetime formats (Luxon) | Medium | |

@@ -27,7 +27,7 @@ libcurl-devel
 sqlite-devel
 libsecret-devel
 libuuid-devel
-gmime-devel
+gmime30-devel
 libical-devel
 
 # A-INIT Rust and Node, from Fedora. npm is the command dnf resolves.

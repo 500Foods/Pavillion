@@ -1,0 +1,26 @@
+From: Ann <a@b>
+To: you@example.test
+Subject: Pavillion corpus cid signature
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary="rel"
+
+--rel
+Content-Type: multipart/alternative; boundary="alt"
+
+--alt
+Content-Type: text/plain; charset=utf-8
+
+Sign off
+--alt
+Content-Type: text/html; charset=utf-8
+
+<p>Sign off <img src="cid:logo@pavillion.test"></p>
+--alt--
+--rel
+Content-Type: image/png; name="logo.png"
+Content-Transfer-Encoding: base64
+Content-Disposition: inline; filename="logo.png"
+Content-ID: <logo@pavillion.test>
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==
+--rel--

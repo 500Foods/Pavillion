@@ -86,6 +86,7 @@ static const PavCommand k_commands[] = {
     {"log.trim", cmd_log_trim, 0},
     {"log.trim_preview", cmd_log_trim_preview, 0},
     {"mailbox.list", pav_cmd_mailbox_list, 0},
+    {"message.get", pav_cmd_message_get, PAV_CMD_WORKER | PAV_CMD_NET},
     {"message.list", pav_cmd_message_list, 0},
     {"prefs.get", cmd_prefs_get, 0},
     {"prefs.set", cmd_prefs_set, 0},

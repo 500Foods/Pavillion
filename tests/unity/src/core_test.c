@@ -17,6 +17,8 @@
 #include "pav_db.h"
 #include "pav_blob.h"
 #include "pav_sync.h"
+#include "pav_body.h"
+#include "pav_mime.h"
 #include "pavillion.h"
 #include "logring.h"
 #include "unity.h"
@@ -4445,7 +4447,7 @@ void test_activity_history_capped(void) {
     make_slot(g_cfg_dir, sizeof(g_cfg_dir));
     TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
     snprintf(path, sizeof(path), "%s/default.sqlite", g_cfg_dir);
-    TEST_ASSERT_EQUAL_INT(2, user_version(path));
+    TEST_ASSERT_EQUAL_INT(3, user_version(path));
     TEST_ASSERT_EQUAL_INT(PAV_STORE_TABLES, user_table_count(path));
 
     for (i = 0; i < 501; i++) {
@@ -4488,7 +4490,7 @@ void test_activity_history_capped(void) {
 
     pavillion_stop();
     TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
-    TEST_ASSERT_EQUAL_INT(2, user_version(path));
+    TEST_ASSERT_EQUAL_INT(3, user_version(path));
     rows = activity_rows(1);
     TEST_ASSERT_EQUAL_INT(501, (int)json_array_size(rows));
     TEST_ASSERT_NOT_NULL(find_act(rows, failed_text));
@@ -4770,12 +4772,12 @@ static json_t *find_sync_act_last(json_t *rows, const char *account_id) {
 }
 
 static void add_fixture_account(const char *id, const char *session_url, const char *ca) {
-    char body[1400];
+    char body[2048];
     json_t *root;
 
     snprintf(body, sizeof(body),
              "{\"kind\":\"jmap\",\"sessionUrl\":\"%s\",\"username\":\"u\",\"secret\":\"Zq9-sync-pw\","
-             "\"id\":\"%s\",\"name\":\"Box\",\"caFile\":\"%s\"}",
+             "\"id\":\"%s\",\"name\":\"Box\",\"caFile\":\"%s\",\"fetchBodies\":\"none\"}",
              session_url, id, ca);
     root = call_reply("account.add", body);
     assert_ok(root);
@@ -4783,13 +4785,13 @@ static void add_fixture_account(const char *id, const char *session_url, const c
 }
 
 static void add_fixture_account_color(const char *id, const char *session_url, const char *ca, const char *color) {
-    char body[1400];
+    char body[2048];
     json_t *root;
     int n;
 
     n = snprintf(body, sizeof(body),
                  "{\"kind\":\"jmap\",\"sessionUrl\":\"%s\",\"username\":\"u\",\"secret\":\"Zq9-sync-pw\","
-                 "\"id\":\"%s\",\"name\":\"Box\",\"caFile\":\"%s\",\"color\":\"%s\"}",
+                 "\"id\":\"%s\",\"name\":\"Box\",\"caFile\":\"%s\",\"color\":\"%s\",\"fetchBodies\":\"none\"}",
                  session_url, id, ca, color);
     TEST_ASSERT_TRUE(n > 0 && n < (int)sizeof(body));
     root = call_reply("account.add", body);
@@ -5182,7 +5184,7 @@ void test_migrate_fresh_to_v1(void) {
     make_slot(g_cfg_dir, sizeof(g_cfg_dir));
     snprintf(path, sizeof(path), "%s/mail.sqlite", g_cfg_dir);
     open_v1(path);
-    TEST_ASSERT_EQUAL_INT(2, user_version(path));
+    TEST_ASSERT_EQUAL_INT(3, user_version(path));
     TEST_ASSERT_EQUAL_INT(PAV_STORE_TABLES, user_table_count(path));
     TEST_ASSERT_TRUE(journal_is_wal(path));
     for (i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
@@ -5223,11 +5225,11 @@ void test_migrate_is_idempotent(void) {
     g_test_store = store;
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_migrate(store, err, sizeof(err)), err);
-    TEST_ASSERT_EQUAL_INT(2, user_version(path));
+    TEST_ASSERT_EQUAL_INT(3, user_version(path));
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM activity WHERE id=7 AND title='kept'"));
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_migrate(store, err, sizeof(err)), err);
-    TEST_ASSERT_EQUAL_INT(2, user_version(path));
+    TEST_ASSERT_EQUAL_INT(3, user_version(path));
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM activity WHERE id=7 AND title='kept'"));
     TEST_ASSERT_EQUAL_INT(PAV_STORE_TABLES, user_table_count(path));
     close_test_store();
@@ -5250,7 +5252,7 @@ void test_newer_db_is_error(void) {
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT(-1, pav_store_migrate(store, err, sizeof(err)));
     TEST_ASSERT_NOT_NULL(strstr(err, "9"));
-    TEST_ASSERT_NOT_NULL(strstr(err, "2"));
+    TEST_ASSERT_NOT_NULL(strstr(err, "3"));
     TEST_ASSERT_NOT_NULL(strstr(err, "newer"));
     close_test_store();
 }
@@ -5326,8 +5328,11 @@ void test_migrate_v1_to_v2(void) {
     g_test_store = store;
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_migrate(store, err, sizeof(err)), err);
-    TEST_ASSERT_EQUAL_INT(2, user_version(path));
+    TEST_ASSERT_EQUAL_INT(3, user_version(path));
     TEST_ASSERT_TRUE(table_exists(path, "email"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM pragma_table_info('email') WHERE name='list_id'"));
+    TEST_ASSERT_EQUAL_INT(
+        1, scalar_int(path, "SELECT count(*) FROM pragma_table_info('email') WHERE name='auth_summary'"));
     TEST_ASSERT_TRUE(table_exists(path, "body_cache"));
     TEST_ASSERT_TRUE(table_exists(path, "email_fts"));
     TEST_ASSERT_TRUE(table_exists(path, "outbox"));
@@ -5336,7 +5341,7 @@ void test_migrate_v1_to_v2(void) {
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM kv WHERE key='keep' AND value='yes'"));
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_migrate(store, err, sizeof(err)), err);
-    TEST_ASSERT_EQUAL_INT(2, user_version(path));
+    TEST_ASSERT_EQUAL_INT(3, user_version(path));
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM activity WHERE id=4 AND title='kept-v1'"));
     close_test_store();
 }
@@ -10156,6 +10161,362 @@ void test_log_trim_apply_saves_pref(void) {
     stop_core_db();
 }
 
+static void assert_mime_file(const char *path, const char *needle, int parts) {
+    PavMimeDoc doc;
+
+    TEST_ASSERT_EQUAL_INT(0, pav_mime_parse_path(path, &doc));
+    TEST_ASSERT_NOT_NULL(doc.text);
+    if (needle != NULL) {
+        TEST_ASSERT_NOT_NULL_MESSAGE(strstr(doc.text, needle), doc.text);
+    }
+    TEST_ASSERT_EQUAL_INT(parts, doc.part_n);
+    pav_mime_free(&doc);
+}
+
+void test_mime_plain(void) {
+    PavMimeDoc doc;
+
+    TEST_ASSERT_EQUAL_INT(0, pav_mime_parse_path("tests/corpus/plain.eml", &doc));
+    TEST_ASSERT_NOT_NULL(strstr(doc.text, "Hello plain"));
+    TEST_ASSERT_EQUAL_INT(0, doc.part_n);
+    TEST_ASSERT_NOT_NULL(strstr(doc.list_id, "list.example"));
+    TEST_ASSERT_NOT_NULL(strstr(doc.auth_summary, "dkim=pass"));
+    pav_mime_free(&doc);
+}
+
+void test_mime_alternative(void) {
+    PavMimeDoc doc;
+
+    TEST_ASSERT_EQUAL_INT(0, pav_mime_parse_path("tests/corpus/alternative.eml", &doc));
+    TEST_ASSERT_NOT_NULL(strstr(doc.text, "Alpha plain"));
+    TEST_ASSERT_NOT_NULL(doc.html);
+    TEST_ASSERT_NOT_NULL(strstr(doc.html, "Alpha html"));
+    TEST_ASSERT_EQUAL_INT(0, doc.part_n);
+    pav_mime_free(&doc);
+}
+
+void test_mime_newsletter(void) {
+    PavMimeDoc doc;
+
+    TEST_ASSERT_EQUAL_INT(0, pav_mime_parse_path("tests/corpus/newsletter.eml", &doc));
+    TEST_ASSERT_NOT_NULL(strstr(doc.text, "News plain"));
+    TEST_ASSERT_NOT_NULL(doc.html);
+    TEST_ASSERT_NOT_NULL(strstr(doc.html, "example.test/a.png"));
+    TEST_ASSERT_EQUAL_INT(0, doc.part_n);
+    pav_mime_free(&doc);
+}
+
+void test_mime_cid_signature(void) {
+    PavMimeDoc doc;
+
+    TEST_ASSERT_EQUAL_INT(0, pav_mime_parse_path("tests/corpus/cid-signature.eml", &doc));
+    TEST_ASSERT_NOT_NULL(strstr(doc.text, "Sign off"));
+    TEST_ASSERT_EQUAL_INT(1, doc.part_n);
+    TEST_ASSERT_EQUAL_STRING("2", doc.parts[0].part_id);
+    TEST_ASSERT_EQUAL_STRING("image/png", doc.parts[0].mime);
+    TEST_ASSERT_EQUAL_STRING("logo@pavillion.test", doc.parts[0].cid);
+    TEST_ASSERT_EQUAL_STRING("inline", doc.parts[0].disposition);
+    TEST_ASSERT_TRUE(doc.parts[0].size > 0);
+    pav_mime_free(&doc);
+}
+
+void test_mime_malformed(void) {
+    PavMimeDoc doc;
+
+    TEST_ASSERT_EQUAL_INT(0, pav_mime_parse_path("tests/corpus/malformed.eml", &doc));
+    TEST_ASSERT_NOT_NULL(doc.text);
+    TEST_ASSERT_NOT_NULL(strstr(doc.text, "hello"));
+    pav_mime_free(&doc);
+}
+
+void test_mime_iso_8859_1(void) {
+    assert_mime_file("tests/corpus/iso-8859-1.eml", "caf\xc3\xa9", 0);
+}
+
+void test_mime_windows_1252(void) {
+    assert_mime_file("tests/corpus/windows-1252.eml", "price \xe2\x82\xac", 0);
+}
+
+void test_mime_shift_jis(void) {
+    assert_mime_file("tests/corpus/shift-jis.eml", "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e", 0);
+}
+
+void test_mime_missing_charset(void) {
+    assert_mime_file("tests/corpus/missing-charset.eml", "caf\xef\xbf\xbd", 0);
+}
+
+void test_mime_huge_attachment(void) {
+    char path[256];
+    FILE *fp;
+    PavMimeDoc doc;
+    char block[4096];
+    size_t i;
+    const size_t bytes = 8u * 1024u * 1024u;
+    int n;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    n = snprintf(path, sizeof(path), "%s/huge.eml", g_cfg_dir);
+    TEST_ASSERT_TRUE(n > 0 && n < (int)sizeof(path));
+    fp = fopen(path, "wb");
+    TEST_ASSERT_NOT_NULL(fp);
+    fputs("From: Ann <a@b>\r\n"
+          "Subject: Pavillion corpus huge\r\n"
+          "MIME-Version: 1.0\r\n"
+          "Content-Type: multipart/mixed; boundary=\"huge\"\r\n"
+          "\r\n"
+          "--huge\r\n"
+          "Content-Type: text/plain; charset=utf-8\r\n"
+          "\r\n"
+          "short\r\n"
+          "--huge\r\n"
+          "Content-Type: application/octet-stream\r\n"
+          "Content-Transfer-Encoding: binary\r\n"
+          "Content-Disposition: attachment; filename=\"big.bin\"\r\n"
+          "\r\n",
+          fp);
+    memset(block, 'A', sizeof(block));
+    for (i = 0; i < bytes / sizeof(block); i++) {
+        TEST_ASSERT_EQUAL_INT(sizeof(block), fwrite(block, 1, sizeof(block), fp));
+    }
+    fputs("\r\n--huge--\r\n", fp);
+    TEST_ASSERT_EQUAL_INT(0, fclose(fp));
+    TEST_ASSERT_EQUAL_INT(0, pav_mime_parse_path(path, &doc));
+    TEST_ASSERT_NOT_NULL(strstr(doc.text, "short"));
+    TEST_ASSERT_EQUAL_INT(1, doc.part_n);
+    TEST_ASSERT_EQUAL_INT64((int64_t)bytes, doc.parts[0].size);
+    pav_mime_free(&doc);
+}
+
+void test_body_email_get_request(void) {
+    char *text = pav_body_email_get_request("a1", "e0");
+    json_error_t jerr;
+    json_t *root;
+    json_t *call;
+    json_t *args;
+    json_t *props;
+    int saw_list = 0;
+    size_t i;
+
+    TEST_ASSERT_NOT_NULL(text);
+    root = json_loads(text, 0, &jerr);
+    free(text);
+    TEST_ASSERT_NOT_NULL(root);
+    call = json_array_get(json_object_get(root, "methodCalls"), 0);
+    TEST_ASSERT_EQUAL_STRING("Email/get", json_string_value(json_array_get(call, 0)));
+    args = json_array_get(call, 1);
+    TEST_ASSERT_EQUAL_STRING("a1", json_string_value(json_object_get(args, "accountId")));
+    TEST_ASSERT_EQUAL_INT(2097152, (int)json_integer_value(json_object_get(args, "maxBodyValueBytes")));
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(args, "fetchTextBodyValues")));
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(args, "fetchHTMLBodyValues")));
+    props = json_object_get(args, "properties");
+    for (i = 0; i < json_array_size(props); i++) {
+        const char *name = json_string_value(json_array_get(props, i));
+
+        if (name != NULL && strcmp(name, "header:List-Id:asText") == 0) {
+            saw_list = 1;
+        }
+    }
+    TEST_ASSERT_TRUE(saw_list);
+    json_decref(root);
+    TEST_ASSERT_NULL(pav_body_email_get_request("", "e0"));
+}
+
+static void seed_body_account(void) {
+    static const char sql[] =
+        "INSERT INTO account_state (account_id) VALUES ('foods');"
+        "INSERT INTO remote_account (id, account_id, jmap_account_id) VALUES ('foods/a1', 'foods', 'a1');"
+        "INSERT INTO identity (ra_id, id, email) VALUES ('foods/a1', 'idn1', 'A@B');"
+        "INSERT INTO email (rowid, ra_id, id, subject, from_json, to_json, message_id, sent_at, received_at, draft, "
+        "body_state) VALUES "
+        "(1, 'foods/a1', 'e1', 'Hello', '[{\"name\":\"Ann\",\"email\":\"a@b\"}]', '[]', '[\"<id@host>\"]', "
+        "1700000000000, 1700000001000, 0, 'none'),"
+        "(2, 'foods/a1', 'e:2', 'Colon', '[{\"email\":\"a@b\"}]', '[]', '\"<bare>\"', NULL, 10, 1, 'none');";
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_db_call(exec_sql_job, (void *)sql), g_sql_err);
+}
+
+void test_message_get_cached(void) {
+    static const char mime[] =
+        "From: Ann <a@b>\r\n"
+        "Subject: Hello\r\n"
+        "MIME-Version: 1.0\r\n"
+        "Content-Type: text/plain; charset=utf-8\r\n"
+        "List-Id: <list.example>\r\n"
+        "Authentication-Results: example.com; dkim=pass\r\n"
+        "\r\n"
+        "Hello plain\r\n";
+    json_t *root;
+    json_t *data;
+    json_t *from;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    seed_body_account();
+    TEST_ASSERT_EQUAL_INT(0, pav_body_store_bytes(1, "foods/a1", mime, strlen(mime)));
+    root = call_reply("message.get", "{\"id\":\"msg:foods/a1:e1\",\"allowRemote\":true}");
+    assert_ok(root);
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_STRING("msg:foods/a1:e1", json_string_value(json_object_get(data, "id")));
+    TEST_ASSERT_NOT_NULL(strstr(json_string_value(json_object_get(data, "text")), "Hello plain"));
+    TEST_ASSERT_NOT_NULL(strstr(json_string_value(json_object_get(data, "listId")), "list.example"));
+    TEST_ASSERT_NOT_NULL(strstr(json_string_value(json_object_get(data, "authenticationResults")), "dkim=pass"));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(data, "htmlSanitized")));
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(data, "hasRemote")));
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(data, "isDraft")));
+    TEST_ASSERT_EQUAL_INT64(1700000000000LL, json_integer_value(json_object_get(data, "date")));
+    TEST_ASSERT_EQUAL_STRING("idn1", json_string_value(json_object_get(data, "identityHint")));
+    from = json_object_get(data, "from");
+    TEST_ASSERT_EQUAL_STRING("Ann", json_string_value(json_object_get(json_array_get(from, 0), "name")));
+    TEST_ASSERT_EQUAL_INT(0, (int)json_array_size(json_object_get(data, "attachments")));
+    json_decref(root);
+
+    root = call_reply("message.get", "{\"id\":\"msg:foods/a1:e:2\"}");
+    assert_call_error(root, "not_ready", "session");
+    json_decref(root);
+}
+
+void test_message_get_args(void) {
+    json_t *root;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    seed_body_account();
+    root = call_reply("message.get", "{\"id\":\"e1\"}");
+    assert_call_error(root, "bad_args", NULL);
+    json_decref(root);
+    root = call_reply("message.get", "{\"id\":\"\"}");
+    assert_call_error(root, "bad_args", NULL);
+    json_decref(root);
+    root = call_reply("message.get", "{\"id\":\"msg:foods/a1:e1\",\"allowRemote\":1}");
+    assert_call_error(root, "bad_args", "allowRemote");
+    json_decref(root);
+    root = call_reply("message.get", "{\"id\":\"msg:foods/a1:e1\",\"extra\":true}");
+    assert_call_error(root, "bad_args", "extra");
+    json_decref(root);
+    root = call_reply("message.get", "{\"id\":\"msg:foods/a1:missing\"}");
+    assert_call_error(root, "not_found", NULL);
+    json_decref(root);
+}
+
+void test_body_apply_jmap(void) {
+    static const char trunc[] =
+        "{\"header:List-Id:asText\":\"list.example\","
+        "\"header:Authentication-Results:asText\":\"example.com; dkim=pass\","
+        "\"textBody\":[{\"partId\":\"1\",\"type\":\"text/plain\"}],"
+        "\"htmlBody\":[{\"partId\":\"2\",\"type\":\"text/html\"}],"
+        "\"bodyValues\":{\"1\":{\"value\":\"Hello\",\"isTruncated\":true,\"isEncodingProblem\":false}},"
+        "\"bodyStructure\":{\"partId\":\"0\",\"type\":\"multipart/alternative\",\"subParts\":["
+        "{\"partId\":\"1\",\"type\":\"text/plain\"},{\"partId\":\"2\",\"type\":\"text/html\"}]}}";
+    static const char full[] =
+        "{\"textBody\":[{\"partId\":\"1\",\"type\":\"text/plain\"}],"
+        "\"htmlBody\":[{\"partId\":\"2\",\"type\":\"text/html\"}],"
+        "\"bodyValues\":{"
+        "\"1\":{\"value\":\"Hello stored\",\"isTruncated\":false,\"isEncodingProblem\":false},"
+        "\"2\":{\"value\":\"<p>Hi</p>\",\"isTruncated\":false,\"isEncodingProblem\":false}},"
+        "\"bodyStructure\":{\"partId\":\"0\",\"type\":\"multipart/mixed\",\"subParts\":["
+        "{\"partId\":\"1\",\"type\":\"text/plain\"},{\"partId\":\"2\",\"type\":\"text/html\"},"
+        "{\"partId\":\"3\",\"type\":\"image/png\",\"name\":\"a.png\",\"size\":68,"
+        "\"cid\":\"<logo@pavillion.test>\",\"disposition\":\"inline\"}]}}";
+    static const char sql[] =
+        "INSERT INTO account_state (account_id) VALUES ('foods');"
+        "INSERT INTO remote_account (id, account_id, jmap_account_id) VALUES ('foods/a1', 'foods', 'a1');"
+        "INSERT INTO email (rowid, ra_id, id, body_state) VALUES "
+        "(9, 'foods/a1', 'trunc', 'none'), (10, 'foods/a1', 'full', 'none');";
+    json_t *root;
+    json_t *data;
+    json_t *part;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_db_call(exec_sql_job, (void *)sql), g_sql_err);
+    TEST_ASSERT_EQUAL_INT(1, pav_body_apply_jmap(9, "foods/a1", trunc));
+    {
+        char path[160];
+
+        snprintf(path, sizeof(path), "%s/default.sqlite", g_cfg_dir);
+        TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM email WHERE rowid=9 AND body_state='none'"));
+        TEST_ASSERT_EQUAL_INT(
+            1, scalar_int(path, "SELECT count(*) FROM email WHERE rowid=9 AND list_id='list.example'"));
+    }
+    TEST_ASSERT_EQUAL_INT(0, pav_body_apply_jmap(10, "foods/a1", full));
+    root = call_reply("message.get", "{\"id\":\"msg:foods/a1:full\"}");
+    assert_ok(root);
+    data = json_object_get(root, "data");
+    TEST_ASSERT_NOT_NULL(strstr(json_string_value(json_object_get(data, "text")), "Hello stored"));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(data, "htmlSanitized")));
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(data, "hasRemote")));
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(json_object_get(data, "attachments")));
+    part = json_array_get(json_object_get(data, "attachments"), 0);
+    TEST_ASSERT_EQUAL_STRING("3", json_string_value(json_object_get(part, "partId")));
+    TEST_ASSERT_EQUAL_STRING("image/png", json_string_value(json_object_get(part, "mime")));
+    TEST_ASSERT_EQUAL_STRING("logo@pavillion.test", json_string_value(json_object_get(part, "cid")));
+    TEST_ASSERT_EQUAL_STRING("inline", json_string_value(json_object_get(part, "disposition")));
+    TEST_ASSERT_EQUAL_INT(68, (int)json_integer_value(json_object_get(part, "size")));
+    json_decref(root);
+}
+
+void test_body_select_prefetch_window(void) {
+    static const char sql[] =
+        "INSERT INTO account_state (account_id) VALUES ('foods'), ('other');"
+        "INSERT INTO remote_account (id, account_id, jmap_account_id) VALUES "
+        "('foods/a1', 'foods', 'a1'), ('other/b1', 'other', 'b1');"
+        "INSERT INTO email (rowid, ra_id, id, received_at, body_state) VALUES "
+        "(1, 'foods/a1', 'new', 1700000000000, 'none'),"
+        "(2, 'foods/a1', 'old', 1697321600000, 'none'),"
+        "(3, 'foods/a1', 'mid', 1698000000000, 'evicted'),"
+        "(4, 'foods/a1', 'fail', 1700000000000, 'failed'),"
+        "(5, 'foods/a1', 'got', 1700000000000, 'fetched'),"
+        "(6, 'other/b1', 'x', 1700000000000, 'none'),"
+        "(7, 'foods/a1', 'newer', 1700000000001, 'none');";
+    char path[160];
+    int64_t ids[8];
+    int n = -1;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_db_call(exec_sql_job, (void *)sql), g_sql_err);
+    snprintf(path, sizeof(path), "%s/default.sqlite", g_cfg_dir);
+    TEST_ASSERT_EQUAL_INT(7, scalar_int(path, "SELECT count(*) FROM email"));
+    TEST_ASSERT_EQUAL_INT(0, pav_body_select("foods", "none", 1700000000000LL, 8, ids, &n));
+    TEST_ASSERT_EQUAL_INT(0, n);
+    TEST_ASSERT_EQUAL_INT(0, pav_body_select("foods", "recent", 1700000000000LL, 2, ids, &n));
+    TEST_ASSERT_EQUAL_INT(2, n);
+    TEST_ASSERT_EQUAL_INT64(7, ids[0]);
+    TEST_ASSERT_EQUAL_INT64(1, ids[1]);
+    TEST_ASSERT_EQUAL_INT(0, pav_body_select("foods", "all", 1700000000000LL, 8, ids, &n));
+    TEST_ASSERT_EQUAL_INT(4, n);
+    TEST_ASSERT_EQUAL_INT64(7, ids[0]);
+    TEST_ASSERT_EQUAL_INT64(1, ids[1]);
+    TEST_ASSERT_EQUAL_INT64(3, ids[2]);
+    TEST_ASSERT_EQUAL_INT64(2, ids[3]);
+    TEST_ASSERT_EQUAL_INT(0, pav_body_select("other", "all", 1700000000000LL, 8, ids, &n));
+    TEST_ASSERT_EQUAL_INT(1, n);
+    TEST_ASSERT_EQUAL_INT64(6, ids[0]);
+}
+
+void test_message_get_from_fixture(void) {
+    char path[160];
+    char got[192];
+    json_t *root;
+    json_t *data;
+
+    start_email_account("bget", "?emails=1", path, sizeof(path));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(
+        0, wait_count(path, "SELECT count(*) FROM account_state WHERE account_id='bget' AND state='idle'", 1, "bget",
+                      got, sizeof(got)),
+        got);
+    root = call_reply("message.get", "{\"id\":\"msg:bget/a1:e0\",\"allowRemote\":false}");
+    assert_ok(root);
+    data = json_object_get(root, "data");
+    TEST_ASSERT_NOT_NULL(strstr(json_string_value(json_object_get(data, "text")), "Hello e0"));
+    TEST_ASSERT_EQUAL_STRING("list.example", json_string_value(json_object_get(data, "listId")));
+    TEST_ASSERT_EQUAL_STRING("example.com; dkim=pass",
+                             json_string_value(json_object_get(data, "authenticationResults")));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(data, "htmlSanitized")));
+    TEST_ASSERT_TRUE(json_is_false(json_object_get(data, "hasRemote")));
+    json_decref(root);
+}
+
 int main(void) {
     setvbuf(stdout, NULL, _IONBF, 0); /* keep results visible if a test crashes */
     pav_platform_install(pav_platform_fake());
@@ -10275,6 +10636,22 @@ int main(void) {
     RUN_TEST(test_sync_mailboxes_refill);
     RUN_TEST(test_mailbox_list_tree_shape);
     RUN_TEST(test_message_list_folder);
+    RUN_TEST(test_mime_plain);
+    RUN_TEST(test_mime_alternative);
+    RUN_TEST(test_mime_newsletter);
+    RUN_TEST(test_mime_cid_signature);
+    RUN_TEST(test_mime_malformed);
+    RUN_TEST(test_mime_iso_8859_1);
+    RUN_TEST(test_mime_windows_1252);
+    RUN_TEST(test_mime_shift_jis);
+    RUN_TEST(test_mime_missing_charset);
+    RUN_TEST(test_mime_huge_attachment);
+    RUN_TEST(test_body_email_get_request);
+    RUN_TEST(test_message_get_cached);
+    RUN_TEST(test_message_get_args);
+    RUN_TEST(test_body_apply_jmap);
+    RUN_TEST(test_body_select_prefetch_window);
+    RUN_TEST(test_message_get_from_fixture);
     RUN_TEST(test_sync_mailboxes_cannot_calculate);
     RUN_TEST(test_sync_mailboxes_delta_rename);
     RUN_TEST(test_email_backfill_pages);

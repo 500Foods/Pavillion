@@ -1,0 +1,12 @@
+From: Ann <a@b>
+To: you@example.test
+Subject: Pavillion corpus plain
+Date: Tue, 14 Nov 2023 22:13:20 +0000
+Message-ID: <plain@pavillion.test>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 8bit
+List-Id: <list.example>
+Authentication-Results: example.com; dkim=pass
+
+Hello plain

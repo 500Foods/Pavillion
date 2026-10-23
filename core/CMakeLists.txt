@@ -64,6 +64,8 @@ add_library(pavillion_core STATIC
      src/fts.c
      src/sync.c
      src/message_list.c
+     src/mime.c
+     src/body.c
      src/account_test.c
      platform/posix/posix.c)
 target_include_directories(pavillion_core PUBLIC include)
@@ -111,3 +113,15 @@ else()
         target_link_libraries(pavillion_core PUBLIC dnsapi)
     endif()
 endif()
+
+# GMime 3. Fedora's gmime-devel is 2.6; the 3.x package is gmime30-devel
+# (pkg-config gmime-3.0). This machine keeps 3.2.15 under ~/.local.
+if(EXISTS "$ENV{HOME}/.local/lib/pkgconfig/gmime-3.0.pc")
+    set(ENV{PKG_CONFIG_PATH} "$ENV{HOME}/.local/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
+endif()
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GMIME REQUIRED gmime-3.0)
+target_include_directories(pavillion_core PRIVATE ${GMIME_INCLUDE_DIRS})
+target_compile_options(pavillion_core PRIVATE ${GMIME_CFLAGS_OTHER})
+target_link_directories(pavillion_core PUBLIC ${GMIME_LIBRARY_DIRS})
+target_link_libraries(pavillion_core PUBLIC ${GMIME_LIBRARIES})

@@ -107,7 +107,7 @@ fn shown_version(build: &str) -> String {
 
 fn main() {
     // Release date of this phase stamp. Change it when the middle number changes.
-    let release_date = "2026-10-22";
+    let release_date = "2026-10-23";
     println!("cargo:rustc-env=PAVILLION_RELEASE_DATE={release_date}");
     let build_number = read_build_number();
     println!("cargo:rustc-env=PAVILLION_BUILD={build_number}");
@@ -208,6 +208,44 @@ fn main() {
                     } else if let Some(path) = flag.strip_prefix("-L") {
                         println!("cargo:rustc-link-search=native={path}");
                     }
+                }
+            }
+        }
+        let mut pc_path = std::env::var("PKG_CONFIG_PATH").unwrap_or_default();
+        if let Ok(home) = std::env::var("HOME") {
+            let extra = format!("{home}/.local/lib/pkgconfig");
+            if pc_path.is_empty() {
+                pc_path = extra;
+            } else if !pc_path.split(':').any(|p| p == extra) {
+                pc_path = format!("{extra}:{pc_path}");
+            }
+        }
+        if let Ok(libs) = std::process::Command::new("pkg-config")
+            .args(["--libs", "gmime-3.0"])
+            .env("PKG_CONFIG_PATH", &pc_path)
+            .output()
+        {
+            if libs.status.success() {
+                let text = String::from_utf8_lossy(&libs.stdout);
+                for flag in text.split_whitespace() {
+                    if let Some(lib) = flag.strip_prefix("-l") {
+                        println!("cargo:rustc-link-lib={lib}");
+                    } else if let Some(path) = flag.strip_prefix("-L") {
+                        println!("cargo:rustc-link-search=native={path}");
+                    }
+                }
+            }
+        }
+        if let Ok(dir) = std::process::Command::new("pkg-config")
+            .args(["--variable=libdir", "gmime-3.0"])
+            .env("PKG_CONFIG_PATH", &pc_path)
+            .output()
+        {
+            if dir.status.success() {
+                let text = String::from_utf8_lossy(&dir.stdout);
+                let libdir = text.trim();
+                if !libdir.is_empty() {
+                    println!("cargo:rustc-link-arg=-Wl,-rpath,{libdir}");
                 }
             }
         }

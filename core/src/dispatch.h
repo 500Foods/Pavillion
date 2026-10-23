@@ -54,6 +54,7 @@ int pav_core_post_sync(void *result);
 
 int pav_cmd_identity_list(json_t *args, json_t **data, PavError *err);
 int pav_cmd_mailbox_list(json_t *args, json_t **data, PavError *err);
+int pav_cmd_message_get(json_t *args, json_t **data, PavError *err);
 int pav_cmd_message_list(json_t *args, json_t **data, PavError *err);
 
 int pav_activity_cmd_list(json_t *args, json_t **data, PavError *err);

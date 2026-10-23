@@ -1,0 +1,14 @@
+From: Ann <a@b>
+To: you@example.test
+Subject: Pavillion corpus malformed
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="bad"
+
+--bad
+Content-Type: text/plain; charset=utf-8
+
+hello
+--bad
+Content-Type: text/plain
+
+dangling

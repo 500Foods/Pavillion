@@ -12,6 +12,7 @@
 #include "dispatch.h"
 #include "pav_activity.h"
 #include "pav_blob.h"
+#include "pav_body.h"
 #include "pav_db.h"
 #include "pav_fts.h"
 #include "pav_jmap.h"
@@ -45,6 +46,7 @@
 #define SYNC_KIND_SESSION 0
 #define SYNC_KIND_TYPES 1
 #define SYNC_KIND_EMAIL 2
+#define SYNC_KIND_BODY_RESUME 3
 #define PAV_SYNC_EMAIL_SLOTS 16
 #define PAV_SYNC_EMAIL_REQ_MAX 10000
 #define PAV_SYNC_EMAIL_PARSE_MAX 4000
@@ -130,6 +132,10 @@ typedef struct PavSup {
     int64_t activity_id;
     SyncReq *inflight;
     SupRemote *remotes;
+    /* User message.get calls in flight, and an email page waiting on them. */
+    int body_hold;
+    int body_paused;
+    char body_ra[256];
 } PavSup;
 
 typedef struct SyncRemote {
@@ -634,6 +640,8 @@ static void start_connect(PavSup *s, int follow) {
     }
     if (!follow) {
         s->generation++;
+        s->body_paused = 0;
+        s->body_ra[0] = '\0';
         s->redirects = 0;
         s->saw_mailbox = 0;
         s->saw_email = 0;
@@ -1213,6 +1221,7 @@ static void apply_email(PavSup *s, void *result);
 static void email_result_ids(const void *result, const char **account_id, uint64_t *generation);
 static void clear_email_walk(SupRemote *remote);
 static void begin_email(PavSup *s, SupRemote *remote);
+static void start_email_query(PavSup *s, SupRemote *remote);
 
 void pav_sync_result_free(void *result) {
     SyncResult *r = result;
@@ -1226,6 +1235,10 @@ void pav_sync_result_free(void *result) {
     }
     if (r->kind == SYNC_KIND_EMAIL) {
         free_email_result(result);
+        return;
+    }
+    if (r->kind == SYNC_KIND_BODY_RESUME || r->kind == PAV_BODY_CORE_KIND) {
+        free(r);
         return;
     }
     free(r->session_json);
@@ -1411,6 +1424,103 @@ static void apply_result(PavSup *s, SyncResult *r) {
     apply_session_ok(s, r);
 }
 
+typedef struct BodyResume {
+    int kind;
+    char account_id[64];
+    uint64_t generation;
+    char ra_id[256];
+} BodyResume;
+
+static SupRemote *find_remote_ra(PavSup *s, const char *ra) {
+    SupRemote *cur;
+
+    if (s == NULL || ra == NULL || ra[0] == '\0') {
+        return NULL;
+    }
+    for (cur = s->remotes; cur != NULL; cur = cur->next) {
+        if (strcmp(cur->ra_id, ra) == 0) {
+            return cur;
+        }
+    }
+    return NULL;
+}
+
+void pav_sync_set_body_hold(const char *account_id, int hold) {
+    PavSup *s;
+    BodyResume *resume = NULL;
+
+    if (account_id == NULL || account_id[0] == '\0') {
+        return;
+    }
+    pthread_mutex_lock(&g_sync_mu);
+    s = find_sup(account_id);
+    if (s == NULL) {
+        pthread_mutex_unlock(&g_sync_mu);
+        return;
+    }
+    if (hold) {
+        s->body_hold++;
+    } else if (s->body_hold > 0) {
+        s->body_hold--;
+        if (s->body_hold == 0 && s->body_paused) {
+            resume = calloc(1, sizeof(*resume));
+            if (resume != NULL) {
+                resume->kind = SYNC_KIND_BODY_RESUME;
+                copy_fit(resume->account_id, sizeof(resume->account_id), s->account_id);
+                copy_fit(resume->ra_id, sizeof(resume->ra_id), s->body_ra);
+                resume->generation = s->generation;
+            }
+        }
+    }
+    pthread_mutex_unlock(&g_sync_mu);
+    if (resume != NULL && pav_core_post_sync(resume) != 0) {
+        free(resume);
+    }
+}
+
+int pav_sync_is_idle(const char *account_id) {
+    PavSup *s;
+    int idle = 0;
+
+    if (account_id == NULL || account_id[0] == '\0') {
+        return 0;
+    }
+    pthread_mutex_lock(&g_sync_mu);
+    s = find_sup(account_id);
+    if (s != NULL && strcmp(s->state, "idle") == 0 && s->inflight == NULL && s->body_hold == 0 && !s->body_paused) {
+        idle = 1;
+    }
+    pthread_mutex_unlock(&g_sync_mu);
+    return idle;
+}
+
+static void resume_email_walk(void *result) {
+    BodyResume *b = result;
+    PavSup *s;
+    SupRemote *remote = NULL;
+    int start = 0;
+
+    pthread_mutex_lock(&g_sync_mu);
+    s = find_sup(b->account_id);
+    if (s != NULL && s->generation == b->generation && s->body_paused && s->body_hold == 0) {
+        s->body_paused = 0;
+        if (s->inflight == NULL) {
+            remote = find_remote_ra(s, b->ra_id);
+            if (remote != NULL && remote->email != NULL) {
+                start = 1;
+            }
+        }
+        if (!start) {
+            s->body_ra[0] = '\0';
+        }
+    }
+    pthread_mutex_unlock(&g_sync_mu);
+    if (start) {
+        start_email_query(s, remote);
+    }
+    free(b);
+}
+
 void pav_sync_on_result(void *result) {
     int kind;
     const char *account_id;
@@ -1421,6 +1531,16 @@ void pav_sync_on_result(void *result) {
         return;
     }
     kind = *(int *)result;
+    if (kind == PAV_BODY_CORE_KIND) {
+        if (!pav_body_take_core(result)) {
+            free(result);
+        }
+        return;
+    }
+    if (kind == SYNC_KIND_BODY_RESUME) {
+        resume_email_walk(result);
+        return;
+    }
     if (kind == SYNC_KIND_TYPES) {
         TypeResult *t = result;
 
@@ -1605,6 +1725,7 @@ static void finish_sync_ok(PavSup *s) {
     if (pav_cache_evict() != 0) {
         pav_log("sync", PAV_WARN, 0, "cache eviction failed");
     }
+    pav_body_prefetch(s->account_id);
 }
 
 static void emit_mailboxes(const char *id) {
@@ -2643,6 +2764,8 @@ static void start_delta(PavSup *s) {
         return;
     }
     s->generation++;
+    s->body_paused = 0;
+    s->body_ra[0] = '\0';
     drop_inflight(s);
     replaced = s->activity_id;
     s->activity_id = 0;
@@ -2755,6 +2878,8 @@ void pav_sync_note_account(json_t *account) {
     if (!enabled) {
         pthread_mutex_lock(&g_sync_mu);
         s->generation++;
+        s->body_paused = 0;
+        s->body_ra[0] = '\0';
         drop_inflight(s);
         pthread_mutex_unlock(&g_sync_mu);
         publish_state(s, "disabled", "", 0, PAV_ACT_CANCELLED);
@@ -2789,6 +2914,8 @@ void pav_sync_note_removed(const char *account_id) {
         prev->next = s->next;
     }
     s->generation++;
+    s->body_paused = 0;
+    s->body_ra[0] = '\0';
     drop_inflight(s);
     act = s->activity_id;
     s->activity_id = 0;

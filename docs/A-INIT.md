@@ -77,7 +77,7 @@ The repo does not build against the Philement tree. Unity is a copy of the frame
 
 ### Tools and make
 
-Fedora packages: `gcc`, `cmake`, `make`, `pkgconf`, the Tauri 2 Linux prerequisites (WebKitGTK 4.1 and whatever its current guide lists), `jansson-devel`, `libcurl-devel`, `sqlite-devel`, `openssl-devel`, `libsecret-devel`, `libuuid-devel`, `gmime-devel`, `libical-devel`, plus Rust and Node. Do not pin versions here. Lua 5.5 (R-1) and lexbor (N-2) are vendored under `third_party/`; they are not Fedora packages. The system libraries stay dynamic (W Lock). `libuuid` stays until a phase shows nothing calls it.
+Fedora packages: `gcc`, `cmake`, `make`, `pkgconf`, the Tauri 2 Linux prerequisites (WebKitGTK 4.1 and whatever its current guide lists), `jansson-devel`, `libcurl-devel`, `sqlite-devel`, `openssl-devel`, `libsecret-devel`, `libuuid-devel`, `gmime30-devel`, `libical-devel`, plus Rust and Node. Do not pin versions here. Lua 5.5 (R-1) and lexbor (N-2) are vendored under `third_party/`; they are not Fedora packages. The system libraries stay dynamic (W Lock). `libuuid` stays until a phase shows nothing calls it.
 
 The core is C11. The shell identifier is `com.500nodes.pavillion`.
 

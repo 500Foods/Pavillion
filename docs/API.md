@@ -542,9 +542,41 @@ State: planned (M-6)
 
 ### message.get
 
-State: planned (N-1)
+State: real (N-1)
 
-`{id, allowRemote}`. Returns text, parts, and headers. `htmlSanitized` stays null until N-2.
+One stored message. Args: `{id, allowRemote}`. `id` is `msg:<ra_id>:<emailId>`, the same non-splitting shape as a mailbox id. `allowRemote` is a boolean and defaults to false. It is accepted and does not change the bytes in this phase. Any other key, a missing or empty id, an id that does not start with `msg:`, or a non-boolean `allowRemote` is `bad_args`. A well-formed id that is not a stored row is `not_found`.
+
+A cached body is returned when `body_state` is `fetched` and every stored body file is still on disk. Anything else fetches. `htmlSanitized` is null until N-2. `hasRemote` is false until N-2. Attachment rows carry part id, name, mime, size, cid, and disposition. Their bytes are not downloaded.
+
+Result:
+
+```json
+{
+  "id": "msg:foods/a1:e1",
+  "from": [{"name": "Ann", "email": "a@b"}],
+  "to": [],
+  "cc": [],
+  "bcc": [],
+  "replyTo": [],
+  "subject": "",
+  "date": 1700000000000,
+  "messageId": ["<id@host>"],
+  "listId": "",
+  "authenticationResults": "",
+  "text": "",
+  "htmlSanitized": null,
+  "hasRemote": false,
+  "attachments": [
+    {"partId": "2", "name": "a.png", "mime": "image/png", "size": 68, "cid": "logo@pavillion.test", "disposition": "inline"}
+  ],
+  "isDraft": false,
+  "identityHint": null
+}
+```
+
+`date` is `sent_at`, then `received_at`, then null. Address fields are the stored arrays, or `[]`. `messageId` is the stored array of strings, a bare string wrapped as one entry, or `[]`. `identityHint` is the identity on that remote account whose email equals the first From address, or null. Strings are data.
+
+Errors: `bad_args`, `not_found`, `not_ready`, `auth`, `network`, `server`, `internal`.
 
 ### message.list
 

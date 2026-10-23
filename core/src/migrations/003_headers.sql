@@ -1,0 +1,2 @@
+ALTER TABLE email ADD COLUMN list_id TEXT;
+ALTER TABLE email ADD COLUMN auth_summary TEXT;

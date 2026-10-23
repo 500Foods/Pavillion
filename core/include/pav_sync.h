@@ -37,4 +37,13 @@ void pav_sync_result_free(void *result);
 void pav_sync_set_poll_ms(int64_t ms);
 int pav_sync_attempt_count(const char *account_id);
 
+/* N-1. A user body fetch holds the next email page. hold 1 increments.
+   hold 0 decrements and, at zero, resumes a paused walk on the core thread.
+   An account with no supervisor is a no-op. */
+void pav_sync_set_body_hold(const char *account_id, int hold);
+
+/* 1 when the account is idle, nothing is in flight, and no body fetch holds
+   the walk. No supervisor is 0. */
+int pav_sync_is_idle(const char *account_id);
+
 #endif

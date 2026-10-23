@@ -1,6 +1,6 @@
 # N — MAIL
 
-**Status:** In progress. N-3a (step 135) is in progress. The window is not accepted. Scoped 2026-10-16 from plan §6, §7, §10, §13.
+**Status:** N-3a complete (2026-10-23). N-1 is in progress. The index names the phase. Scoped 2026-10-16 from plan §6, §7, §10, §13.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Reading and organizing mail: MIME, the sanitizer, the message list, the reading pane, threads, unified views, flags and moves, attachments, notifications, shortcuts, and folder retention. Sync is [M-SYNC.md](M-SYNC.md). Compose is [O-COMPOSE.md](O-COMPOSE.md). Search is [Q-SEARCH.md](Q-SEARCH.md). The mailbox tree is [E-TREE.md](E-TREE.md). The isolation rules are the [F-HARDEN.md](F-HARDEN.md) Lock and are not restated here.
@@ -11,9 +11,9 @@ One phase is one session. Do not start the next one in the same conversation.
 
 | Phase | What | Kind | Status |
 | --- | --- | --- | --- |
-| N-1 | Body fetch and MIME with GMime; `message.get` text, parts, headers | Medium | Not started |
+| N-1 | Body fetch and MIME with GMime; `message.get` text, parts, headers | Medium | In progress |
 | N-2 | The HTML sanitizer in the core and the hostile corpus | Hard | Not started |
-| N-3a | Message list: From and Subject for the selected folder | Medium | In progress |
+| N-3a | Message list: From and Subject for the selected folder | Medium | Done |
 | N-3 | Message list: the remaining columns, selection, live row updates | Medium | Not started |
 | N-4 | Reading pane: sanitized HTML in the sandbox, remote content, `cid:`, links, plain text | Medium | Not started |
 | N-5 | Flags, move, delete, archive, junk, undo toast, mailbox management | Medium | Not started |
@@ -109,7 +109,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 ## N-1: Body fetch and MIME
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** In progress. Last finished work item: the Unity corpus tests. `make test` is 229 Unity, 2 Rust, and 380 Vitest, exit 0 (2026-10-23). CI is not green on a push. The stamp stays `0.64.0`.
 
 **Goal:** Opening a message fetches its body once and returns text, parts, and headers.
 
@@ -117,12 +117,12 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Work items:**
 
-- [ ] `core/src/mime.c` on GMime 3 (`gmime-devel`; add to A's Fedora list and CMake): parse a blob, walk parts, pick text and HTML alternatives, list attachments with cids, decode charsets.
-- [ ] Body fetch through the backend's `fetch_body` with the Lock's `Email/get` properties; write `body_cache` (text, raw HTML path) and `attachment` rows; `body_state`.
-- [ ] Idle prefetch per `fetch_bodies` with at most 2 in flight, as activity `body.fetch`.
-- [ ] `message.get` returns the Lock's shape with `htmlSanitized: null` until N-2.
-- [ ] Corpus `tests/corpus/`: plain, multipart/alternative, HTML newsletter, cid-image signature (copy the pattern from Andrew's bot reports), huge attachment (generated), malformed MIME, ISO-8859-1, Windows-1252, Shift_JIS, missing charset.
-- [ ] Unity: one test per corpus file asserting text, part count, cids, and charset.
+- [x] `core/src/mime.c` on GMime 3 (`gmime30-devel`, pkg-config `gmime-3.0`; A's Fedora list and CMake): parse a blob, walk parts, pick text and HTML alternatives, list attachments with cids, decode charsets.
+- [x] Body fetch through the backend's `fetch_body` with the Lock's `Email/get` properties; write `body_cache` (text, raw HTML path) and `attachment` rows; `body_state`.
+- [x] Idle prefetch per `fetch_bodies` with at most 2 in flight, as activity `body.fetch`.
+- [x] `message.get` returns the Lock's shape with `htmlSanitized: null` until N-2.
+- [x] Corpus `tests/corpus/`: plain, multipart/alternative, HTML newsletter, cid-image signature (copy the pattern from Andrew's bot reports), huge attachment (generated), malformed MIME, ISO-8859-1, Windows-1252, Shift_JIS, missing charset.
+- [x] Unity: one test per corpus file asserting text, part count, cids, and charset.
 
 **Done means:** Every corpus message parses to the expected text and parts.
 
@@ -152,7 +152,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 ## N-3a: From and Subject
 
 **Kind:** Medium
-**Status:** In progress. Last finished work item is the Help page. `make test` is 213 Unity, 2 Rust, and 380 Vitest, exit 0 (2026-10-22). A temporary profile against the container listed a new Inbox message after the next poll (120 s). The window is not accepted.
+**Status:** Complete (2026-10-23, step 135). Andrew accepted the window the same day. `make test`: 213 Unity, 2 Rust, 380 Vitest, exit 0 (2026-10-22). The container check passed on 2026-10-22. The phase stamp is `0.64.0`. CI on `e30fdd1` is green: fedora, macos-core, windows-core. The agent does not commit this close-out.
 
 **Goal:** The selected mailbox shows the messages already stored for it, From and Subject, so a sync can be checked on screen.
 
@@ -169,14 +169,37 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Exit gate:** `make test` exits 0. In the window, a synced folder shows those two columns, and a change from another client shows up after the next poll when the list reloads.
 
-Preview, flags, time, the attachment icon, the account color bar, selection, keyboard, and `debug.seed_messages` stay in N-3. Bodies, the sanitizer, and the reading pane stay in N-1, N-2, and N-4. `message.list` kinds `unified`, `search`, and `threaded` stay in N-3 and Q-1. The Tabulator package and `createTable` are already in the tree. This phase does not add a second table library. The loaded rows use the virtual renderer. Rows past `listRows` are not fetched.
+Preview, flags, time, the attachment icon, the account color bar, selection, keyboard, and `debug.seed_messages` stay in N-3. Bodies, the sanitizer, and the reading pane stay in N-1, N-2, and N-4. `message.list` kinds `unified`, `search`, and `threaded` stay in N-3 and Q-1. The Tabulator package and `createTable` are already in the tree. This phase does not add a second table library. The loaded rows use the virtual renderer. Rows past `listRows` are not fetched. `$deleted` (IMAP `\Deleted`) is stored in `keywords` and this list does not filter it. Showing or hiding that flag stays with N-3 and N-5 (Andrew, 2026-10-23).
+
+**Accomplished:** `message.list` is real. The argument is `{view:{kind:"mailbox", id}}`, and `id` is the mailbox tree node id. Any other view kind, and `offset`, `limit`, or `threaded`, is `bad_args`. An unknown id is `not_found`. The result is `{accountId, total, messages:[{id, from, subject}]}`. `from` is the first address's name, else its email, else `""`. A null subject is `""`. Order is `received_at` descending, then `email_rowid` descending. `total` is the whole folder. The cap is `preferences.cache.listRows`, default 10000, whole numbers from 1 to 10000. A missing key is filled on load. `prefs.set` rejects a non-integer or a value outside that range. The reply stops before the next row would pass 2 MB, and `total` stays the real count. The first row is kept.
+
+The Mail home loads that one reply into the existing Tabulator, virtual rows, pagination off. Columns are From and Subject. Cells are text. The count is the plain number when the shown rows are the whole folder, and `shown of total` otherwise. `mail.messages_changed` for that account loads the reply again. A row click does nothing. Settings → Limits labels the cap Message list. Help's Mail page and the developer Mail sync page describe it.
+
+Unity `test_message_list_folder` covers order, the cap, from and subject text, an empty mailbox, another account, a mailbox id that contains a colon, and the 2 MB stop. Vitest covers the two columns as text, the count, and the Limits field. `make test` is 213 Unity, 2 Rust, and 380 Vitest, exit 0 (2026-10-22).
+
+The container check used a temporary profile and the fake keyring, and did not call `sync.now`. Inbox went from 1 message to 2 after the next poll, 120 seconds. `account.remove` cleared that account. The container was left up.
+
+Andrew opened the live profile on 2026-10-23. The count is there and the list fills immediately. Sent, with more than 3700 messages, renders at once. He accepted the window. Inbox shows a few more messages than he expected because `$deleted` is stored and not filtered. He left that for later.
+
+**Lessons learned:**
+
+- Pagination turns Tabulator's virtual renderer off. One reply, `height: "100%"`, and `headerSort: false` lists a Sent folder of more than 3700 messages immediately.
+- `listRows` is read by the core, so it lives on `preferences.cache` with `bodiesMb` and `blobsMb`. `preferences.ui` stays opaque. The default is 10000, not 100.
+- A string returned from a Tabulator formatter is HTML. The cell returns an element and sets `textContent`.
+- The tree node id contains more than one colon. The lookup compares `('mbx:' || ra_id || ':' || id)` and does not split the argument.
+- The default profile string in the Unity test has to include `listRows`, or `test_ensure_writes_defaults_once` fails against the file the core writes.
+- Limits Apply sends `listRows` only when that input is in the form. The mock replaces the whole cache object, so a fixture that has the input must expect the key.
+- `$deleted` is in the stored keywords JSON. The six flag columns do not include it, and `message.list` does not read keywords. A message marked deleted and left in the mailbox stays in the list. A move to Trash or a destroy removes it. Andrew left the filter for later.
+- A flag does not change From or Subject. The visible check for this list is a new message, a subject edit, or a delete of a listed row.
+
+**Handoff:** N-3a is complete (2026-10-23, step 135). Andrew accepted the window the same day. The index names N-1 next (step 58, [N-MAIL.md](N-MAIL.md)). N-1 was not started. N-3 stays step 61. `$deleted` is stored and this list does not filter it. Showing or hiding that flag belongs with N-3 and N-5. `PAVILLION_API_VERSION` stays 3. The phase stamp is `0.64.0`. The container was left up. Andrew pushed `e30fdd1`. CI on that push is green: fedora, macos-core, and windows-core. This close-out is not in that commit. The agent does not commit.
 
 ## N-3: Message list
 
 **Kind:** Medium
 **Status:** Not started.
 
-**Goal:** The Mail home tab shows the selected mailbox's messages with smooth scrolling at 100k rows. From and Subject for one page are N-3a. This phase extends that table.
+**Goal:** The Mail home tab shows the selected mailbox's messages with smooth scrolling at 100k rows. From and Subject for one page are N-3a. This phase extends that table. N-3a stores `$deleted` in `keywords` and lists every message still in the mailbox. Filtering that flag is part of this later mail work, with N-5.
 
 **Entry gate:** N-2 and N-3a complete.
 
@@ -334,3 +357,5 @@ Preview, flags, time, the attachment icon, the account color bar, selection, key
 - 2026-10-18 Those digits are the defaults. Settings → Features assigns Ctrl+1 through Ctrl+9, or none, per button. The earlier log line stays as the default that shipped that morning.
 - 2026-10-18 GitHub has no number. The chord row above is unchanged.
 - 2026-10-22 N-3a in progress. `message.list` returns From and Subject for one mailbox, newest first, capped by `preferences.cache.listRows` (default 10,000, Settings → Limits). The mail list loads that one reply and does not page. `make test` is 213 Unity, 2 Rust, and 380 Vitest, exit 0. A container check on a temporary profile showed a new Inbox message after the 120 s poll. The window is not accepted.
+- 2026-10-23 N-3a complete, step 135. Andrew accepted the window. The count is there and the list fills immediately. Sent, with more than 3700 messages, renders at once. `$deleted` stays in the list for N-3 and N-5. Stamp `0.64.0`. `make test`: 213 Unity, 2 Rust, 380 Vitest, exit 0. CI on `e30fdd1` is green: fedora, macos-core, windows-core. The index names N-1 next. N-1 was not started. This close-out is not in that commit.
+- 2026-10-23 N-1 in progress. GMime 3 parses the corpus, `message.get` returns text, parts, and headers, and idle prefetch follows `fetchBodies`. `htmlSanitized` stays null. `make test`: 229 Unity, 2 Rust, 380 Vitest, exit 0. CI is not pushed. Stamp stays `0.64.0`.

@@ -3,6 +3,10 @@
 # dist/pavillion-mini is make mini: a size build, then UPX. It is not the rpm.
 # The shell links the archive from src-tauri/build.rs.
 
+# Local GMime 3.2.15 lives here when the system package is the 2.6 gmime-devel.
+# A missing directory is ignored, so a distro pc file still wins on CI.
+export PKG_CONFIG_PATH := $(HOME)/.local/lib/pkgconfig:$(PKG_CONFIG_PATH)
+
 BUILD_DIR := build
 DIST_DIR := dist
 LIB := $(BUILD_DIR)/libpavillion_core.a
@@ -70,6 +74,9 @@ $(LIB): core/CMakeLists.txt core/include/pavillion.h core/include/pav_config.h \
 	core/src/fts.c core/include/pav_fts.h \
 	core/src/sync.c core/src/sync_email.c core/src/sync_delta.c core/include/pav_sync.h \
 	core/src/message_list.c \
+	core/src/mime.c core/include/pav_mime.h \
+	core/src/body.c core/include/pav_body.h \
+	core/src/migrations/003_headers.sql \
 	core/src/account_test.c
 	cmake -S core -B $(BUILD_DIR)
 	cmake --build $(BUILD_DIR)
@@ -82,6 +89,8 @@ $(TEST_BIN): $(LIB) $(TEST_SRC) $(PLATFORM_TEST_SRC) $(UNITY_DIR)/unity.c $(UNIT
 		-ljansson -lsqlite3 $(PLATFORM_TEST_LIBS) $(LDFLAGS) \
 		$(shell pkg-config --libs libsecret-1 2>/dev/null) \
 		$(shell pkg-config --libs libcurl 2>/dev/null) \
+		$(shell pkg-config --libs gmime-3.0) \
+		$(if $(filter Windows_NT,$(OS)),-liconv,-Wl,-rpath,$(shell pkg-config --variable=libdir gmime-3.0)) \
 		$(if $(wildcard core/platform/stronghold/target/release/libpav_stronghold.a),core/platform/stronghold/target/release/libpav_stronghold.a -ldl -lm,)
 
 # dev, build, and mini add one to PAVILLION_BUILD before they compile.

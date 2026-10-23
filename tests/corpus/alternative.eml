@@ -1,0 +1,17 @@
+From: Ann <a@b>
+To: you@example.test
+Subject: Pavillion corpus alternative
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="alt"
+
+--alt
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+Alpha plain
+--alt
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+<p>Alpha html</p>
+--alt--

@@ -1,0 +1,15 @@
+From: Ann <a@b>
+To: you@example.test
+Subject: Pavillion corpus newsletter
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="news"
+
+--news
+Content-Type: text/plain; charset=utf-8
+
+News plain
+--news
+Content-Type: text/html; charset=utf-8
+
+<table><tr><td>News</td></tr></table><img src="https://example.test/a.png" alt="pic">
+--news--

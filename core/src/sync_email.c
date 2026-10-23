@@ -1255,8 +1255,6 @@ static void start_email_query(PavSup *s, SupRemote *remote) {
     char *body;
     SyncReq *req;
 
-    /* A page waits while this server has a user command in flight (open,
-       search, send, flag). No user command exists until M-6. */
     if (w == NULL) {
         email_fail(s, remote, "request rejected");
         return;
@@ -1265,6 +1263,15 @@ static void start_email_query(PavSup *s, SupRemote *remote) {
         finish_email_cancel(s, remote);
         return;
     }
+    /* message.get holds the next page so it does not share the account cap. */
+    pthread_mutex_lock(&g_sync_mu);
+    if (s->body_hold > 0) {
+        copy_fit(s->body_ra, sizeof(s->body_ra), remote->ra_id);
+        s->body_paused = 1;
+        pthread_mutex_unlock(&g_sync_mu);
+        return;
+    }
+    pthread_mutex_unlock(&g_sync_mu);
     n = fill_email_slots(w, slots, w->calls_max / 2);
     if (n == 0 && w->phase == 1) {
         w->phase = 2;

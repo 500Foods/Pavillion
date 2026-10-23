@@ -576,6 +576,28 @@ serve_api() {
         hasAttachment: (if ($i % 7) == 0 then true else false end),
         blobId: ("b" + ($i | tostring))
       };
+    def wants_body($a):
+      ($a.fetchTextBodyValues // false) == true
+      or ($a.fetchHTMLBodyValues // false) == true
+      or ((($a.properties // []) | index("bodyValues")) != null);
+    def with_body($a; $obj):
+      if wants_body($a) then
+        $obj + {
+          textBody: [{partId:"1", type:"text/plain"}],
+          htmlBody: [{partId:"2", type:"text/html"}],
+          bodyValues: {
+            "1": {value: ("Hello " + $obj.id), isEncodingProblem:false, isTruncated:false},
+            "2": {value: ("<p>Hello " + $obj.id + "</p>"), isEncodingProblem:false, isTruncated:false}
+          },
+          bodyStructure: {
+            partId:"0", type:"multipart/alternative",
+            subParts: [{partId:"1", type:"text/plain"}, {partId:"2", type:"text/html"}]
+          },
+          attachments: [],
+          "header:List-Id:asText": "list.example",
+          "header:Authentication-Results:asText": "example.com; dkim=pass"
+        }
+      else $obj end;
     def qids($n; $pos; $lim; $desc):
       if $n <= 0 or $lim <= 0 then []
       else
@@ -755,7 +777,7 @@ serve_api() {
               | (if ($a.ids | type) == "array" then $a.ids else [] end) as $ids
               | (reduce $ids[] as $id ({list:[], notFound:[]};
                   (first($all[] | select(.id == $id)) // null) as $hit
-                  | if $hit == null then .notFound += [$id] else .list += [$hit] end)) as $p
+                  | if $hit == null then .notFound += [$id] else .list += [with_body($a; $hit)] end)) as $p
               | [note($state; "Email/get"),
                  [$m, {accountId:$aid, state:(D.emailState // "em-1"), list:$p.list, notFound:$p.notFound}]]
             elif d_mail($aid) then
@@ -793,7 +815,7 @@ serve_api() {
               | (reduce $ids[] as $id ({list:[], notFound:[]};
                   (eindex($id)) as $i
                   | if $i == null or $n <= 0 or $i < 0 or $i >= $n then .notFound += [$id]
-                    else .list += [eobj($i)] end)) as $p
+                    else .list += [with_body($a; eobj($i))] end)) as $p
               | [note($state; "Email/get"),
                  [$m, {accountId:$aid, state:"em-1", list:$p.list, notFound:$p.notFound}]]
             else

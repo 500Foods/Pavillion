@@ -78,6 +78,7 @@ CREATE TABLE email (rowid INTEGER PRIMARY KEY, ra_id TEXT NOT NULL REFERENCES re
   sent_at INT, received_at INT, size INT, preview TEXT, has_attachment INT,
   seen INT, flagged INT, answered INT, forwarded INT, draft INT, junk INT, keywords TEXT, -- keywords is the source of truth; the six ints cache $seen $flagged $answered $forwarded $draft $junk and are written only by pav_email_set_keywords, in the same statement as keywords
   body_state TEXT NOT NULL DEFAULT 'none',  -- none|fetched|failed|evicted
+  list_id TEXT, auth_summary TEXT,          -- N-1. List-Id and the Authentication-Results summary. Migration 003 adds them; do not edit 002_mail.sql
   last_opened INT, local_marks TEXT,        -- local_marks: JSON, e.g. {"bot":"name"} (V Lock), never sent to the server
   UNIQUE (ra_id, id));
 CREATE INDEX email_thread ON email(ra_id, thread_id);
