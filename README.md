@@ -114,19 +114,19 @@ The license is [MIT](LICENSE.md).
 [![Count Lines of Code](https://github.com/500Foods/Pavillion/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/main.yml)
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-23 19:54:05 UTC
+Last updated at 2026-10-23 20:03:12 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C                               47           4114            602          42567
+C                              262          21284           4431         415014
+C/C++ Header                   280           6243           6757         241116
 JavaScript                     110           1779            593          24697
-Markdown                        34           2780              2           5955
+Markdown                        38           2940              2           6453
 CSS                              7            458             38           3217
 JSON                            12              0              0           2589
-C/C++ Header                    30            493            599           2329
 Bourne Shell                    10            103            175           1533
+CMake                           22            384            184           1396
 Rust                             4             72             65           1154
-CMake                            2             12              7            195
 make                             1             22             21            153
 HTML                            24              4              0            138
 YAML                             4             24             27            138
@@ -134,18 +134,24 @@ SQL                              4              0              0            130
 Text                             2              8              0             57
 TOML                             2              8              5             54
 -------------------------------------------------------------------------------
-SUM:                           293           9877           2134          84906
+SUM:                           782          33329          12298         697839
 -------------------------------------------------------------------------------
-36 Files were skipped (duplicate, binary, or without source code):
+44 Files were skipped (duplicate, binary, or without source code):
   png: 17
   eml: 9
+  conf: 2
   gitignore: 2
   lock: 2
   theme: 2
+  version: 2
+  c: 1
   gitattributes: 1
   icns: 1
   ico: 1
-  version: 1
+  in: 1
+  license: 1
+  notice: 1
+  pavillion_pin: 1
 ```
 <!--CLOC-END-->
 
