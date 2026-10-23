@@ -11,4 +11,9 @@
 int pav_fts_index_headers(sqlite3 *db, int64_t rowid, const char *subject, const char *from_text,
                           const char *to_text, int replace);
 
+/* Contentless FTS5 keeps no copy of the text, so a delete has to repeat the
+   strings passed to pav_fts_index_headers. The body column is empty. */
+int pav_fts_delete(sqlite3 *db, int64_t rowid, const char *subject, const char *from_text,
+                   const char *to_text);
+
 #endif

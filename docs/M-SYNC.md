@@ -1,6 +1,6 @@
 # M — SYNC
 
-**Status:** M-1 through M-4 complete (M-4 on 2026-10-22). M-5 through M-8 are not started. The index names the next phase.
+**Status:** M-1 through M-5 complete (M-5 on 2026-10-22). M-6 through M-8 are not started. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The network and the sync engine: HTTP through libcurl, JMAP session discovery, initial and delta sync, the mutation queue, and push. Mail first; contacts, calendars, and files reuse the same engine with their own types ([S-CONTACTS.md](S-CONTACTS.md), [T-CALENDAR.md](T-CALENDAR.md), [U-FILES.md](U-FILES.md)). Tasks ([X-TASKS.md](X-TASKS.md)) sync over CalDAV after T-7, on that DAV client, not as a JMAP tasks capability. Notes ([Y-NOTES.md](Y-NOTES.md)) reuse the files sync of one account. Sending is [O-COMPOSE.md](O-COMPOSE.md).
@@ -15,7 +15,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | M-2 | JMAP session discovery, `account.test`, remote accounts, capabilities | Medium | Complete |
 | M-3 | Sync supervisor, Identity and Mailbox sync, `mailbox.list`, `sync.state` | Medium | Complete |
 | M-4 | Email initial sync: headers, first page, background backfill, threads | Medium | Complete |
-| M-5 | Delta sync: `/changes`, `cannotCalculateChanges`, deletes | Medium | Not started |
+| M-5 | Delta sync: `/changes`, `cannotCalculateChanges`, deletes | Medium | Complete |
 | M-6 | Mutation queue: optimistic apply, `ifInState`, conflicts, coalescing, undo | Hard | Not started |
 | M-7 | Push: EventSource, debounce, backoff, polling fallback, network and resume | Medium | Not started |
 | M-8 | IMAP/SMTP backend behind the same table (mail only) | Hard | Not started |
@@ -438,7 +438,7 @@ A wiped store restores `account_state` on boot. A passive checkpoint after each 
 ## M-5: Delta sync
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Complete (2026-10-22, step 57). Andrew accepted it on the log the same day. The tree total is a hover badge and was not a useful check. `make test`: 212 Unity, 2 Rust, 376 Vitest, exit 0. The container exit gate passed the same day. The phase stamp is `0.63.0`. Andrew pushes this change. The agent does not commit. The three CI jobs are the confirmation of that push.
 
 **Goal:** Changes made elsewhere arrive, including deletes and lost state.
 
@@ -446,14 +446,36 @@ A wiped store restores `account_state` on boot. A passive checkpoint after each 
 
 **Work items:**
 
-- [ ] `Email/changes` and `Thread/changes` loops with `maxChanges=500`; created and updated fetch headers; destroyed delete rows, bodies, FTS rows, and blobs not shared.
-- [ ] `cannotCalculateChanges` drops that type for the remote account and reruns initial sync, logged at warn.
-- [ ] Mailbox counts updated from the server (`Mailbox/get` for changed mailboxes), never computed locally.
-- [ ] Unity: `test_delta_created_updated_destroyed`, `test_delta_has_more_changes_loops`, `test_delta_cannot_calculate_resyncs`, `test_delta_destroy_removes_blobs`.
+- [x] `Email/changes` and `Thread/changes` loops with `maxChanges=500`; created and updated fetch headers; destroyed delete rows, bodies, FTS rows, and blobs not shared.
+- [x] `cannotCalculateChanges` drops that type for the remote account and reruns initial sync, logged at warn.
+- [x] Mailbox counts updated from the server (`Mailbox/get` for changed mailboxes), never computed locally.
+- [x] Unity: `test_delta_created_updated_destroyed`, `test_delta_has_more_changes_loops`, `test_delta_cannot_calculate_resyncs`, `test_delta_destroy_removes_blobs`.
 
 **Done means:** A flag, move, or delete made in another client shows up within one poll.
 
 **Exit gate:** `make test` exits 0. Against the container, flag and delete from another client; the store matches after one cycle.
+
+**Accomplished:** `core/src/sync_delta.c` (included from `sync.c`) runs once an Email state is stored and the store is not the empty-mail backfill. The first of those syncs pages `Thread/get` over the threads already stored, saves that state, and does not call `Thread/changes` in the same cycle. A later sync calls `Email/changes` and `Thread/changes` with `maxChanges` at the Session's `maxObjectsInGet` and at most 500, and loops while `hasMoreChanges`. Created and updated ids fetch the same headers as M-4. An id in both created and destroyed is destroyed. One `pav_db_call` per page. A destroyed message drops its row, its full-text row, its body files, and a blob no other message still uses. `cannotCalculateChanges` on Email drops that account's messages, threads, files, full-text rows, and unshared blobs, then runs the M-4 walk, and logs a warning with the account id. The same error on Thread drops thread rows and Thread state, then `Thread/get` of the threads the remaining messages name. Folder totals come from `Mailbox/get`. The email writer does not add or subtract them. A mailbox named on a changed message is fetched when this cycle has not already fetched it, and that get does not write Mailbox state. Intermediate `em-part` and `th-part` states are not stored. Cancel leaves the saved Email and Thread states. A changes pass reports activity detail Changes with no percent. The fixture overlay is `build/fixture-run/email-delta.json`, scoped to account `a1`. Help's developer Mail sync page describes the pass.
+
+Unity: `test_delta_created_updated_destroyed`, `test_delta_has_more_changes_loops`, `test_delta_cannot_calculate_resyncs`, `test_delta_destroy_removes_blobs`. `test_delta_container` returns immediately unless `PAV_DELTA_CONTAINER=1`. That run flagged the seeded Inbox message, imported a second message, destroyed the import, and after one 2-minute poll, without `sync.now`, the store matched the server's keywords and Inbox total and unread. `account.remove` deleted the temporary account. The seeded Inbox message on the server is now seen and flagged.
+
+Andrew opened the live profile. Courses was idle in under a second. Foods took about 38 seconds: the thread catch-up, then `messages changed` twice, then `mailboxes changed`, then idle. The tree redrew from 542 nodes to 536. Update about 12 seconds later was small posts for both accounts and did not log `messages changed`. Both activity rows closed as done. No `cannot calculate` and no `mail backfill`.
+
+**Lessons learned:**
+
+- `SyncId` has to be defined before `SupRemote`. A field of that type above the typedef compiles as `int *`.
+- `email_fts` is contentless. A delete that names only the rowid returns success and leaves the row. The delete has to repeat the subject, the address text, and an empty body. Rebuild that text from `subject` and the stored address JSON with `addresses_text`. On this SQLite a mismatch is a silent no-op, and a delete of a missing rowid reports the database malformed.
+- M-4 stores Email state and thread rows, and does not store Thread state. The first delta pages `Thread/get` over those threads and skips `Thread/changes` for that cycle. On foods, that catch-up was the long sync. The Update after it was three small posts.
+- Do not store `em-part` or `th-part`. Cancel leaves the saved Email and Thread states where they were.
+- Email `cannotCalculateChanges` drops messages, threads, files, full-text rows, and unshared blobs, then runs the initial walk. Thread `cannotCalculateChanges` drops thread rows and Thread state only. The warning names the account id. An address in that line is redacted.
+- The email writer does not adjust folder totals. A `Mailbox/get` for mailboxes touched by the changed messages must not write Mailbox state.
+- `account.add` rejects a relative `caFile`. The container test passes the absolute path.
+- The standing tree badge is the unread count. The folder total fades in on hover and is omitted at zero. That was not enough to check a flag or a delete. Andrew accepted this phase on the log.
+- A mailbox-only fixture overlay must not make `Email/changes` return `cannotCalculateChanges`. Canned changes for an account outside the overlay return `newState` `em-1` and do not note `Email/changes`. Keyword and `mailboxIds` updates replace those objects.
+- `pav_db_prepare` caches by the key pointer. A new SQL string needs a new literal. `put_json` steals the value.
+- Unity's `main` ignores `-n`. `test_delta_container` returns at once unless `PAV_DELTA_CONTAINER=1`, and that run still executes the whole suite.
+
+**Handoff:** M-5 is complete (2026-10-22, step 57). Andrew accepted it on the log the same day. The index names N-3a next (step 135, [N-MAIL.md](N-MAIL.md)). N-3a is a From and Subject list for the selected folder, so a sync can be seen on screen. It was not started here. N-1 stays after N-3a. The rest of the message list stays N-3 (step 61). `mail.new_mail` stays planned for N-8. The poll stays 2 minutes until M-7. `PAVILLION_API_VERSION` stays 3. The phase stamp is `0.63.0`. The container was left up. The seeded Inbox message there is seen and flagged. Andrew pushes this change. The agent does not commit. The three CI jobs are the confirmation of that push.
 
 ## M-6: Mutation queue
 
@@ -552,3 +574,5 @@ A wiped store restores `account_state` on boot. A passive checkpoint after each 
 - 2026-10-22 M-4 complete, step 56. Header sync walks Inbox and Sent first, then the other mailboxes, in pages of at most 500, and writes `email`, `email_mailbox`, and `thread` as one job per page. A fixture account of 2,000 messages landed in four pages, newest first. `mail.messages_changed` is real. Cancel drops the held page and leaves `Email` state unset; `sync.now` upserts the rest. `seed.sh` imports the corpus into Inbox and a second seed imports nothing. Against the container, `andrew@test-a.local` as `m4gate` in a temporary workdir went idle with the server's counts: Inbox 1, and Later, Drafts, Sent Items, Archive, Junk Mail, and Deleted Items 0. `account.remove` deleted the keyring entry. The live profile was not opened. The window was not launched. Stamp `0.62.0`. `make test`: 206 Unity, 2 Rust, 366 Vitest, exit 0. M-5 was not started. The container was left up.
 - 2026-10-22 Andrew accepted the window. A wiped store restores `account_state`. A passive checkpoint after each commit lets readers see the rows. Empty local mail with a folder total above 0 walks again. The account row and the Update button show the percent, and a second click cancels. Quit wakes the transfer. The Windows backfill crash was the hold toggle's `curl --data ''` under cmd.exe. After that, five messages at a cap of 2, and one mailbox refill, were still `syncing` at 8 seconds. The shared sync wait is 30 seconds. `make test`: 207 Unity, 2 Rust, 376 Vitest, exit 0. M-5 was not started. Andrew's push is what the three CI jobs run.
 - 2026-10-22 Windows CI was still red after that push. `test_jmap_post_url_outlives_call` posts to `/jmap/session`. The fixture answered without reading the body, Windows reset the socket, and curl reported a partial file with 0 bytes. Three retries outlasted the test's 10 second wait, and the next retry called back into the finished frame and segfaulted, so the later sync tests never ran. The handler now reads `Content-Length` before it replies, and that test stops the net thread before it asserts. M-5 was not started.
+- 2026-10-22 M-5 in progress, step 57. Once an Email state is stored, a later sync asks Email/changes and Thread/changes, at most 500 changes a page, and fetches headers for created and updated messages. The first of those syncs asks Thread/get for the threads already stored and does not also ask Thread/changes. A destroyed message drops its row, its full-text row, its body files, and a blob no other message still uses. `cannotCalculateChanges` drops that type and syncs it again, and the log records a warning. Folder totals come from Mailbox/get. The email sync does not add or subtract them. A changes pass reports activity detail Changes with no percent. Against the container, `andrew@test-a.local` as `m5gate` in a temporary workdir saw a flag and a delete from another client on the next 2-minute poll, without `sync.now`. The seeded Inbox message is now seen and flagged on the server. `account.remove` deleted the keyring entry. The live profile was not opened. The window was not launched. Stamp `0.62.0`. `make test`: 212 Unity, 2 Rust, 376 Vitest, exit 0. M-6 was not started.
+- 2026-10-22 M-5 complete, step 57. Andrew accepted it on the log. Courses was idle in under a second. Foods took about 38 seconds for the thread catch-up, logged `messages changed` twice and `mailboxes changed`, then went idle. Update was small posts and did not log `messages changed`. The tree redrew from 542 nodes to 536. The hover total was not visible. Stamp `0.63.0`. `make test`: 212 Unity, 2 Rust, 376 Vitest, exit 0. The index names N-3a next. N-3a was not started.

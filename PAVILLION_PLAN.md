@@ -4,10 +4,10 @@ Status: v0.7 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 
 **Resume:** each phase's history is in its own document's Working log; this block is only the current state.
 
-- Last finished: M-4 (step 56), 2026-10-22, in [docs/M-SYNC.md](docs/M-SYNC.md). Headers sync newest first, Inbox and Sent before the other mailboxes, in pages of at most 500. A fixture account of 2,000 messages landed in four pages. `mail.messages_changed` is real. Andrew accepted the window the same day. The Windows sync wait is 30 seconds. `make test` is 207 Unity, 2 Rust, and 376 Vitest, exit 0. Against the container, `andrew@test-a.local` stored the server's counts (Inbox 1, six other mailboxes 0). The temporary account was removed. The live profile was not opened. Andrew's push of the wait change is what the three CI jobs run.
-- Next: M-5 (step 57), in [docs/M-SYNC.md](docs/M-SYNC.md). Not started. The entry gate is M-4, which is Done. The agent does not commit. The Accounts table polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md).
-- Last full `make test`: 207 Unity tests, 2 Rust tests and 376 Vitest tests, exit 0 (2026-10-22, M-4). The phase stamp is `0.62.0`. The Vitest count includes the splash-screen tests from `054e656`, which were outside the L-2 count of 363.
-- `PAVILLION_API_VERSION` is 3. The phase stamp is `0.62.0` (62 Done rows), release date 2026-10-22.
+- Last finished: M-5 (step 57), 2026-10-22, in [docs/M-SYNC.md](docs/M-SYNC.md). Delta sync is in. A flag and a delete from another client arrived on the next poll. Andrew accepted it on the log the same day. The tree total was not a useful check. `make test` is 212 Unity, 2 Rust, and 376 Vitest, exit 0. The container's seeded Inbox message is now seen and flagged.
+- Next: N-3a (step 135), not started, in [docs/N-MAIL.md](docs/N-MAIL.md). From and Subject for the selected folder, so a sync can be seen on screen. Ask before editing. Do not start N-1. The agent does not commit. The Accounts table polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md).
+- Last full `make test`: 212 Unity tests, 2 Rust tests and 376 Vitest tests, exit 0 (2026-10-22, M-5). The phase stamp is `0.63.0`.
+- `PAVILLION_API_VERSION` is 3. The phase stamp is `0.63.0` (63 Done rows), release date 2026-10-22.
 
 **Read first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), one page with diagrams of the layers, the threads, and the data flow.
 
@@ -131,7 +131,8 @@ Row order decides what is next: the next phase is the first row, top to bottom, 
 | | | *Milestone 2: real accounts and mailbox trees (old P0)* | | |
 | 55 | L-2 | Mail schema and the blob store | Medium | Done |
 | 56 | M-4 | Email initial sync | Medium | Done |
-| 57 | M-5 | Delta sync | Medium | |
+| 57 | M-5 | Delta sync | Medium | Done |
+| 135 | N-3a | Message list, From and Subject | Medium | |
 | 58 | N-1 | Body fetch and MIME (GMime) | Medium | |
 | 59 | N-2 | The HTML sanitizer and the hostile corpus | Hard | |
 | 60 | Q-1 | FTS5 indexing and local search | Medium | |
@@ -252,7 +253,7 @@ Andrew scoped a fifth section. The decisions are the V Lock, under "Grok Bots (2
 Andrew put three libraries back the same day v0.6 had taken them out, and moved the log view back next to H-1. The icon-kit failure had no in-app log, so the only report possible was that no icons were visible. Logging early is how the next failure gets a cause instead of a symptom. The decisions live in the owning Lock; this list is the map.
 
 - **Log view.** H-2 and H-3 are steps 30 and 31, immediately after H-1 and before I-1. H-2 installs CodeMirror 6, shows the live log, and creates the Activity|Log control. I-2 fills the Activity side. It does not ship a `<pre>` tail for H-2 to replace.
-- **Lists and composer.** N-3 uses Tabulator for mail. Contacts (S) and files (U) share that table. O-2 uses SunEditor inside the existing sandbox, with a plain-text mode. None of the three waits on a smaller substitute failing. The mailbox tree (E) and the activity table (I-2) stay plain DOM. Calendar grids stay plain DOM.
+- **Lists and composer.** N-3 uses Tabulator for mail. Contacts (S) and files (U) share that table. O-2 uses SunEditor inside the existing sandbox, with a plain-text mode. None of the three waits on a smaller substitute failing. N-3a (step 135, Andrew, 2026-10-22) is that same table with From and Subject for the selected folder, pulled ahead of N-1 so a sync can be seen. It is not a second list, and it does not replace N-3. The mailbox tree (E) and the activity table (I-2) stay plain DOM. Calendar grids stay plain DOM.
 - **WebKit.** The ELF does not contain WebKit bytes. No static link, no vendored WebKit, no AppImage. One executable, `pavillion`. It has a dynamic `NEEDED` entry for system `libwebkit2gtk`. There is no `pavillion-gui`. The rpm depends on the system package, so the process maps that copy. A command-line start maps it too. That is accepted (V, 2026-10-18).
 - **Size.** `ui/dist` gzipped size is recorded when H-2, N-3, and O-2 land. That record is not a reason to drop Tabulator, CodeMirror, or SunEditor. A further UI library needs a Lock change. No UPX.
 

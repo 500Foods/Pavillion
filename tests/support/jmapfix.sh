@@ -34,6 +34,12 @@
 #   ?emailHold=1|0       -> on POST /jmap/proxy, hold or release Email/query
 #                           pages whose position is past 0. A held page waits
 #                           up to 15 seconds.
+#   ?emailDelta=1|0      -> on POST /jmap/proxy, save or delete
+#                           build/fixture-run/email-delta.json. A saved body
+#                           has to be a JSON object. Account a1 reads that
+#                           file on Email, Thread, and Mailbox calls. A missing
+#                           file is an empty object, and a mailbox-only object
+#                           does not change Email/changes.
 #
 # A method call whose arguments carry "__error": "cannotCalculateChanges" or
 # "stateMismatch" answers that error for that call only.
@@ -478,7 +484,14 @@ serve_api() {
       ''|*[!0-9]*) emailn=0 ;;
     esac
   fi
-  out=$(jq -c -s --arg qerr "$qerr" --arg domain "$d" --argjson mbxcap "$mbxcap" --argjson emailn "$emailn" --slurpfile st "$statef" --slurpfile recorded "$rec" "$JQ_LIB"'
+  deltaf="$run/email-delta.json"
+  if [ ! -f "$deltaf" ]; then
+    deltaf="$run/email-delta-none.json"
+    if [ ! -f "$deltaf" ]; then
+      printf '%s\n' '{}' > "$deltaf"
+    fi
+  fi
+  out=$(jq -c -s --arg qerr "$qerr" --arg domain "$d" --argjson mbxcap "$mbxcap" --argjson emailn "$emailn" --slurpfile st "$statef" --slurpfile recorded "$rec" --slurpfile delta "$deltaf" "$JQ_LIB"'
     def errbody($c):
       if $c == "cannotCalculateChanges" then {code: "cannotCalculateChanges", description: "server cannot calculate changes"}
       else {code: "stateMismatch", description: "state has changed"} end;
@@ -528,8 +541,11 @@ serve_api() {
       elif $m == "Email/query" then
         [$m, {accountId: acct_of($a), queryState: "qs-1", ids: [], total: 0, canCalculateChanges: true}]
       elif $m == "Email/changes" then
-        [$m, {accountId: acct_of($a), hasMoreChanges: false, sinceState: "state-1",
-              created: [], updated: [], destroyed: []}]
+        [$m, {accountId: acct_of($a), oldState: ($a.sinceState // "em-1"), newState: "em-1",
+              hasMoreChanges: false, created: [], updated: [], destroyed: []}]
+      elif $m == "Thread/changes" then
+        [$m, {accountId: acct_of($a), oldState: ($a.sinceState // "th-1"), newState: "th-1",
+              hasMoreChanges: false, created: [], updated: [], destroyed: []}]
       elif $m == "Account/set" or $m == "Account/subscribe" then
         [$m, {accountId: acct_of($a), created: {}, updated: {}, destroyed: {}, notFound: {}, state: "state-1"}]
       elif $m == "Capability/get" then [$m, {}]
@@ -567,6 +583,71 @@ serve_api() {
           (if $desc then ($n - 1 - $pos - .) else ($pos + .) end) as $i |
           select($i >= 0 and $i < $n) | ("e" + ($i | tostring))]
       end;
+    def D: if ($delta | length) > 0 and ($delta[0] | type) == "object" then $delta[0] else {} end;
+    def as_arr($v): if ($v | type) == "array" then $v else [] end;
+    def as_obj($v): if ($v | type) == "object" then $v else {} end;
+    def d_mail($aid):
+      $aid == "a1" and (
+        (D | has("emailState")) or (D | has("cannotEmail")) or (D | has("update"))
+        or (D | has("create")) or (D | has("destroy")) or (D | has("threadState"))
+        or (D | has("cannotThread")) or (D | has("threadUpdate")) or (D | has("threadDestroy"))
+      );
+    def d_box($aid):
+      $aid == "a1" and (
+        (D | has("mailboxState")) or (D | has("mailbox")) or (D | has("mailboxChanges"))
+      );
+    def merge_email($base; $upd):
+      if ($upd | type) != "object" then $base
+      else ($base + $upd)
+        | (if ($upd | has("keywords")) then .keywords = $upd.keywords else . end)
+        | (if ($upd | has("mailboxIds")) then .mailboxIds = $upd.mailboxIds else . end)
+      end;
+    def live_emails($n):
+      ([range(0; $n) | eobj(.)
+         | select(.id as $id | (as_arr(D.destroy) | index($id)) | not)
+         | merge_email(.; as_obj(D.update)[.id])]
+       + [as_arr(D.create)[] | select((.id | type) == "string")
+            | select(.id as $id | (as_arr(D.destroy) | index($id)) | not)]);
+    def email_change_rows:
+      ([as_arr(D.destroy)[] | select(type == "string") | {kind:"destroy", id:.}]
+       + [as_obj(D.update) | keys_unsorted[] | {kind:"update", id:.}]
+       + [as_arr(D.create)[] | select((.id | type) == "string") | {kind:"create", id:.id}]);
+    def thread_change_rows:
+      ([as_arr(D.threadDestroy)[] | select(type == "string") | {kind:"destroy", id:.}]
+       + [as_arr(D.threadUpdate)[] | select((.id | type) == "string") | {kind:"update", id:.id}]);
+    def slice_changes($rows; $since; $anchor; $prefix; $final; $max; $cannot):
+      if $cannot == true or ($final | type) != "string" or $final == "" then "cannot"
+      elif $since == $final then {created:[], updated:[], destroyed:[], more:false, new:$final}
+      else
+        (if $since == $anchor then 0
+         elif ($since | type) == "string" and ($since | startswith($prefix)) then
+           ($since | ltrimstr($prefix)) as $rest
+           | if ($rest | test("^[0-9]+$")) then ($rest | tonumber) else -1 end
+         else -1 end) as $start
+        | if $start < 0 or $start > ($rows | length) then "cannot"
+          else
+            (if ($max | type) != "number" or $max < 1 then 1 else $max end) as $lim
+            | $rows[$start:$start+$lim] as $slice
+            | ($start + ($slice | length)) as $next
+            | ($next < ($rows | length)) as $more
+            | {created:[$slice[] | select(.kind == "create") | .id],
+               updated:[$slice[] | select(.kind == "update") | .id],
+               destroyed:[$slice[] | select(.kind == "destroy") | .id],
+               more:$more,
+               new:(if $more then ($prefix + ($next | tostring)) else $final end)}
+          end
+      end;
+    def changes_out($state; $m; $aid; $since; $got):
+      if $got == "cannot" then
+        [note($state; ($m + ":cannot")),
+         ["error", {type:"cannotCalculateChanges", description:"server cannot calculate changes"}]]
+      else
+        [note($state; ($m + ":" + (($got.created | length) | tostring) + ":"
+              + (($got.updated | length) | tostring) + ":" + (($got.destroyed | length) | tostring)
+              + ":" + (if $got.more then "more" else "done" end))),
+         [$m, {accountId:$aid, oldState:($since // ""), newState:$got.new, hasMoreChanges:$got.more,
+               created:$got.created, updated:$got.updated, destroyed:$got.destroyed}]]
+      end;
     def one($state; $m; $a):
       acct_of($a) as $aid
       | ($state[$domain][$aid] // null) as $acct
@@ -595,22 +676,35 @@ serve_api() {
           elif $m == "Mailbox/get" then
             (if ($a | has("ids")) and ($a.ids != null) then $acct.mailboxes else $acct.mailboxes[0:$mbxcap] end) as $boxes
             | (pick($boxes; (if $a | has("ids") then $a.ids else null end))) as $p
+            | (if d_box($aid) then [$p.list[] | . + (as_obj(D.mailbox)[.id] // {})] else $p.list end) as $listed
             | [note($state; "Mailbox/get"),
-               [$m, {accountId:$aid, state:$acct.mbxState, list:$p.list, notFound:$p.notFound}]]
+               [$m, {accountId:$aid, state:$acct.mbxState, list:$listed, notFound:$p.notFound}]]
           elif $m == "Identity/get" then
             (pick($acct.identities; (if $a | has("ids") then $a.ids else null end))) as $p
             | [note($state; "Identity/get"),
                [$m, {accountId:$aid, state:$acct.idnState, list:$p.list, notFound:$p.notFound}]]
           elif $m == "Mailbox/changes" then
-            changes_since($acct.mbxRevs; ($a.sinceState // "")) as $ch
-            | if $ch == null then
-                [note($state; "Mailbox/changes"),
-                 ["error", {type: "cannotCalculateChanges", description: "server cannot calculate changes"}]]
-              else
-                [note($state; "Mailbox/changes"),
-                 [$m, {accountId:$aid, oldState:($a.sinceState // ""), newState:$acct.mbxState,
-                       hasMoreChanges:false, created:$ch.created, updated:$ch.updated, destroyed:$ch.destroyed}]]
-              end
+            if d_box($aid) and ((D.mailboxState | type) == "string") and ($a.sinceState // "") == D.mailboxState then
+              [note($state; "Mailbox/changes"),
+               [$m, {accountId:$aid, oldState:D.mailboxState, newState:D.mailboxState,
+                     hasMoreChanges:false, created:[], updated:[], destroyed:[]}]]
+            elif d_box($aid) and ((D.mailboxState | type) == "string")
+                 and ($a.sinceState // "") == $acct.mbxState
+                 and ((as_arr(D.mailboxChanges) | length) > 0) then
+              [note($state; "Mailbox/changes"),
+               [$m, {accountId:$aid, oldState:$acct.mbxState, newState:D.mailboxState,
+                     hasMoreChanges:false, created:[], updated:as_arr(D.mailboxChanges), destroyed:[]}]]
+            else
+              changes_since($acct.mbxRevs; ($a.sinceState // "")) as $ch
+              | if $ch == null then
+                  [note($state; "Mailbox/changes"),
+                   ["error", {type: "cannotCalculateChanges", description: "server cannot calculate changes"}]]
+                else
+                  [note($state; "Mailbox/changes"),
+                   [$m, {accountId:$aid, oldState:($a.sinceState // ""), newState:$acct.mbxState,
+                         hasMoreChanges:false, created:$ch.created, updated:$ch.updated, destroyed:$ch.destroyed}]]
+                end
+            end
           elif $m == "Identity/changes" then
             if ($a.sinceState // "") == $acct.idnState then
               [note($state; "Identity/changes"),
@@ -628,9 +722,62 @@ serve_api() {
                      created:{}, updated:(reduce $done.updated[] as $id ({}; .[$id] = null)),
                      destroyed:($done.destroyed // []), notFound:$done.notFound}]]
           end
-        elif $m == "Email/query" or $m == "Email/get" or $m == "Thread/get" then
+        elif $m == "Email/query" or $m == "Email/get" or $m == "Thread/get"
+             or $m == "Email/changes" or $m == "Thread/changes" then
           (if $aid == "a1" and $emailn > 0 then $emailn else 0 end) as $n
-          | if $m == "Email/query" then
+          | if d_mail($aid) and ($m == "Email/changes" or $m == "Thread/changes") then
+              (($a.maxChanges // 500) | if type != "number" then 500 else . end) as $max
+              | (if $m == "Email/changes" then
+                   slice_changes(email_change_rows; ($a.sinceState // ""); "em-1"; "em-part-";
+                                 (D.emailState // ""); $max; (D.cannotEmail == true))
+                 else
+                   slice_changes(thread_change_rows; ($a.sinceState // ""); "th-1"; "th-part-";
+                                 (D.threadState // ""); $max; (D.cannotThread == true))
+                 end) as $got
+              | changes_out($state; $m; $aid; ($a.sinceState // ""); $got)
+            elif d_mail($aid) and $m == "Email/query" then
+              (($a.position // 0) | if . < 0 then 0 else . end) as $pos
+              | (($a.limit // 500) | if . < 1 then 1 else . end) as $ask
+              | (if $ask > $mbxcap then $mbxcap else $ask end) as $lim
+              | ((($a.sort // []) | if type == "array" and length > 0 then .[0] else {} end)) as $sort
+              | ($sort.property == "receivedAt" and $sort.isAscending == false) as $desc
+              | ($a.filter.inMailbox // "") as $box
+              | (live_emails($n)
+                 | map(select($box != "" and (((.mailboxIds // {})[$box] // false) == true)))
+                 | sort_by(.receivedAt) | if $desc then reverse else . end) as $ordered
+              | ($ordered | length) as $total
+              | ($ordered[$pos:$pos+$lim] | map(.id)) as $ids
+              | [note($state; ("Email/query:" + ($pos | tostring) + ":" + ($ask | tostring))),
+                 [$m, {accountId:$aid, queryState:(D.emailState // "em-1"), canCalculateChanges:false,
+                       position:$pos, ids:$ids, total:$total}]]
+            elif d_mail($aid) and $m == "Email/get" then
+              (live_emails($n)) as $all
+              | (if ($a.ids | type) == "array" then $a.ids else [] end) as $ids
+              | (reduce $ids[] as $id ({list:[], notFound:[]};
+                  (first($all[] | select(.id == $id)) // null) as $hit
+                  | if $hit == null then .notFound += [$id] else .list += [$hit] end)) as $p
+              | [note($state; "Email/get"),
+                 [$m, {accountId:$aid, state:(D.emailState // "em-1"), list:$p.list, notFound:$p.notFound}]]
+            elif d_mail($aid) then
+              (live_emails($n)) as $all
+              | (if ($a.ids | type) == "array" then $a.ids else [] end) as $ids
+              | (reduce $ids[] as $id ({list:[], notFound:[]};
+                  if ($id | type) != "string" or ((as_arr(D.threadDestroy) | index($id)) != null) then
+                    .notFound += [$id]
+                  else
+                    (first(as_arr(D.threadUpdate)[] | select(.id == $id)) // null) as $upd
+                    | if $upd != null then .list += [$upd]
+                      else
+                        ([$all[] | select(.threadId == $id) | .id]) as $eids
+                        | if ($eids | length) == 0 then .notFound += [$id]
+                          else .list += [{id:$id, emailIds:$eids}] end
+                      end
+                  end)) as $p
+              | [note($state; "Thread/get"),
+                 [$m, {accountId:$aid, state:(D.threadState // "th-1"), list:$p.list, notFound:$p.notFound}]]
+            elif $m == "Email/changes" or $m == "Thread/changes" then
+              [$state, canned($m; $a)]
+            elif $m == "Email/query" then
               (($a.position // 0) | if . < 0 then 0 else . end) as $pos
               | (($a.limit // 500) | if . < 1 then 1 else . end) as $ask
               | (if $ask > $mbxcap then $mbxcap else $ask end) as $lim
@@ -849,6 +996,14 @@ do_post() {
       case "$(qget emailHold || true)" in
         1) : > "$run/email-hold" ;;
         0) rm -f "$run/email-hold" ;;
+      esac
+      case "$(qget emailDelta || true)" in
+        1)
+          if [ -n "${body_file:-}" ] && [ -f "$body_file" ] && jq -e 'type == "object"' "$body_file" >/dev/null 2>&1; then
+            cp "$body_file" "$run/email-delta.json"
+          fi
+          ;;
+        0) rm -f "$run/email-delta.json" ;;
       esac
       send_json 200 '{"ok": true}'
       ;;

@@ -1,6 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
-/* M-4 supervisor. PavSup stays on the core thread. The net thread only
+/* M-5 supervisor. PavSup stays on the core thread. The net thread only
    reads a SyncReq. It parses the Session, a type response, or an email page
    there and posts the rows. The request stays allocated until the callback
    and the supervisor have each released it, so a cancel cannot free it while
@@ -53,6 +53,12 @@
 #define TYPE_CHANGES 2
 #define TYPE_GET_IDS 3
 #define TYPE_QUERY 4
+#define EMAIL_MODE_QUERY 1
+#define EMAIL_MODE_THREADS 2
+#define EMAIL_MODE_CHANGES 3
+#define EMAIL_MODE_GETIDS 4
+#define EMAIL_MODE_THREAD_GET 5
+#define EMAIL_MODE_MAILBOX 6
 
 typedef struct SyncReq SyncReq;
 typedef struct EmailWalk EmailWalk;
@@ -62,6 +68,10 @@ typedef struct EmailSlot {
     int position;
     int limit;
 } EmailSlot;
+
+typedef struct SyncId {
+    char id[128];
+} SyncId;
 
 typedef struct SupRemote {
     struct SupRemote *next;
@@ -88,6 +98,10 @@ typedef struct SupRemote {
     char mbx_anchor[128];
     int mbx_probe;
     int mbx_stored;
+    /* Mailboxes this cycle already refreshed from Mailbox/get. An email
+       change names any that are missing, and those are fetched once. */
+    SyncId *mbx_seen;
+    int mbx_seen_n;
     EmailWalk *email;
 } SupRemote;
 
@@ -109,6 +123,7 @@ typedef struct PavSup {
     int attempts;
     int saw_mailbox;
     int saw_email;
+    int email_delta;
     int email_done;
     int email_total;
     uint64_t generation;
@@ -141,10 +156,6 @@ typedef struct SyncResult {
     SyncRemote *remotes;
     int remote_count;
 } SyncResult;
-
-typedef struct SyncId {
-    char id[128];
-} SyncId;
 
 typedef struct MbxRow {
     char id[128];
@@ -626,6 +637,7 @@ static void start_connect(PavSup *s, int follow) {
         s->redirects = 0;
         s->saw_mailbox = 0;
         s->saw_email = 0;
+        s->email_delta = 0;
         s->email_done = 0;
         s->email_total = 0;
         copy_fit(s->current_url, sizeof(s->current_url), s->session_url);
@@ -1456,6 +1468,7 @@ static void free_sup_remote_list(SupRemote *list) {
         SupRemote *next = list->next;
 
         clear_email_walk(list);
+        free(list->mbx_seen);
         free(list);
         list = next;
     }
@@ -1483,6 +1496,36 @@ static void reset_sup_remote(SupRemote *remote) {
     remote->mbx_anchor[0] = '\0';
     remote->mbx_probe = 0;
     remote->mbx_stored = 0;
+    free(remote->mbx_seen);
+    remote->mbx_seen = NULL;
+    remote->mbx_seen_n = 0;
+}
+
+static int mbx_was_seen(const SupRemote *remote, const char *id) {
+    int i;
+
+    if (remote == NULL || id == NULL || id[0] == '\0') {
+        return 0;
+    }
+    for (i = 0; i < remote->mbx_seen_n; i++) {
+        if (strcmp(remote->mbx_seen[i].id, id) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void note_mbx_seen(SupRemote *remote, const MbxRow *rows, int n) {
+    int i;
+
+    if (remote == NULL || rows == NULL || n <= 0) {
+        return;
+    }
+    for (i = 0; i < n; i++) {
+        if (!mbx_was_seen(remote, rows[i].id)) {
+            (void)append_id(&remote->mbx_seen, &remote->mbx_seen_n, rows[i].id);
+        }
+    }
 }
 
 /* A new mailbox walk. The page cap and the one restart belong to this walk. */
@@ -1551,7 +1594,9 @@ static void merge_sup_remotes(PavSup *s, const SyncResult *r) {
 }
 
 static void finish_sync_ok(PavSup *s) {
-    if (s->saw_email && s->activity_id > 0) {
+    if (s->email_delta && s->activity_id > 0) {
+        pav_activity_progress(s->activity_id, 0, -1, NULL, "Changes");
+    } else if (s->saw_email && s->activity_id > 0) {
         pav_activity_progress(s->activity_id, s->email_done, s->email_total, "messages", "Messages");
     } else if (s->saw_mailbox && s->activity_id > 0) {
         pav_activity_progress(s->activity_id, 0, -1, NULL, "Mailboxes");
@@ -2278,6 +2323,7 @@ static void apply_session_ok(PavSup *s, SyncResult *r) {
     s->auto_retry = 0;
     s->saw_mailbox = 0;
     s->saw_email = 0;
+    s->email_delta = 0;
     s->email_done = 0;
     s->email_total = 0;
     if (https) {
@@ -2566,6 +2612,9 @@ static void apply_types(PavSup *s, TypeResult *t) {
     if (emit) {
         emit_mailboxes(s->account_id);
     }
+    if (w.mailbox_n > 0) {
+        note_mbx_seen(remote, w.mailboxes, w.mailbox_n);
+    }
     if (fatal_mbx || fatal_idn) {
         publish_state(s, "error:server", "cannot calculate changes", 0, PAV_ACT_FAILED);
         return;
@@ -2579,6 +2628,7 @@ static void apply_types(PavSup *s, TypeResult *t) {
 
 #define PAV_SYNC_EMAIL_INCLUDED
 #include "sync_email.c"
+#include "sync_delta.c"
 #undef PAV_SYNC_EMAIL_INCLUDED
 
 static void start_delta(PavSup *s) {
@@ -2598,6 +2648,7 @@ static void start_delta(PavSup *s) {
     s->activity_id = 0;
     s->saw_mailbox = 0;
     s->saw_email = 0;
+    s->email_delta = 0;
     s->email_done = 0;
     s->email_total = 0;
     s->auto_retry = 0;

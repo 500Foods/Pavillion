@@ -1,6 +1,6 @@
 # N — MAIL
 
-**Status:** Not started (scoped 2026-10-16 from plan §6, §7, §10, §13).
+**Status:** Not started. N-3a is next (step 135) and was not started. The index names it. Scoped 2026-10-16 from plan §6, §7, §10, §13.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Reading and organizing mail: MIME, the sanitizer, the message list, the reading pane, threads, unified views, flags and moves, attachments, notifications, shortcuts, and folder retention. Sync is [M-SYNC.md](M-SYNC.md). Compose is [O-COMPOSE.md](O-COMPOSE.md). Search is [Q-SEARCH.md](Q-SEARCH.md). The mailbox tree is [E-TREE.md](E-TREE.md). The isolation rules are the [F-HARDEN.md](F-HARDEN.md) Lock and are not restated here.
@@ -13,7 +13,8 @@ One phase is one session. Do not start the next one in the same conversation.
 | --- | --- | --- | --- |
 | N-1 | Body fetch and MIME with GMime; `message.get` text, parts, headers | Medium | Not started |
 | N-2 | The HTML sanitizer in the core and the hostile corpus | Hard | Not started |
-| N-3 | Message list: Tabulator, columns, selection | Medium | Not started |
+| N-3a | Message list: From and Subject for the selected folder | Medium | Not started |
+| N-3 | Message list: the remaining columns, selection, live row updates | Medium | Not started |
 | N-4 | Reading pane: sanitized HTML in the sandbox, remote content, `cid:`, links, plain text | Medium | Not started |
 | N-5 | Flags, move, delete, archive, junk, undo toast, mailbox management | Medium | Not started |
 | N-6 | Threads, unified views, message sub-tabs | Medium | Not started |
@@ -148,14 +149,36 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Exit gate:** `make test` exits 0 with the sanitizer suite. A 10-minute fuzz run finds no crash (logged in Accomplished).
 
+## N-3a: From and Subject
+
+**Kind:** Medium
+**Status:** Not started.
+
+**Goal:** The selected mailbox shows the messages already stored for it, From and Subject, so a sync can be checked on screen.
+
+**Entry gate:** M-5 complete.
+
+**Work items:**
+
+- [ ] `message.list` returns one mailbox's messages, newest `received_at` first, at most 100, plus `total`. Each row is `id`, `from` (the first address's name, or its email when the name is empty), and `subject`. Strings are data. `docs/API.md` lists the command as `State: real` in the shape the Unity test parses.
+- [ ] The Mail home shows that page in the existing Tabulator (`createTable`) when a mailbox is selected. Columns are From and Subject. Cells are text. A `mail.messages_changed` for that account loads the page again. A row click does nothing.
+- [ ] Unity: order, the 100 cap, from and subject text, an empty mailbox, and a mailbox on another account. A Vitest covers the two columns as text.
+- [ ] Help says the list is From and Subject for the selected folder.
+
+**Done means:** Clicking a folder lists From and Subject for the messages stored in it.
+
+**Exit gate:** `make test` exits 0. In the window, a synced folder shows those two columns, and a change from another client shows up after the next poll when the list reloads.
+
+Preview, flags, time, the attachment icon, the account color bar, selection, keyboard, virtual scrolling through the rest of the folder, and `debug.seed_messages` stay in N-3. Bodies, the sanitizer, and the reading pane stay in N-1, N-2, and N-4. `message.list` kinds `unified`, `search`, and `threaded` stay in N-3 and Q-1. The Tabulator package and `createTable` are already in the tree. This phase does not add a second table library.
+
 ## N-3: Message list
 
 **Kind:** Medium
 **Status:** Not started.
 
-**Goal:** The Mail home tab shows the selected mailbox's messages with smooth scrolling at 100k rows.
+**Goal:** The Mail home tab shows the selected mailbox's messages with smooth scrolling at 100k rows. From and Subject for one page are N-3a. This phase extends that table.
 
-**Entry gate:** N-2 complete.
+**Entry gate:** N-2 and N-3a complete.
 
 **Work items:**
 

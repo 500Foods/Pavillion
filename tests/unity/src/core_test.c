@@ -237,6 +237,10 @@ static void rm_tree(const char *path) {
     rmdir(path);
 }
 
+static void clear_email_overlay(void) {
+    remove("build/fixture-run/email-delta.json");
+}
+
 static void remove_cfg_dir(void) {
     if (g_cfg_dir[0] != '\0') {
         rm_tree(g_cfg_dir);
@@ -249,6 +253,7 @@ static void remove_cfg_dir(void) {
 }
 
 void tearDown(void) {
+    clear_email_overlay();
     if (g_email_hold) {
         g_email_hold = 0;
         (void)fixture_email_hold(0);
@@ -778,6 +783,19 @@ static int lines_have(json_t *lines, const char *text) {
         const char *got = line_text(json_array_get(lines, i));
 
         if (got != NULL && strcmp(got, text) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int lines_contain(json_t *lines, const char *text) {
+    size_t i;
+
+    for (i = 0; i < json_array_size(lines); i++) {
+        const char *got = line_text(json_array_get(lines, i));
+
+        if (got != NULL && text != NULL && strstr(got, text) != NULL) {
             return 1;
         }
     }
@@ -7843,6 +7861,27 @@ static int g_msg_watch;
 static int g_msg_hits;
 static char g_msg_expect[80];
 static char g_msg_first[4096];
+static char g_msg_all[16384];
+
+static void msg_remember(const char *json) {
+    size_t used;
+    size_t jlen;
+    size_t extra;
+
+    if (json == NULL) {
+        return;
+    }
+    used = strlen(g_msg_all);
+    jlen = strlen(json);
+    extra = (used > 0 ? 1 : 0) + jlen;
+    if (used + extra + 1 > sizeof(g_msg_all)) {
+        return;
+    }
+    if (used > 0) {
+        g_msg_all[used++] = '\n';
+    }
+    memcpy(g_msg_all + used, json, jlen + 1);
+}
 
 static int fixture_email_hold(int hold) {
     const char *url = getenv("PAV_FIXTURE_URL");
@@ -7878,6 +7917,7 @@ static void msg_event_cb(const char *name, const char *json, void *user) {
         if (g_msg_hits == 0) {
             snprintf(g_msg_first, sizeof(g_msg_first), "%s", json);
         }
+        msg_remember(json);
         g_msg_hits++;
         pthread_cond_signal(&g_ev_test_cv);
     }
@@ -7888,6 +7928,7 @@ static void msg_watch_begin(const char *account_id) {
     pthread_mutex_lock(&g_ev_test_mu);
     g_msg_hits = 0;
     g_msg_first[0] = '\0';
+    g_msg_all[0] = '\0';
     snprintf(g_msg_expect, sizeof(g_msg_expect), "\"accountId\":\"%s\"", account_id);
     g_msg_watch = 1;
     pthread_mutex_unlock(&g_ev_test_mu);
@@ -7923,6 +7964,7 @@ static void start_email_account(const char *id, const char *query, char *path, s
 
     TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
     TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+    clear_email_overlay();
     make_slot(g_cfg_dir, sizeof(g_cfg_dir));
     TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
     pav_sync_set_poll_ms(3600000);
@@ -8247,6 +8289,424 @@ void test_email_sync_cancel_resumes(void) {
     json_decref(rows);
 }
 
+static void sync_one(const char *id) {
+    char body[80];
+    json_t *root;
+    int n;
+
+    n = snprintf(body, sizeof(body), "{\"accountId\":\"%s\"}", id);
+    TEST_ASSERT_TRUE(n > 0 && n < (int)sizeof(body));
+    root = call_reply("sync.now", body);
+    assert_ok(root);
+    json_decref(root);
+}
+
+static void wait_typed_state(const char *path, const char *id, const char *type, const char *state) {
+    char sql[384];
+    char got[192];
+    int n;
+
+    n = snprintf(sql, sizeof(sql),
+                 "SELECT count(*) FROM sync_state s JOIN account_state a ON a.account_id='%s' "
+                 "WHERE s.ra_id='%s/a1' AND s.type='%s' AND s.state='%s' AND a.state='idle'",
+                 id, id, type, state);
+    TEST_ASSERT_TRUE(n > 0 && n < (int)sizeof(sql));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path, sql, 1, id, got, sizeof(got)), got);
+}
+
+/* A later sync applies created, updated, and destroyed headers, then folder counts. */
+void test_delta_created_updated_destroyed(void) {
+    char path[160];
+    char got[192];
+    char text[256];
+    json_t *rows;
+    json_t *item;
+    json_t *prog;
+    int hits;
+    static const char overlay[] =
+        "{\"emailState\":\"em-2\",\"threadState\":\"th-2\",\"destroy\":[\"e0\"],"
+        "\"update\":{\"e1\":{\"keywords\":{\"$flagged\":true},\"mailboxIds\":{\"later\":true}},"
+        "\"e2\":{\"keywords\":{\"$seen\":true,\"$answered\":true}}},"
+        "\"create\":[{\"id\":\"e9\",\"threadId\":\"t9\",\"mailboxIds\":{\"in\":true},"
+        "\"keywords\":{\"$seen\":true},\"size\":1009,\"receivedAt\":\"2023-11-14T22:13:29Z\","
+        "\"sentAt\":\"2023-11-14T22:12:59Z\",\"messageId\":[\"<e9@test-a.local>\"],"
+        "\"subject\":\"Hello 9\",\"from\":[{\"name\":\"Ann\",\"email\":\"ann@example.com\"}],"
+        "\"to\":[{\"name\":\"Andrew\",\"email\":\"andrew@test-a.local\"}],\"cc\":[],\"bcc\":[],"
+        "\"replyTo\":[{\"name\":\"Ann\",\"email\":\"ann@example.com\"}],\"preview\":\"preview 9\","
+        "\"hasAttachment\":false,\"blobId\":\"b9\"}],"
+        "\"threadDestroy\":[\"t0\"],\"threadUpdate\":[{\"id\":\"t9\",\"emailIds\":[\"e9\"]},"
+        "{\"id\":\"t1\",\"emailIds\":[\"e1\"]}],"
+        "\"mailboxState\":\"mbx-2\",\"mailboxChanges\":[\"in\"],"
+        "\"mailbox\":{\"in\":{\"totalEmails\":50,\"unreadEmails\":4},"
+        "\"later\":{\"totalEmails\":7,\"unreadEmails\":2}}}";
+
+    start_email_account("dcu", "?emails=4", path, sizeof(path));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path, "SELECT count(*) FROM email WHERE ra_id='dcu/a1'", 4, "dcu", got,
+                                                 sizeof(got)),
+                                  got);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM account_state WHERE account_id='dcu' AND state='idle'", 1, "dcu", got, sizeof(got)),
+        got);
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM sync_state WHERE ra_id='dcu/a1' AND type='Email' AND state='em-1'"));
+    TEST_ASSERT_EQUAL_INT(0, scalar_int(path, "SELECT count(*) FROM sync_state WHERE ra_id='dcu/a1' AND type='Thread'"));
+    msg_watch_begin("dcu");
+    write_text("build/fixture-run/email-delta.json", overlay);
+    sync_one("dcu");
+    wait_typed_state(path, "dcu", "Email", "em-2");
+    hits = msg_watch_end();
+    TEST_ASSERT_TRUE(hits >= 2);
+    TEST_ASSERT_NOT_NULL(strstr(g_msg_all, "\"e9\""));
+    TEST_ASSERT_NOT_NULL(strstr(g_msg_all, "\"destroyed\":[\"e0\"]"));
+    TEST_ASSERT_EQUAL_INT(0, scalar_int(path, "SELECT count(*) FROM email WHERE ra_id='dcu/a1' AND id='e0'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM email e JOIN email_mailbox m ON m.email_rowid=e.rowid "
+        "WHERE e.ra_id='dcu/a1' AND e.id='e1' AND e.flagged=1 AND e.seen=0 AND m.mailbox_id='later'"));
+    TEST_ASSERT_EQUAL_INT(0, scalar_int(path,
+        "SELECT count(*) FROM email_mailbox WHERE ra_id='dcu/a1' AND mailbox_id='in' "
+        "AND email_rowid=(SELECT rowid FROM email WHERE ra_id='dcu/a1' AND id='e1')"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM email WHERE ra_id='dcu/a1' AND id='e2' AND answered=1 AND seen=1"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM email WHERE ra_id='dcu/a1' AND id='e9'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM mailbox WHERE ra_id='dcu/a1' AND id='in' AND total=50 AND unread=4"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM mailbox WHERE ra_id='dcu/a1' AND id='later' AND total=7 AND unread=2"));
+    TEST_ASSERT_EQUAL_INT(0, scalar_int(path, "SELECT count(*) FROM thread WHERE ra_id='dcu/a1' AND id='t0'"));
+    scalar_text(path, "SELECT email_ids FROM thread WHERE ra_id='dcu/a1' AND id='t9'", text, sizeof(text));
+    TEST_ASSERT_EQUAL_STRING("[\"e9\"]", text);
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM sync_state WHERE ra_id='dcu/a1' AND type='Thread' AND state='th-2'"));
+    rows = activity_rows(1);
+    item = find_sync_act_last(rows, "dcu");
+    TEST_ASSERT_NOT_NULL(item);
+    TEST_ASSERT_EQUAL_STRING("Changes", json_string_value(json_object_get(item, "detail")));
+    prog = json_object_get(item, "progress");
+    TEST_ASSERT_TRUE(json_is_object(prog));
+    TEST_ASSERT_TRUE(json_is_null(json_object_get(prog, "total")));
+    json_decref(rows);
+    clear_email_overlay();
+}
+
+/* maxChanges follows maxObjectsInGet. Two short pages cover four changes. */
+void test_delta_has_more_changes_loops(void) {
+    char path[160];
+    char got[192];
+    char text[256];
+    char *trace;
+    int before;
+    int after;
+    static const char overlay[] =
+        "{\"emailState\":\"em-2\",\"threadState\":\"th-2\",\"destroy\":[\"e0\"],"
+        "\"update\":{\"e1\":{\"subject\":\"Updated 1\"},\"e2\":{\"subject\":\"Updated 2\"}},"
+        "\"create\":[{\"id\":\"e9\",\"threadId\":\"t9\",\"mailboxIds\":{\"in\":true},"
+        "\"keywords\":{\"$seen\":true},\"size\":1009,\"receivedAt\":\"2023-11-14T22:13:29Z\","
+        "\"sentAt\":\"2023-11-14T22:12:59Z\",\"messageId\":[\"<e9@test-a.local>\"],"
+        "\"subject\":\"Created 9\",\"from\":[{\"name\":\"Ann\",\"email\":\"ann@example.com\"}],"
+        "\"to\":[{\"name\":\"Andrew\",\"email\":\"andrew@test-a.local\"}],\"preview\":\"preview 9\","
+        "\"blobId\":\"b9\"}]}";
+
+    start_email_account("dmore", "?maxObjectsInGet=2&emails=3", path, sizeof(path));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path, "SELECT count(*) FROM email WHERE ra_id='dmore/a1'", 3, "dmore",
+                                                 got, sizeof(got)),
+                                  got);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM account_state WHERE account_id='dmore' AND state='idle'", 1, "dmore", got, sizeof(got)),
+        got);
+    before = trace_count("Email/changes:");
+    TEST_ASSERT_TRUE(before >= 0);
+    write_text("build/fixture-run/email-delta.json", overlay);
+    sync_one("dmore");
+    wait_typed_state(path, "dmore", "Email", "em-2");
+    TEST_ASSERT_EQUAL_INT(0, scalar_int(path, "SELECT count(*) FROM email WHERE ra_id='dmore/a1' AND id='e0'"));
+    scalar_text(path, "SELECT subject FROM email WHERE ra_id='dmore/a1' AND id='e1'", text, sizeof(text));
+    TEST_ASSERT_EQUAL_STRING("Updated 1", text);
+    scalar_text(path, "SELECT subject FROM email WHERE ra_id='dmore/a1' AND id='e2'", text, sizeof(text));
+    TEST_ASSERT_EQUAL_STRING("Updated 2", text);
+    scalar_text(path, "SELECT subject FROM email WHERE ra_id='dmore/a1' AND id='e9'", text, sizeof(text));
+    TEST_ASSERT_EQUAL_STRING("Created 9", text);
+    after = trace_count("Email/changes:");
+    TEST_ASSERT_EQUAL_INT(before + 2, after);
+    trace = load_trace();
+    TEST_ASSERT_NOT_NULL(trace);
+    TEST_ASSERT_NOT_NULL(strstr(trace, "Email/changes:0:1:1:more"));
+    TEST_ASSERT_NOT_NULL(strstr(trace, "Email/changes:1:1:0:done"));
+    free(trace);
+    clear_email_overlay();
+}
+
+/* Lost Email state drops the mail and walks again. Lost Thread state restores threads. */
+void test_delta_cannot_calculate_resyncs(void) {
+    char path[160];
+    char got[192];
+    char text[256];
+    json_t *root;
+    json_t *lines;
+    static const char lost_email[] =
+        "{\"cannotEmail\":true,\"emailState\":\"em-9\",\"update\":{\"e1\":{\"subject\":\"Resynced\"}}}";
+    static const char keep[] =
+        "{\"emailState\":\"em-9\",\"threadState\":\"th-3\",\"update\":{\"e1\":{\"subject\":\"Resynced\"}}}";
+    static const char lost_thread[] =
+        "{\"cannotThread\":true,\"emailState\":\"em-9\",\"threadState\":\"th-3\","
+        "\"update\":{\"e1\":{\"subject\":\"Resynced\"}}}";
+
+    start_email_account("dres", "?emails=3", path, sizeof(path));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path, "SELECT count(*) FROM email WHERE ra_id='dres/a1'", 3, "dres",
+                                                 got, sizeof(got)),
+                                  got);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM account_state WHERE account_id='dres' AND state='idle'", 1, "dres", got, sizeof(got)),
+        got);
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_write("dres/a1", "b0", "blob-b0", 7));
+    TEST_ASSERT_EQUAL_INT(1, pav_blob_exists("dres/a1", "b0"));
+    write_text("build/fixture-run/email-delta.json", lost_email);
+    sync_one("dres");
+    wait_typed_state(path, "dres", "Email", "em-9");
+    TEST_ASSERT_EQUAL_INT(3, scalar_int(path, "SELECT count(*) FROM email WHERE ra_id='dres/a1'"));
+    scalar_text(path, "SELECT subject FROM email WHERE ra_id='dres/a1' AND id='e1'", text, sizeof(text));
+    TEST_ASSERT_EQUAL_STRING("Resynced", text);
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_exists("dres/a1", "b0"));
+    root = call_reply("log.tail", "{\"minLevel\":\"warn\",\"subsystems\":[\"sync\"],\"limit\":10000}");
+    lines = tail_lines(root);
+    TEST_ASSERT_TRUE(lines_contain(lines, "cannot calculate Email"));
+    json_decref(root);
+    write_text("build/fixture-run/email-delta.json", keep);
+    sync_one("dres");
+    wait_typed_state(path, "dres", "Thread", "th-3");
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM sync_state WHERE ra_id='dres/a1' AND type='Email' AND state='em-9'"));
+    write_text("build/fixture-run/email-delta.json", lost_thread);
+    sync_one("dres");
+    wait_typed_state(path, "dres", "Thread", "th-3");
+    TEST_ASSERT_EQUAL_INT(3, scalar_int(path, "SELECT count(*) FROM email WHERE ra_id='dres/a1'"));
+    scalar_text(path, "SELECT subject FROM email WHERE ra_id='dres/a1' AND id='e1'", text, sizeof(text));
+    TEST_ASSERT_EQUAL_STRING("Resynced", text);
+    TEST_ASSERT_TRUE(scalar_int(path, "SELECT count(*) FROM thread WHERE ra_id='dres/a1'") >= 3);
+    root = call_reply("log.tail", "{\"minLevel\":\"warn\",\"subsystems\":[\"sync\"],\"limit\":10000}");
+    lines = tail_lines(root);
+    TEST_ASSERT_TRUE(lines_contain(lines, "cannot calculate Thread"));
+    json_decref(root);
+    clear_email_overlay();
+}
+
+/* A destroyed message drops an unshared blob and keeps one another message still names. */
+void test_delta_destroy_removes_blobs(void) {
+    char path[160];
+    char got[192];
+    char body[160];
+    char sql[384];
+    FILE *f;
+    int n;
+    static const char overlay[] =
+        "{\"emailState\":\"em-2\",\"threadState\":\"th-2\",\"destroy\":[\"e0\",\"e1\"],"
+        "\"update\":{\"e3\":{\"blobId\":\"b1\"}}}";
+
+    start_email_account("dblob", "?emails=4", path, sizeof(path));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path, "SELECT count(*) FROM email WHERE ra_id='dblob/a1'", 4, "dblob",
+                                                 got, sizeof(got)),
+                                  got);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM account_state WHERE account_id='dblob' AND state='idle'", 1, "dblob", got, sizeof(got)),
+        got);
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_write("dblob/a1", "b0", "blob-b0", 7));
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_write("dblob/a1", "b1", "blob-b1", 7));
+    n = snprintf(body, sizeof(body), "%s/e0-body.txt", g_cfg_dir);
+    TEST_ASSERT_TRUE(n > 0 && n < (int)sizeof(body));
+    write_text(body, "plain");
+    n = snprintf(sql, sizeof(sql),
+                 "INSERT INTO body_cache (email_rowid, text_plain_path) "
+                 "SELECT rowid, '%s' FROM email WHERE ra_id='dblob/a1' AND id='e0'",
+                 body);
+    TEST_ASSERT_TRUE(n > 0 && n < (int)sizeof(sql));
+    TEST_ASSERT_TRUE(exec_sql(path, sql) >= 1);
+    write_text("build/fixture-run/email-delta.json", overlay);
+    sync_one("dblob");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path, "SELECT count(*) FROM email WHERE ra_id='dblob/a1'", 2, "dblob",
+                                                 got, sizeof(got)),
+                                  got);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM account_state WHERE account_id='dblob' AND state='idle'", 1, "dblob", got, sizeof(got)),
+        got);
+    TEST_ASSERT_EQUAL_INT(0, pav_blob_exists("dblob/a1", "b0"));
+    TEST_ASSERT_EQUAL_INT(1, pav_blob_exists("dblob/a1", "b1"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path,
+        "SELECT count(*) FROM email WHERE ra_id='dblob/a1' AND id='e3' AND blob_id='b1'"));
+    TEST_ASSERT_EQUAL_INT(0, scalar_int(path, "SELECT count(*) FROM email_fts WHERE email_fts MATCH '\"Hello 0\"'"));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM email_fts WHERE email_fts MATCH '\"Hello 3\"'"));
+    f = fopen(body, "rb");
+    TEST_ASSERT_NULL(f);
+    if (f != NULL) {
+        fclose(f);
+    }
+    clear_email_overlay();
+}
+
+/* One real poll, not sync.now. make test leaves PAV_DELTA_CONTAINER unset and returns here. */
+void test_delta_container(void) {
+    const char *gate = getenv("PAV_DELTA_CONTAINER");
+    char ca[512];
+    char cwd[384];
+    char path[160];
+    char got[192];
+    char body[1024];
+    char aid[128];
+    char email_id[128];
+    char inbox[128];
+    char line[256];
+    char sql[512];
+    char *script =
+        "#!/bin/bash\n"
+        "set -euo pipefail\n"
+        "base=https://localhost:1443\n"
+        "user=${PAV_GATE_USER}\n"
+        "pass=${PAV_GATE_PASS}\n"
+        "ca=${PAV_GATE_CA}\n"
+        "aid=${PAV_GATE_AID}\n"
+        "old=${PAV_GATE_EMAIL}\n"
+        "box=${PAV_GATE_INBOX}\n"
+        "tmp=$(mktemp)\n"
+        "body=$(mktemp)\n"
+        "cleanup() { rm -f \"$tmp\" \"$body\"; }\n"
+        "trap cleanup EXIT\n"
+        "printf 'From: Gate <gate@pavillion.test>\\r\\nTo: andrew@test-a.local\\r\\n"
+        "Subject: Pavillion m5 gate\\r\\nMessage-ID: <m5-gate@pavillion.test>\\r\\n"
+        "Date: Tue, 14 Nov 2023 22:13:21 +0000\\r\\nMIME-Version: 1.0\\r\\n"
+        "Content-Type: text/plain; charset=utf-8\\r\\n\\r\\nflag and delete\\n' > \"$tmp\"\n"
+        "sess=$(printf 'user = \"%s:%s\"\\n' \"$user\" \"$pass\" | curl -sS --fail --max-time 20 --cacert \"$ca\" "
+        "--config - -L \"$base/.well-known/jmap\")\n"
+        "upload=$(jq -r --arg id \"$aid\" '.uploadUrl // empty | split(\"{accountId}\") | join($id)' <<<\"$sess\")\n"
+        "[ -n \"$upload\" ]\n"
+        "blob=$(printf 'user = \"%s:%s\"\\n' \"$user\" \"$pass\" | curl -sS --fail-with-body --max-time 30 "
+        "--cacert \"$ca\" --config - -H 'Content-Type: message/rfc822' --data-binary \"@$tmp\" \"$upload\")\n"
+        "bid=$(jq -r '.blobId // empty' <<<\"$blob\")\n"
+        "[ -n \"$bid\" ]\n"
+        "jq -nc --arg id \"$aid\" --arg b \"$bid\" --arg box \"$box\" "
+        "'{using:[\"urn:ietf:params:jmap:core\",\"urn:ietf:params:jmap:mail\"],"
+        "methodCalls:[[\"Email/import\",{accountId:$id,emails:{c1:{blobId:$b,mailboxIds:{($box):true},"
+        "keywords:{\"$seen\":true},receivedAt:\"2023-11-14T22:13:21Z\"}}},\"i\"]]}' > \"$body\"\n"
+        "imp=$(printf 'user = \"%s:%s\"\\n' \"$user\" \"$pass\" | curl -sS --fail-with-body --max-time 30 "
+        "--cacert \"$ca\" --config - -H 'Content-Type: application/json' --data-binary \"@$body\" \"$base/jmap/\")\n"
+        "newid=$(jq -r '.methodResponses[0][1].created.c1.id // empty' <<<\"$imp\")\n"
+        "[ -n \"$newid\" ]\n"
+        "jq -nc --arg id \"$aid\" --arg old \"$old\" --arg neu \"$newid\" "
+        "'{using:[\"urn:ietf:params:jmap:core\",\"urn:ietf:params:jmap:mail\"],"
+        "methodCalls:[[\"Email/set\",{accountId:$id,update:{($old):{keywords:{\"$seen\":true,\"$flagged\":true}}},"
+        "destroy:[$neu]},\"s\"]]}' > \"$body\"\n"
+        "set=$(printf 'user = \"%s:%s\"\\n' \"$user\" \"$pass\" | curl -sS --fail-with-body --max-time 30 "
+        "--cacert \"$ca\" --config - -H 'Content-Type: application/json' --data-binary \"@$body\" \"$base/jmap/\")\n"
+        "jq -e '.methodResponses[0][0] == \"Email/set\" and ((.methodResponses[0][1].notUpdated // {}) | length) == 0 "
+        "and ((.methodResponses[0][1].notDestroyed // {}) | length) == 0' <<<\"$set\" >/dev/null\n"
+        "jq -nc --arg id \"$aid\" --arg box \"$box\" "
+        "'{using:[\"urn:ietf:params:jmap:core\",\"urn:ietf:params:jmap:mail\"],"
+        "methodCalls:[[\"Mailbox/get\",{accountId:$id,ids:[$box]},\"m\"]]}' > \"$body\"\n"
+        "mb=$(printf 'user = \"%s:%s\"\\n' \"$user\" \"$pass\" | curl -sS --fail-with-body --max-time 30 "
+        "--cacert \"$ca\" --config - -H 'Content-Type: application/json' --data-binary \"@$body\" \"$base/jmap/\")\n"
+        "total=$(jq -r '.methodResponses[0][1].list[0].totalEmails // empty' <<<\"$mb\")\n"
+        "unread=$(jq -r '.methodResponses[0][1].list[0].unreadEmails // empty' <<<\"$mb\")\n"
+        "[ -n \"$total\" ] && [ -n \"$unread\" ]\n"
+        "printf 'total=%s\\nunread=%s\\n' \"$total\" \"$unread\"\n";
+    FILE *out;
+    json_t *root;
+    int before;
+    int total = -1;
+    int unread = -1;
+    int n;
+
+    if (gate == NULL || strcmp(gate, "1") != 0) {
+        return;
+    }
+    /* account.add rejects a relative caFile. */
+    TEST_ASSERT_NOT_NULL(getcwd(cwd, sizeof(cwd)));
+    n = snprintf(ca, sizeof(ca), "%s/build/stalwart-tls/test-ca.crt", cwd);
+    TEST_ASSERT_TRUE(n > 0 && n < (int)sizeof(ca));
+    out = fopen(ca, "rb");
+    TEST_ASSERT_NOT_NULL_MESSAGE(out, ca);
+    fclose(out);
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    n = snprintf(body, sizeof(body),
+                 "{\"kind\":\"jmap\",\"sessionUrl\":\"https://localhost:1443/.well-known/jmap\","
+                 "\"username\":\"andrew@test-a.local\",\"secret\":\"pavtest-pw\","
+                 "\"id\":\"m5gate\",\"name\":\"Gate\",\"caFile\":\"%s\"}",
+                 ca);
+    TEST_ASSERT_TRUE(n > 0 && n < (int)sizeof(body));
+    root = call_reply("account.add", body);
+    assert_ok(root);
+    json_decref(root);
+    db_path_for_cfg(path, sizeof(path));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
+        "SELECT count(*) FROM account_state WHERE account_id='m5gate' AND state='idle'", 1, "m5gate", got,
+        sizeof(got)),
+        got);
+    before = scalar_int(path,
+        "SELECT count(*) FROM email e JOIN remote_account r ON r.id=e.ra_id WHERE r.account_id='m5gate'");
+    TEST_ASSERT_TRUE(before >= 1);
+    scalar_text(path,
+        "SELECT jmap_account_id FROM remote_account WHERE account_id='m5gate' AND is_personal=1", aid, sizeof(aid));
+    scalar_text(path,
+        "SELECT e.id FROM email e JOIN remote_account r ON r.id=e.ra_id WHERE r.account_id='m5gate' "
+        "ORDER BY e.rowid LIMIT 1",
+        email_id, sizeof(email_id));
+    scalar_text(path,
+        "SELECT m.id FROM mailbox m JOIN remote_account r ON r.id=m.ra_id "
+        "WHERE r.account_id='m5gate' AND m.role='inbox'",
+        inbox, sizeof(inbox));
+    TEST_ASSERT_TRUE(aid[0] != '\0' && email_id[0] != '\0' && inbox[0] != '\0');
+    write_text("/tmp/pav-m5-gate.sh", script);
+    TEST_ASSERT_EQUAL_INT(0, setenv("PAV_GATE_USER", "andrew@test-a.local", 1));
+    TEST_ASSERT_EQUAL_INT(0, setenv("PAV_GATE_PASS", "pavtest-pw", 1));
+    TEST_ASSERT_EQUAL_INT(0, setenv("PAV_GATE_CA", ca, 1));
+    TEST_ASSERT_EQUAL_INT(0, setenv("PAV_GATE_AID", aid, 1));
+    TEST_ASSERT_EQUAL_INT(0, setenv("PAV_GATE_EMAIL", email_id, 1));
+    TEST_ASSERT_EQUAL_INT(0, setenv("PAV_GATE_INBOX", inbox, 1));
+    n = system("bash /tmp/pav-m5-gate.sh > /tmp/pav-m5-gate.out 2>/tmp/pav-m5-gate.err");
+    unsetenv("PAV_GATE_PASS");
+    if (n != 0) {
+        char err[512];
+        FILE *ef = fopen("/tmp/pav-m5-gate.err", "rb");
+
+        err[0] = '\0';
+        if (ef != NULL) {
+            size_t got_n = fread(err, 1, sizeof(err) - 1, ef);
+
+            err[got_n] = '\0';
+            fclose(ef);
+        }
+        TEST_FAIL_MESSAGE(err[0] != '\0' ? err : "container Email/set failed");
+    }
+    out = fopen("/tmp/pav-m5-gate.out", "rb");
+    TEST_ASSERT_NOT_NULL(out);
+    while (fgets(line, sizeof(line), out) != NULL) {
+        if (sscanf(line, "total=%d", &total) == 1) {
+            continue;
+        }
+        sscanf(line, "unread=%d", &unread);
+    }
+    fclose(out);
+    TEST_ASSERT_TRUE(total >= 0 && unread >= 0);
+    n = snprintf(sql, sizeof(sql),
+                 "SELECT count(*) FROM email e JOIN remote_account r ON r.id=e.ra_id "
+                 "WHERE r.account_id='m5gate' AND e.id='%s' AND e.flagged=1 AND e.seen=1",
+                 email_id);
+    TEST_ASSERT_TRUE(n > 0 && n < (int)sizeof(sql));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count_tries(path, sql, 1, "m5gate", got, sizeof(got), 3200), got);
+    TEST_ASSERT_EQUAL_INT(before, scalar_int(path,
+        "SELECT count(*) FROM email e JOIN remote_account r ON r.id=e.ra_id WHERE r.account_id='m5gate'"));
+    n = snprintf(sql, sizeof(sql),
+                 "SELECT count(*) FROM mailbox m JOIN remote_account r ON r.id=m.ra_id "
+                 "JOIN account_state a ON a.account_id='m5gate' "
+                 "WHERE r.account_id='m5gate' AND m.role='inbox' AND m.total=%d AND m.unread=%d AND a.state='idle'",
+                 total, unread);
+    TEST_ASSERT_TRUE(n > 0 && n < (int)sizeof(sql));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path, sql, 1, "m5gate", got, sizeof(got)), got);
+    root = call_reply("account.remove", "{\"id\":\"m5gate\"}");
+    assert_ok(root);
+    json_decref(root);
+    remove("/tmp/pav-m5-gate.sh");
+    remove("/tmp/pav-m5-gate.out");
+    remove("/tmp/pav-m5-gate.err");
+}
+
 void test_mailbox_list_tree_shape(void) {
     char path[160];
     char got[192];
@@ -8393,6 +8853,7 @@ void test_recorded_mailbox_get_replay(void) {
     size_t n;
     int saw_inbox = 0;
 
+    clear_email_overlay();
     TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
     TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
     text = slurp("tests/support/fixtures/mailbox-get.json");
@@ -8517,6 +8978,7 @@ void test_recorded_session_keeps_mail_account(void) {
     size_t i;
     int found = 0;
 
+    clear_email_overlay();
     text = slurp("tests/support/fixtures/session.json");
     TEST_ASSERT_NOT_NULL_MESSAGE(text, "recorded Session");
     TEST_ASSERT_NULL(strstr(text, "pavtest-pw"));
@@ -9680,6 +10142,11 @@ int main(void) {
     RUN_TEST(test_email_initial_first_page);
     RUN_TEST(test_email_batches_respect_max_objects);
     RUN_TEST(test_email_sync_cancel_resumes);
+    RUN_TEST(test_delta_created_updated_destroyed);
+    RUN_TEST(test_delta_has_more_changes_loops);
+    RUN_TEST(test_delta_cannot_calculate_resyncs);
+    RUN_TEST(test_delta_destroy_removes_blobs);
+    RUN_TEST(test_delta_container);
     RUN_TEST(test_recorded_mailbox_get_replay);
     RUN_TEST(test_recorded_session_keeps_mail_account);
     RUN_TEST(test_writes_are_serial_fifo);

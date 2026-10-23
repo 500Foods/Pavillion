@@ -1,4 +1,4 @@
-/* Included from sync.c. Email initial sync (M-4). */
+/* Included from sync.c. Email initial sync (M-4) and the delta walk (M-5). */
 #ifndef PAV_SYNC_EMAIL_INCLUDED
 #error "sync_email.c is included from sync.c"
 #endif
@@ -32,6 +32,36 @@ struct EmailWalk {
     SyncId *thread_ids;
     int thread_id_n;
     int thread_off;
+    int kind;
+    int step;
+    int changes_max;
+    int changes_pages;
+    int email_more;
+    int thread_more;
+    int thread_fix;
+    int thread_fixed;
+    int skip_thread_changes;
+    char email_since[128];
+    char email_new[128];
+    char thread_since[128];
+    char thread_new[128];
+    SyncId *created;
+    int created_n;
+    SyncId *updated;
+    int updated_n;
+    SyncId *destroyed;
+    int destroyed_n;
+    SyncId *th_get;
+    int th_get_n;
+    int th_get_off;
+    SyncId *th_destroyed;
+    int th_destroyed_n;
+    SyncId *local_threads;
+    int local_thread_n;
+    int local_off;
+    int fetch_off;
+    SyncId *touch;
+    int touch_n;
 };
 
 typedef struct EmailRow {
@@ -95,11 +125,37 @@ typedef struct EmailResult {
     int auth_rc;
     int email_mode;
     int method_error;
+    int email_more;
+    int thread_more;
+    int email_resync;
+    int thread_resync;
+    char email_state[128];
+    char thread_state[128];
     EmailPage *pages;
     int page_n;
     ThreadRow *threads;
     int thread_n;
+    SyncId *created;
+    int created_n;
+    SyncId *updated;
+    int updated_n;
+    SyncId *destroyed;
+    int destroyed_n;
+    SyncId *th_get;
+    int th_get_n;
+    SyncId *th_destroyed;
+    int th_destroyed_n;
+    SyncId *thread_missing;
+    int thread_missing_n;
+    MbxRow *mailboxes;
+    int mailbox_n;
 } EmailResult;
+
+static void free_delta_extra(EmailResult *r);
+static void clear_delta_lists(EmailWalk *w);
+static int reduce_delta(const char *body, const SyncReq *owned, EmailResult *out);
+static void begin_email_delta(PavSup *s, SupRemote *remote);
+static void email_delta_apply(PavSup *s, SupRemote *remote, EmailResult *r);
 
 static void free_email_row(EmailRow *row) {
     if (row == NULL) {
@@ -156,6 +212,7 @@ static void clear_email_walk(SupRemote *remote) {
     free_email_pages(w->pending, w->pending_n);
     free_thread_rows(w->threads, w->thread_n);
     free(w->thread_ids);
+    clear_delta_lists(w);
     free(w);
     remote->email = NULL;
 }
@@ -168,6 +225,7 @@ static void free_email_result(void *result) {
     }
     free_email_pages(r->pages, r->page_n);
     free_thread_rows(r->threads, r->thread_n);
+    free_delta_extra(r);
     free(r);
 }
 
@@ -412,6 +470,9 @@ static int reduce_email(const char *body, const SyncReq *owned, EmailResult *out
     int parsed = 0;
     int slot;
 
+    if (owned->email_mode >= EMAIL_MODE_CHANGES) {
+        return reduce_delta(body, owned, out);
+    }
     root = json_loads(body, 0, NULL);
     if (!json_is_object(root)) {
         json_decref(root);
@@ -1242,6 +1303,73 @@ static void start_email_query(PavSup *s, SupRemote *remote) {
     }
 }
 
+static int fts_take_text(sqlite3_stmt *stmt, int col, size_t max, char **out) {
+    const char *raw;
+
+    raw = (const char *)sqlite3_column_text(stmt, col);
+    *out = NULL;
+    if (raw == NULL || raw[0] == '\0') {
+        return 0;
+    }
+    *out = dup_capped(raw, max);
+    return *out != NULL ? 0 : -1;
+}
+
+static void release_fts_bits(char *subject, char *from_json, char *to_json, char *cc_json, char *from_text,
+                             char *to_text, json_t *from, json_t *to, json_t *cc) {
+    free(subject);
+    free(from_json);
+    free(to_json);
+    free(cc_json);
+    free(from_text);
+    free(to_text);
+    json_decref(from);
+    json_decref(to);
+    json_decref(cc);
+}
+
+/* email_fts is contentless. The delete has to repeat the subject and the
+   address text that pav_fts_index_headers stored. */
+static int delete_email_fts(sqlite3 *db, int64_t rowid) {
+    sqlite3_stmt *stmt = NULL;
+    char *subject = NULL;
+    char *from_json = NULL;
+    char *to_json = NULL;
+    char *cc_json = NULL;
+    json_t *from = NULL;
+    json_t *to = NULL;
+    json_t *cc = NULL;
+    char *from_text = NULL;
+    char *to_text = NULL;
+    int rc;
+
+    if (pav_db_prepare(db, "sync.email_fts_src",
+                       "SELECT subject, from_json, to_json, cc_json FROM email WHERE rowid = ?", &stmt) != 0 ||
+        pav_db_bind_int64(stmt, 1, rowid) != 0 || pav_db_step(stmt) != SQLITE_ROW ||
+        fts_take_text(stmt, 0, 16384, &subject) != 0 || fts_take_text(stmt, 1, 65536, &from_json) != 0 ||
+        fts_take_text(stmt, 2, 65536, &to_json) != 0 || fts_take_text(stmt, 3, 65536, &cc_json) != 0) {
+        release_fts_bits(subject, from_json, to_json, cc_json, NULL, NULL, NULL, NULL, NULL);
+        return -1;
+    }
+    if (from_json != NULL && (from = json_loads(from_json, 0, NULL)) == NULL) {
+        release_fts_bits(subject, from_json, to_json, cc_json, NULL, NULL, NULL, NULL, NULL);
+        return -1;
+    }
+    if (to_json != NULL && (to = json_loads(to_json, 0, NULL)) == NULL) {
+        release_fts_bits(subject, from_json, to_json, cc_json, NULL, NULL, from, NULL, NULL);
+        return -1;
+    }
+    if (cc_json != NULL && (cc = json_loads(cc_json, 0, NULL)) == NULL) {
+        release_fts_bits(subject, from_json, to_json, cc_json, NULL, NULL, from, to, NULL);
+        return -1;
+    }
+    from_text = addresses_text(from, NULL);
+    to_text = addresses_text(to, cc);
+    rc = pav_fts_delete(db, rowid, subject, from_text, to_text);
+    release_fts_bits(subject, from_json, to_json, cc_json, from_text, to_text, from, to, cc);
+    return rc;
+}
+
 static int clear_email_job(void *ctx, sqlite3 *db) {
     const char *ra = ctx;
     sqlite3_stmt *stmt = NULL;
@@ -1274,16 +1402,10 @@ static int clear_email_job(void *ctx, sqlite3 *db) {
         return -1;
     }
     for (i = 0; i < n; i++) {
-        sqlite3_stmt *del = NULL;
-
-        if (sqlite3_prepare_v2(db, "INSERT INTO email_fts(email_fts, rowid) VALUES('delete', ?)", -1, &del, NULL) !=
-            SQLITE_OK) {
+        if (delete_email_fts(db, ids[i]) != 0) {
             free(ids);
             return -1;
         }
-        sqlite3_bind_int64(del, 1, (sqlite3_int64)ids[i]);
-        (void)sqlite3_step(del);
-        sqlite3_finalize(del);
     }
     free(ids);
     if (pav_db_prepare(db, "sync.email_clear", "DELETE FROM email WHERE ra_id = ?", &stmt) != 0 ||
@@ -1454,7 +1576,7 @@ static int remote_present(sqlite3 *db, const char *ra, int *missing) {
 }
 
 static int store_email_row(sqlite3 *db, const char *ra, EmailPage *page, EmailRow *row, const ThreadRow *threads,
-                           int thread_n) {
+                           int thread_n, int skip_thread) {
     sqlite3_stmt *stmt = NULL;
     int64_t rowid = 0;
     int rc;
@@ -1534,6 +1656,10 @@ static int store_email_row(sqlite3 *db, const char *ra, EmailPage *page, EmailRo
     if (pav_fts_index_headers(db, rowid, row->subject, row->from_text, row->to_text, replace) != 0) {
         return -1;
     }
+    /* A delta fetch writes headers only. Thread/get owns membership. */
+    if (skip_thread) {
+        return 0;
+    }
     if (row->thread_id[0] != '\0') {
         const char *members = thread_members(threads, thread_n, row->thread_id);
         char *owned = NULL;
@@ -1565,6 +1691,7 @@ typedef struct EmailPageJob {
     EmailPage *page;
     const ThreadRow *threads;
     int thread_n;
+    int skip_thread;
     int missing;
     int wrote;
 } EmailPageJob;
@@ -1590,7 +1717,8 @@ static int write_email_page_job(void *ctx, sqlite3 *db) {
         return 0;
     }
     for (i = 0; i < job->page->row_n; i++) {
-        if (store_email_row(db, job->ra_id, job->page, &job->page->rows[i], job->threads, job->thread_n) != 0) {
+        if (store_email_row(db, job->ra_id, job->page, &job->page->rows[i], job->threads, job->thread_n,
+                            job->skip_thread) != 0) {
             return -1;
         }
     }
@@ -1945,6 +2073,10 @@ static void apply_email(PavSup *s, void *result) {
         finish_email_cancel(s, remote);
         return;
     }
+    if (r->email_mode >= EMAIL_MODE_CHANGES || remote->email->kind == 1) {
+        email_delta_apply(s, remote, r);
+        return;
+    }
     w = remote->email;
     if (r->email_mode == 2) {
         if (take_threads(w, r) != 0) {
@@ -1995,11 +2127,12 @@ static void begin_email(PavSup *s, SupRemote *remote) {
     }
     if (email_has_state(remote->ra_id)) {
         if (!email_backfill(remote->ra_id)) {
-            begin_remote(s, remote->next);
+            begin_email_delta(s, remote);
             return;
         }
         pav_log("sync", PAV_INFO, 1, "mail backfill %s", s->account_id);
     }
+    s->email_delta = 0;
     w = calloc(1, sizeof(*w));
     if (w == NULL) {
         email_fail(s, remote, "offline");
