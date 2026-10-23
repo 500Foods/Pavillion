@@ -17,27 +17,67 @@ static const char *or_empty(const char *text) {
     return text != NULL ? text : "";
 }
 
-/* An empty body is the SQL literal '', not a bound parameter. Header rows
-   are stored that way, and a contentless delete has to repeat those bytes.
-   Binding the empty string crashes SQLite 3.54.0 on Windows while a long
-   insert is inside one transaction. */
 static int body_empty(const char *body) {
     return body == NULL || body[0] == '\0';
 }
 
-static int exec_row(sqlite3 *db, const char *sql, int64_t rowid, const char *subject, const char *from_text,
-                    const char *to_text, const char *body) {
+static int insert_doc(sqlite3 *db, int64_t rowid, const char *subject, const char *from_text, const char *to_text,
+                      const char *body) {
     sqlite3_stmt *stmt = NULL;
 
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+    if (sqlite3_prepare_v2(db,
+                           "INSERT INTO email_fts(rowid, subject, from_text, to_text, body) VALUES(?, ?, ?, ?, ?)",
+                           -1, &stmt, NULL) != SQLITE_OK) {
         return -1;
     }
     if (sqlite3_bind_int64(stmt, 1, (sqlite3_int64)rowid) != SQLITE_OK ||
         sqlite3_bind_text(stmt, 2, or_empty(subject), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
         sqlite3_bind_text(stmt, 3, or_empty(from_text), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
         sqlite3_bind_text(stmt, 4, or_empty(to_text), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
-        (!body_empty(body) && sqlite3_bind_text(stmt, 5, body, -1, SQLITE_TRANSIENT) != SQLITE_OK) ||
-        !step_done(stmt)) {
+        sqlite3_bind_text(stmt, 5, body, -1, SQLITE_TRANSIENT) != SQLITE_OK || !step_done(stmt)) {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    sqlite3_finalize(stmt);
+    return 0;
+}
+
+static int delete_header(sqlite3 *db, int64_t rowid, const char *subject, const char *from_text,
+                         const char *to_text) {
+    sqlite3_stmt *stmt = NULL;
+
+    if (sqlite3_prepare_v2(db,
+                           "INSERT INTO email_fts(email_fts, rowid, subject, from_text, to_text, body) "
+                           "VALUES('delete', ?, ?, ?, ?, '')",
+                           -1, &stmt, NULL) != SQLITE_OK) {
+        return -1;
+    }
+    if (sqlite3_bind_int64(stmt, 1, (sqlite3_int64)rowid) != SQLITE_OK ||
+        sqlite3_bind_text(stmt, 2, or_empty(subject), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(stmt, 3, or_empty(from_text), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(stmt, 4, or_empty(to_text), -1, SQLITE_TRANSIENT) != SQLITE_OK || !step_done(stmt)) {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    sqlite3_finalize(stmt);
+    return 0;
+}
+
+static int delete_doc(sqlite3 *db, int64_t rowid, const char *subject, const char *from_text, const char *to_text,
+                      const char *body) {
+    sqlite3_stmt *stmt = NULL;
+
+    if (sqlite3_prepare_v2(db,
+                           "INSERT INTO email_fts(email_fts, rowid, subject, from_text, to_text, body) "
+                           "VALUES('delete', ?, ?, ?, ?, ?)",
+                           -1, &stmt, NULL) != SQLITE_OK) {
+        return -1;
+    }
+    if (sqlite3_bind_int64(stmt, 1, (sqlite3_int64)rowid) != SQLITE_OK ||
+        sqlite3_bind_text(stmt, 2, or_empty(subject), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(stmt, 3, or_empty(from_text), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(stmt, 4, or_empty(to_text), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(stmt, 5, body, -1, SQLITE_TRANSIENT) != SQLITE_OK || !step_done(stmt)) {
         sqlite3_finalize(stmt);
         return -1;
     }
@@ -47,42 +87,51 @@ static int exec_row(sqlite3 *db, const char *sql, int64_t rowid, const char *sub
 
 int pav_fts_delete(sqlite3 *db, int64_t rowid, const char *subject, const char *from_text, const char *to_text,
                    const char *body) {
-    const char *sql;
-
     if (db == NULL || rowid <= 0) {
         return -1;
     }
-    sql = body_empty(body)
-              ? "INSERT INTO email_fts(email_fts, rowid, subject, from_text, to_text, body) "
-                "VALUES('delete', ?, ?, ?, ?, '')"
-              : "INSERT INTO email_fts(email_fts, rowid, subject, from_text, to_text, body) "
-                "VALUES('delete', ?, ?, ?, ?, ?)";
-    return exec_row(db, sql, rowid, subject, from_text, to_text, body);
-}
-
-int pav_fts_insert(sqlite3 *db, int64_t rowid, const char *subject, const char *from_text, const char *to_text,
-                   const char *body) {
-    const char *sql;
-
-    if (db == NULL || rowid <= 0) {
-        return -1;
+    if (body_empty(body)) {
+        return delete_header(db, rowid, subject, from_text, to_text);
     }
-    sql = body_empty(body)
-              ? "INSERT INTO email_fts(rowid, subject, from_text, to_text, body) VALUES(?, ?, ?, ?, '')"
-              : "INSERT INTO email_fts(rowid, subject, from_text, to_text, body) VALUES(?, ?, ?, ?, ?)";
-    return exec_row(db, sql, rowid, subject, from_text, to_text, body);
+    return delete_doc(db, rowid, subject, from_text, to_text, body);
 }
 
 int pav_fts_index_headers(sqlite3 *db, int64_t rowid, const char *subject, const char *from_text,
                           const char *to_text, int replace) {
-    if (replace) {
-        /* Only an empty body with these exact headers matches. A subject
-           change deletes the old row first and inserts with replace 0. */
-        if (pav_fts_delete(db, rowid, subject, from_text, to_text, "") != 0) {
-            return -1;
-        }
+    sqlite3_stmt *stmt = NULL;
+
+    if (db == NULL || rowid <= 0) {
+        return -1;
     }
-    return pav_fts_insert(db, rowid, subject, from_text, to_text, "");
+    /* Body is the SQL literal ''. A contentless delete has to repeat it. */
+    if (replace && pav_fts_delete(db, rowid, subject, from_text, to_text, "") != 0) {
+        return -1;
+    }
+    if (sqlite3_prepare_v2(db,
+                           "INSERT INTO email_fts(rowid, subject, from_text, to_text, body) VALUES(?, ?, ?, ?, '')",
+                           -1, &stmt, NULL) != SQLITE_OK) {
+        return -1;
+    }
+    if (sqlite3_bind_int64(stmt, 1, (sqlite3_int64)rowid) != SQLITE_OK ||
+        sqlite3_bind_text(stmt, 2, or_empty(subject), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(stmt, 3, or_empty(from_text), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(stmt, 4, or_empty(to_text), -1, SQLITE_TRANSIENT) != SQLITE_OK || !step_done(stmt)) {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    sqlite3_finalize(stmt);
+    return 0;
+}
+
+int pav_fts_insert(sqlite3 *db, int64_t rowid, const char *subject, const char *from_text, const char *to_text,
+                   const char *body) {
+    if (db == NULL || rowid <= 0) {
+        return -1;
+    }
+    if (body_empty(body)) {
+        return pav_fts_index_headers(db, rowid, subject, from_text, to_text, 0);
+    }
+    return insert_doc(db, rowid, subject, from_text, to_text, body);
 }
 
 int pav_fts_delete_all(sqlite3 *db) {

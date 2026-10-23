@@ -1608,8 +1608,14 @@ static int store_email_row(sqlite3 *db, const char *ra, EmailPage *page, EmailRo
             return -1;
         }
     }
-    if (pav_fts_insert(db, rowid, row->subject, row->from_text, row->to_text,
-                       kept_body != NULL ? kept_body : "") != 0) {
+    /* A header row (no fetched body) uses the straight-line insert. A fetched
+       body is bound as its own parameter. */
+    if (kept_body == NULL || kept_body[0] == '\0') {
+        if (pav_fts_index_headers(db, rowid, row->subject, row->from_text, row->to_text, 0) != 0) {
+            free(kept_body);
+            return -1;
+        }
+    } else if (pav_fts_insert(db, rowid, row->subject, row->from_text, row->to_text, kept_body) != 0) {
         free(kept_body);
         return -1;
     }
