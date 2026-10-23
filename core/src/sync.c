@@ -1237,7 +1237,7 @@ void pav_sync_result_free(void *result) {
         free_email_result(result);
         return;
     }
-    if (r->kind == SYNC_KIND_BODY_RESUME || r->kind == PAV_BODY_CORE_KIND) {
+    if (r->kind == SYNC_KIND_BODY_RESUME || r->kind == PAV_BODY_CORE_KIND || r->kind == PAV_BODY_KICK_KIND) {
         free(r);
         return;
     }
@@ -1531,7 +1531,7 @@ void pav_sync_on_result(void *result) {
         return;
     }
     kind = *(int *)result;
-    if (kind == PAV_BODY_CORE_KIND) {
+    if (kind == PAV_BODY_CORE_KIND || kind == PAV_BODY_KICK_KIND) {
         if (!pav_body_take_core(result)) {
             free(result);
         }

@@ -14,8 +14,11 @@ char *pav_body_email_get_request(const char *jmap_account, const char *email_id)
    truncated (body_state unchanged; the fetch path downloads), -1 on failure. */
 int pav_body_apply_jmap(int64_t email_rowid, const char *ra, const char *email_json);
 
-/* Core thread. A prefetch continuation posted from the net thread. */
+/* Core thread. A prefetch continuation posted from the net thread.
+   Kind 5 asks the core thread to start the next prefetch. The net thread
+   must not call pav_net_request while it still holds the server mutex. */
 #define PAV_BODY_CORE_KIND 4
+#define PAV_BODY_KICK_KIND 5
 int pav_body_take_core(void *result);
 
 /* Parse raw MIME and store it the same way. */

@@ -255,6 +255,8 @@ static void remove_cfg_dir(void) {
 }
 
 void tearDown(void) {
+    /* test_prefetch_ends_body_fetch stores one secret. The fake keyring is process-wide and capped. */
+    pav_secret_delete("pavillion", "default/bpre");
     clear_email_overlay();
     if (g_email_hold) {
         g_email_hold = 0;
@@ -10494,6 +10496,64 @@ void test_body_select_prefetch_window(void) {
     TEST_ASSERT_EQUAL_INT64(6, ids[0]);
 }
 
+/* fetchBodies all, because the fixture dates are outside the 30-day window.
+   The activity must leave the running list. A clobbered completion callback
+   leaves body.fetch open and the prefetch slot taken. */
+void test_prefetch_ends_body_fetch(void) {
+    const char *url = getenv("PAV_FIXTURE_URL");
+    const char *ca = getenv("PAV_FIXTURE_CA");
+    char session_url[512];
+    char path[160];
+    char body[2048];
+    char got[192];
+    json_t *root;
+    json_t *rows = NULL;
+    json_t *item = NULL;
+    int n;
+    int i;
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
+    TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
+    clear_email_overlay();
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    pav_sync_set_poll_ms(3600000);
+    n = snprintf(session_url, sizeof(session_url), "%s/jmap/session?emails=1", url);
+    TEST_ASSERT_TRUE(n > 0 && n < (int)sizeof(session_url));
+    n = snprintf(body, sizeof(body),
+                 "{\"kind\":\"jmap\",\"sessionUrl\":\"%s\",\"username\":\"u\",\"secret\":\"Zq9-sync-pw\","
+                 "\"id\":\"bpre\",\"name\":\"Box\",\"caFile\":\"%s\",\"fetchBodies\":\"all\"}",
+                 session_url, ca);
+    TEST_ASSERT_TRUE(n > 0 && n < (int)sizeof(body));
+    root = call_reply("account.add", body);
+    assert_ok(root);
+    json_decref(root);
+    db_path_for_cfg(path, sizeof(path));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(
+        0, wait_count(path, "SELECT count(*) FROM account_state WHERE account_id='bpre' AND state='idle'", 1, "bpre",
+                      got, sizeof(got)),
+        got);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(
+        0, wait_count(path, "SELECT count(*) FROM email WHERE body_state='fetched'", 1, "bpre", got, sizeof(got)),
+        got);
+    for (i = 0; i < 40; i++) {
+        json_decref(rows);
+        rows = activity_rows(0);
+        item = find_kind(rows, "body.fetch");
+        if (item == NULL) {
+            break;
+        }
+        usleep(50000);
+    }
+    TEST_ASSERT_NULL(item);
+    json_decref(rows);
+    rows = activity_rows(1);
+    item = find_kind(rows, "body.fetch");
+    TEST_ASSERT_NOT_NULL(item);
+    TEST_ASSERT_EQUAL_STRING("done", json_string_value(json_object_get(item, "state")));
+    json_decref(rows);
+}
+
 void test_message_get_from_fixture(void) {
     char path[160];
     char got[192];
@@ -10651,6 +10711,7 @@ int main(void) {
     RUN_TEST(test_message_get_args);
     RUN_TEST(test_body_apply_jmap);
     RUN_TEST(test_body_select_prefetch_window);
+    RUN_TEST(test_prefetch_ends_body_fetch);
     RUN_TEST(test_message_get_from_fixture);
     RUN_TEST(test_sync_mailboxes_cannot_calculate);
     RUN_TEST(test_sync_mailboxes_delta_rename);

@@ -109,7 +109,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 ## N-1: Body fetch and MIME
 
 **Kind:** Medium
-**Status:** In progress. Last finished work item: the Unity corpus tests. `make test` is 229 Unity, 2 Rust, and 380 Vitest, exit 0 (2026-10-23). CI is not green on a push. The stamp stays `0.64.0`.
+**Status:** In progress. Last finished work item: the Unity corpus tests. `make test` is 230 Unity, 2 Rust, and 380 Vitest, exit 0 (2026-10-23). macOS and Windows CI failed in `mime.c` on the iconv pointer type; the cast is gone and Darwin links `-liconv`. That is not proven until the next push. The stamp stays `0.64.0`.
 
 **Goal:** Opening a message fetches its body once and returns text, parts, and headers.
 
@@ -359,3 +359,4 @@ Andrew opened the live profile on 2026-10-23. The count is there and the list fi
 - 2026-10-22 N-3a in progress. `message.list` returns From and Subject for one mailbox, newest first, capped by `preferences.cache.listRows` (default 10,000, Settings → Limits). The mail list loads that one reply and does not page. `make test` is 213 Unity, 2 Rust, and 380 Vitest, exit 0. A container check on a temporary profile showed a new Inbox message after the 120 s poll. The window is not accepted.
 - 2026-10-23 N-3a complete, step 135. Andrew accepted the window. The count is there and the list fills immediately. Sent, with more than 3700 messages, renders at once. `$deleted` stays in the list for N-3 and N-5. Stamp `0.64.0`. `make test`: 213 Unity, 2 Rust, 380 Vitest, exit 0. CI on `e30fdd1` is green: fedora, macos-core, windows-core. The index names N-1 next. N-1 was not started. This close-out is not in that commit.
 - 2026-10-23 N-1 in progress. GMime 3 parses the corpus, `message.get` returns text, parts, and headers, and idle prefetch follows `fetchBodies`. `htmlSanitized` stays null. `make test`: 229 Unity, 2 Rust, 380 Vitest, exit 0. CI is not pushed. Stamp stays `0.64.0`.
+- 2026-10-23 N-1 still in progress. macOS and Windows CI failed in `mime.c`: iconv wants `char **`, and macOS needs `-liconv`. Prefetch left `body.fetch` running because `submit_json` replaced its completion callback; the callback stays, and the next prefetch is posted to the core thread. The splash is `z-index: 100`. While it is up, the nav, the pane, and the message list do not scroll, because WebKit paints those bars over a fixed cover. The prefetch test removes its fake-keyring secret in `tearDown`. `make test`: 230 Unity, 2 Rust, 380 Vitest, exit 0. Stamp stays `0.64.0`. CI is not pushed.

@@ -1449,7 +1449,10 @@ static int submit_json(BodyJob *job) {
     job->req.body_len = strlen(job->request);
     job->req.download_path = NULL;
     job->req.headers = json_pack("{s:s}", "Content-Type", "application/json");
-    job->req.on_done = on_net;
+    /* Prefetch sets prefetch_on_net before this. message.get leaves it empty. */
+    if (job->req.on_done == NULL) {
+        job->req.on_done = on_net;
+    }
     job->req.user = job;
     if (job->req.headers == NULL) {
         return -1;
@@ -1716,6 +1719,11 @@ typedef struct BodyCore {
     BodyJob *job;
 } BodyCore;
 
+typedef struct BodyKick {
+    int kind;
+    char account_id[64];
+} BodyKick;
+
 static void prefetch_one(const char *account_id, int64_t rowid);
 
 static void prefetch_kick(const char *account_id) {
@@ -1791,11 +1799,16 @@ static void prefetch_done(BodyJob *job, int ok, int cancelled) {
     }
     slot_end_prefetch(job->account_id);
     {
-        char account[64];
+        BodyKick *kick = calloc(1, sizeof(*kick));
 
-        copy_fit(account, sizeof(account), job->account_id);
+        if (kick != NULL) {
+            kick->kind = PAV_BODY_KICK_KIND;
+            if (copy_fit(kick->account_id, sizeof(kick->account_id), job->account_id) != 0 ||
+                pav_core_post_sync(kick) != 0) {
+                free(kick);
+            }
+        }
         job_free(job);
-        prefetch_kick(account);
     }
 }
 
@@ -1871,8 +1884,20 @@ static void body_continue(BodyJob *job) {
 
 int pav_body_take_core(void *result) {
     BodyCore *core = result;
+    int kind;
 
-    if (core == NULL || core->kind != PAV_BODY_CORE_KIND) {
+    if (result == NULL) {
+        return 0;
+    }
+    kind = *(int *)result;
+    if (kind == PAV_BODY_KICK_KIND) {
+        BodyKick *kick = result;
+
+        prefetch_kick(kick->account_id);
+        free(kick);
+        return 1;
+    }
+    if (kind != PAV_BODY_CORE_KIND) {
         return 0;
     }
     body_continue(core->job);

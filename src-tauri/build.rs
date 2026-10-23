@@ -180,6 +180,11 @@ fn main() {
         Ok("windows") => println!("cargo:rustc-link-lib=dnsapi"),
         _ => {}
     }
+    /* iconv is in glibc. Apple and MinGW need the library named. */
+    match std::env::var("CARGO_CFG_TARGET_OS").as_deref() {
+        Ok("macos") | Ok("windows") => println!("cargo:rustc-link-lib=iconv"),
+        _ => {}
+    }
     if cfg!(target_os = "linux") {
         if let Ok(libs) = std::process::Command::new("pkg-config")
             .args(["--libs", "libsecret-1"])

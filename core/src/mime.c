@@ -206,12 +206,9 @@ static char *to_utf8(const char *charset, const unsigned char *bytes, size_t n) 
     outp = out;
     outleft = cap - 1;
     while (inleft > 0) {
-        /* glibc takes char **. Apple and MinGW libiconv take const char **. */
-#if defined(__APPLE__) || defined(__MINGW32__)
-        size_t rc = iconv(cd, (const char **)&inbuf, &inleft, &outp, &outleft);
-#else
+        /* glibc, the current Apple SDK, and MinGW all take char **.
+           A const char ** cast is a hard error on MinGW and a warning on Apple. */
         size_t rc = iconv(cd, &inbuf, &inleft, &outp, &outleft);
-#endif
 
         if (rc != (size_t)-1) {
             break;

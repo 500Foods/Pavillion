@@ -90,7 +90,9 @@ $(TEST_BIN): $(LIB) $(TEST_SRC) $(PLATFORM_TEST_SRC) $(UNITY_DIR)/unity.c $(UNIT
 		$(shell pkg-config --libs libsecret-1 2>/dev/null) \
 		$(shell pkg-config --libs libcurl 2>/dev/null) \
 		$(shell pkg-config --libs gmime-3.0) \
-		$(if $(filter Windows_NT,$(OS)),-liconv,-Wl,-rpath,$(shell pkg-config --variable=libdir gmime-3.0)) \
+		$(if $(filter Windows_NT,$(OS)),-liconv,) \
+		$(if $(filter Darwin,$(shell uname -s)),-liconv,) \
+		$(if $(filter Windows_NT,$(OS)),,-Wl,-rpath,$(shell pkg-config --variable=libdir gmime-3.0)) \
 		$(if $(wildcard core/platform/stronghold/target/release/libpav_stronghold.a),core/platform/stronghold/target/release/libpav_stronghold.a -ldl -lm,)
 
 # dev, build, and mini add one to PAVILLION_BUILD before they compile.

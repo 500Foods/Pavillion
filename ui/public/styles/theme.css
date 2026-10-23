@@ -2270,11 +2270,14 @@
 }
 
 /* Startup cover. The background is immediate. The line fades in, then the
-   cover stays until the shell is ready and at least two seconds have passed. */
+   cover stays until the shell is ready and at least two seconds have passed.
+   z-index is above the widgets (the column chooser is 50). WebKit still
+   paints a scroller's bar over a fixed cover, so the nav, the pane, and the
+   message list do not scroll while this node exists. */
 #splash {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: 100;
   display: grid;
   place-items: center;
   margin: 0;
@@ -2286,6 +2289,12 @@
   -webkit-user-select: none;
   opacity: 1;
   transition: opacity 0.4s linear;
+}
+
+html:has(#splash) .pav-root .nav-body,
+html:has(#splash) .pav-root .pane,
+html:has(#splash) .pav-root .pav-table .tabulator-tableholder {
+  overflow: hidden;
 }
 
 #splash p {

@@ -5,8 +5,8 @@ Status: v0.7 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 **Resume:** each phase's history is in its own document's Working log; this block is only the current state.
 
 - Last finished: N-3a (step 135), 2026-10-23, in [docs/N-MAIL.md](docs/N-MAIL.md). From and Subject for the selected folder. Andrew accepted the window the same day. Sent, with more than 3700 messages, renders at once. `$deleted` stays in the list for N-3 and N-5. CI on `e30fdd1` is green: fedora, macos-core, windows-core.
-- Next: N-1 (step 58), in progress, in [docs/N-MAIL.md](docs/N-MAIL.md). Body fetch and MIME. The corpus tests and `message.get` are in. `make test` is 229 Unity, 2 Rust, and 380 Vitest, exit 0 (2026-10-23). CI is not green on a push. Do not start N-2. The agent does not commit. The Accounts table polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md).
-- Last full `make test`: 229 Unity tests, 2 Rust tests and 380 Vitest tests, exit 0 (2026-10-23, N-1 in progress). The phase stamp is `0.64.0`.
+- Next: N-1 (step 58), in progress, in [docs/N-MAIL.md](docs/N-MAIL.md). Body fetch and MIME. The corpus tests and `message.get` are in. `make test` is 230 Unity, 2 Rust, and 380 Vitest, exit 0 (2026-10-23). macOS and Windows CI failed on the iconv cast; the fix is local and not pushed. Do not start N-2. The agent does not commit. The Accounts table polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md).
+- Last full `make test`: 230 Unity tests, 2 Rust tests and 380 Vitest tests, exit 0 (2026-10-23, N-1 in progress). The phase stamp is `0.64.0`.
 - `PAVILLION_API_VERSION` is 3. The phase stamp is `0.64.0` (64 Done rows), release date 2026-10-23.
 
 **Read first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), one page with diagrams of the layers, the threads, and the data flow.
