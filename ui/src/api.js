@@ -99,6 +99,12 @@ export function createApi(transport) {
         return call("mailbox.list", args);
       },
     },
+    message: {
+      list(body) {
+        const view = body && body.view;
+        return call("message.list", { view });
+      },
+    },
     debug: {
       activityDemo(body) {
         return call("debug.activity_demo", body ?? {});

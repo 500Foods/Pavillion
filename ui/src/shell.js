@@ -17,6 +17,7 @@ import { createLimitsSettings } from "./settings/limits.js";
 import { createHelpView } from "./help/view.js";
 import { createBackTracker } from "./help/back.js";
 import { createLogView } from "./log/view.js";
+import { createMailList } from "./mail/list.js";
 import { createMailNav } from "./mail/nav.js";
 import { renderRow } from "./tree/render.js";
 import { DEFAULT_UI, FEATURE_KEYS, RAIL_KEYS, chordsOf, clampUi, railOf, snapZoom } from "./prefs.js";
@@ -1203,6 +1204,7 @@ let limitsSettings = null;
 let logTimeZone = "America/Vancouver";
 let mailTree = null;
 let mailNav = null;
+let mailList = null;
 let syncing = 0;
 let syncTurn = null;
 let syncIds = [];
@@ -1495,13 +1497,19 @@ function applyHomeContext(entry) {
       }
     }
   }
-  if (entry.section === "mail" && ctx && typeof ctx.mailboxId === "string") {
-    for (const button of mountRoot.querySelectorAll('[data-nav="mail"] .tree [role="treeitem"]')) {
-      if (button.dataset.nodeId === ctx.mailboxId) {
-        button.setAttribute("aria-current", "true");
-      } else {
-        button.removeAttribute("aria-current");
+  if (entry.section === "mail") {
+    const mailboxId = ctx && typeof ctx.mailboxId === "string" ? ctx.mailboxId : "";
+    if (mailboxId !== "") {
+      for (const button of mountRoot.querySelectorAll('[data-nav="mail"] .tree [role="treeitem"]')) {
+        if (button.dataset.nodeId === mailboxId) {
+          button.setAttribute("aria-current", "true");
+        } else {
+          button.removeAttribute("aria-current");
+        }
       }
+    }
+    if (mailList) {
+      void mailList.open(mailboxId);
     }
   }
   if (entry.section === "contacts" && ctx && typeof ctx.letter === "string") {
@@ -2284,6 +2292,10 @@ export function stopShell() {
     limitsSettings.destroy();
     limitsSettings = null;
   }
+  if (mailList) {
+    mailList.stop();
+    mailList = null;
+  }
   if (mailNav) {
     mailNav.stop();
     mailNav = null;
@@ -2932,6 +2944,10 @@ export async function startShell(surface, nextApi, nextHost, result) {
   limitsSettings.refresh();
   if (mountRoot.querySelector("[data-settings='accounts']")) {
     accountsView.refresh();
+  }
+  const mailListEl = mountRoot.querySelector("#mail-list");
+  if (mailListEl) {
+    mailList = createMailList(api, mailListEl);
   }
   await openInitialTabs();
   const mailPane = mountRoot && mountRoot.querySelector('[data-nav="mail"]');

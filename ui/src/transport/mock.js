@@ -40,7 +40,7 @@ function defaultPrefs() {
     windowY: null,
     chrome: "system",
     logLevel: "info",
-    cache: { bodiesMb: 2048, blobsMb: 4096 },
+    cache: { bodiesMb: 2048, blobsMb: 4096, listRows: 10000 },
   };
 }
 
@@ -198,6 +198,17 @@ export function mockTransport() {
         return { nodes: [] };
       }
       return { nodes: structuredClone(SAMPLE_MAILBOXES) };
+    }
+    if (cmd === "message.list") {
+      const view = input.view;
+      const extra = Object.keys(input).filter((key) => key !== "view");
+      if (extra.length > 0) {
+        throw fail("bad_args", `unknown argument ${extra[0]}`);
+      }
+      if (!isObject(view) || view.kind !== "mailbox" || typeof view.id !== "string" || view.id === "") {
+        throw fail("bad_args", "view.kind must be mailbox");
+      }
+      return { accountId: "default", messages: [], total: 0 };
     }
      if (cmd === "sync.now") {
        if (input.accountId !== undefined && (typeof input.accountId !== "string" || input.accountId === "")) {

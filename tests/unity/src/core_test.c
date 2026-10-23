@@ -688,7 +688,8 @@ static const char k_default_profile[] =
     "    \"density\": \"comfortable\",\n"
     "    \"cache\": {\n"
     "      \"bodiesMb\": 2048,\n"
-    "      \"blobsMb\": 4096\n"
+    "      \"blobsMb\": 4096,\n"
+    "      \"listRows\": 10000\n"
     "    },\n"
     "    \"window\": {\n"
     "      \"maximized\": false,\n"
@@ -6123,6 +6124,7 @@ void test_prefs_cache_round_trip(void) {
     TEST_ASSERT_TRUE(json_is_object(cache));
     TEST_ASSERT_EQUAL_INT(2048, (int)json_integer_value(json_object_get(cache, "bodiesMb")));
     TEST_ASSERT_EQUAL_INT(4096, (int)json_integer_value(json_object_get(cache, "blobsMb")));
+    TEST_ASSERT_EQUAL_INT(10000, (int)json_integer_value(json_object_get(cache, "listRows")));
     json_decref(root);
 
     root = call_reply("prefs.set", "{\"cache\":{\"bodiesMb\":100}}");
@@ -6142,6 +6144,15 @@ void test_prefs_cache_round_trip(void) {
     root = call_reply("prefs.set", "{\"cache\":{\"bodiesMb\":0}}");
     assert_call_error(root, "bad_args", "out of range");
     json_decref(root);
+    root = call_reply("prefs.set", "{\"cache\":{\"listRows\":0}}");
+    assert_call_error(root, "bad_args", "out of range");
+    json_decref(root);
+    root = call_reply("prefs.set", "{\"cache\":{\"listRows\":10001}}");
+    assert_call_error(root, "bad_args", "out of range");
+    json_decref(root);
+    root = call_reply("prefs.set", "{\"cache\":{\"listRows\":\"no\"}}");
+    assert_call_error(root, "bad_args", "integer");
+    json_decref(root);
     root = call_reply("prefs.set", "{\"cache\":{\"bodiesMb\":\"no\"}}");
     assert_call_error(root, "bad_args", "integer");
     json_decref(root);
@@ -6160,6 +6171,7 @@ void test_prefs_cache_round_trip(void) {
     text = slurp(path);
     TEST_ASSERT_NOT_NULL(strstr(text, "\"bodiesMb\": 100"));
     TEST_ASSERT_NOT_NULL(strstr(text, "\"blobsMb\": 50"));
+    TEST_ASSERT_NOT_NULL(strstr(text, "\"listRows\": 10000"));
     free(text);
 }
 
@@ -8788,6 +8800,132 @@ void test_mailbox_list_tree_shape(void) {
     assert_bad_account_id("identity.list", "{\"accountId\":\"\"}");
 }
 
+static void assert_message(json_t *messages, int index, const char *id, const char *from, const char *subject) {
+    json_t *row = json_array_get(messages, (size_t)index);
+
+    TEST_ASSERT_NOT_NULL(row);
+    TEST_ASSERT_EQUAL_STRING(id, json_string_value(json_object_get(row, "id")));
+    TEST_ASSERT_EQUAL_STRING(from, json_string_value(json_object_get(row, "from")));
+    TEST_ASSERT_EQUAL_STRING(subject, json_string_value(json_object_get(row, "subject")));
+}
+
+static json_t *list_mailbox(const char *id) {
+    char args[768];
+    int n = snprintf(args, sizeof(args), "{\"view\":{\"kind\":\"mailbox\",\"id\":\"%s\"}}", id);
+
+    TEST_ASSERT_TRUE(n > 0 && n < (int)sizeof(args));
+    return call_reply("message.list", args);
+}
+
+void test_message_list_folder(void) {
+    char sql[2048];
+    json_t *root;
+    json_t *data;
+    json_t *messages;
+    int wrote;
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    wrote = snprintf(sql, sizeof(sql),
+                     "INSERT INTO account_state (account_id) VALUES ('foods'), ('courses');"
+                     "INSERT INTO remote_account (id, account_id, jmap_account_id) VALUES "
+                     "('foods/a1', 'foods', 'a1'), ('courses/b1', 'courses', 'b1');"
+                     "INSERT INTO mailbox (ra_id, id, name) VALUES "
+                     "('foods/a1', 'in', 'Inbox'), ('foods/a1', 'empty', 'Empty'), "
+                     "('foods/a1', 'a:b', 'Colon'), ('courses/b1', 'in', 'Inbox');"
+                     "INSERT INTO email (rowid, ra_id, id, subject, from_json, received_at) VALUES "
+                     "(1, 'foods/a1', 'old', '<b>Hi</b>', '[{\"name\":\"Ann\",\"email\":\"a@b\"}]', 10),"
+                     "(2, 'foods/a1', 'mid', 'Say \"hi\"', '[{\"name\":\"\",\"email\":\"a@b\"}]', 20),"
+                     "(3, 'foods/a1', 'tie', NULL, '[]', 20),"
+                     "(4, 'courses/b1', 'other', 'Courses', '[{\"name\":\"Bea\",\"email\":\"b@c\"}]', 30),"
+                     "(5, 'foods/a1', 'colon', 'Colon', '[{\"name\":\"<script>\",\"email\":\"c@d\"}]', 5);"
+                     "INSERT INTO email_mailbox (email_rowid, ra_id, mailbox_id, received_at) VALUES "
+                     "(1, 'foods/a1', 'in', 10), (2, 'foods/a1', 'in', 20), (3, 'foods/a1', 'in', 20), "
+                     "(4, 'courses/b1', 'in', 30), (5, 'foods/a1', 'a:b', 5);");
+    TEST_ASSERT_TRUE(wrote > 0 && (size_t)wrote < sizeof(sql));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_db_call(exec_sql_job, sql), g_sql_err);
+
+    root = list_mailbox("mbx:foods/a1:in");
+    assert_ok(root);
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_STRING("foods", json_string_value(json_object_get(data, "accountId")));
+    TEST_ASSERT_EQUAL_INT(3, (int)json_integer_value(json_object_get(data, "total")));
+    messages = json_object_get(data, "messages");
+    TEST_ASSERT_EQUAL_INT(3, (int)json_array_size(messages));
+    assert_message(messages, 0, "tie", "", "");
+    assert_message(messages, 1, "mid", "a@b", "Say \"hi\"");
+    assert_message(messages, 2, "old", "Ann", "<b>Hi</b>");
+    json_decref(root);
+
+    root = list_mailbox("mbx:foods/a1:empty");
+    assert_ok(root);
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_STRING("foods", json_string_value(json_object_get(data, "accountId")));
+    TEST_ASSERT_EQUAL_INT(0, (int)json_integer_value(json_object_get(data, "total")));
+    TEST_ASSERT_EQUAL_INT(0, (int)json_array_size(json_object_get(data, "messages")));
+    json_decref(root);
+
+    root = list_mailbox("mbx:courses/b1:in");
+    assert_ok(root);
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_STRING("courses", json_string_value(json_object_get(data, "accountId")));
+    TEST_ASSERT_EQUAL_INT(1, (int)json_integer_value(json_object_get(data, "total")));
+    messages = json_object_get(data, "messages");
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(messages));
+    assert_message(messages, 0, "other", "Bea", "Courses");
+    json_decref(root);
+
+    root = list_mailbox("mbx:foods/a1:a:b");
+    assert_ok(root);
+    data = json_object_get(root, "data");
+    messages = json_object_get(data, "messages");
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(messages));
+    assert_message(messages, 0, "colon", "<script>", "Colon");
+    json_decref(root);
+
+    root = list_mailbox("mbx:foods/a1:missing");
+    assert_call_error(root, "not_found", "mailbox");
+    json_decref(root);
+    root = call_reply("message.list", "{\"view\":{\"kind\":\"mailbox\",\"id\":\"mbx:foods/a1:in\"},\"offset\":0}");
+    assert_call_error(root, "bad_args", "offset");
+    json_decref(root);
+    root = call_reply("message.list", "{\"view\":{\"kind\":\"unified\",\"id\":\"mbx:foods/a1:in\"}}");
+    assert_call_error(root, "bad_args", "mailbox");
+    json_decref(root);
+    root = call_reply("message.list", "{\"view\":{\"kind\":\"mailbox\"}}");
+    assert_call_error(root, "bad_args", "view.id");
+    json_decref(root);
+
+    root = call_reply("prefs.set", "{\"cache\":{\"listRows\":2}}");
+    assert_ok(root);
+    json_decref(root);
+    root = list_mailbox("mbx:foods/a1:in");
+    assert_ok(root);
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_INT(3, (int)json_integer_value(json_object_get(data, "total")));
+    messages = json_object_get(data, "messages");
+    TEST_ASSERT_EQUAL_INT(2, (int)json_array_size(messages));
+    assert_message(messages, 0, "tie", "", "");
+    assert_message(messages, 1, "mid", "a@b", "Say \"hi\"");
+    json_decref(root);
+
+    root = call_reply("prefs.set", "{\"cache\":{\"listRows\":10000}}");
+    assert_ok(root);
+    json_decref(root);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_db_call(exec_sql_job,
+        "UPDATE email SET subject = replace(hex(zeroblob(1100000)), '00', 'x') WHERE id IN ('mid', 'old')"),
+        g_sql_err);
+    root = list_mailbox("mbx:foods/a1:in");
+    assert_ok(root);
+    data = json_object_get(root, "data");
+    TEST_ASSERT_EQUAL_INT(3, (int)json_integer_value(json_object_get(data, "total")));
+    messages = json_object_get(data, "messages");
+    TEST_ASSERT_EQUAL_INT(2, (int)json_array_size(messages));
+    TEST_ASSERT_EQUAL_STRING("tie", json_string_value(json_object_get(json_array_get(messages, 0), "id")));
+    TEST_ASSERT_EQUAL_STRING("mid", json_string_value(json_object_get(json_array_get(messages, 1), "id")));
+    json_decref(root);
+}
+
 void test_sync_mailboxes_cannot_calculate(void) {
     char path[160];
     char got[192];
@@ -10136,6 +10274,7 @@ int main(void) {
     RUN_TEST(test_sync_mailboxes_paged);
     RUN_TEST(test_sync_mailboxes_refill);
     RUN_TEST(test_mailbox_list_tree_shape);
+    RUN_TEST(test_message_list_folder);
     RUN_TEST(test_sync_mailboxes_cannot_calculate);
     RUN_TEST(test_sync_mailboxes_delta_rename);
     RUN_TEST(test_email_backfill_pages);

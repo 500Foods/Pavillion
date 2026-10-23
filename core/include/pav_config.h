@@ -58,6 +58,7 @@ typedef struct PavProfile {
     int logs_migrated; /* logs named an old .log file and now names <id>.log.db */
     int bodies_mb;     /* preferences.cache.bodiesMb, default 2048 */
     int blobs_mb;      /* preferences.cache.blobsMb, default 4096 */
+    int list_rows;     /* preferences.cache.listRows, default 10000 */
     int cache_filled;  /* parse inserted a missing cache object or key */
     size_t account_count;
     char resolved_logs[4096];

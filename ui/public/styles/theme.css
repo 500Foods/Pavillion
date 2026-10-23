@@ -333,6 +333,24 @@
   background: var(--pav-surface-list);
 }
 
+.pav-root #mail-list {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pav-root #mail-list .mail-list-count {
+  flex: none;
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  color: var(--pav-text-muted);
+}
+
+.pav-root #mail-list .mail-list-table {
+  flex: 1;
+  min-height: 0;
+}
+
 .pav-root .pane-detail {
   position: relative;
   flex: 1;

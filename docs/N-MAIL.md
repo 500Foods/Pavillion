@@ -1,6 +1,6 @@
 # N — MAIL
 
-**Status:** Not started. N-3a is next (step 135) and was not started. The index names it. Scoped 2026-10-16 from plan §6, §7, §10, §13.
+**Status:** In progress. N-3a (step 135) is in progress. The window is not accepted. Scoped 2026-10-16 from plan §6, §7, §10, §13.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Reading and organizing mail: MIME, the sanitizer, the message list, the reading pane, threads, unified views, flags and moves, attachments, notifications, shortcuts, and folder retention. Sync is [M-SYNC.md](M-SYNC.md). Compose is [O-COMPOSE.md](O-COMPOSE.md). Search is [Q-SEARCH.md](Q-SEARCH.md). The mailbox tree is [E-TREE.md](E-TREE.md). The isolation rules are the [F-HARDEN.md](F-HARDEN.md) Lock and are not restated here.
@@ -13,7 +13,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | --- | --- | --- | --- |
 | N-1 | Body fetch and MIME with GMime; `message.get` text, parts, headers | Medium | Not started |
 | N-2 | The HTML sanitizer in the core and the hostile corpus | Hard | Not started |
-| N-3a | Message list: From and Subject for the selected folder | Medium | Not started |
+| N-3a | Message list: From and Subject for the selected folder | Medium | In progress |
 | N-3 | Message list: the remaining columns, selection, live row updates | Medium | Not started |
 | N-4 | Reading pane: sanitized HTML in the sandbox, remote content, `cid:`, links, plain text | Medium | Not started |
 | N-5 | Flags, move, delete, archive, junk, undo toast, mailbox management | Medium | Not started |
@@ -64,7 +64,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 ### Message list (was plan §6.1, §10)
 
-- Tabulator (`tabulator-tables`), themed on `--pav-*`, with virtual row render so 100k messages stay inside the frame budget (60 fps scroll at 100k). The page does not keep a copy of the mailbox. Remote pagination over `message.list` in pages of 100 feeds the table as the user scrolls. Contacts (S) and files (U) use the same module (`ui/src/common/table.js`). No second table library.
+- Tabulator (`tabulator-tables`), themed on `--pav-*`, with virtual row render. Pagination stays off, because it turns the virtual DOM off. The mail list loads one `message.list` reply and keeps those rows. The reply is the newest messages in the selected folder, up to `preferences.cache.listRows` (default 10,000, whole numbers from 1 to 10,000), plus `total` for the whole folder. Settings → Limits edits that integer and labels it Message list (Andrew, 2026-10-22). A folder with more messages shows the newest rows, and a count of how many of `total` are listed. The reply stays under 2 MB: the command stops before the next row would pass that, and `total` stays the real count. Contacts (S) and files (U) use the same module (`ui/src/common/table.js`). No second table library.
 - Shared table component (Andrew, 2026-10-19, pulled ahead of N-3): `tabulator-tables` 6.6.1, pinned exactly in `ui/package.json`, MIT licence, bundled by Vite from `node_modules` (no CDN, no Tabulator stylesheet). `ui/src/common/tabulator-lib.js` is the only module that imports it (named re-exports, so unused modules are tree-shaken), and `ui/src/common/table.js` loads that file by dynamic import, so Vite puts it in its own chunk loaded on first use; it registers only the Format and Interaction modules. Screens call `createTable(el, {columns, data, rowId, onRowClick, rowClass, groupBy, groupHeader, groupOrder, footerElement, select, onRender, download})` (K-Q11, K-Q12). The wrapper registers only the modules a table asks for: Format, Interaction and ResizeTable always; GroupRows for `groupBy`; Sort when a column sorts; ColumnCalcs when a column has `bottomCalc`; SelectRow for `select`; Export and Download for `download`. Never `TabulatorFull`. Tables fill their element (`height:"100%"`, virtual renderer) and redraw through ResizeTable. Sorting is tri-state with Font Awesome icons. `footerElement` is a DOM node the page owns, placed under the calc row. The handle is `setData`, `select(id)` (single selection, scrolls into view), `ids()` (display order), `download(name)`, `destroy()`. See [TABULATOR.md](TABULATOR.md). Shared tables fit their panel by default (Andrew, 2026-10-19): layout `fitColumns`, the main text column takes the rest (`widthGrow`), icon and checkbox columns keep fixed narrow widths, and a `ResizeObserver` on the table element calls `redraw()` when the panel or a divider changes its size. Its look comes only from `--pav-*` variables in `ui/public/styles/theme.css` (`.pav-table`). Cells are text or built DOM with `textContent`; no HTML formatter takes outside data. The first user is the Settings → Accounts list (K-Q8); N-3 extends the same module for the message list (virtual rows, selection).
 - Row: account color bar, from (or to in Sent and Drafts), subject, preview, 24 h time today or `Oct 14` this year or `2026-10-14` older (`preferences.time_format`), flags (unread dot, flag, answered, forwarded), attachment icon. Formatters return text, or set `textContent`. An icon is an element this module creates from a class name. A formatter that returns an HTML string is an HTML sink and is forbidden.
 - Threaded or flat per view (`ui.mail.threaded[viewKey]`). Sort by date desc default.
@@ -152,7 +152,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 ## N-3a: From and Subject
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** In progress. Last finished work item is the Help page. `make test` is 213 Unity, 2 Rust, and 380 Vitest, exit 0 (2026-10-22). A temporary profile against the container listed a new Inbox message after the next poll (120 s). The window is not accepted.
 
 **Goal:** The selected mailbox shows the messages already stored for it, From and Subject, so a sync can be checked on screen.
 
@@ -160,16 +160,16 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 **Work items:**
 
-- [ ] `message.list` returns one mailbox's messages, newest `received_at` first, at most 100, plus `total`. Each row is `id`, `from` (the first address's name, or its email when the name is empty), and `subject`. Strings are data. `docs/API.md` lists the command as `State: real` in the shape the Unity test parses.
-- [ ] The Mail home shows that page in the existing Tabulator (`createTable`) when a mailbox is selected. Columns are From and Subject. Cells are text. A `mail.messages_changed` for that account loads the page again. A row click does nothing.
-- [ ] Unity: order, the 100 cap, from and subject text, an empty mailbox, and a mailbox on another account. A Vitest covers the two columns as text.
-- [ ] Help says the list is From and Subject for the selected folder.
+- [x] `message.list` returns one mailbox's messages, newest `received_at` first, at most `preferences.cache.listRows` (default 10,000), plus `total`. Each row is `id`, `from` (the first address's name, or its email when the name is empty), and `subject`. Strings are data. `docs/API.md` lists the command as `State: real` in the shape the Unity test parses. Settings → Limits edits `listRows`.
+- [x] The Mail home shows that reply in the existing Tabulator (`createTable`) when a mailbox is selected. Columns are From and Subject. Cells are text. There is no second page and no scroll-triggered load. A count says how many of `total` are listed. A `mail.messages_changed` for that account loads the reply again. A row click does nothing.
+- [x] Unity: order, the `listRows` cap, from and subject text, an empty mailbox, and a mailbox on another account. A Vitest covers the two columns as text.
+- [x] Help says the list is From and Subject for the selected folder, and that the cap is on Settings → Limits.
 
 **Done means:** Clicking a folder lists From and Subject for the messages stored in it.
 
 **Exit gate:** `make test` exits 0. In the window, a synced folder shows those two columns, and a change from another client shows up after the next poll when the list reloads.
 
-Preview, flags, time, the attachment icon, the account color bar, selection, keyboard, virtual scrolling through the rest of the folder, and `debug.seed_messages` stay in N-3. Bodies, the sanitizer, and the reading pane stay in N-1, N-2, and N-4. `message.list` kinds `unified`, `search`, and `threaded` stay in N-3 and Q-1. The Tabulator package and `createTable` are already in the tree. This phase does not add a second table library.
+Preview, flags, time, the attachment icon, the account color bar, selection, keyboard, and `debug.seed_messages` stay in N-3. Bodies, the sanitizer, and the reading pane stay in N-1, N-2, and N-4. `message.list` kinds `unified`, `search`, and `threaded` stay in N-3 and Q-1. The Tabulator package and `createTable` are already in the tree. This phase does not add a second table library. The loaded rows use the virtual renderer. Rows past `listRows` are not fetched.
 
 ## N-3: Message list
 
@@ -182,17 +182,17 @@ Preview, flags, time, the attachment icon, the account color bar, selection, key
 
 **Work items:**
 
-- [ ] Add `tabulator-tables`. `ui/src/common/table.js` and `ui/src/mail/list.js` with the Lock's columns, text-only formatters, virtual row render, and remote pagination over `message.list`.
-- [ ] `message.list` in the core with view kinds `mailbox` and `unified` (`search` in Q-1), offset, limit, and `threaded` (flat first; threaded in N-6).
+- [ ] Extend the N-3a table with the Lock's remaining columns and text-only formatters. The rows are the one reply N-3a loaded. Do not add pagination.
+- [ ] `message.list` gains view kind `unified` (`search` in Q-1) and `threaded` (flat first; threaded in N-6). Kind `mailbox` and `listRows` are N-3a.
 - [ ] Selection, keyboard focus, and the `list` shortcut scope (`j`/`k`, `Enter`).
 - [ ] Live updates from `mail.messages_changed` patch rows by id.
 - [ ] `ui/styles/list.css` themes Tabulator on `--pav-*` variables.
 - [ ] Record the gzipped size of `ui/dist` in Accomplished. The size is a record. It is not a reason to drop Tabulator.
-- [ ] A debug-only fixture generator `debug.seed_messages {count}` to test 100k rows.
+- [ ] A debug-only fixture generator `debug.seed_messages {count}` to fill a folder up to the list cap.
 
-**Done means:** Clicking Inbox in the tree lists its messages; 100k seeded rows scroll smoothly.
+**Done means:** Clicking Inbox in the tree lists its messages, and the loaded rows scroll smoothly.
 
-**Exit gate:** `make test` exits 0. In `make build`: real Inbox lists; with 100k seeded rows, scroll from top to bottom without visible stalls (record a devtools frame rate in Accomplished).
+**Exit gate:** `make test` exits 0. In `make build`: real Inbox lists, and scrolling the loaded rows does not draw a DOM node per message.
 
 ## N-4: Reading pane
 
@@ -333,3 +333,4 @@ Preview, flags, time, the attachment icon, the account color bar, selection, key
 - 2026-10-18 Section chords are Ctrl+1 through Ctrl+7: mail, contacts, calendars, tasks, files, notes, argent. Grok has no number. The old Ctrl+4-is-files line in the 2026-10-16 log stays as history.
 - 2026-10-18 Those digits are the defaults. Settings → Features assigns Ctrl+1 through Ctrl+9, or none, per button. The earlier log line stays as the default that shipped that morning.
 - 2026-10-18 GitHub has no number. The chord row above is unchanged.
+- 2026-10-22 N-3a in progress. `message.list` returns From and Subject for one mailbox, newest first, capped by `preferences.cache.listRows` (default 10,000, Settings → Limits). The mail list loads that one reply and does not page. `make test` is 213 Unity, 2 Rust, and 380 Vitest, exit 0. A container check on a temporary profile showed a new Inbox message after the 120 s poll. The window is not accepted.

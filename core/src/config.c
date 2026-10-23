@@ -169,10 +169,19 @@ static int fill_cache(json_t *prefs, PavProfile *profile, char *err, size_t err_
         }
         filled = 1;
     }
+    if (json_object_get(cache, "listRows") == NULL) {
+        if (json_object_set_new(cache, "listRows", json_integer(PAV_LIST_ROWS_DEFAULT)) != 0) {
+            cfg_err(err, err_len, "out of memory");
+            return -1;
+        }
+        filled = 1;
+    }
     if (cfg_int_range(cache, "bodiesMb", PAV_CACHE_BODIES_MB, PAV_CACHE_MB_MIN, PAV_CACHE_MB_MAX, 0,
                       &profile->bodies_mb, err, err_len) != 0 ||
         cfg_int_range(cache, "blobsMb", PAV_CACHE_BLOBS_MB, PAV_CACHE_MB_MIN, PAV_CACHE_MB_MAX, 0,
-                      &profile->blobs_mb, err, err_len) != 0) {
+                      &profile->blobs_mb, err, err_len) != 0 ||
+        cfg_int_range(cache, "listRows", PAV_LIST_ROWS_DEFAULT, PAV_LIST_ROWS_MIN, PAV_LIST_ROWS_MAX, 0,
+                      &profile->list_rows, err, err_len) != 0) {
         return -1;
     }
     profile->cache_filled = filled;

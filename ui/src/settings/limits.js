@@ -1,14 +1,19 @@
-/* Settings → Limits (L Lock, J Lock): preferences.cache bodiesMb and
-   blobsMb, labeled Database and Document. Refresh reloads them. Apply
-   writes both through prefs.set. The page clamps each value to
-   1..1048576. The log size cap stays on Logs. */
+/* Settings → Limits (L Lock, J Lock): preferences.cache bodiesMb,
+   blobsMb, and listRows, labeled Database, Document, and Message list.
+   Refresh reloads them. Apply writes them through prefs.set. The page
+   clamps the megabyte values to 1..1048576 and the message list to
+   1..10000. The log size cap stays on Logs. A fixture without the
+   message-list field omits listRows. */
 
 import { moduleFooter, moduleToolbar, mountBar } from "../common/module-bar.js";
 
 const MIN_MB = 1;
 const MAX_MB = 1048576;
+const MIN_ROWS = 1;
+const MAX_ROWS = 10000;
 const DEFAULT_BODIES = 2048;
 const DEFAULT_BLOBS = 4096;
+const DEFAULT_ROWS = 10000;
 const MB = 1024 * 1024;
 const GB = 1024 * 1024 * 1024;
 
@@ -212,27 +217,37 @@ function storedMb(cache, key, fallback) {
 }
 
 /* A blank or non-integer field goes back to the saved value. A number
-   outside 1..1048576 snaps to that end. The field shows what will be saved. */
-function readMb(input, saved) {
+   outside the range snaps to that end. The field shows what will be saved. */
+function readBounded(input, saved, min, max) {
   const raw = input.value.trim();
   if (!/^[0-9]+$/.test(raw)) {
     input.value = String(saved);
     return saved;
   }
   let n = Number(raw);
-  if (n < MIN_MB) {
-    n = MIN_MB;
+  if (n < min) {
+    n = min;
   }
-  if (n > MAX_MB) {
-    n = MAX_MB;
+  if (n > max) {
+    n = max;
   }
   input.value = String(n);
   return n;
 }
 
+function readMb(input, saved) {
+  return readBounded(input, saved, MIN_MB, MAX_MB);
+}
+
+function storedRows(cache) {
+  const value = cache && cache.listRows;
+  return Number.isInteger(value) && value >= MIN_ROWS && value <= MAX_ROWS ? value : DEFAULT_ROWS;
+}
+
 export function createLimitsSettings(api, root, options = {}) {
   const bodies = root.querySelector("#limits-bodies");
   const blobs = root.querySelector("#limits-blobs");
+  const listRowsInput = root.querySelector("#limits-list-rows");
   if (!bodies || !blobs) {
     return {
       refresh: () => Promise.resolve(),
@@ -254,6 +269,7 @@ export function createLimitsSettings(api, root, options = {}) {
   const checked = root.querySelector("#limits-checked");
   let savedBodies = DEFAULT_BODIES;
   let savedBlobs = DEFAULT_BLOBS;
+  let savedRows = DEFAULT_ROWS;
   let ticket = 0;
   let measuring = false;
   let stopEvents = null;
@@ -345,6 +361,9 @@ export function createLimitsSettings(api, root, options = {}) {
   function paint() {
     bodies.value = String(savedBodies);
     blobs.value = String(savedBlobs);
+    if (listRowsInput) {
+      listRowsInput.value = String(savedRows);
+    }
   }
 
   function onProgress(payload) {
@@ -404,6 +423,7 @@ export function createLimitsSettings(api, root, options = {}) {
       const cache = prefs && prefs.cache;
       savedBodies = storedMb(cache, "bodiesMb", DEFAULT_BODIES);
       savedBlobs = storedMb(cache, "blobsMb", DEFAULT_BLOBS);
+      savedRows = storedRows(cache);
       paint();
       if (usage) {
         paintUsage(usage);
@@ -465,13 +485,18 @@ export function createLimitsSettings(api, root, options = {}) {
     ticket = mine;
     const bodiesMb = readMb(bodies, savedBodies);
     const blobsMb = readMb(blobs, savedBlobs);
-    return api.prefs.set({ cache: { bodiesMb, blobsMb } }).then((prefs) => {
+    const cachePatch = { bodiesMb, blobsMb };
+    if (listRowsInput) {
+      cachePatch.listRows = readBounded(listRowsInput, savedRows, MIN_ROWS, MAX_ROWS);
+    }
+    return api.prefs.set({ cache: cachePatch }).then((prefs) => {
       if (mine !== ticket) {
         return null;
       }
       const cache = prefs && prefs.cache;
       savedBodies = storedMb(cache, "bodiesMb", bodiesMb);
       savedBlobs = storedMb(cache, "blobsMb", blobsMb);
+      savedRows = storedRows(cache);
       paint();
       settleButton();
       return prefs;
@@ -486,6 +511,10 @@ export function createLimitsSettings(api, root, options = {}) {
 
   function onBlur(event) {
     const input = event.currentTarget;
+    if (input === listRowsInput) {
+      readBounded(input, savedRows, MIN_ROWS, MAX_ROWS);
+      return;
+    }
     readMb(input, input === bodies ? savedBodies : savedBlobs);
   }
 
@@ -508,7 +537,7 @@ export function createLimitsSettings(api, root, options = {}) {
       action: "apply",
       icon: "fa-check",
       text: "Apply",
-      label: "Save cache limits",
+      label: "Save limits",
       onClick: () => {
         apply();
       },
@@ -536,6 +565,10 @@ export function createLimitsSettings(api, root, options = {}) {
   blobs.addEventListener("blur", onBlur);
   bodies.addEventListener("keydown", onKey);
   blobs.addEventListener("keydown", onKey);
+  if (listRowsInput) {
+    listRowsInput.addEventListener("blur", onBlur);
+    listRowsInput.addEventListener("keydown", onKey);
+  }
   if (measureButton) {
     measureButton.addEventListener("click", onMeasure);
   }
@@ -560,6 +593,10 @@ export function createLimitsSettings(api, root, options = {}) {
       blobs.removeEventListener("blur", onBlur);
       bodies.removeEventListener("keydown", onKey);
       blobs.removeEventListener("keydown", onKey);
+      if (listRowsInput) {
+        listRowsInput.removeEventListener("blur", onBlur);
+        listRowsInput.removeEventListener("keydown", onKey);
+      }
       if (measureButton) {
         measureButton.removeEventListener("click", onMeasure);
       }

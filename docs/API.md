@@ -548,9 +548,27 @@ State: planned (N-1)
 
 ### message.list
 
-State: planned (N-3)
+State: real (N-3a)
 
-`{view:{kind:"mailbox",id}|{kind:"unified",role}|{kind:"search",query}, offset, limit, threaded}`. `search` arrives in Q-1. Threaded rows arrive in N-6.
+One folder's stored messages, newest `receivedAt` first. The page loads this one reply. It does not ask again while scrolling.
+
+Args: `{view:{kind:"mailbox", id}}`. `id` is the mailbox tree node id (`mbx:<ra_id>:<mailboxId>`). Any other key, any other `view` key, a `kind` other than `mailbox`, or a missing id is `bad_args`. An id that is not a stored mailbox is `not_found`.
+
+Result:
+
+```json
+{
+  "accountId": "andrew-500foods-com",
+  "total": 3,
+  "messages": [
+    { "id": "e3", "from": "Ann", "subject": "Hello" }
+  ]
+}
+```
+
+`messages` is at most `preferences.cache.listRows` (default 10,000, from 1 to 10,000). `total` is the folder count, including rows past that cap. Order is `received_at` descending, then `email.rowid` descending. `from` is the first address's name, or its email when the name is empty, or `""` when both are empty. `subject` is `""` when the stored subject is null. `accountId` is the profile account that owns the folder. Strings are data. The reply stays under 2 MB: a further row that would pass that is left out, and `total` does not change. `unified`, `search`, `offset`, `limit`, and `threaded` are later (N-3, N-6, Q-1) and are `bad_args` until then.
+
+Errors: `bad_args`, `not_found`, `not_ready`, `internal`, `too_large`.
 
 ### message.move
 
@@ -648,7 +666,7 @@ Result:
   "windowY": null,
   "chrome": "system",
   "logLevel": "info",
-  "cache": { "bodiesMb": 2048, "blobsMb": 4096 }
+  "cache": { "bodiesMb": 2048, "blobsMb": 4096, "listRows": 10000 }
 }
 ```
 
@@ -662,7 +680,7 @@ State: real (G-2)
 
 Writes the same fields. Keys that are absent stay as stored. `{}` is `bad_args`. An unknown key is `bad_args`. Profile fields are written once. `logLevel` is written on the index and applied to the running process as the view default; it does not change what is captured. A request that only sets `logLevel` does not write the profile.
 
-Args: any subset of the `prefs.get` result. Booleans are JSON booleans. Width, height, and coordinates are integers. `windowX` or `windowY` set to null clears that coordinate. Strings must be non-empty and fit the profile field (`timezone` 63 bytes, `weekStart` 15, `timeFormat` 7, `theme` 15, `density` 15, `chrome` 15). Width and height are 200 to 10000. A set coordinate is -32000 to 32000. `chrome` is `system` or `hidden`. `logLevel` is `error`, `warn`, `info`, or `debug`. `cache` is an object with `bodiesMb`, `blobsMb`, or both. Each is an integer from 1 to 1048576. An empty `cache` object, or a key other than those two, is `bad_args`. Absent cache keys stay as stored.
+Args: any subset of the `prefs.get` result. Booleans are JSON booleans. Width, height, and coordinates are integers. `windowX` or `windowY` set to null clears that coordinate. Strings must be non-empty and fit the profile field (`timezone` 63 bytes, `weekStart` 15, `timeFormat` 7, `theme` 15, `density` 15, `chrome` 15). Width and height are 200 to 10000. A set coordinate is -32000 to 32000. `chrome` is `system` or `hidden`. `logLevel` is `error`, `warn`, `info`, or `debug`. `cache` is an object with `bodiesMb`, `blobsMb`, `listRows`, or any subset of those. `bodiesMb` and `blobsMb` are integers from 1 to 1048576. `listRows` is an integer from 1 to 10000. An empty `cache` object, or any other cache key, is `bad_args`. Absent cache keys stay as stored.
 
 Result: the `prefs.get` object after the write.
 

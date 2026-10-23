@@ -341,7 +341,12 @@ test("Settings → Limits shows the defaults, saves them, and keeps the help jum
   expect(blobs.value).toBe("4096");
   expect(pane.querySelector("#limits-bodies-used").textContent).toBe("0.0 MB on disk");
   expect(pane.querySelector("#limits-blobs-used").textContent).toBe("0.0 MB on disk");
-  expect([...pane.querySelectorAll(".limits-list .zoom-label")].map((node) => node.textContent)).toEqual(["Database", "Document"]);
+  expect([...pane.querySelectorAll(".limits-list .zoom-label")].map((node) => node.textContent)).toEqual([
+    "Database",
+    "Document",
+    "Message list",
+  ]);
+  expect(pane.querySelector("#limits-list-rows").value).toBe("10000");
   expect([...pane.querySelectorAll(".limits-kind")].map((node) => node.textContent)).toEqual([
     "(Mail, Contacts, Calendars)",
     "(Attachments, Files)",
@@ -358,12 +363,44 @@ test("Settings → Limits shows the defaults, saves them, and keeps the help jum
   pane.querySelector('[data-module-action="apply"]').click();
   await flush();
   expect(transport.seen.filter((item) => item.cmd === "prefs.set").pop().args).toEqual({
-    cache: { bodiesMb: 100, blobsMb: 50 },
+    cache: { bodiesMb: 100, blobsMb: 50, listRows: 10000 },
   });
-  expect((await api.prefs.get()).cache).toEqual({ bodiesMb: 100, blobsMb: 50 });
+  expect((await api.prefs.get()).cache).toEqual({ bodiesMb: 100, blobsMb: 50, listRows: 10000 });
   bodies.value = "12";
+  pane.querySelector("#limits-list-rows").value = "20";
   pane.querySelector('[data-module-action="refresh"]').click();
   await flush();
   expect(bodies.value).toBe("100");
   expect(blobs.value).toBe("50");
+  expect(pane.querySelector("#limits-list-rows").value).toBe("10000");
+});
+
+test("Apply writes the message list cap and clamps it", async () => {
+  const transport = mockTransport();
+  const root = document.createElement("div");
+  // html-ok: static test fixture, not outside data.
+  root.innerHTML = `
+    <div id="limits-toolbar" class="button-bar"></div>
+    <input id="limits-bodies" type="number" value="2048" />
+    <input id="limits-blobs" type="number" value="4096" />
+    <input id="limits-list-rows" type="number" min="1" max="10000" value="10000" />
+    <div id="limits-footer" class="button-bar"></div>`;
+  document.body.append(root);
+  const settings = createLimitsSettings(createApi(transport), root);
+  await settings.refresh();
+  const rows = root.querySelector("#limits-list-rows");
+  rows.value = "0";
+  await settings.apply();
+  expect(transport.seen.filter((item) => item.cmd === "prefs.set").pop().args).toEqual({
+    cache: { bodiesMb: 2048, blobsMb: 4096, listRows: 1 },
+  });
+  expect(rows.value).toBe("1");
+  rows.value = "20000";
+  await settings.apply();
+  expect(rows.value).toBe("10000");
+  expect((await createApi(transport).prefs.get()).cache.listRows).toBe(10000);
+  rows.value = "nope";
+  rows.dispatchEvent(new Event("blur"));
+  expect(rows.value).toBe("10000");
+  settings.destroy();
 });

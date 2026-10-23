@@ -11,6 +11,11 @@
 #define PAV_CACHE_MB_MIN 1
 #define PAV_CACHE_MB_MAX (1024 * 1024)
 
+/* N-3a. Newest messages one message.list reply will hold. Not a disk budget. */
+#define PAV_LIST_ROWS_DEFAULT 10000
+#define PAV_LIST_ROWS_MIN 1
+#define PAV_LIST_ROWS_MAX 10000
+
 /* Resolved blobs directory for the open profile. */
 int pav_blob_bind(const char *root);
 void pav_blob_unbind(void);

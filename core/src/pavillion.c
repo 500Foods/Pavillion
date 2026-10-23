@@ -1496,7 +1496,8 @@ int pav_core_prefs_get_data(json_t **data, PavError *err) {
         json_t *cache = json_object();
 
         if (cache == NULL || json_object_set_new(cache, "bodiesMb", json_integer(profile->bodies_mb)) != 0 ||
-            json_object_set_new(cache, "blobsMb", json_integer(profile->blobs_mb)) != 0) {
+            json_object_set_new(cache, "blobsMb", json_integer(profile->blobs_mb)) != 0 ||
+            json_object_set_new(cache, "listRows", json_integer(profile->list_rows)) != 0) {
             json_decref(cache);
             json_decref(obj);
             pav_error_set(err, "internal", "out of memory", 0);
@@ -1523,6 +1524,22 @@ int pav_core_prefs_get_data(json_t **data, PavError *err) {
         }
     }
     *data = obj;
+    return 0;
+}
+
+static int take_list_rows(json_t *value, int *out, PavError *err) {
+    json_int_t number;
+
+    if (!json_is_integer(value)) {
+        pav_error_set(err, "bad_args", "listRows must be an integer", 0);
+        return -1;
+    }
+    number = json_integer_value(value);
+    if (number < PAV_LIST_ROWS_MIN || number > PAV_LIST_ROWS_MAX) {
+        pav_error_set(err, "bad_args", "listRows is out of range", 0);
+        return -1;
+    }
+    *out = (int)number;
     return 0;
 }
 
@@ -1697,6 +1714,8 @@ int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
     int bodies_mb = 0;
     int blobs_mb = 0;
     int bodies_set = 0;
+    int list_set = 0;
+    int list_rows = 0;
     int blobs_set = 0;
 
     if (data == NULL) {
@@ -1799,6 +1818,11 @@ int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
                         return -1;
                     }
                     blobs_set = 1;
+                } else if (strcmp(cache_key, "listRows") == 0) {
+                    if (take_list_rows(cache_value, &list_rows, err) != 0) {
+                        return -1;
+                    }
+                    list_set = 1;
                 } else {
                     snprintf(buf, sizeof(buf), "unknown preference cache.%s", cache_key);
                     pav_error_set(err, "bad_args", buf, 0);
@@ -1825,7 +1849,7 @@ int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
         return -1;
     }
     profile_touched = window_touched || timezone != NULL || week_start != NULL || time_format != NULL ||
-                      theme != NULL || density != NULL || bodies_set || blobs_set;
+                      theme != NULL || density != NULL || bodies_set || blobs_set || list_set;
     if (profile_touched && window_touched &&
         pav_profile_write_shell(profile, &shell, PAV_PREFS_WINDOW, errbuf, sizeof(errbuf)) != 0) {
         return fail_profile(err, errbuf);
@@ -1846,7 +1870,8 @@ int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
         return fail_profile(err, errbuf);
     }
     if ((bodies_set && write_cache_mb(profile, "bodiesMb", bodies_mb, errbuf, sizeof(errbuf)) != 0) ||
-        (blobs_set && write_cache_mb(profile, "blobsMb", blobs_mb, errbuf, sizeof(errbuf)) != 0)) {
+        (blobs_set && write_cache_mb(profile, "blobsMb", blobs_mb, errbuf, sizeof(errbuf)) != 0) ||
+        (list_set && write_cache_mb(profile, "listRows", list_rows, errbuf, sizeof(errbuf)) != 0)) {
         return fail_profile(err, errbuf);
     }
     if (bodies_set) {
@@ -1854,6 +1879,9 @@ int pav_core_prefs_set(json_t *args, json_t **data, PavError *err) {
     }
     if (blobs_set) {
         profile->blobs_mb = blobs_mb;
+    }
+    if (list_set) {
+        profile->list_rows = list_rows;
     }
     if (bodies_set || blobs_set) {
         pav_cache_set_limits(profile->bodies_mb, profile->blobs_mb);

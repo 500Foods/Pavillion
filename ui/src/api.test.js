@@ -80,6 +80,20 @@ describe("createApi over the mock transport", () => {
     expect(sent.args.level).toBe("error");
   });
 
+  test("message.list sends the mailbox view", async () => {
+    const transport = mockTransport();
+    const api = createApi(transport);
+    await expect(api.message.list({ view: { kind: "mailbox", id: "mbx:foods/a1:in" } })).resolves.toEqual({
+      accountId: "default",
+      messages: [],
+      total: 0,
+    });
+    expect(transport.seen.at(-1)).toEqual({
+      cmd: "message.list",
+      args: { view: { kind: "mailbox", id: "mbx:foods/a1:in" } },
+    });
+  });
+
   test("mailbox.list sends the account id only when one is given", async () => {
     const transport = mockTransport();
     const api = createApi(transport);
