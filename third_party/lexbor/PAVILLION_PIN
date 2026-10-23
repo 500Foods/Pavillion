@@ -1,0 +1,4 @@
+v3.0.0 2ae88a1c6b5261830eff73ee12bb3cdf805f3cfe
+Kept from the tag: source/, CMakeLists.txt, config.cmake, feature.cmake, LICENSE, NOTICE, README.md, version, and this pin.
+Left out: test/, examples/, benchmarks/, utils/, wasm/, images/, packaging/, and the tag's scripts. Those are not needed to build liblexbor_static.a. utils/ and test/ also ship Python, which this repo does not.
+Commits after this tag are not applied.
