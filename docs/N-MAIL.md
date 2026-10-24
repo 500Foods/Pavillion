@@ -1,6 +1,6 @@
 # N — MAIL
 
-**Status:** N-2 complete (2026-10-23). The index names the next phase. Scoped 2026-10-16 from plan §6, §7, §10, §13.
+**Status:** N-2 complete (2026-10-23). The index names N-3 next (step 61). N-3 was not started. Scoped 2026-10-16 from plan §6, §7, §10, §13.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Reading and organizing mail: MIME, the sanitizer, the message list, the reading pane, threads, unified views, flags and moves, attachments, notifications, shortcuts, and folder retention. Sync is [M-SYNC.md](M-SYNC.md). Compose is [O-COMPOSE.md](O-COMPOSE.md). Search is [Q-SEARCH.md](Q-SEARCH.md). The mailbox tree is [E-TREE.md](E-TREE.md). The isolation rules are the [F-HARDEN.md](F-HARDEN.md) Lock and are not restated here.
@@ -253,7 +253,7 @@ Andrew opened the live profile on 2026-10-23. The count is there and the list fi
 ## N-3: Message list
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Not started. Q-1 left `message.list` view kind `search` real. This phase adds `unified` and leaves `search` in place.
 
 **Goal:** The Mail home tab shows the selected mailbox's messages with smooth scrolling at 100k rows. From and Subject for one page are N-3a. This phase extends that table. N-3a stores `$deleted` in `keywords` and lists every message still in the mailbox. Filtering that flag is part of this later mail work, with N-5.
 

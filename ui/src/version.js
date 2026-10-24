@@ -6,6 +6,6 @@
    0.phase.0. */
 import buildText from "../../PAVILLION_BUILD?raw";
 
-export const APP_PHASE = "0.66";
+export const APP_PHASE = "0.67";
 export const APP_BUILD = buildText.trim();
 export const APP_VERSION = `${APP_PHASE}.${APP_BUILD}`;
