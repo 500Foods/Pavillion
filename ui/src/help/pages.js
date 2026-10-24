@@ -343,6 +343,13 @@ export const helpPages = [
         ],
       },
       {
+        id: "formats",
+        title: "Formats",
+        paragraphs: [
+          "ui/src/formats.js is the only module that turns a stored instant into display text. Screens call formatInstant. They do not format a date themselves. The strings live in preferences.ui.formats. The core does not read them. A missing time string follows time_format. A saved string that differs from that default wins, and a string equal to the default is left out of the save. Luxon does not reject an unknown token, so the page allowlists the tokens the Formats topic lists. dateShort is the message-list rule: the time pattern on the same local day, the dateShort pattern in the same year, and the date pattern otherwise. Copy, Save, and Print in the log use the display line. Save writes that line through export.write_text. log.export still writes UTC lines.",
+        ],
+      },
+      {
         id: "module-bars",
         title: "Module bars",
         paragraphs: [
@@ -397,7 +404,7 @@ export const helpPages = [
         paragraphs: [
           "One profile stays loaded until the process stops. Paths are relative to the working directory unless they begin with a slash. The engine is sqlite. The connection field is only for another engine, and it holds no password. Message bodies are files under blobs.",
           "preferences.ui.features holds mail, contacts, calendars, tasks, files, notes, argent, bots, github, activity, update, and help. Each is true or false. Settings is not in that list. A missing value is on for mail, contacts, calendars, files, activity, update, and help, and off for tasks, notes, argent, bots, and github. preferences.ui.rail is top and bottom, the button order. preferences.ui.chords maps a button to a digit from 1 to 9, or to nothing. The core does not read these keys.",
-          "preferences.ui is opaque to the core. The page stores zoom, nav width, splits, fonts, icons, the activity view, the rail order, the shortcuts, and the open tabs there. The core does not invent missing zoom keys and does not read the tab list. The page clamps the keys it knows and keeps the rest. log_level lives on the index because logging starts before a profile is usable. themes_folder is an optional index key. Absent, theme files sit beside Pavillion.json.",
+          "preferences.ui is opaque to the core. The page stores zoom, nav width, splits, fonts, icons, formats, the activity view, the rail order, the shortcuts, and the open tabs there. The core does not invent missing zoom keys and does not read the tab list or the format strings. The page clamps the keys it knows and keeps the rest. log_level lives on the index because logging starts before a profile is usable. themes_folder is an optional index key. Absent, theme files sit beside Pavillion.json.",
           "The open tabs are preferences.ui.session.tabs. preferences.ui.session.restore defaults to on. preferences.ui.session.shutdown is clean after a quit and open while the app is running. Ctrl+C requests that same quit. The window stays up until that clean value is stored. A forced kill leaves it open. preferences.ui.session.maxTabs defaults to 50. Zoom, the nav width, and the theme stay in their own keys.",
           "Ctrl+C is caught in the UI process. JavaScriptCore's scavenger thread does not keep the blocked mask, so the shell installs a handler that only counts the signal and then runs the same quit as the window close. WebKitGTK 2.52 aborts its web process during EGL teardown after that save. The shell sets WEBKIT_DISABLE_COMPOSITING_MODE when it is unset, which turns accelerated compositing off. A value already in the environment is left alone.",
         ],

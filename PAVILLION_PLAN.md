@@ -4,10 +4,10 @@ Status: v0.7 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 
 **Resume:** each phase's history is in its own document's Working log; this block is only the current state.
 
-- Last finished: Q-1 (step 60), 2026-10-23, in [docs/Q-SEARCH.md](docs/Q-SEARCH.md). FTS5 indexing and local search. `search.run` requires `server` false. `message.list` accepts view kind `search`. `index.rebuild` is an activity. A header row calls `pav_fts_index_headers` directly. The indexed body is the SQL literal `''`. Andrew asked for this close-out the same day. The agent does not commit. CI on the code is green at `8a64fef`: fedora, macos-core, windows-core, run [40041797045](https://github.com/500Foods/Pavillion/actions/runs/40041797045). The window was not opened.
-- Next: D-8 (step 132), in progress, in [docs/D-UI.md](docs/D-UI.md). Andrew chose it on 2026-10-23, before N-3, so the message list uses `formats.js`. The Formats pane describes each kind, shows an example of the default pattern, and lists default patterns (Custom keeps any other allowed string). Help lists the tokens. The luxon gzip figure is still open. The window is not accepted. N-3 (step 61) was not started. His N-3 choices are in [docs/N-MAIL.md](docs/N-MAIL.md): `unified` has five names, `debug.seed_messages` takes `{mailboxId, count}`, and the list theme extends `.pav-table` in `theme.css`. Do not start N-3 in the D-8 session. The search field stays in Q-2. The Accounts table polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md). The agent does not commit.
-- Last full `make test`: 247 Unity tests, 2 Rust tests and 397 Vitest tests, exit 0 (2026-10-23, D-8 in progress). The phase stamp is `0.67.0`.
-- `PAVILLION_API_VERSION` is 3. The phase stamp is `0.67.0` (67 Done rows), release date 2026-10-23.
+- Last finished: D-8 (step 132), 2026-10-23, in [docs/D-UI.md](docs/D-UI.md). Settings → Formats. Luxon 3.7.2 formats dates and times. The strings live in `preferences.ui.formats`. Andrew accepted the window the same day. Gzip -9 of `ui/dist` is 360042 bytes. The agent does not commit. The windows-core failure on `a8903db` ([40059550732](https://github.com/500Foods/Pavillion/actions/runs/40059550732)) was `2026-11-01T09:30:00.000Z` pinned to `01:30 PST`. The test now allows `01:30 PST`, `02:30 PDT`, and `02:30 MST`. CI has not re-run.
+- Next: N-3 (step 61), not started, in [docs/N-MAIL.md](docs/N-MAIL.md). Message list. Entry gate is N-2, N-3a, and D-8, all complete. His choices: `unified` is `{view:{kind:"unified", name}}` with `inbox`, `unread`, `flagged`, `drafts`, and `sent`; unread is every unseen message; Drafts and Sent show To; the nav entries stay in N-6. `debug.seed_messages` is `{mailboxId, count}`, absent under `NDEBUG`, local rows only. The list theme extends `.pav-table` in `ui/public/styles/theme.css`. The time column calls `formats.js`. Kind `search` stays as Q-1 left it. `message.list` omits a row whose `keywords` contain `$deleted`, and `total` counts the rows that remain. `mailbox.list` recounts unread and total from local rows and skips `$deleted` (N-Q6): unread is not seen, not draft, and not `$deleted`. Stored server counts stay for sync. The search field stays in Q-2. Do not start Q-2. The Accounts table polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md). The agent does not commit.
+- Last full `make test`: 247 Unity tests, 2 Rust tests and 397 Vitest tests, exit 0 (2026-10-23, D-8). The phase stamp is `0.68.0`.
+- `PAVILLION_API_VERSION` is 3. The phase stamp is `0.68.0` (68 Done rows), release date 2026-10-23.
 
 **Read first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), one page with diagrams of the layers, the threads, and the data flow.
 
@@ -136,7 +136,7 @@ Row order decides what is next: the next phase is the first row, top to bottom, 
 | 58 | N-1 | Body fetch and MIME (GMime) | Medium | Done |
 | 59 | N-2 | The HTML sanitizer and the hostile corpus | Hard | Done |
 | 60 | Q-1 | FTS5 indexing and local search | Medium | Done |
-| 132 | D-8 | Settings → Formats: app-wide date, time, and datetime formats (Luxon) | Medium | In progress |
+| 132 | D-8 | Settings → Formats: app-wide date, time, and datetime formats (Luxon) | Medium | Done |
 | 61 | N-3 | Message list (Tabulator) | Medium | |
 | 133 | D-9 | Icon Wizard (DRAFT spec; docs only): layered icons for accounts, later folders and labels | Medium | |
 | 134 | D-10 | Module bars: Accounts Clone and search, Help bar with search and Back | Medium | Done |

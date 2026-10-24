@@ -1,6 +1,6 @@
 # N — MAIL
 
-**Status:** N-2 complete (2026-10-23). The index names D-8 next (step 132). N-3 was not started. Scoped 2026-10-16 from plan §6, §7, §10, §13.
+**Status:** N-2 complete (2026-10-23). The index names N-3 next (step 61). N-3 was not started. D-8 is complete. Scoped 2026-10-16 from plan §6, §7, §10, §13.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Reading and organizing mail: MIME, the sanitizer, the message list, the reading pane, threads, unified views, flags and moves, attachments, notifications, shortcuts, and folder retention. Sync is [M-SYNC.md](M-SYNC.md). Compose is [O-COMPOSE.md](O-COMPOSE.md). Search is [Q-SEARCH.md](Q-SEARCH.md). The mailbox tree is [E-TREE.md](E-TREE.md). The isolation rules are the [F-HARDEN.md](F-HARDEN.md) Lock and are not restated here.
@@ -66,7 +66,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 ### Message list (was plan §6.1, §10)
 
-- Tabulator (`tabulator-tables`), themed on `--pav-*`, with virtual row render. Pagination stays off, because it turns the virtual DOM off. The mail list loads one `message.list` reply and keeps those rows. The reply is the newest messages in the selected folder, up to `preferences.cache.listRows` (default 10,000, whole numbers from 1 to 10,000), plus `total` for the whole folder. Settings → Limits edits that integer and labels it Message list (Andrew, 2026-10-22). A folder with more messages shows the newest rows, and a count of how many of `total` are listed. The reply stays under 2 MB: the command stops before the next row would pass that, and `total` stays the real count. Contacts (S) and files (U) use the same module (`ui/src/common/table.js`). No second table library.
+- Tabulator (`tabulator-tables`), themed on `--pav-*`, with virtual row render. Pagination stays off, because it turns the virtual DOM off. The mail list loads one `message.list` reply and keeps those rows. The reply is the newest messages in the selected folder, up to `preferences.cache.listRows` (default 10,000, whole numbers from 1 to 10,000), plus `total` for the whole folder. Settings → Limits edits that integer and labels it Message list (Andrew, 2026-10-22). A folder with more messages shows the newest rows, and a count of how many of `total` are listed. The reply stays under 2 MB: the command stops before the next row would pass that, and `total` stays the real count. A message whose `keywords` contain `$deleted` is omitted from `message.list`, and `total` counts the messages that remain (Andrew, 2026-10-23). The tree's unread and total are the local recount in Views (N-Q6). Contacts (S) and files (U) use the same module (`ui/src/common/table.js`). No second table library.
 - Shared table component (Andrew, 2026-10-19, pulled ahead of N-3): `tabulator-tables` 6.6.1, pinned exactly in `ui/package.json`, MIT licence, bundled by Vite from `node_modules` (no CDN, no Tabulator stylesheet). `ui/src/common/tabulator-lib.js` is the only module that imports it (named re-exports, so unused modules are tree-shaken), and `ui/src/common/table.js` loads that file by dynamic import, so Vite puts it in its own chunk loaded on first use; it registers only the Format and Interaction modules. Screens call `createTable(el, {columns, data, rowId, onRowClick, rowClass, groupBy, groupHeader, groupOrder, footerElement, select, onRender, download})` (K-Q11, K-Q12). The wrapper registers only the modules a table asks for: Format, Interaction and ResizeTable always; GroupRows for `groupBy`; Sort when a column sorts; ColumnCalcs when a column has `bottomCalc`; SelectRow for `select`; Export and Download for `download`. Never `TabulatorFull`. Tables fill their element (`height:"100%"`, virtual renderer) and redraw through ResizeTable. Sorting is tri-state with Font Awesome icons. `footerElement` is a DOM node the page owns, placed under the calc row. The handle is `setData`, `select(id)` (single selection, scrolls into view), `ids()` (display order), `download(name)`, `destroy()`. See [TABULATOR.md](TABULATOR.md). Shared tables fit their panel by default (Andrew, 2026-10-19): layout `fitColumns`, the main text column takes the rest (`widthGrow`), icon and checkbox columns keep fixed narrow widths, and a `ResizeObserver` on the table element calls `redraw()` when the panel or a divider changes its size. Its look comes only from `--pav-*` variables in `ui/public/styles/theme.css` (`.pav-table`). Cells are text or built DOM with `textContent`; no HTML formatter takes outside data. The first user is the Settings → Accounts list (K-Q8); N-3 extends the same module for the message list (virtual rows, selection).
 - Row: account color bar, from (or to in Sent and Drafts), subject, preview, 24 h time today or `Oct 14` this year or `2026-10-14` older (`preferences.time_format`), flags (unread dot, flag, answered, forwarded), attachment icon. Formatters return text, or set `textContent`. An icon is an element this module creates from a class name. A formatter that returns an HTML string is an HTML sink and is forbidden.
 - Threaded or flat per view (`ui.mail.threaded[viewKey]`). Sort by date desc default.
@@ -74,7 +74,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 ### Views (was plan §6.1, §6.3)
 
-- Unified Inbox, Unread, Flagged, Drafts, Sent (role-based across accounts) above the per-account mailbox tree. Unread counts in the tree. Accounts collapsible; order and hiding are tree view state.
+- Unified Inbox, Unread, Flagged, Drafts, Sent (role-based across accounts) above the per-account mailbox tree. Unread counts in the tree. From N-3, `mailbox.list` counts those from local rows: unread is not seen, not draft, and not `$deleted`; total is every message in that mailbox that is not `$deleted`. The account row sums the recounted mailbox numbers. A parent folder does not add its children. A message in two mailboxes counts in each. The stored `mailbox.unread` and `mailbox.total` stay the server's `unreadEmails` and `totalEmails`, because sync uses them as the progress hint (Andrew, 2026-10-23, N-Q6). Accounts collapsible; order and hiding are tree view state.
 - Threading uses the server `threadId`. The thread view shows the conversation oldest to newest with read items collapsed.
 
 ### Actions (was plan §6.4, §6.5)
@@ -253,9 +253,9 @@ Andrew opened the live profile on 2026-10-23. The count is there and the list fi
 ## N-3: Message list
 
 **Kind:** Medium
-**Status:** Not started. Andrew chose D-8 first on 2026-10-23. Q-1 left `message.list` view kind `search` real. This phase adds `unified` and leaves `search` in place.
+**Status:** Not started. The index names this phase next (step 61). D-8 is complete. The windows-core failure on `a8903db` is fixed in `ui/src/formats.test.js` and CI has not re-run. Q-1 left `message.list` view kind `search` real. This phase adds `unified` and leaves `search` in place. The 2026-10-23 decisions below stand. The list hides `$deleted`. Folder badges recount local rows and skip `$deleted` (N-Q6).
 
-**Goal:** The Mail home tab shows the selected mailbox's messages with smooth scrolling at 100k rows. From and Subject for one page are N-3a. This phase extends that table. N-3a stores `$deleted` in `keywords` and lists every message still in the mailbox. Filtering that flag is part of this later mail work, with N-5.
+**Goal:** The Mail home tab shows the selected mailbox's messages with smooth scrolling at 100k rows. From and Subject for one page are N-3a. This phase extends that table. `message.list` omits a row whose `keywords` contain `$deleted`, and `total` counts the rows that remain. The keyword stays stored. N-5 still moves a message to Trash or destroys it.
 
 **Entry gate:** N-2 and N-3a complete. D-8 also lands first (Andrew, 2026-10-23), so this list calls `formats.js` and does not format a date itself.
 
@@ -265,6 +265,8 @@ Andrew opened the live profile on 2026-10-23. The count is there and the list fi
 - `unified` is `{view:{kind:"unified", name}}` with `inbox`, `unread`, `flagged`, `drafts`, and `sent`. Unread is every unseen message. Flagged is every flagged message. Inbox, Drafts, and Sent are those roles across accounts. Drafts and Sent show To. The nav entries stay in N-6.
 - `debug.seed_messages` is `{mailboxId, count}`. It is absent when `NDEBUG` is set. It inserts that many local rows into that mailbox, clamped to `listRows`, and does not use the network.
 - The mail list theme extends `.pav-table` in `ui/public/styles/theme.css`. New variables ship in `dark.css`, `light.css`, and both starter `*.theme` files. There is no `ui/styles/list.css`.
+- `message.list` omits a row whose `keywords` contain `$deleted`, for `mailbox`, `search`, and `unified`. `total` counts the rows that remain. The keyword stays stored.
+- `mailbox.list` recounts unread and total from local rows and skips `$deleted` (N-Q6). Unread is not seen, not draft, and not `$deleted`. Total is every message in that mailbox that is not `$deleted`. The account row sums those. A parent folder does not add its children. The stored `mailbox.unread` and `mailbox.total` stay the server numbers.
 
 **Work items:**
 
@@ -275,6 +277,8 @@ Andrew opened the live profile on 2026-10-23. The count is there and the list fi
 - [ ] Theme the mail list on `.pav-table` in `ui/public/styles/theme.css`, using `--pav-*` variables. New variables ship in `dark.css`, `light.css`, and both starter `*.theme` files.
 - [ ] Record the gzipped size of `ui/dist` in Accomplished. The size is a record. It is not a reason to drop Tabulator.
 - [ ] A debug-only fixture generator `debug.seed_messages {mailboxId, count}` to fill that folder up to the list cap. Absent when `NDEBUG` is set. Local rows only.
+- [ ] `message.list` omits a row whose `keywords` contain `$deleted`, for every kind it returns. `total` counts the rows that remain. The keyword stays stored.
+- [ ] `mailbox.list` recounts unread and total from local rows, skipping `$deleted`. Unread also requires not seen and not draft. The account row sums those counts. A parent folder does not add its children. The stored `mailbox.unread` and `mailbox.total` stay the server numbers.
 
 **Done means:** Clicking Inbox in the tree lists its messages, and the loaded rows scroll smoothly.
 
@@ -410,6 +414,7 @@ Andrew opened the live profile on 2026-10-23. The count is there and the list fi
 - N-Q3. Prefer a server-side retention in Stalwart if available (the Willard watcher spec also proposes trimming)? Never two trimmers on one folder. (plan Q8)
 - N-Q4. Migration: import existing mail history (mbox/Maildir from Betterbird), or rely on the server? (plan Q6, mail part)
 - N-Q5. PGP or S/MIME at any point? (plan Q10) Not in this document until answered.
+- N-Q6. Folder badges and `$deleted`. Answered 2026-10-23: recount. `mailbox.list` counts unread and total from local rows and skips `$deleted`. Unread stays "not seen and not draft", which is what `unreadEmails` means, and also skips `$deleted`. Total skips `$deleted` only. The account row sums the recounted mailbox numbers. A parent folder does not add its children. The stored `mailbox.unread` and `mailbox.total` stay the server's `unreadEmails` and `totalEmails`.
 
 ## Working log
 
@@ -430,3 +435,8 @@ Andrew opened the live profile on 2026-10-23. The count is there and the list fi
 - 2026-10-23 N-2 still in progress. CI on `75b0c5a` is green: fedora, macos-core, windows-core, run [40016164091](https://github.com/500Foods/Pavillion/actions/runs/40016164091). The run on `e9a2e28` failed because `third_party/` was ignored. Lexbor landed in `dce6854`. Accomplished is unwritten. Stamp stays `0.65.0`.
 - 2026-10-23 N-2 complete, step 59. `pav_sanitize` and the hostile corpus are in the tree. Lexbor stays v3.0.0. `message.get` stays null until N-4. Stamp `0.66.0`. `make test`: 239 Unity, 2 Rust, 384 Vitest, exit 0. libFuzzer 2350412 runs in 601 seconds, exit 0. CI on `75b0c5a` is green: fedora, macos-core, windows-core. The index names Q-1 next. Q-1 was not started. This close-out is not in `b923040`. The agent does not commit.
 - 2026-10-23 N-3 was not started. Andrew chose D-8 first. `unified` is five names (`inbox`, `unread`, `flagged`, `drafts`, `sent`); unread is every unseen message. `debug.seed_messages` takes `{mailboxId, count}` and is absent under `NDEBUG`. The list theme extends `.pav-table` in `ui/public/styles/theme.css`. The time column will call `formats.js`.
+- 2026-10-23 D-8 complete. The index names N-3 next. N-3 was not started in that close-out. `$deleted` is still unfiltered. Ask before filtering it.
+- 2026-10-23 Andrew: hide `$deleted` in the N-3 message list. `message.list` omits those rows and `total` counts what remains. The keyword stays stored. He asked whether folder badges should do the same. That is N-Q6 and is not decided. N-3 was not started.
+- 2026-10-23 N-Q6 answered: recount folder badges and skip `$deleted`. Unread is not seen, not draft, and not `$deleted`. Total skips `$deleted` only. The account row sums those. Stored server counts stay for sync. N-3 was not started.
+- 2026-10-24 D-8 CI on `a8903db`, run [40059550732](https://github.com/500Foods/Pavillion/actions/runs/40059550732): windows-core failed in `ui/src/formats.test.js` (`01:30 PST` vs `02:30 PDT` at `2026-11-01T09:30:00.000Z`). Fedora and macos-core passed. Fix that before N-3. N-3 was not started.
+- 2026-10-24 That check now allows `01:30 PST`, `02:30 PDT`, and `02:30 MST`. CI has not re-run. N-3 was not started.

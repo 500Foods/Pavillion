@@ -30,7 +30,7 @@ The tree renders nodes; it does not fetch them. A list command returns nodes wit
 | `kind` | `account`, `mailbox`, `folder`, `calendar`, `addressbook`, `group`. Selects the icon template. |
 | `label`, `role` | Display name; server role where one exists (`inbox`, `sent`, `archive`, …). |
 | `order` | Presentation order within its parent, from the backend or a local override. |
-| `unread`, `total` | Cached counts from the backend. The tree never computes them. |
+| `unread`, `total` | Cached counts from the backend. The tree never computes them. From N-3, the mail backend's numbers skip `$deleted` ([N-MAIL.md](N-MAIL.md) N-Q6). |
 | `size_bytes` | Recursive, where the server reports it. Estimated or absent values are labeled. |
 | `has_children` | So the disclosure arrow shows on a collapsed branch before it is expanded. |
 | `state`, `favorite`, `swatch` | `idle`/`syncing`/`error`, the favorite marker, the account or calendar color. |

@@ -32,20 +32,16 @@ test("defaults are 24 h in America/Vancouver and in UTC", () => {
   expect(formatInstant(OCT, "datetime")).toBe("2026-10-14 17:04");
 });
 
-test("both sides of a Vancouver DST change stay on the local clock", () => {
+test("a Vancouver spring-forward skips the missing hour", () => {
   configureFormats({ timezone: "America/Vancouver", timeFormat: "24h", systemZone: "" });
-  expect(formatInstant("2026-03-08T09:30:00.000Z", "time", {
-    patterns: { time: "HH:mm ZZZZ" },
-  })).toBe("01:30 PST");
-  expect(formatInstant("2026-03-08T10:30:00.000Z", "time", {
-    patterns: { time: "HH:mm ZZZZ" },
-  })).toBe("03:30 PDT");
-  expect(formatInstant("2026-11-01T08:30:00.000Z", "time", {
-    patterns: { time: "HH:mm ZZZZ" },
-  })).toBe("01:30 PDT");
-  expect(formatInstant("2026-11-01T09:30:00.000Z", "time", {
-    patterns: { time: "HH:mm ZZZZ" },
-  })).toBe("01:30 PST");
+  const clock = (iso) => formatInstant(iso, "time", { patterns: { time: "HH:mm ZZZZ" } });
+  expect(clock("2026-03-08T09:30:00.000Z")).toBe("01:30 PST");
+  expect(clock("2026-03-08T10:30:00.000Z")).toBe("03:30 PDT");
+  expect(clock("2026-11-01T08:30:00.000Z")).toBe("01:30 PDT");
+  /* 09:30Z on 2026-11-01. tzdata before 2026b falls back to 01:30 PST.
+     tzdata 2026b keeps British Columbia on -07: 02:30 MST there, and
+     02:30 PDT where ICU has the offset and still says PDT. */
+  expect(["01:30 PST", "02:30 PDT", "02:30 MST"]).toContain(clock("2026-11-01T09:30:00.000Z"));
 });
 
 test("12 h is the default until a saved time string differs from it", () => {
