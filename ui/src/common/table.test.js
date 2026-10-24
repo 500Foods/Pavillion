@@ -28,6 +28,7 @@ vi.mock("tabulator-tables", () => {
       return Promise.resolve();
     }
     getRow(id) {
+      this.calls.push(["getRow", id]);
       return this.options.data.find((r) => r.id === id) ? { id, reformat: () => this.calls.push(["reformat", id]) } : false;
     }
     selectRow(id) {
@@ -154,6 +155,12 @@ test("the accounts options: tri-state FA sort, table calcs, single select, group
   expect(handle.ids()).toEqual(["a", "c", "b"]);
   handle.setData([{ id: "c", g: "one" }]);
   await vi.waitFor(() => expect(t.selected).toEqual(["c"])); /* kept across replaceData */
+  const asked = () => t.calls.filter((call) => call[0] === "getRow" && call[1] === "c").length;
+  const before = asked();
+  handle.setData([{ id: "gone", g: "one" }]);
+  await vi.waitFor(() => expect(t.replaced.at(-1)).toEqual([{ id: "gone", g: "one" }]));
+  await Promise.resolve();
+  expect(asked()).toBe(before);
   expect(renders.length).toBeGreaterThan(0);
   expect(handle.download("x.csv")).toBe(true);
   expect(t.calls).toContainEqual(["download", "csv", "x.csv"]);

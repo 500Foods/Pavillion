@@ -78,6 +78,13 @@ export function createMailNav(api, container, options = {}) {
      replaces every row icon on the main thread. */
   let armed = options.defer !== true;
   let generation = 0;
+  /* idle, then account.list, then mailbox.list. A change during account.list
+     widens this load. A change after mailbox.list was sent waits, and runs
+     once this load has painted. A foods change must not cancel the first
+     full load and leave the other accounts out of an empty tree. */
+  let phase = "idle";
+  let flightScope = "";
+  let pending = null;
   let readySettled = false;
   let resolveReady = () => {};
   const ready = new Promise((resolve) => {
@@ -214,14 +221,45 @@ export function createMailNav(api, container, options = {}) {
     }
   }
 
-  async function reload(accountId) {
+  function scopeOf(accountId) {
+    return typeof accountId === "string" && accountId !== "" ? accountId : "";
+  }
+
+  /* "" is every account. Two different accounts become a full list. */
+  function cover(current, next) {
+    if (current === "" || next === "") {
+      return "";
+    }
+    if (current === next) {
+      return current;
+    }
+    return "";
+  }
+
+  function reload(accountId) {
+    const scope = scopeOf(accountId);
+    if (phase === "accounts") {
+      flightScope = cover(flightScope, scope);
+      return;
+    }
+    if (phase !== "idle") {
+      pending = pending === null ? scope : cover(pending, scope);
+      return;
+    }
+    void runReload(scope);
+  }
+
+  async function runReload(scope) {
     const gen = ++generation;
-    const scope = typeof accountId === "string" && accountId !== "" ? accountId : "";
-    const label = scope || "all";
+    phase = "accounts";
+    flightScope = scope;
+    const sent = scope || "all";
     try {
-      mark(`reload ${gen} account.list sent ${label}`);
+      mark(`reload ${gen} account.list sent ${sent}`);
       const listed = await api.account.list();
-      mark(`reload ${gen} account.list returned ${label}`);
+      const listedScope = flightScope;
+      const listedLabel = listedScope || "all";
+      mark(`reload ${gen} account.list returned ${listedLabel}`);
       if (stopped || gen !== generation) {
         mark(`reload ${gen} dropped after account.list`);
         return;
@@ -234,16 +272,17 @@ export function createMailNav(api, container, options = {}) {
         }
       }
       numbers = nextNumbers;
-      mark(`reload ${gen} mailbox.list sent ${label}`);
-      const result = await api.mailbox.list(scope ? { accountId: scope } : {});
-      mark(`reload ${gen} mailbox.list returned ${label}`);
+      phase = "boxes";
+      mark(`reload ${gen} mailbox.list sent ${listedLabel}`);
+      const result = await api.mailbox.list(listedScope ? { accountId: listedScope } : {});
+      mark(`reload ${gen} mailbox.list returned ${listedLabel}`);
       if (stopped || gen !== generation) {
         mark(`reload ${gen} dropped after mailbox.list`);
         return;
       }
       const nodes = result && Array.isArray(result.nodes) ? result.nodes : [];
       mark(`reload ${gen} render started ${nodes.length}`);
-      apply(nodes, scope);
+      apply(nodes, listedScope);
       mark(`reload ${gen} render finished ${nodes.length}`);
     } catch (err) {
       if (stopped || gen !== generation) {
@@ -256,9 +295,16 @@ export function createMailNav(api, container, options = {}) {
         /* Stopping can reject the log command. The tree stays as it was. */
       }
     } finally {
-      /* A newer reload owns the first paint. This one settles it when it is
+      const follow = !stopped && gen === generation ? pending : null;
+      pending = null;
+      phase = "idle";
+      if (follow !== null) {
+        await runReload(follow);
+        return;
+      }
+      /* Stop bumps generation. This load settles the first paint when it is
          still the latest, including a failed list. */
-      if (stopped || gen === generation) {
+      if (!stopped && gen === generation) {
         mark(`reload ${gen} ready`);
         settleReady();
       }

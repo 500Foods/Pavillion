@@ -263,8 +263,10 @@ export function createMailList(api, pane, options = {}) {
     applyMailbox(mailboxId);
     if (mailboxId === "") {
       accountId = "";
+      selected = "";
       count.textContent = "Select a folder.";
       if (table) {
+        table.select(null);
         table.setData([]);
       }
       return Promise.resolve();
@@ -286,8 +288,10 @@ export function createMailList(api, pane, options = {}) {
           return;
         }
         accountId = "";
+        selected = "";
         count.textContent = "";
         if (table) {
+          table.select(null);
           table.setData([]);
         }
       });

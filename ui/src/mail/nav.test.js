@@ -8,6 +8,8 @@ import { createMailNav } from "./nav.js";
 function transport() {
   const listeners = new Set();
   const calls = [];
+  let waiter = null;
+  let boxWaiter = null;
   let accounts = [{ id: "foods", number: "001", name: "Foods" }, { id: "courses", number: "002", name: "Courses" }];
   let nodes = [
     { id: "foods", parentId: null, kind: "account", label: "Foods", role: null, order: 0, unread: 4, total: 10, hasChildren: true, swatch: "#2a6" },
@@ -24,15 +26,37 @@ function transport() {
     setAccounts(next) {
       accounts = next;
     },
+    holdAccountList() {
+      let release;
+      const gate = new Promise((resolve) => {
+        release = resolve;
+      });
+      waiter = gate;
+      return release;
+    },
+    holdMailboxList() {
+      let release;
+      const gate = new Promise((resolve) => {
+        release = resolve;
+      });
+      boxWaiter = gate;
+      return release;
+    },
     call(cmd, args) {
       calls.push({ cmd, args });
       if (cmd === "account.list") {
-        return Promise.resolve({ accounts });
+        const gate = waiter;
+        waiter = null;
+        const answer = { accounts };
+        return gate ? gate.then(() => answer) : Promise.resolve(answer);
       }
       if (cmd === "mailbox.list") {
         const accountId = args && args.accountId;
         const list = accountId ? nodes.filter((node) => node.id === accountId || node.parentId === accountId || (typeof node.parentId === "string" && node.parentId.startsWith(accountId))) : nodes;
-        return Promise.resolve({ nodes: list });
+        const gate = boxWaiter;
+        boxWaiter = null;
+        const answer = { nodes: list };
+        return gate ? gate.then(() => answer) : Promise.resolve(answer);
       }
       if (cmd === "log.client") {
         return Promise.resolve({});
@@ -281,6 +305,65 @@ test("a reload marks the lists, the render, and a mailbox change", async () => {
     "reload 2 render finished 3",
     "reload 2 ready",
   ]);
+
+  nav.stop();
+});
+
+test("a mailbox change during the first account.list keeps every account", async () => {
+  const el = document.createElement("div");
+  const raw = transport();
+  const release = raw.holdAccountList();
+  const api = createApi(raw);
+  const nav = createMailNav(api, el);
+
+  raw.emit("mail.mailboxes_changed", { accountId: "foods" });
+  release();
+  await nav.ready;
+
+  expect(row(el, "courses")).not.toBeNull();
+  expect(row(el, "mbx:courses:in")).not.toBeNull();
+  expect(row(el, "foods")).not.toBeNull();
+  const lists = raw.calls.filter((call) => call.cmd === "mailbox.list");
+  expect(lists).toHaveLength(1);
+  expect(lists[0].args.accountId).toBeUndefined();
+  expect(debugMarks(raw)).toEqual([
+    "reload 1 account.list sent all",
+    "mailboxes changed foods",
+    "reload 1 account.list returned all",
+    "reload 1 mailbox.list sent all",
+    "reload 1 mailbox.list returned all",
+    "reload 1 render started 5",
+    "reload 1 render finished 5",
+    "reload 1 ready",
+  ]);
+
+  nav.stop();
+});
+
+test("a mailbox change after mailbox.list was sent still paints the other account", async () => {
+  const el = document.createElement("div");
+  const raw = transport();
+  const release = raw.holdMailboxList();
+  const api = createApi(raw);
+  const nav = createMailNav(api, el);
+  await Promise.resolve();
+  await Promise.resolve();
+
+  raw.setNodes([
+    { id: "foods", parentId: null, kind: "account", label: "Foods", role: null, order: 0, unread: 1, total: 10, hasChildren: true, swatch: "#2a6" },
+    { id: "mbx:foods:in", parentId: "foods", kind: "mailbox", label: "Inbox", role: "inbox", order: 0, unread: 1, total: 8, hasChildren: false, swatch: null },
+  ]);
+  raw.emit("mail.mailboxes_changed", { accountId: "foods" });
+  release();
+  await nav.ready;
+
+  expect(row(el, "courses")).not.toBeNull();
+  expect(row(el, "mbx:courses:in")).not.toBeNull();
+  expect(row(el, "mbx:foods:in").querySelector(".tree-row-badge-unread").textContent).toBe("1");
+  const lists = raw.calls.filter((call) => call.cmd === "mailbox.list");
+  expect(lists).toHaveLength(2);
+  expect(lists[0].args.accountId).toBeUndefined();
+  expect(lists[1].args.accountId).toBe("foods");
 
   nav.stop();
 });

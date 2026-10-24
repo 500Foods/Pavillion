@@ -190,8 +190,15 @@ export function createTable(el, options) {
   const states = new Map();
   gate.stateOf = (id) => (states.get(id) || (id === current && current !== null ? "current" : null));
 
+  /* Tabulator's getRow warns on a miss. Ask it only when this id is in the
+     rows we handed the table. */
+  function rowPresent(id) {
+    const key = options.rowId || "id";
+    return id !== null && id !== undefined && data.some((row) => row && row[key] === id);
+  }
+
   function reformat(id) {
-    if (built && options.indicator && id !== null && id !== undefined) {
+    if (built && options.indicator && rowPresent(id)) {
       const row = table.getRow(id);
       if (row) {
         row.reformat();
@@ -213,7 +220,7 @@ export function createTable(el, options) {
     gate.open = true;
     try {
       table.deselectRow();
-      if (current !== null && table.getRow(current)) {
+      if (rowPresent(current) && table.getRow(current)) {
         table.selectRow(current);
       }
     } finally {
@@ -467,7 +474,7 @@ export function createTable(el, options) {
       reformat(id);
       if (built) {
         markSelected();
-        if (id !== null && table.getRow(id)) {
+        if (rowPresent(id) && table.getRow(id)) {
           void table.scrollToRow(id, "nearest", false);
         }
       }
