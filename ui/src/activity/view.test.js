@@ -82,7 +82,7 @@ test("a demo row keeps its element, cancels, and shows the app account", async (
   await view.ready();
   expect([...pane.querySelectorAll("th")].map((cell) => cell.textContent)[1]).toBe("Action");
   const tr = pane.querySelector('[data-activity-id="act-1"]');
-  expect(tr.querySelector('[data-field="started"]').textContent).toBe("10:04:01");
+  expect(tr.querySelector('[data-field="started"]').textContent).toBe("10:04:01.123");
   expect(tr.querySelector(".activity-kind-label").textContent).toBe("Mail sync");
   expect(tr.querySelector(".activity-account-num").textContent).toBe("000");
   expect(tr.querySelector(".activity-account-name").textContent).toBe("Pavillion");

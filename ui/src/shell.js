@@ -14,7 +14,9 @@ import { createUpdatePie } from "./activity/update-pie.js";
 import { createAccountsView } from "./settings/accounts.js";
 import { createLogSettings } from "./settings/log.js";
 import { createLimitsSettings } from "./settings/limits.js";
+import { createFormatsSettings } from "./settings/formats.js";
 import { createMailSettings } from "./settings/mail.js";
+import { configureFormats, currentZone, subscribeFormats } from "./formats.js";
 import { createHelpView } from "./help/view.js";
 import { createBackTracker } from "./help/back.js";
 import { createLogView } from "./log/view.js";
@@ -901,6 +903,38 @@ function persistLayout() {
   scheduleUiSave();
 }
 
+function applyFormatPrefs(prefs) {
+  profileTimeFormat = prefs && prefs.timeFormat === "12h" ? "12h" : "24h";
+  profileZone = prefs && typeof prefs.timezone === "string" ? prefs.timezone : "";
+  configureFormats({
+    timezone: profileZone,
+    timeFormat: profileTimeFormat,
+    formats: ui.formats,
+  });
+  logTimeZone = currentZone();
+  return logTimeZone;
+}
+
+function repaintFormatSurfaces() {
+  const zone = currentZone();
+  logTimeZone = zone;
+  if (logView) {
+    logView.setTimeZone(zone);
+  }
+  if (activityView) {
+    activityView.setTimeZone(zone);
+  }
+  if (logSettings && typeof logSettings.repaintTimes === "function") {
+    logSettings.repaintTimes();
+  }
+  if (limitsSettings && typeof limitsSettings.repaintTimes === "function") {
+    limitsSettings.repaintTimes();
+  }
+  if (accountsView && typeof accountsView.repaintTimes === "function") {
+    accountsView.repaintTimes();
+  }
+}
+
 async function loadPrefs() {
   const stored = clampUi(await api.prefs.ui.get());
   ui.nav = stored.nav;
@@ -936,6 +970,7 @@ async function loadPrefs() {
   ui.trees = stored.trees || {};
   ui.tables = stored.tables && typeof stored.tables === "object" && !Array.isArray(stored.tables) ? stored.tables : {};
   paintFeatures();
+  ui.formats = stored.formats;
   ui.session = stored.session;
   sessionSnapshot = JSON.stringify(ui.session);
   sessionDirty = false;
@@ -1203,6 +1238,10 @@ let accountsView = null;
 let logSettings = null;
 let limitsSettings = null;
 let mailSettings = null;
+let formatsSettings = null;
+let unlistenFormats = null;
+let profileTimeFormat = "24h";
+let profileZone = "";
 let logTimeZone = "America/Vancouver";
 let mailTree = null;
 let mailNav = null;
@@ -1499,6 +1538,9 @@ function applyHomeContext(entry) {
       }
       if (ctx.heading === "mail" && mailSettings) {
         mailSettings.refresh();
+      }
+      if (ctx.heading === "formats" && formatsSettings) {
+        formatsSettings.refresh();
       }
     }
   }
@@ -1969,6 +2011,9 @@ function bindSettings() {
       if (button.dataset.heading === "mail" && mailSettings) {
         mailSettings.refresh();
       }
+      if (button.dataset.heading === "formats" && formatsSettings) {
+        formatsSettings.refresh();
+      }
       showNav("settings");
       openHome("settings", { heading: button.dataset.heading });
     });
@@ -2279,6 +2324,14 @@ export function stopShell() {
   if (host) {
     host.onQuit = null;
   }
+  if (unlistenFormats) {
+    unlistenFormats();
+    unlistenFormats = null;
+  }
+  if (formatsSettings) {
+    formatsSettings.destroy();
+    formatsSettings = null;
+  }
   if (logView) {
     logView.destroy();
     logView = null;
@@ -2468,7 +2521,11 @@ export async function startShell(surface, nextApi, nextHost, result) {
   if (!alive(mine)) {
     return;
   }
-  let timeZone = "America/Vancouver";
+  if (unlistenFormats) {
+    unlistenFormats();
+    unlistenFormats = null;
+  }
+  let timeZone = applyFormatPrefs(null);
   let logLevel = "info";
   if (banner.hidden) {
     try {
@@ -2476,10 +2533,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
       if (!alive(mine)) {
         return;
       }
-      if (typeof prefs.timezone === "string" && prefs.timezone !== "") {
-        timeZone = prefs.timezone;
-        logTimeZone = timeZone;
-      }
+      timeZone = applyFormatPrefs(prefs);
       if (typeof prefs.logLevel === "string" && prefs.logLevel !== "") {
         logLevel = prefs.logLevel;
       }
@@ -2960,6 +3014,37 @@ export async function startShell(surface, nextApi, nextHost, result) {
     },
   });
   mailSettings.refresh();
+  formatsSettings = createFormatsSettings(api, mountRoot, {
+    timeFormat: () => profileTimeFormat,
+    getUi: () => ui,
+    onSave(next) {
+      ui.formats = next.formats;
+      persistLayout();
+      const previousZone = profileZone;
+      const zonePromise = next.timezone !== profileZone
+        ? api.prefs.set({ timezone: next.timezone }).then((prefs) => {
+          profileZone = next.timezone;
+          if (prefs && (prefs.timeFormat === "12h" || prefs.timeFormat === "24h")) {
+            profileTimeFormat = prefs.timeFormat;
+          }
+        })
+        : Promise.resolve();
+      return zonePromise.then(() => {
+        applyFormatPrefs({ timezone: profileZone, timeFormat: profileTimeFormat });
+      }, (err) => {
+        applyFormatPrefs({ timezone: previousZone, timeFormat: profileTimeFormat });
+        throw err;
+      });
+    },
+    onError(text) {
+      showBanner(text);
+    },
+  });
+  formatsSettings.refresh();
+  if (unlistenFormats) {
+    unlistenFormats();
+  }
+  unlistenFormats = subscribeFormats(repaintFormatSurfaces);
   if (mountRoot.querySelector("[data-settings='accounts']")) {
     accountsView.refresh();
   }

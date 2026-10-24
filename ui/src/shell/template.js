@@ -73,6 +73,7 @@ export const shellMarkup = `<div class="shell">
               <button type="button" data-heading="theme">Themes</button>
               <button type="button" data-heading="icons">Icons</button>
               <button type="button" data-heading="fonts">Fonts</button>
+              <button type="button" data-heading="formats">Formats</button>
               <button type="button" data-heading="tabs">Tabs</button>
               <button type="button" data-heading="zoom">Zooms</button>
               <button type="button" data-heading="log">Logs</button>
@@ -372,6 +373,15 @@ export const shellMarkup = `<div class="shell">
             </label>
             <p class="muted">Vanadium Sans is the default body font. Packaging those font files is still open. Mono is used for logs and the icon fields.</p>
             </div>
+          </div>
+          <div data-settings="formats" hidden>
+            <div class="button-bar pav-module-toolbar" id="formats-toolbar" role="toolbar" aria-label="Formats">
+              <button type="button" class="help-jump" data-help-page="settings" data-help-section="formats" aria-label="Help for Formats">
+                <i class="icon fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="settings-body" id="formats-body"></div>
+            <div class="button-bar pav-module-footer" id="formats-footer" role="toolbar" aria-label="Formats actions"></div>
           </div>
           <div data-settings="icons" hidden>
             <div class="button-bar settings-bar" role="toolbar" aria-label="Icons">

@@ -1,6 +1,6 @@
 # N — MAIL
 
-**Status:** N-2 complete (2026-10-23). The index names N-3 next (step 61). N-3 was not started. Scoped 2026-10-16 from plan §6, §7, §10, §13.
+**Status:** N-2 complete (2026-10-23). The index names D-8 next (step 132). N-3 was not started. Scoped 2026-10-16 from plan §6, §7, §10, §13.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Reading and organizing mail: MIME, the sanitizer, the message list, the reading pane, threads, unified views, flags and moves, attachments, notifications, shortcuts, and folder retention. Sync is [M-SYNC.md](M-SYNC.md). Compose is [O-COMPOSE.md](O-COMPOSE.md). Search is [Q-SEARCH.md](Q-SEARCH.md). The mailbox tree is [E-TREE.md](E-TREE.md). The isolation rules are the [F-HARDEN.md](F-HARDEN.md) Lock and are not restated here.
@@ -253,21 +253,28 @@ Andrew opened the live profile on 2026-10-23. The count is there and the list fi
 ## N-3: Message list
 
 **Kind:** Medium
-**Status:** Not started. Q-1 left `message.list` view kind `search` real. This phase adds `unified` and leaves `search` in place.
+**Status:** Not started. Andrew chose D-8 first on 2026-10-23. Q-1 left `message.list` view kind `search` real. This phase adds `unified` and leaves `search` in place.
 
 **Goal:** The Mail home tab shows the selected mailbox's messages with smooth scrolling at 100k rows. From and Subject for one page are N-3a. This phase extends that table. N-3a stores `$deleted` in `keywords` and lists every message still in the mailbox. Filtering that flag is part of this later mail work, with N-5.
 
-**Entry gate:** N-2 and N-3a complete.
+**Entry gate:** N-2 and N-3a complete. D-8 also lands first (Andrew, 2026-10-23), so this list calls `formats.js` and does not format a date itself.
+
+**Decided (Andrew, 2026-10-23), before any N-3 code:**
+
+- The time column calls `formats.js`. This phase does not format a date.
+- `unified` is `{view:{kind:"unified", name}}` with `inbox`, `unread`, `flagged`, `drafts`, and `sent`. Unread is every unseen message. Flagged is every flagged message. Inbox, Drafts, and Sent are those roles across accounts. Drafts and Sent show To. The nav entries stay in N-6.
+- `debug.seed_messages` is `{mailboxId, count}`. It is absent when `NDEBUG` is set. It inserts that many local rows into that mailbox, clamped to `listRows`, and does not use the network.
+- The mail list theme extends `.pav-table` in `ui/public/styles/theme.css`. New variables ship in `dark.css`, `light.css`, and both starter `*.theme` files. There is no `ui/styles/list.css`.
 
 **Work items:**
 
-- [ ] Extend the N-3a table with the Lock's remaining columns and text-only formatters. The rows are the one reply N-3a loaded. Do not add pagination.
-- [ ] `message.list` gains view kind `unified` (`search` in Q-1) and `threaded` (flat first; threaded in N-6). Kind `mailbox` and `listRows` are N-3a.
+- [ ] Extend the N-3a table with the Lock's remaining columns and text-only formatters. The rows are the one reply N-3a loaded. Do not add pagination. The time column calls `formats.js`.
+- [ ] `message.list` gains view kind `unified` (`search` in Q-1) and `threaded` (flat first; threaded in N-6). The `unified` argument is the decided shape above. Kind `mailbox` and `listRows` are N-3a.
 - [ ] Selection, keyboard focus, and the `list` shortcut scope (`j`/`k`, `Enter`).
 - [ ] Live updates from `mail.messages_changed` patch rows by id.
-- [ ] `ui/styles/list.css` themes Tabulator on `--pav-*` variables.
+- [ ] Theme the mail list on `.pav-table` in `ui/public/styles/theme.css`, using `--pav-*` variables. New variables ship in `dark.css`, `light.css`, and both starter `*.theme` files.
 - [ ] Record the gzipped size of `ui/dist` in Accomplished. The size is a record. It is not a reason to drop Tabulator.
-- [ ] A debug-only fixture generator `debug.seed_messages {count}` to fill a folder up to the list cap.
+- [ ] A debug-only fixture generator `debug.seed_messages {mailboxId, count}` to fill that folder up to the list cap. Absent when `NDEBUG` is set. Local rows only.
 
 **Done means:** Clicking Inbox in the tree lists its messages, and the loaded rows scroll smoothly.
 
@@ -422,3 +429,4 @@ Andrew opened the live profile on 2026-10-23. The count is there and the list fi
 - 2026-10-23 N-2 work items checked. `make test`: 239 Unity, 2 Rust, 384 Vitest, exit 0. libFuzzer `build/sanitize_fuzz -max_total_time=600`, seed 899505327, clang 22.1.8, default max_len 4096, 2350412 runs in 601 seconds, exit 0, no crash. Lexbor stays v3.0.0. The phase stays in progress. Accomplished is unwritten. CI has not run. Stamp stays `0.65.0`. Settings → Mail was not opened in the window.
 - 2026-10-23 N-2 still in progress. CI on `75b0c5a` is green: fedora, macos-core, windows-core, run [40016164091](https://github.com/500Foods/Pavillion/actions/runs/40016164091). The run on `e9a2e28` failed because `third_party/` was ignored. Lexbor landed in `dce6854`. Accomplished is unwritten. Stamp stays `0.65.0`.
 - 2026-10-23 N-2 complete, step 59. `pav_sanitize` and the hostile corpus are in the tree. Lexbor stays v3.0.0. `message.get` stays null until N-4. Stamp `0.66.0`. `make test`: 239 Unity, 2 Rust, 384 Vitest, exit 0. libFuzzer 2350412 runs in 601 seconds, exit 0. CI on `75b0c5a` is green: fedora, macos-core, windows-core. The index names Q-1 next. Q-1 was not started. This close-out is not in `b923040`. The agent does not commit.
+- 2026-10-23 N-3 was not started. Andrew chose D-8 first. `unified` is five names (`inbox`, `unread`, `flagged`, `drafts`, `sent`); unread is every unseen message. `debug.seed_messages` takes `{mailboxId, count}` and is absent under `NDEBUG`. The list theme extends `.pav-table` in `ui/public/styles/theme.css`. The time column will call `formats.js`.

@@ -33,8 +33,8 @@ test("a feature box needs the tested capability and the sync flag", () => {
 
 test("checkedTitle shows 24-hour local time in the profile zone (K-Q10)", async () => {
   const { checkedTitle } = await import("./accounts-table.js");
-  expect(checkedTitle("2026-10-19T17:05:09.000Z", "America/Vancouver")).toBe("Checked 2026-10-19 10:05:09");
-  expect(checkedTitle("2026-10-19T17:05:09Z", "Europe/Berlin")).toBe("Checked 2026-10-19 19:05:09");
+  expect(checkedTitle("2026-10-19T17:05:09.000Z", "America/Vancouver")).toBe("Checked 2026-10-19 10:05:09.000");
+  expect(checkedTitle("2026-10-19T17:05:09Z", "Europe/Berlin")).toBe("Checked 2026-10-19 19:05:09.000");
   expect(checkedTitle(null, "America/Vancouver")).toBe("Not checked yet");
 });
 

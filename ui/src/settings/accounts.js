@@ -941,8 +941,15 @@ export function createAccountsView(api, root, options = {}) {
   bindSecretInput();
   bindFormInputs();
 
+  function repaintTimes() {
+    if (table) {
+      table.setData(accountRows(accounts, timeZone()));
+    }
+  }
+
   return {
     refresh,
+    repaintTimes,
     setZoom(widthScale, fontScale) {
       tableScale = { width: widthScale, font: fontScale };
       if (table) {

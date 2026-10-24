@@ -79,7 +79,7 @@ test("Range All and Session All show earlier sessions on the first load, with a 
   expect(parent.querySelector(".cm-content").textContent).toContain("line 1");
   const dividers = [...parent.querySelectorAll(".pav-log-session")];
   expect(dividers).toHaveLength(1);
-  expect(dividers[0].textContent).toMatch(/^Session 2 · started \d{4}-\d\d-\d\d \d\d:\d\d:\d\d \(this run\)$/);
+  expect(dividers[0].textContent).toMatch(/^Session 2 · started \d{4}-\d\d-\d\d \d\d:\d\d \(this run\)$/);
   /* Screen only: the document has no separator text. */
   const lines = [...parent.querySelectorAll(".cm-line")].map((el) => el.textContent).filter((text) => text !== "");
   expect(lines).toHaveLength(9);

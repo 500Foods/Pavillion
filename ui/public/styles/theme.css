@@ -619,6 +619,86 @@
   max-width: 28rem;
 }
 
+.pav-root .formats-block {
+  margin: 0 0 1.05rem;
+  max-width: 62rem;
+}
+
+.pav-root .formats-title {
+  display: block;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  margin: 0 0 0.15rem;
+}
+
+.pav-root .formats-note {
+  margin: 0 0 0.4rem;
+  max-width: 46rem;
+  color: var(--pav-text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.pav-root .formats-row {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1.6fr) minmax(9rem, 1fr) minmax(7rem, 0.8fr) minmax(7rem, 0.8fr) auto;
+  grid-template-areas: "preset pattern now sample reset";
+  gap: 0.45rem 0.75rem;
+  align-items: center;
+  margin: 0;
+}
+
+.pav-root .formats-row.is-plain {
+  grid-template-columns: minmax(14rem, 24rem);
+  grid-template-areas: "preset";
+  max-width: 24rem;
+}
+
+.pav-root .formats-preset { grid-area: preset; }
+.pav-root .formats-pattern { grid-area: pattern; }
+.pav-root .formats-now { grid-area: now; }
+.pav-root .formats-sample { grid-area: sample; }
+.pav-root .formats-reset { grid-area: reset; }
+
+.pav-root .formats-now,
+.pav-root .formats-sample {
+  white-space: nowrap;
+}
+
+.pav-root .formats-row input,
+.pav-root .formats-row select {
+  font-family: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  color: var(--pav-text);
+  background: var(--pav-surface-button);
+  border: 1px solid var(--pav-border);
+  border-radius: 0.15rem;
+  padding: 0.2rem 0.4rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.pav-root .formats-row button {
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  color: var(--pav-text);
+  background: var(--pav-surface-button);
+  border: 1px solid var(--pav-border);
+  border-radius: 0.15rem;
+  padding: 0.2rem 0.55rem;
+}
+
+.pav-root .formats-error:empty {
+  display: none;
+}
+
+.pav-root .formats-error {
+  grid-column: 1 / -1;
+  color: var(--pav-danger, var(--pav-text));
+  font-size: 0.8125rem;
+}
+
 .pav-root .mail-css-extra textarea {
   font-family: inherit;
   font-size: 0.8125rem;

@@ -6,6 +6,7 @@
    message-list field omits listRows. */
 
 import { moduleFooter, moduleToolbar, mountBar } from "../common/module-bar.js";
+import { formatInstant } from "../formats.js";
 
 const MIN_MB = 1;
 const MAX_MB = 1048576;
@@ -168,43 +169,13 @@ export function formatCount(count) {
   return count.toLocaleString("en-US");
 }
 
-/* 24 h in the profile zone. A missing stamp is blank. */
+/* Formats datetime in the profile zone. A missing stamp is blank. */
 export function formatChecked(ms, timeZone) {
+  if (!Number.isInteger(ms) || ms < 0) {
+    return "";
+  }
   const zone = typeof timeZone === "string" && timeZone !== "" ? timeZone : "America/Vancouver";
-  const date = new Date(ms);
-  if (!Number.isInteger(ms) || ms < 0 || Number.isNaN(date.getTime())) {
-    return "";
-  }
-  let parts;
-  try {
-    parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: zone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    }).formatToParts(date);
-  } catch {
-    return "";
-  }
-  const pick = (type) => {
-    const part = parts.find((item) => item.type === type);
-    return part ? part.value : "";
-  };
-  let hour = pick("hour");
-  if (hour === "24") {
-    hour = "00";
-  }
-  const year = pick("year");
-  const month = pick("month");
-  const day = pick("day");
-  const minute = pick("minute");
-  if (year.length !== 4 || month.length !== 2 || day.length !== 2 || hour.length !== 2 || minute.length !== 2) {
-    return "";
-  }
-  return `${year}-${month}-${day} ${hour}:${minute}`;
+  return formatInstant(ms, "datetime", { zone });
 }
 
 function messageOf(err) {
@@ -253,6 +224,7 @@ export function createLimitsSettings(api, root, options = {}) {
       refresh: () => Promise.resolve(),
       apply: () => Promise.resolve(),
       measure: () => Promise.resolve(),
+      repaintTimes() {},
       destroy() {},
     };
   }
@@ -315,7 +287,10 @@ export function createLimitsSettings(api, root, options = {}) {
     return cell(formatPoolCell(figure.count, figure.bytes), true);
   }
 
+  let lastUsage = null;
+
   function paintUsage(usage) {
+    lastUsage = usage;
     const accounts = usage && Array.isArray(usage.accounts) ? usage.accounts : [];
     const when = formatChecked(usage && usage.sizesCheckedAt, zone());
     const free = usage && usage.volumeFreeBytes;
@@ -399,6 +374,12 @@ export function createLimitsSettings(api, root, options = {}) {
       checked.textContent = `Checking ${who} ${label}, ${doneText} of ${totalText}`;
     } else if (who !== "") {
       checked.textContent = `Checking ${who} ${label}`;
+    }
+  }
+
+  function repaintTimes() {
+    if (lastUsage) {
+      paintUsage(lastUsage);
     }
   }
 
@@ -583,6 +564,7 @@ export function createLimitsSettings(api, root, options = {}) {
     refresh,
     apply,
     measure,
+    repaintTimes,
     destroy() {
       ticket += 1;
       measuring = false;

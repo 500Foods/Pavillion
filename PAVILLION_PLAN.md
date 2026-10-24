@@ -5,8 +5,8 @@ Status: v0.7 (2026-10-16). Implementer: Grok Build. Reviewer: Andrew Simard.
 **Resume:** each phase's history is in its own document's Working log; this block is only the current state.
 
 - Last finished: Q-1 (step 60), 2026-10-23, in [docs/Q-SEARCH.md](docs/Q-SEARCH.md). FTS5 indexing and local search. `search.run` requires `server` false. `message.list` accepts view kind `search`. `index.rebuild` is an activity. A header row calls `pav_fts_index_headers` directly. The indexed body is the SQL literal `''`. Andrew asked for this close-out the same day. The agent does not commit. CI on the code is green at `8a64fef`: fedora, macos-core, windows-core, run [40041797045](https://github.com/500Foods/Pavillion/actions/runs/40041797045). The window was not opened.
-- Next: N-3 (step 61), not started, in [docs/N-MAIL.md](docs/N-MAIL.md). The message list extends the N-3a table. The entry gate is N-2 and N-3a, both complete. View kind `search` stays as Q-1 left it. This phase adds `unified`. The search field, server search, saved searches, and the Settings rebuild button stay in Q-2 (step 62). Do not start Q-2. `$deleted` stays in the list until N-3 and N-5 filter it. N-3's exit gate is the window. This close-out did not open it. The Accounts table polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md). The agent does not commit.
-- Last full `make test`: 247 Unity tests, 2 Rust tests and 384 Vitest tests, exit 0 (2026-10-23, Q-1). The phase stamp is `0.67.0`.
+- Next: D-8 (step 132), in progress, in [docs/D-UI.md](docs/D-UI.md). Andrew chose it on 2026-10-23, before N-3, so the message list uses `formats.js`. The Formats pane describes each kind, shows an example of the default pattern, and lists default patterns (Custom keeps any other allowed string). Help lists the tokens. The luxon gzip figure is still open. The window is not accepted. N-3 (step 61) was not started. His N-3 choices are in [docs/N-MAIL.md](docs/N-MAIL.md): `unified` has five names, `debug.seed_messages` takes `{mailboxId, count}`, and the list theme extends `.pav-table` in `theme.css`. Do not start N-3 in the D-8 session. The search field stays in Q-2. The Accounts table polish stays paused in [docs/TABULATOR.md](docs/TABULATOR.md). The agent does not commit.
+- Last full `make test`: 247 Unity tests, 2 Rust tests and 397 Vitest tests, exit 0 (2026-10-23, D-8 in progress). The phase stamp is `0.67.0`.
 - `PAVILLION_API_VERSION` is 3. The phase stamp is `0.67.0` (67 Done rows), release date 2026-10-23.
 
 **Read first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), one page with diagrams of the layers, the threads, and the data flow.
@@ -136,7 +136,7 @@ Row order decides what is next: the next phase is the first row, top to bottom, 
 | 58 | N-1 | Body fetch and MIME (GMime) | Medium | Done |
 | 59 | N-2 | The HTML sanitizer and the hostile corpus | Hard | Done |
 | 60 | Q-1 | FTS5 indexing and local search | Medium | Done |
-| 132 | D-8 | Settings → Formats: app-wide date, time, and datetime formats (Luxon) | Medium | |
+| 132 | D-8 | Settings → Formats: app-wide date, time, and datetime formats (Luxon) | Medium | In progress |
 | 61 | N-3 | Message list (Tabulator) | Medium | |
 | 133 | D-9 | Icon Wizard (DRAFT spec; docs only): layered icons for accounts, later folders and labels | Medium | |
 | 134 | D-10 | Module bars: Accounts Clone and search, Help bar with search and Back | Medium | Done |

@@ -30,3 +30,21 @@ test("level and local time are decorations over the UTC line", () => {
   }, "America/Vancouver"));
   expect(found[1].spec.widget.utc).toBe("2026-10-14T17:04:01.123Z");
 });
+
+test("a level list colors a screen line whose time is wider than 12 characters", () => {
+  const text = "10:04:01.123 AM  INFO   core      hello\n";
+  const state = EditorState.create({ doc: text });
+  const set = buildLogDecorations(
+    state,
+    "America/Vancouver",
+    ["2026-10-14T17:04:01.123Z"],
+    [],
+    null,
+    ["INFO"],
+  );
+  const found = [];
+  set.between(0, state.doc.length, (_from, _to, value) => {
+    found.push(value.spec);
+  });
+  expect(found.some((spec) => spec.class === "pav-log-level-INFO" && spec.attributes.title === "2026-10-14T17:04:01.123Z")).toBe(true);
+});

@@ -872,7 +872,7 @@ test("the table ticks stored capabilities after a reload", async () => {
       expect(box("mail").checked).toBe(true);
     });
     expect(box("files").checked).toBe(true);
-    expect(tip()).toMatch(/^Checked \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    expect(tip()).toMatch(/^Checked \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/);
   } finally {
     unmount();
     el.remove();

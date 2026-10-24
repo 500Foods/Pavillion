@@ -3,6 +3,8 @@
    saves the cap and trims (log.trim {mb}), Trim Now trims to the saved cap
    (log.trim {}). Each shows the stats that came back. */
 
+import { formatInstant } from "../formats.js";
+
 const MB = 1024 * 1024;
 const PREVIEW_DELAY_MS = 150;
 
@@ -15,18 +17,9 @@ export function formatOldest(ms, timeZone) {
   if (!Number.isFinite(ms)) {
     return "none";
   }
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      timeZone,
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(ms));
-  } catch {
-    return new Date(ms).toISOString();
-  }
+  const zone = typeof timeZone === "string" && timeZone !== "" ? timeZone : undefined;
+  const text = formatInstant(ms, "datetime", zone ? { zone } : {});
+  return text === "" ? "none" : text;
 }
 
 export function statsText(stats, timeZone) {
@@ -50,6 +43,8 @@ export function createLogSettings(api, root, options = {}) {
   let savedCap = 10;
   let previewTimer = 0;
   let previewTicket = 0;
+  let lastStats = null;
+  let lastPreview = null;
 
   if (!slider || !statsLine) {
     return { refresh: () => Promise.resolve(), destroy() {} };
@@ -72,6 +67,8 @@ export function createLogSettings(api, root, options = {}) {
   }
 
   function show(stats) {
+    lastStats = stats;
+    lastPreview = null;
     if (stats && Number.isInteger(stats.capMb)) {
       savedCap = stats.capMb;
       slider.value = String(savedCap);
@@ -82,6 +79,15 @@ export function createLogSettings(api, root, options = {}) {
       previewLine.textContent = "";
     }
     return stats;
+  }
+
+  function repaintTimes() {
+    if (lastStats) {
+      statsLine.textContent = statsText(lastStats, zone());
+    }
+    if (lastPreview && previewLine && previewLine.textContent !== "") {
+      previewLine.textContent = `At ${sliderMb()} MB: about ${statsText(lastPreview, zone())}`;
+    }
   }
 
   function sliderMb() {
@@ -101,6 +107,7 @@ export function createLogSettings(api, root, options = {}) {
     }
     return api.log.trimPreview(mb).then((est) => {
       if (ticket === previewTicket && previewLine) {
+        lastPreview = est;
         previewLine.textContent = `At ${mb} MB: about ${statsText(est, zone())}`;
       }
     }).catch(report);
@@ -139,6 +146,7 @@ export function createLogSettings(api, root, options = {}) {
   return {
     refresh,
     preview,
+    repaintTimes,
     apply,
     trimNow,
     destroy() {

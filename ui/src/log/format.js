@@ -1,9 +1,11 @@
 /* The file line is the C format "%s %-5s %s  %s": UTC stamp, level
    padded to five characters, subsystem, two spaces, message.
-   The screen line is separate. Time is local HH:mm:ss.mmm (12). Level
-   is 5: ERROR and DEBUG are the longest severity names. Subsystem is 8:
-   activity is the longest name the docs assign. Two spaces sit between
-   the fields. The message is the last field and is not padded. */
+   The screen line is separate. Its time is formats.js timeSeconds.
+   Level is 5: ERROR and DEBUG are the longest severity names. Subsystem
+   is 8: activity is the longest name the docs assign. Two spaces sit
+   between the fields. The message is the last field and is not padded. */
+
+import { formatInstant } from "../formats.js";
 
 const STAMP = 24;
 const SCREEN_TIME = 12;
@@ -39,40 +41,11 @@ export function parseFileLine(line) {
   };
 }
 
-/* Local HH:mm:ss.mmm. Milliseconds come from the UTC stamp; the zone
-   only moves the clock. An unknown zone or stamp becomes question marks. */
+/* Display time for a log line. An unknown zone or stamp becomes question marks. */
 export function localStamp(ts, timeZone) {
-  const zone = typeof timeZone === "string" && timeZone !== "" ? timeZone : "America/Vancouver";
-  const date = new Date(ts);
-  if (typeof ts !== "string" || ts.length < 23 || Number.isNaN(date.getTime())) {
-    return "??:??:??.???";
-  }
-  let parts;
-  try {
-    parts = new Intl.DateTimeFormat("en-GB", {
-      timeZone: zone,
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hourCycle: "h23",
-    }).formatToParts(date);
-  } catch {
-    return "??:??:??.???";
-  }
-  const pick = (type) => {
-    const part = parts.find((item) => item.type === type);
-    return part ? part.value : "";
-  };
-  let hour = pick("hour");
-  if (hour === "24") {
-    hour = "00";
-  }
-  const minute = pick("minute");
-  const second = pick("second");
-  if (hour.length !== 2 || minute.length !== 2 || second.length !== 2) {
-    return "??:??:??.???";
-  }
-  return `${hour}:${minute}:${second}.${ts.slice(20, 23)}`;
+  const zone = typeof timeZone === "string" && timeZone !== "" ? timeZone : undefined;
+  const text = formatInstant(ts, "timeSeconds", zone ? { zone } : {});
+  return text === "" ? "??:??:??.???" : text;
 }
 
 export function screenLine(entry, timeZone) {

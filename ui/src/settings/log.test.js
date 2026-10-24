@@ -38,8 +38,7 @@ test("Refresh shows size, records, and the oldest local date and time", async ()
   const text = root.querySelector("#log-stats").textContent;
   expect(text).toContain("3 records");
   expect(text).toContain(formatMb(600));
-  expect(text).toContain("Oct 19, 2026");
-  expect(text).toContain("05:00");
+  expect(text).toContain("2026-10-19 05:00");
   expect(root.querySelector("#log-cap").value).toBe("10");
   expect(root.querySelector("#log-cap-value").textContent).toBe("10 MB");
   settings.destroy();

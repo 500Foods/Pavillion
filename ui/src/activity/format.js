@@ -1,5 +1,7 @@
 /* Screen text for one activity row. The core owns the record. */
 
+import { formatInstant } from "../formats.js";
+
 export const MAIL_ICON = "fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270";
 
 export const APP_ACCOUNT = {
@@ -138,37 +140,9 @@ export function formatEta(ms) {
 }
 
 export function localClock(ms, timeZone) {
-  const zone = typeof timeZone === "string" && timeZone !== "" ? timeZone : "America/Vancouver";
-  const date = new Date(ms);
-  if (!Number.isFinite(ms) || Number.isNaN(date.getTime())) {
-    return "--:--:--";
-  }
-  let parts;
-  try {
-    parts = new Intl.DateTimeFormat("en-GB", {
-      timeZone: zone,
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hourCycle: "h23",
-    }).formatToParts(date);
-  } catch {
-    return "--:--:--";
-  }
-  const pick = (type) => {
-    const part = parts.find((item) => item.type === type);
-    return part ? part.value : "";
-  };
-  let hour = pick("hour");
-  if (hour === "24") {
-    hour = "00";
-  }
-  const minute = pick("minute");
-  const second = pick("second");
-  if (hour.length !== 2 || minute.length !== 2 || second.length !== 2) {
-    return "--:--:--";
-  }
-  return `${hour}:${minute}:${second}`;
+  const zone = typeof timeZone === "string" && timeZone !== "" ? timeZone : undefined;
+  const text = formatInstant(ms, "timeSeconds", zone ? { zone } : {});
+  return text === "" ? "--:--:--" : text;
 }
 
 export function stateLabel(state) {

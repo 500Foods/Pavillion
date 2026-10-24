@@ -1,3 +1,4 @@
+import { normalizeFormats } from "./formats.js";
 import { normalizeFilter } from "./log/filter.js";
 import { clampSession } from "./shell/session.js";
 import { themeNameOk } from "./theme-catalog.js";
@@ -108,6 +109,7 @@ const KNOWN = new Set([
   "themeChoice",
   "fontSource",
   "iconSource",
+  "formats",
 ]);
 
 function isObject(value) {
@@ -356,6 +358,7 @@ export function clampUi(raw) {
     features: featuresOf(src.features),
     rail,
     chords: chordsOf(src.chords, rail),
+    formats: normalizeFormats(src.formats),
   };
   const themeChoice = choiceOf(src.themeChoice);
   if (themeChoice) {

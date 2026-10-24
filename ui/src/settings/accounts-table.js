@@ -6,6 +6,7 @@
    A box is on when the stored capabilities (K-Q10) include it and the
    account syncs it.
    Files has no sync flag yet, so it shows the capability only. */
+import { formatInstant } from "../formats.js";
 import { accountSwatch } from "./account-icon.js";
 
 export const FEATURES = [
@@ -48,32 +49,20 @@ export function featureOn(account, feature, caps) {
   return feature.flag ? account[feature.flag] !== false : true;
 }
 
-/* K-Q10: the feature tooltip, `Checked YYYY-MM-DD HH:MM:SS` in 24-hour time
-   in the profile time zone, or `Not checked yet`. */
+/* K-Q10: the feature tooltip, date plus timeSeconds in the profile zone,
+   or `Not checked yet`. */
 export function checkedTitle(iso, timeZone) {
   const ms = typeof iso === "string" ? Date.parse(iso) : Number.NaN;
   if (!Number.isFinite(ms)) {
     return "Not checked yet";
   }
   const zone = typeof timeZone === "string" && timeZone !== "" ? timeZone : "America/Vancouver";
-  let parts;
-  try {
-    parts = new Intl.DateTimeFormat("en-GB", {
-      timeZone: zone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hourCycle: "h23",
-    }).formatToParts(new Date(ms));
-  } catch {
+  const date = formatInstant(ms, "date", { zone });
+  const time = formatInstant(ms, "timeSeconds", { zone });
+  if (date === "" || time === "") {
     return "Not checked yet";
   }
-  const pick = (type) => (parts.find((p) => p.type === type) || { value: "" }).value;
-  const hour = pick("hour") === "24" ? "00" : pick("hour");
-  return `Checked ${pick("year")}-${pick("month")}-${pick("day")} ${hour}:${pick("minute")}:${pick("second")}`;
+  return `Checked ${date} ${time}`;
 }
 
 export const NO_SERVER = "(no server)";

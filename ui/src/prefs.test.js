@@ -203,6 +203,15 @@ test("tree view state survives the clamp, and a non-object tree is dropped", () 
   expect(clampUi({}).trees).toEqual({});
 });
 
+test("formats keeps valid kind strings and drops the rest", () => {
+  expect(clampUi({ formats: { time: "HH:mm:ss", nope: "x", locale: "fr" } }).formats).toEqual({
+    time: "HH:mm:ss",
+    locale: "fr",
+  });
+  expect(clampUi({ formats: { time: "nope" } }).formats).toEqual({});
+  expect(clampUi({}).formats).toEqual({});
+});
+
 test("K-Q14: Accounts table and form zoom keys default to 1 and clamp like panes", () => {
   const z = clampUi({}).zoom;
   expect(z.accountsTable).toBe(1);

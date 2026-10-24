@@ -2,11 +2,13 @@ import { Compartment, EditorState, RangeSetBuilder, StateEffect, StateField } fr
 import { Decoration, EditorView, WidgetType } from "@codemirror/view";
 import { LOG_LEVELS, SESSIONS, VIEW_LEVEL_NAMES, countMatches, levelsAtOrAbove, lineVisible, normalizeFilter, queryArgs } from "./filter.js";
 import { fromLocalInput, inRange, normalizeRange, rangeBounds, rangeWidened, toLocalInput } from "./range.js";
+import { formatInstant } from "../formats.js";
 import { fileLine, parseFileLine, screenLine } from "./format.js";
 
 const LEVELS = new Set(LOG_LEVELS);
-/* One log.query page of history (H-4). */
+/* One log.query page of history (H-4). Save uses the core's page cap. */
 export const HISTORY_PAGE = 2000;
+const EXPORT_PAGE = 10000;
 const zoneEffect = StateEffect.define();
 
 class LocalTimeWidget extends WidgetType {
@@ -50,11 +52,12 @@ class SessionWidget extends WidgetType {
   }
 }
 
-/* The document is the screen line (local 24 h time in the profile zone,
-   level, subsystem, message; H-4 Lock). Each line gets its level class and
-   the UTC stamp as its title. A UTC file line (older callers, tests) is
-   still drawn through the local-time widget. */
-export function buildLogDecorations(state, timeZone, stamps = [], sessions = [], sessionLabel = null) {
+/* The document is the screen line (Formats timeSeconds, level, subsystem,
+   message). Each line gets its level class and the UTC stamp as its title.
+   A UTC file line (older callers, tests) is still drawn through the
+   local-time widget. levels, when present, names the level of each screen
+   line so a time wider than 12 characters still colors the line. */
+export function buildLogDecorations(state, timeZone, stamps = [], sessions = [], sessionLabel = null, levels = null) {
   const builder = new RangeSetBuilder();
   const separators = [];
   for (let number = 1; number <= state.doc.lines; number += 1) {
@@ -70,7 +73,10 @@ export function buildLogDecorations(state, timeZone, stamps = [], sessions = [],
           side: -1,
         }).range(line.from));
       }
-      const level = line.text.slice(14, 19).trim();
+      const listed = Array.isArray(levels) ? levels[number - 1] : undefined;
+      const level = typeof listed === "string" && LEVELS.has(listed)
+        ? listed
+        : line.text.slice(14, 19).trim();
       if (LEVELS.has(level)) {
         const utc = typeof stamps[number - 1] === "string" ? stamps[number - 1] : "";
         builder.add(line.from, line.from, Decoration.line({
@@ -150,6 +156,8 @@ export function createLogView(parent, api, options = {}) {
   /* UTC stamp of each document line: the document is the local screen line
      (H-4 Lock), the stamp is the hover title. */
   let docStamps = [];
+  /* Level of each document line. The screen time is not a fixed width. */
+  let docLevels = [];
   /* Session id of each document line, and what log.query said about sessions. */
   let docSessions = [];
   let currentSession = null;
@@ -160,10 +168,9 @@ export function createLogView(parent, api, options = {}) {
     if (!Number.isFinite(started)) {
       return `Session ${id}`;
     }
-    const when = new Date(started);
-    const date = when.toLocaleDateString("sv-SE", { timeZone });
-    const time = when.toLocaleTimeString("en-GB", { timeZone, hour12: false });
-    return `Session ${id} · started ${date} ${time}${id === currentSession ? " (this run)" : ""}`;
+    const when = formatInstant(started, "datetime", { zone: timeZone });
+    const stamp = when === "" ? "" : ` · started ${when}`;
+    return `Session ${id}${stamp}${id === currentSession ? " (this run)" : ""}`;
   };
   const show = (entry) => screenLine(entry, timeZone);
   let exhausted = false;
@@ -507,12 +514,12 @@ export function createLogView(parent, api, options = {}) {
 
   const decorations = StateField.define({
     create(state) {
-      return buildLogDecorations(state, timeZone, docStamps, docSessions, sessionLabel);
+      return buildLogDecorations(state, timeZone, docStamps, docSessions, sessionLabel, docLevels);
     },
     update(value, transaction) {
       const refresh = transaction.effects.some((effect) => effect.is(zoneEffect));
       if (transaction.docChanged || refresh) {
-        return buildLogDecorations(transaction.state, timeZone, docStamps, docSessions, sessionLabel);
+        return buildLogDecorations(transaction.state, timeZone, docStamps, docSessions, sessionLabel, docLevels);
       }
       return value;
     },
@@ -666,6 +673,7 @@ export function createLogView(parent, api, options = {}) {
     const visible = visibleLines();
     const text = visible.length === 0 ? "" : `${visible.map(show).join("\n")}\n`;
     docStamps = visible.map((entry) => entry.ts);
+    docLevels = visible.map((entry) => entry.level);
     docSessions = visible.map((entry) => entry.session);
     const end = view.state.doc.length;
     pinScroll();
@@ -684,6 +692,7 @@ export function createLogView(parent, api, options = {}) {
     if (fresh.length > 0) {
       const chunk = `${fresh.map(show).join("\n")}\n`;
       docStamps.push(...fresh.map((entry) => entry.ts));
+      docLevels.push(...fresh.map((entry) => entry.level));
       docSessions.push(...fresh.map((entry) => entry.session));
       const end = view.state.doc.length;
       pinScroll();
@@ -770,7 +779,7 @@ export function createLogView(parent, api, options = {}) {
 
   async function copyVisible() {
     const visible = visibleLines();
-    const text = visible.length === 0 ? "" : `${visible.map(fileLine).join("\n")}\n`;
+    const text = visible.length === 0 ? "" : `${visible.map(show).join("\n")}\n`;
     if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
       try {
         await navigator.clipboard.writeText(text);
@@ -801,7 +810,34 @@ export function createLogView(parent, api, options = {}) {
     if (!path) {
       return;
     }
-    await api.log.export({ path, filter: queryArgs(filter, session) });
+    const args = queryArgs(filter, session);
+    const blocks = [];
+    let beforeSeq;
+    for (;;) {
+      const pageArgs = { ...args, limit: EXPORT_PAGE };
+      if (beforeSeq !== undefined) {
+        pageArgs.beforeSeq = beforeSeq;
+      }
+      const reply = await api.log.query(pageArgs);
+      const lines = reply && Array.isArray(reply.lines) ? reply.lines : [];
+      blocks.unshift(lines.map((line) => screenLine({
+        ts: typeof line.ts === "string" ? line.ts : "",
+        level: typeof line.level === "string" ? line.level : "",
+        subsystem: typeof line.subsystem === "string" ? line.subsystem : "",
+        text: typeof line.text === "string" ? line.text : "",
+      }, timeZone)));
+      if (lines.length < EXPORT_PAGE) {
+        break;
+      }
+      const oldest = lines[0] && lines[0].seq;
+      if (!Number.isFinite(oldest) || (beforeSeq !== undefined && oldest >= beforeSeq)) {
+        break;
+      }
+      beforeSeq = oldest;
+    }
+    const flat = blocks.flat();
+    const text = flat.length === 0 ? "" : `${flat.join("\n")}\n`;
+    await api.exports.writeText({ path, text });
   }
 
   function printVisible() {
@@ -846,6 +882,7 @@ export function createLogView(parent, api, options = {}) {
       const top = scroller.scrollTop;
       pinScroll();
       docStamps = fresh.map((entry) => entry.ts).concat(docStamps);
+      docLevels = fresh.map((entry) => entry.level).concat(docLevels);
       docSessions = fresh.map((entry) => entry.session).concat(docSessions);
       view.dispatch({ changes: { from: 0, insert: `${fresh.map(show).join("\n")}\n` } });
       /* Keep the line that was on screen where it was. */

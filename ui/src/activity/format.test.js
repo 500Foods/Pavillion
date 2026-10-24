@@ -14,7 +14,7 @@ import {
 const STAMP = Date.parse("2026-10-14T17:04:01.123Z");
 
 test("the clock is local hours and the eta follows the lock", () => {
-  expect(localClock(STAMP, "America/Vancouver")).toBe("10:04:01");
+  expect(localClock(STAMP, "America/Vancouver")).toBe("10:04:01.123");
   expect(localClock(Number.NaN, "America/Vancouver")).toBe("--:--:--");
   expect(formatEta(null)).toBe("");
   expect(formatEta(5000)).toBe("in 5s");
