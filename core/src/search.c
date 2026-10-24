@@ -49,56 +49,6 @@ static int ready_or_err(PavError *err) {
     return 0;
 }
 
-static char *dup_text(const char *text) {
-    size_t n;
-    char *out;
-
-    if (text == NULL) {
-        text = "";
-    }
-    n = strlen(text);
-    out = malloc(n + 1);
-    if (out == NULL) {
-        return NULL;
-    }
-    memcpy(out, text, n + 1);
-    return out;
-}
-
-static char *from_label(const char *raw) {
-    json_error_t jerr;
-    json_t *arr;
-    json_t *first;
-    const char *name;
-    const char *email;
-    const char *pick;
-
-    if (raw == NULL || raw[0] == '\0') {
-        return dup_text("");
-    }
-    arr = json_loads(raw, 0, &jerr);
-    if (!json_is_array(arr) || json_array_size(arr) == 0) {
-        json_decref(arr);
-        return dup_text("");
-    }
-    first = json_array_get(arr, 0);
-    name = json_string_value(json_object_get(first, "name"));
-    email = json_string_value(json_object_get(first, "email"));
-    if (name != NULL && name[0] != '\0') {
-        pick = name;
-    } else if (email != NULL && email[0] != '\0') {
-        pick = email;
-    } else {
-        pick = "";
-    }
-    {
-        char *out = dup_text(pick);
-
-        json_decref(arr);
-        return out;
-    }
-}
-
 static size_t json_string_bytes(const char *text) {
     const unsigned char *p;
     size_t n = 2;
@@ -116,10 +66,6 @@ static size_t json_string_bytes(const char *text) {
         }
     }
     return n;
-}
-
-static size_t row_bytes(const char *id, const char *from, const char *subject) {
-    return 24 + json_string_bytes(id) + json_string_bytes(from) + json_string_bytes(subject);
 }
 
 static int list_rows_cap(void) {
@@ -342,42 +288,18 @@ static int fill_page(sqlite3_stmt *stmt, json_t *messages, size_t *used, int lim
     int rc;
 
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        const char *id = (const char *)sqlite3_column_text(stmt, 0);
-        const char *subject = (const char *)sqlite3_column_text(stmt, 1);
-        const char *from_json = (const char *)sqlite3_column_text(stmt, 2);
-        char *from;
-        json_t *row;
-        size_t next;
+        int added;
 
         if (json_array_size(messages) >= (size_t)limit) {
             break;
         }
-        if (id == NULL || id[0] == '\0') {
+        added = pav_list_append_row(messages, used, LIST_REPLY_MAX, stmt);
+        if (added < 0) {
             return -1;
         }
-        if (subject == NULL) {
-            subject = "";
-        }
-        from = from_label(from_json);
-        if (from == NULL) {
-            return -1;
-        }
-        next = row_bytes(id, from, subject);
-        if (json_array_size(messages) > 0 && *used + next > LIST_REPLY_MAX) {
-            free(from);
+        if (added == 0) {
             break;
         }
-        row = json_object();
-        if (row == NULL || json_object_set_new(row, "id", json_string(id)) != 0 ||
-            json_object_set_new(row, "from", json_string(from)) != 0 ||
-            json_object_set_new(row, "subject", json_string(subject)) != 0 ||
-            json_array_append_new(messages, row) != 0) {
-            json_decref(row);
-            free(from);
-            return -1;
-        }
-        free(from);
-        *used += next;
     }
     if (rc != SQLITE_DONE && rc != SQLITE_ROW) {
         return -1;
@@ -470,6 +392,19 @@ int pav_search_exec(sqlite3 *db, const PavQuery *query, const PavSearchIn *in, j
         pav_error_set(err, "internal", "cannot search", 0);
         return -1;
     }
+    {
+        const char *hidden = " AND " PAV_SQL_NOT_DELETED;
+        size_t hidden_n = strlen(hidden);
+
+        if (filter_len + hidden_n >= sizeof(filter)) {
+            free(match);
+            free(only_not);
+            pav_error_set(err, "internal", "cannot search", 0);
+            return -1;
+        }
+        memcpy(filter + filter_len, hidden, hidden_n + 1);
+        filter_len += hidden_n;
+    }
     limit = in->limit < 1 ? 100 : in->limit;
     if (match != NULL) {
         from = "FROM email_fts JOIN email e ON e.rowid = email_fts.rowid "
@@ -526,8 +461,11 @@ int pav_search_exec(sqlite3 *db, const PavQuery *query, const PavSearchIn *in, j
     binds[bind_n].i = limit;
     bind_n++;
     wrote = snprintf(sql, sizeof(sql),
-                     "SELECT e.id, IFNULL(e.subject, ''), IFNULL(e.from_json, '') %s%s%s %sLIMIT ?", from, where, filter,
-                     order);
+                     "SELECT e.id, IFNULL(e.subject, ''), IFNULL(e.from_json, ''), IFNULL(e.to_json, ''), "
+                     "IFNULL(e.preview, ''), IFNULL(e.received_at, 0), IFNULL(e.seen, 0), IFNULL(e.flagged, 0), "
+                     "IFNULL(e.answered, 0), IFNULL(e.forwarded, 0), IFNULL(e.has_attachment, 0), "
+                     "IFNULL(r.account_id, '') %s%s%s %sLIMIT ?",
+                     from, where, filter, order);
     if (wrote < 0 || (size_t)wrote >= sizeof(sql) || sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK ||
         bind_all(stmt, binds, bind_n) != 0) {
         sqlite3_finalize(stmt);

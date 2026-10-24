@@ -1,6 +1,6 @@
 # N — MAIL
 
-**Status:** N-2 complete (2026-10-23). The index names N-3 next (step 61). N-3 was not started. D-8 is complete. Scoped 2026-10-16 from plan §6, §7, §10, §13.
+**Status:** N-3 in progress (step 61). D-8 is complete. Scoped 2026-10-16 from plan §6, §7, §10, §13.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Reading and organizing mail: MIME, the sanitizer, the message list, the reading pane, threads, unified views, flags and moves, attachments, notifications, shortcuts, and folder retention. Sync is [M-SYNC.md](M-SYNC.md). Compose is [O-COMPOSE.md](O-COMPOSE.md). Search is [Q-SEARCH.md](Q-SEARCH.md). The mailbox tree is [E-TREE.md](E-TREE.md). The isolation rules are the [F-HARDEN.md](F-HARDEN.md) Lock and are not restated here.
@@ -14,7 +14,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | N-1 | Body fetch and MIME with GMime; `message.get` text, parts, headers | Medium | Done |
 | N-2 | The HTML sanitizer in the core and the hostile corpus | Hard | Done |
 | N-3a | Message list: From and Subject for the selected folder | Medium | Done |
-| N-3 | Message list: the remaining columns, selection, live row updates | Medium | Not started |
+| N-3 | Message list: the remaining columns, selection, live row updates | Medium | In progress |
 | N-4 | Reading pane: sanitized HTML in the sandbox, remote content, `cid:`, links, plain text | Medium | Not started |
 | N-5 | Flags, move, delete, archive, junk, undo toast, mailbox management | Medium | Not started |
 | N-6 | Threads, unified views, message sub-tabs | Medium | Not started |
@@ -253,7 +253,7 @@ Andrew opened the live profile on 2026-10-23. The count is there and the list fi
 ## N-3: Message list
 
 **Kind:** Medium
-**Status:** Not started. The index names this phase next (step 61). D-8 is complete. The windows-core failure on `a8903db` is fixed in `ui/src/formats.test.js` and CI has not re-run. Q-1 left `message.list` view kind `search` real. This phase adds `unified` and leaves `search` in place. The 2026-10-23 decisions below stand. The list hides `$deleted`. Folder badges recount local rows and skip `$deleted` (N-Q6).
+**Status:** In progress (step 61). The list code is in the tree. The window is not accepted, so Accomplished is unwritten and the gzip record is still open. `make test`: 247 Unity, 2 Rust, 397 Vitest, exit 0 (2026-10-24). Q-1 left `message.list` view kind `search` real. This phase adds `unified` and leaves `search` in place. The 2026-10-23 decisions below stand. The list hides `$deleted`. Folder badges recount local rows and skip `$deleted` (N-Q6). CI on `47ee864`, run [40062205611](https://github.com/500Foods/Pavillion/actions/runs/40062205611): fedora passed. macos-core failed in `ui/src/zoom-wheel.test.js` at the 5000 ms timeout. The local timeout for that test and `zoom-actions.test.js` is 20000 and is not pushed. windows-core passed. The run failed on macos-core.
 
 **Goal:** The Mail home tab shows the selected mailbox's messages with smooth scrolling at 100k rows. From and Subject for one page are N-3a. This phase extends that table. `message.list` omits a row whose `keywords` contain `$deleted`, and `total` counts the rows that remain. The keyword stays stored. N-5 still moves a message to Trash or destroys it.
 
@@ -270,15 +270,15 @@ Andrew opened the live profile on 2026-10-23. The count is there and the list fi
 
 **Work items:**
 
-- [ ] Extend the N-3a table with the Lock's remaining columns and text-only formatters. The rows are the one reply N-3a loaded. Do not add pagination. The time column calls `formats.js`.
-- [ ] `message.list` gains view kind `unified` (`search` in Q-1) and `threaded` (flat first; threaded in N-6). The `unified` argument is the decided shape above. Kind `mailbox` and `listRows` are N-3a.
-- [ ] Selection, keyboard focus, and the `list` shortcut scope (`j`/`k`, `Enter`).
-- [ ] Live updates from `mail.messages_changed` patch rows by id.
-- [ ] Theme the mail list on `.pav-table` in `ui/public/styles/theme.css`, using `--pav-*` variables. New variables ship in `dark.css`, `light.css`, and both starter `*.theme` files.
+- [x] Extend the N-3a table with the Lock's remaining columns and text-only formatters. The rows are the one reply N-3a loaded. Do not add pagination. The time column calls `formats.js`.
+- [x] `message.list` gains view kind `unified` (`search` in Q-1) and `threaded` (flat first; threaded in N-6). The `unified` argument is the decided shape above. Kind `mailbox` and `listRows` are N-3a.
+- [x] Selection, keyboard focus, and the `list` shortcut scope (`j`/`k`, `Enter`).
+- [x] Live updates from `mail.messages_changed` patch rows by id.
+- [x] Theme the mail list on `.pav-table` in `ui/public/styles/theme.css`, using `--pav-*` variables. New variables ship in `dark.css`, `light.css`, and both starter `*.theme` files.
 - [ ] Record the gzipped size of `ui/dist` in Accomplished. The size is a record. It is not a reason to drop Tabulator.
-- [ ] A debug-only fixture generator `debug.seed_messages {mailboxId, count}` to fill that folder up to the list cap. Absent when `NDEBUG` is set. Local rows only.
-- [ ] `message.list` omits a row whose `keywords` contain `$deleted`, for every kind it returns. `total` counts the rows that remain. The keyword stays stored.
-- [ ] `mailbox.list` recounts unread and total from local rows, skipping `$deleted`. Unread also requires not seen and not draft. The account row sums those counts. A parent folder does not add its children. The stored `mailbox.unread` and `mailbox.total` stay the server numbers.
+- [x] A debug-only fixture generator `debug.seed_messages {mailboxId, count}` to fill that folder up to the list cap. Absent when `NDEBUG` is set. Local rows only.
+- [x] `message.list` omits a row whose `keywords` contain `$deleted`, for every kind it returns. `total` counts the rows that remain. The keyword stays stored.
+- [x] `mailbox.list` recounts unread and total from local rows, skipping `$deleted`. Unread also requires not seen and not draft. The account row sums those counts. A parent folder does not add its children. The stored `mailbox.unread` and `mailbox.total` stay the server numbers.
 
 **Done means:** Clicking Inbox in the tree lists its messages, and the loaded rows scroll smoothly.
 
@@ -440,3 +440,4 @@ Andrew opened the live profile on 2026-10-23. The count is there and the list fi
 - 2026-10-23 N-Q6 answered: recount folder badges and skip `$deleted`. Unread is not seen, not draft, and not `$deleted`. Total skips `$deleted` only. The account row sums those. Stored server counts stay for sync. N-3 was not started.
 - 2026-10-24 D-8 CI on `a8903db`, run [40059550732](https://github.com/500Foods/Pavillion/actions/runs/40059550732): windows-core failed in `ui/src/formats.test.js` (`01:30 PST` vs `02:30 PDT` at `2026-11-01T09:30:00.000Z`). Fedora and macos-core passed. Fix that before N-3. N-3 was not started.
 - 2026-10-24 That check now allows `01:30 PST`, `02:30 PDT`, and `02:30 MST`. CI has not re-run. N-3 was not started.
+- 2026-10-24 N-3 in progress. `message.list` returns the remaining columns, `unified` (five names), and a flat `threaded` view. `$deleted` is omitted and `total` matches. `mailbox.list` recounts badges and leaves the stored server counts. `debug.seed_messages` is local and clamped to `listRows`. The mail list calls `formats.js`. j and k move the selection. Enter stays in the list. `make test`: 247 Unity, 2 Rust, 397 Vitest, exit 0. The gzip record stays open until the window is accepted. CI on `47ee864`, run [40062205611](https://github.com/500Foods/Pavillion/actions/runs/40062205611): fedora passed; macos-core failed the zoom-wheel test at 5000 ms. The local timeout is 20000 and is not pushed. windows-core passed. The run failed on macos-core.

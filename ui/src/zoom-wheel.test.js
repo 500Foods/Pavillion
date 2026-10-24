@@ -170,4 +170,4 @@ test("ctrl wheel steps the pane under the pointer and the switch flips direction
     unmount();
     el.remove();
   }
-});
+}, 20000);

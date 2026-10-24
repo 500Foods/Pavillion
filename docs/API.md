@@ -272,6 +272,18 @@ Result: `{state}` for `set` and `delete` (`ok` or `missing`). `{state, match}` f
 
 Errors: `bad_args`, `locked`, `failed`, `internal`.
 
+### debug.seed_messages
+
+State: real (N-3)
+
+Debug builds only. A build with `NDEBUG` does not register this command. `make test` builds the core without `NDEBUG`.
+
+`{mailboxId, count}`. `mailboxId` is a mailbox tree node id. `count` is an integer of at least 1. The command inserts `min(count, preferences.cache.listRows)` new local rows into that mailbox. It does not use the network. A missing mailbox is `not_found`.
+
+Result: `{inserted, mailboxId}`. `inserted` is how many rows were written. The command posts `mail.messages_changed` for that account with empty `created`, `updated`, and `destroyed` arrays.
+
+Errors: `bad_args`, `not_found`, `not_ready`, `internal`.
+
 ### draft.attach
 
 State: planned (O-4)
@@ -516,7 +528,7 @@ State: real (M-3)
 
 Args: `{accountId?}`. Omitted lists every profile account. An unknown id returns `{nodes:[]}`.
 
-Result: `{nodes:[{id, parentId, kind, label, role, order, unread, total, hasChildren, swatch}]}`. One root per profile account (`kind` `account`, `id` the account id, `swatch` the account color or null, `order` the account's index). `unread` and `total` on that root are the sums of that account's mailbox counts. Mailbox `id` is `mbx:<accountId>/<jmapAccountId>:<mailboxId>`, `kind` `mailbox`, `swatch` null, `role` null when the mailbox has none. A mailbox whose parent is missing hangs off the account root. `order` is the sibling index after `sortOrder`, then role (inbox, drafts, sent, archive, junk, trash, then any other role, then none), then name, then id.
+Result: `{nodes:[{id, parentId, kind, label, role, order, unread, total, hasChildren, swatch}]}`. One root per profile account (`kind` `account`, `id` the account id, `swatch` the account color or null, `order` the account's index). `unread` and `total` are counted from local messages in that mailbox. `total` skips a message whose keywords contain `$deleted`. `unread` also requires not seen and not draft. The account root sums those recounted numbers. A parent mailbox does not add its children. A message in two mailboxes counts in each. The stored `mailbox.unread` and `mailbox.total` stay the server's `unreadEmails` and `totalEmails`. Mailbox `id` is `mbx:<accountId>/<jmapAccountId>:<mailboxId>`, `kind` `mailbox`, `swatch` null, `role` null when the mailbox has none. A mailbox whose parent is missing hangs off the account root. `order` is the sibling index after `sortOrder`, then role (inbox, drafts, sent, archive, junk, trash, then any other role, then none), then name, then id.
 
 Errors: `bad_args`, `not_ready`, `internal`.
 
@@ -590,11 +602,19 @@ Errors: `bad_args`, `not_found`, `not_ready`, `auth`, `network`, `server`, `inte
 
 ### message.list
 
-State: real (N-3a)
+State: real (N-3)
 
-One folder's stored messages, newest `receivedAt` first. The page loads this one reply. It does not ask again while scrolling.
+One stored page, newest `receivedAt` first. The page loads this one reply. It does not ask again while scrolling.
 
-Args: `{view:{kind:"mailbox", id}}` or `{view:{kind:"search", query}}`. `id` is the mailbox tree node id (`mbx:<ra_id>:<mailboxId>`). Any other key, any other `view` key, a `kind` other than `mailbox` or `search`, a missing mailbox id, or a missing search query is `bad_args`. An id that is not a stored mailbox is `not_found`.
+Args: `{view}`. `view.kind` is `mailbox`, `search`, `unified`, or `threaded`.
+
+`mailbox` and `threaded` take `{id}`. `id` is the mailbox tree node id (`mbx:<ra_id>:<mailboxId>`). `threaded` returns the same rows as `mailbox`. Grouping is N-6. A missing id is `bad_args`. An id that is not a stored mailbox is `not_found`.
+
+`unified` takes `{name}`. `name` is `inbox`, `unread`, `flagged`, `drafts`, or `sent`. `inbox`, `drafts`, and `sent` are those roles across accounts. `unread` is every unseen message, including an unseen draft. `flagged` is every flagged message. There is no `id`. An unknown name is `bad_args`. An empty match is `total` 0.
+
+`search` takes `{query}` and is the local search syntax. There is no `id`. It is the same call as `search.run` with `server` false.
+
+Any other key, any other `view` key, a missing kind, `offset`, or `limit` is `bad_args`.
 
 Result:
 
@@ -603,14 +623,25 @@ Result:
   "accountId": "andrew-500foods-com",
   "total": 3,
   "messages": [
-    { "id": "e3", "from": "Ann", "subject": "Hello" }
+    {
+      "id": "e3",
+      "from": "Ann",
+      "to": "Pat",
+      "subject": "Hello",
+      "preview": "",
+      "receivedAt": 1700000000000,
+      "seen": false,
+      "flagged": false,
+      "answered": false,
+      "forwarded": false,
+      "hasAttachment": false,
+      "accountId": "andrew-500foods-com"
+    }
   ]
 }
 ```
 
-`messages` is at most `preferences.cache.listRows` (default 10,000, from 1 to 10,000). For a mailbox, `total` is the folder count, including rows past that cap, and the order is `received_at` descending, then `email.rowid` descending. `from` is the first address's name, or its email when the name is empty, or `""` when both are empty. `subject` is `""` when the stored subject is null. `accountId` is the profile account that owns the folder. Strings are data. The reply stays under 2 MB: a further row that would pass that is left out, and `total` does not change.
-
-A search view is `{view:{kind:"search", query}}`. `query` is the local search syntax. There is no `id`. `accountId` is null. `total` is the match count. Order is bm25, then `received_at` descending, then `email.rowid` descending. The same cap and the same 2 MB cut apply. `unified`, `offset`, `limit`, and `threaded` are later (N-3, N-6) and are `bad_args`.
+`messages` is at most `preferences.cache.listRows` (default 10,000, from 1 to 10,000). `total` counts every matching row, including rows past that cap and past the 2 MB cut. A row whose `keywords` object contains `$deleted` is omitted, and `total` counts the rows that remain. Null or invalid keywords stay. The keyword stays stored. Order for a mailbox, a role, or a flat thread is `received_at` descending, then `email.rowid` descending. `receivedAt` for those is the mailbox membership time. Unread, flagged, and search use the message's `received_at`. Search order is bm25, then that time, then `email.rowid`. `from` and `to` are the first address's name, or its email when the name is empty, or `""`. `subject` and `preview` are `""` when stored null. The result `accountId` is the profile account for `mailbox` and `threaded`, and null for `unified` and for a search that is not pinned to one account. Each row's `accountId` is the profile account that owns that message. Strings are data. The reply stays under 2 MB: a further row that would pass that is left out, and the first row is kept even when it alone passes 2 MB. `total` does not change.
 
 Errors: `bad_args`, `not_found`, `not_ready`, `internal`, `too_large`.
 
@@ -839,7 +870,7 @@ Args: `{query, scope?, server, limit?}`. `query` is required, non-empty, and at 
 
 The query syntax is `from:`, `to:`, `cc:`, `subject:`, `has:attachment`, `is:unread`, `is:read`, `is:flagged`, `is:answered`, `before:YYYY-MM-DD`, `after:YYYY-MM-DD`, `in:<mailbox name or role>`, `account:<number|name>`, `"exact phrase"`, bare words, `-word`, and `OR`. An unknown `key:` is text. Dates are local days in the profile timezone. `before:` is strictly before local midnight. `after:` is at or after it. `account:` is not an error when nothing matches. An `in:` that matches nothing is an empty result.
 
-Result: the same shape as `message.list`: `{accountId, total, messages:[{id, from, subject}]}`. `accountId` is the one profile account the search is pinned to, or null. `total` is the full match count. `messages` is the first page, ranked by bm25, then `received_at` descending, then `email.rowid` descending, and also cut so the reply stays under 2 MB. Message ids are the stored email ids.
+Result: the same shape as `message.list`: `{accountId, total, messages:[{id, from, to, subject, preview, receivedAt, seen, flagged, answered, forwarded, hasAttachment, accountId}]}`. `accountId` is the one profile account the search is pinned to, or null. Each row's `accountId` is that message's profile account. `total` is the full match count. A row whose keywords contain `$deleted` is omitted from the page and from `total`. `messages` is the first page, ranked by bm25, then `received_at` descending, then `email.rowid` descending, and also cut so the reply stays under 2 MB. Message ids are the stored email ids.
 
 Errors: `bad_args`, `not_found`, `not_ready`, `internal`, `too_large`.
 

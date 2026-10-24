@@ -266,6 +266,13 @@
   --pav-table-divider: #5a3030;
   --pav-table-header-pad-y: 0.2em;
   --pav-table-header-pad-x: 0.4em;
+  --pav-mail-bar: 0.35em;
+  --pav-mail-swatch: #cc9999;
+  --pav-mail-unread: #e06666;
+  --pav-mail-flag: #e0b050;
+  --pav-mail-answered: #8fbf9f;
+  --pav-mail-forwarded: #8aa4c8;
+  --pav-mail-file: #c8c8c8;
   --pav-refresh-spin-duration: 0.5s;
 }
 

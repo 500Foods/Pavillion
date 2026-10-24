@@ -3050,7 +3050,26 @@ export async function startShell(surface, nextApi, nextHost, result) {
   }
   const mailListEl = mountRoot.querySelector("#mail-list");
   if (mailListEl) {
-    mailList = createMailList(api, mailListEl);
+    mailList = createMailList(api, mailListEl, {
+      keys,
+      mailboxOf(id) {
+        if (!mailTree || typeof mailTree.getNode !== "function") {
+          return { role: "", swatch: "" };
+        }
+        let node = mailTree.getNode(id);
+        const role = node && typeof node.role === "string" ? node.role : "";
+        let swatch = "";
+        for (let guard = 0; node && guard < 64; guard += 1) {
+          if (node.kind === "account" && typeof node.swatch === "string") {
+            swatch = node.swatch;
+            break;
+          }
+          const parentId = node.parentId;
+          node = typeof parentId === "string" && parentId !== "" ? mailTree.getNode(parentId) : null;
+        }
+        return { role, swatch };
+      },
+    });
   }
   await openInitialTabs();
   const mailPane = mountRoot && mountRoot.querySelector('[data-nav="mail"]');

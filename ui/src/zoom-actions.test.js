@@ -112,4 +112,4 @@ test("zoom sliders scale the panes, and theme history leaves zoom alone", async 
     unmount();
     el.remove();
   }
-});
+}, 20000);

@@ -33,4 +33,14 @@ typedef struct PavSearchIn {
 
 int pav_search_exec(sqlite3 *db, const PavQuery *query, const PavSearchIn *in, json_t **data, PavError *err);
 
+/* A keywords object that contains $deleted. NULL and invalid JSON stay. */
+#define PAV_SQL_NOT_DELETED "json_type(e.keywords, '$.\"$deleted\"') IS NULL"
+
+/* One message.list / search.run row. The statement's columns, in order:
+   id, subject, from_json, to_json, preview, received_at, seen, flagged,
+   answered, forwarded, has_attachment, account_id.
+   Returns 1 appended, 0 when this row would pass max_bytes (not appended;
+   the first row is still appended), -1 on error. */
+int pav_list_append_row(json_t *messages, size_t *used, size_t max_bytes, sqlite3_stmt *stmt);
+
 #endif

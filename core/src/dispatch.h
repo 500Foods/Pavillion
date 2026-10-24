@@ -62,6 +62,7 @@ int pav_activity_cmd_cancel(json_t *args, json_t **data, PavError *err);
 int pav_activity_cmd_dismiss(json_t *args, json_t **data, PavError *err);
 #ifndef NDEBUG
 int pav_activity_cmd_demo(json_t *args, json_t **data, PavError *err);
+int pav_cmd_seed_messages(json_t *args, json_t **data, PavError *err);
 #endif
 
 /* 1 when the dispatcher runs this command off the core thread. */

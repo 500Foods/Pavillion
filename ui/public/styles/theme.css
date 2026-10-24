@@ -351,6 +351,48 @@
   min-height: 0;
 }
 
+.pav-root .mail-swatch {
+  display: block;
+  width: var(--pav-mail-bar);
+  align-self: stretch;
+  min-height: 1em;
+  background: var(--pav-mail-swatch);
+}
+
+.pav-root .mail-flags {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2em;
+}
+
+.pav-root .mail-unread {
+  display: inline-block;
+  width: 0.45em;
+  height: 0.45em;
+  border-radius: 50%;
+  background: var(--pav-mail-unread);
+}
+
+.pav-root .mail-flag {
+  color: var(--pav-mail-flag);
+}
+
+.pav-root .mail-answered {
+  color: var(--pav-mail-answered);
+}
+
+.pav-root .mail-forwarded {
+  color: var(--pav-mail-forwarded);
+}
+
+.pav-root .mail-file {
+  color: var(--pav-mail-file);
+}
+
+.pav-root .pav-table .tabulator-row.pav-row-unread {
+  font-weight: 600;
+}
+
 .pav-root .pane-detail {
   position: relative;
   flex: 1;

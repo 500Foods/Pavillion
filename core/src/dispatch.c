@@ -58,6 +58,7 @@ static int cmd_sync_now(json_t *args, json_t **data, PavError *err);
 int pav_cache_usage(json_t *args, json_t **data, PavError *err);
 #ifndef NDEBUG
 int pav_cmd_secret_smoke(json_t *args, json_t **data, PavError *err);
+int pav_cmd_seed_messages(json_t *args, json_t **data, PavError *err);
 #endif
 
 /* strcmp order. bsearch requires it. */
@@ -76,6 +77,7 @@ static const PavCommand k_commands[] = {
 #ifndef NDEBUG
     {"debug.activity_demo", pav_activity_cmd_demo, PAV_CMD_WORKER},
     {"debug.secret_smoke", pav_cmd_secret_smoke, 0},
+    {"debug.seed_messages", pav_cmd_seed_messages, 0},
 #endif
     {"export.write_text", cmd_export_write_text, 0},
     {"identity.list", pav_cmd_identity_list, 0},

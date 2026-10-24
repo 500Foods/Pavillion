@@ -3495,7 +3495,13 @@ int pav_cmd_mailbox_list(json_t *args, json_t **data, PavError *err) {
     }
     rc = sqlite3_prepare_v2(pav_db_read_handle(read),
                             "SELECT r.account_id, m.ra_id, m.id, IFNULL(m.parent_id, ''), IFNULL(m.name, ''), "
-                            "IFNULL(m.role, ''), IFNULL(m.sort_order, 0), IFNULL(m.total, 0), IFNULL(m.unread, 0) "
+                            "IFNULL(m.role, ''), IFNULL(m.sort_order, 0), "
+                            "(SELECT COUNT(*) FROM email_mailbox em JOIN email e ON e.rowid = em.email_rowid "
+                            "WHERE em.ra_id = m.ra_id AND em.mailbox_id = m.id AND "
+                            "json_type(e.keywords, '$.\"$deleted\"') IS NULL), "
+                            "(SELECT COUNT(*) FROM email_mailbox em JOIN email e ON e.rowid = em.email_rowid "
+                            "WHERE em.ra_id = m.ra_id AND em.mailbox_id = m.id AND IFNULL(e.seen, 0) = 0 AND "
+                            "IFNULL(e.draft, 0) = 0 AND json_type(e.keywords, '$.\"$deleted\"') IS NULL) "
                             "FROM mailbox m JOIN remote_account r ON r.id = m.ra_id",
                             -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
