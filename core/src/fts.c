@@ -2,6 +2,7 @@
 
 #include "pav_db.h"
 #include "pav_sanitize.h"
+#include "pavillion.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -526,6 +527,55 @@ int pav_fts_indexed_body_read(int64_t rowid, char **out) {
     return rc;
 }
 
+static int exec_sql(sqlite3 *db, const char *sql) {
+    char *err = NULL;
+    int rc = sqlite3_exec(db, sql, NULL, NULL, &err);
+
+    sqlite3_free(err);
+    return rc == SQLITE_OK ? 0 : -1;
+}
+
+/* Contentless FTS5 deletes only when the values match the indexed row.
+   SQLite 3.51 turns a mismatch into SQLITE_CORRUPT_VTAB and aborts the
+   statement, which fails the caller's whole transaction. The savepoint
+   undoes that. A header-only row was inserted with the SQL literal '',
+   so a failed guess retries that before giving up. */
+static int delete_row(sqlite3 *db, int64_t rowid, const char *subject, const char *from_text, const char *to_text,
+                      const char *body) {
+    int present = 0;
+    int rc;
+
+    if (exec_sql(db, "SAVEPOINT pav_fts_del") != 0) {
+        return -1;
+    }
+    rc = pav_fts_delete(db, rowid, subject, from_text, to_text, body);
+    if (rc == 0 && fts_present(db, rowid, &present) != 0) {
+        exec_sql(db, "ROLLBACK TO pav_fts_del");
+        exec_sql(db, "RELEASE pav_fts_del");
+        return -1;
+    }
+    if (rc != 0 || present) {
+        if (exec_sql(db, "ROLLBACK TO pav_fts_del") != 0 || body_empty(body)) {
+            exec_sql(db, "RELEASE pav_fts_del");
+            return -1;
+        }
+        rc = pav_fts_delete(db, rowid, subject, from_text, to_text, "");
+        present = 1;
+        if (rc == 0 && fts_present(db, rowid, &present) != 0) {
+            exec_sql(db, "ROLLBACK TO pav_fts_del");
+            exec_sql(db, "RELEASE pav_fts_del");
+            return -1;
+        }
+        if (rc != 0 || present) {
+            exec_sql(db, "ROLLBACK TO pav_fts_del");
+            exec_sql(db, "RELEASE pav_fts_del");
+            return -1;
+        }
+        pav_log("store", PAV_DEBUG, 1, "fts delete retried for row %lld", (long long)rowid);
+    }
+    return exec_sql(db, "RELEASE pav_fts_del");
+}
+
 int pav_fts_remove(sqlite3 *db, int64_t rowid) {
     PavFtsDoc doc;
     char *body = NULL;
@@ -543,10 +593,7 @@ int pav_fts_remove(sqlite3 *db, int64_t rowid) {
         free(body);
         return -1;
     }
-    rc = pav_fts_delete(db, rowid, doc.subject, doc.from_text, doc.to_text, body);
-    if (rc == 0 && fts_present(db, rowid, &present) == 0 && present) {
-        rc = -1;
-    }
+    rc = delete_row(db, rowid, doc.subject, doc.from_text, doc.to_text, body);
     pav_fts_doc_free(&doc);
     free(body);
     return rc;
@@ -561,8 +608,7 @@ int pav_fts_set_body(sqlite3 *db, int64_t rowid, const char *old_body, const cha
         return -1;
     }
     if (present) {
-        if (pav_fts_delete(db, rowid, doc.subject, doc.from_text, doc.to_text, old_body) != 0 ||
-            fts_present(db, rowid, &present) != 0 || present) {
+        if (delete_row(db, rowid, doc.subject, doc.from_text, doc.to_text, old_body) != 0) {
             pav_fts_doc_free(&doc);
             return -1;
         }
@@ -575,9 +621,8 @@ int pav_fts_set_body(sqlite3 *db, int64_t rowid, const char *old_body, const cha
     return 0;
 }
 
-/* Headers from SQL. guess is the body we believe is indexed. A wrong guess
-   is a silent no-op on this SQLite, so a non-empty miss retries with an
-   empty body before giving up. */
+/* Headers from SQL. guess is the body we believe is indexed. delete_row
+   retries an empty body when that guess does not match. */
 static int clear_one(sqlite3 *db, int64_t rowid) {
     PavFtsDoc doc;
     char *guess = NULL;
@@ -595,16 +640,7 @@ static int clear_one(sqlite3 *db, int64_t rowid) {
         free(guess);
         return -1;
     }
-    rc = pav_fts_delete(db, rowid, doc.subject, doc.from_text, doc.to_text, guess);
-    if (rc == 0 && fts_present(db, rowid, &present) == 0 && present && guess[0] != '\0') {
-        rc = pav_fts_delete(db, rowid, doc.subject, doc.from_text, doc.to_text, "");
-        if (rc == 0) {
-            rc = fts_present(db, rowid, &present);
-        }
-    }
-    if (rc == 0 && present) {
-        rc = -1;
-    }
+    rc = delete_row(db, rowid, doc.subject, doc.from_text, doc.to_text, guess);
     if (rc == 0) {
         rc = pav_fts_insert(db, rowid, doc.subject, doc.from_text, doc.to_text, "");
     }

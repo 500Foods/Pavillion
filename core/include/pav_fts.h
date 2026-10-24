@@ -58,7 +58,9 @@ int pav_fts_indexed_body(sqlite3 *db, int64_t rowid, char **out);
 int pav_fts_indexed_body_read(int64_t rowid, char **out);
 
 /* Delete the indexed row using the text that was stored. 0 when the row is
-   already absent. A mismatch leaves the row and returns -1. */
+   already absent. A wrong body is rolled back and the delete is retried with
+   an empty body, which is how a header-only row was stored. Returns -1 when
+   both miss. */
 int pav_fts_remove(sqlite3 *db, int64_t rowid);
 
 /* Delete the indexed row and insert it again with new_body. old_body is the

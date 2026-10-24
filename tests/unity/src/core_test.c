@@ -11144,6 +11144,23 @@ static int set_body_job(void *ctx, sqlite3 *db) {
     return pav_fts_set_body(db, job->rowid, job->old_body, job->new_body);
 }
 
+/* The delete and a later statement share the writer's transaction. */
+static int remove_then_see_job(void *ctx, sqlite3 *db) {
+    sqlite3_stmt *stmt = NULL;
+
+    (void)ctx;
+    if (pav_fts_remove(db, 1) != 0) {
+        return -1;
+    }
+    if (sqlite3_prepare_v2(db, "UPDATE email SET seen = 1 WHERE rowid = 1", -1, &stmt, NULL) != SQLITE_OK ||
+        sqlite3_step(stmt) != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    sqlite3_finalize(stmt);
+    return 0;
+}
+
 static int fts_count(const char *match) {
     PavDbRead *read = NULL;
     sqlite3_stmt *stmt = NULL;
@@ -11228,6 +11245,35 @@ void test_fts_body_reinsert(void) {
     assert_ok(root);
     TEST_ASSERT_EQUAL_INT(1, (int)json_integer_value(json_object_get(json_object_get(root, "data"), "total")));
     json_decref(root);
+}
+
+/* A fetched message whose index still has the header-only empty body. */
+void test_fts_remove_retries_empty_body(void) {
+    char path[128];
+    char sql[1024];
+    int wrote;
+    const char *setup = "INSERT INTO account_state (account_id) VALUES ('q1');"
+                        "INSERT INTO remote_account (id, account_id, jmap_account_id) VALUES ('q1/a', 'q1', 'a');"
+                        "INSERT INTO email (rowid, ra_id, id, subject, from_json, to_json, cc_json, received_at, seen, "
+                        "body_state) VALUES (1, 'q1/a', 'e1', 'subj', '[]', '[]', '[]', 1, 0, 'fetched');"
+                        "INSERT INTO email_fts (rowid, subject, from_text, to_text, body) VALUES (1, 'subj', '', '', '');";
+
+    make_slot(g_cfg_dir, sizeof(g_cfg_dir));
+    TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
+    wrote = snprintf(path, sizeof(path), "%s/body.txt", g_cfg_dir);
+    TEST_ASSERT_TRUE(wrote > 0 && (size_t)wrote < sizeof(path));
+    write_text(path, "MismatchBody\n");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_db_call(exec_sql_job, (void *)setup), g_sql_err);
+    wrote = snprintf(sql, sizeof(sql),
+                     "INSERT INTO body_cache (email_rowid, text_plain_path, html_raw_path, html_sanitized_path, "
+                     "has_remote, sanitizer_version, fetched_at) VALUES (1, '%s', NULL, NULL, 0, 0, 1);",
+                     path);
+    TEST_ASSERT_TRUE(wrote > 0 && (size_t)wrote < sizeof(sql));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_db_call(exec_sql_job, sql), g_sql_err);
+    TEST_ASSERT_EQUAL_INT(1, fts_count("subj"));
+    TEST_ASSERT_EQUAL_INT(0, pav_db_call(remove_then_see_job, NULL));
+    TEST_ASSERT_EQUAL_INT(0, fts_count("subj"));
+    TEST_ASSERT_EQUAL_INT(0, fts_count("MismatchBody"));
 }
 
 static void add_profile_account(const char *id, const char *number, const char *name) {
@@ -11866,6 +11912,7 @@ int main(void) {
     RUN_TEST(test_query_dates_local_day);
     RUN_TEST(test_query_to_jmap_filter);
     RUN_TEST(test_fts_body_reinsert);
+    RUN_TEST(test_fts_remove_retries_empty_body);
     RUN_TEST(test_search_run_local);
     RUN_TEST(test_index_rebuild);
     RUN_TEST(test_search_200k_under_100ms);
