@@ -1,6 +1,6 @@
 # D — UI
 
-**Status:** D-4, D-6, and D-7 complete (2026-10-17). D-10 complete (2026-10-21). D-8 complete (2026-10-23). The index names N-3 next (step 61). D-5 and D-9 are not started. The shell preview below is not a phase.
+**Status:** D-4, D-6, and D-7 complete (2026-10-17). D-10 complete (2026-10-21). D-8 complete (2026-10-23). N-3 complete (2026-10-24). The index names Q-2 next (step 62). D-5 and D-9 are not started. The shell preview below is not a phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The first frame, the shell preview, and the theme layer. The shell layout (nav, buttons, home tabs, window) is the [J-TABS.md](J-TABS.md) Lock. Security rules for the main window are the [F-HARDEN.md](F-HARDEN.md) Lock. The tree behind the mail and files navs is [E-TREE.md](E-TREE.md). Mail, contacts, calendars, tasks, files, and notes have their own letters (N, O, S, T, X, U, Y). Argent is Z and is an icon only.
@@ -482,6 +482,7 @@ For the rework:
 - 2026-10-24 D-8 CI on `a8903db`, run [40059550732](https://github.com/500Foods/Pavillion/actions/runs/40059550732): fedora and macos-core passed, windows-core failed. `ui/src/formats.test.js` "both sides of a Vancouver DST change stay on the local clock", line 48: `2026-11-01T09:30:00.000Z` with `HH:mm ZZZZ` expected `01:30 PST`, got `02:30 PDT`. The `08:30Z` assertion above it passed. Andrew: fix this. N-3 was not started.
 - 2026-10-24 The Vancouver check allows `01:30 PST` (tzdata before 2026b), `02:30 PDT` (ICU with the -07 offset and the old name), and `02:30 MST` (tzdata 2026b). The March spring-forward assertions stay exact. CI has not re-run. N-3 was not started.
 - 2026-10-24 D-8 CI is green. `4d8b53e`, run [40064822844](https://github.com/500Foods/Pavillion/actions/runs/40064822844): fedora, macos-core, windows-core. The docs merge `69d58e9`, run [40065380950](https://github.com/500Foods/Pavillion/actions/runs/40065380950), is green on the same three jobs.
+- 2026-10-24 N-3 complete, step 61. `make test`: 248 Unity, 2 Rust, 395 Vitest, exit 0. CI on `28ec6a9` is green: fedora, macos-core, windows-core. Gzip -9 of `ui/dist` is 292633 bytes. The index names Q-2 next. The D-8 Formats pane is used by N-3's time column via `formats.js`.
 
 ## Shell preview
 

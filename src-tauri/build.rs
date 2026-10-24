@@ -107,7 +107,7 @@ fn shown_version(build: &str) -> String {
 
 fn main() {
     // Release date of this phase stamp. Change it when the middle number changes.
-    let release_date = "2026-10-23";
+    let release_date = "2026-10-24";
     println!("cargo:rustc-env=PAVILLION_RELEASE_DATE={release_date}");
     let build_number = read_build_number();
     println!("cargo:rustc-env=PAVILLION_BUILD={build_number}");

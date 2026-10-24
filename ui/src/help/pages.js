@@ -469,6 +469,15 @@ export const helpPages = [
         ],
       },
       {
+        id: "filters",
+        title: "Row filters",
+        paragraphs: [
+          "Every list in Pavillion narrows the same way: a filter hides rows, it does not delete them. The selected row stays selected when it survives, and clearing the filter brings every row back. A filter never changes a row id or any backend data.",
+          "Tabulator tables take a case-insensitive substring search in the .pav-module-search field on the module toolbar, applied with table.setFilter(fn) so empty groups disappear. The keyboard navigator and the module footer (Refresh, First, Previous, Next, Last) walk only the shown rows. Log view filters (severity, subsystem, text) persist in preferences.ui.log; tree filter flags persist in preferences.ui.trees.<treeId>; a module search stays for the tab.",
+          "The tree nav uses preset buttons above it (Star for favorites, Heart for the second set, Ghost to hide infrequent folders) that toggle view-state flags and re-render. Those are in docs/E-TREE.md. A mail search field and saved searches land with Q-2; see docs/Q-SEARCH.md. Full rules live in docs/UI-FILTER.md.",
+        ],
+      },
+      {
         id: "help-theme",
         title: "Help colors",
         paragraphs: [
