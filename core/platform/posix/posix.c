@@ -24,7 +24,6 @@
 #include <psapi.h>
 #elif defined(__APPLE__)
 #include <mach/mach.h>
-#include <mach/mach_task.h>
 #endif
 
 static const PavPlatform *g_platform;
