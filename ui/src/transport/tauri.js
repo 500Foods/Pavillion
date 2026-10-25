@@ -73,22 +73,31 @@ export function tauriHost() {
       quitting = Promise.resolve(host.onQuit());
       return quitting;
     };
-    /* Ctrl+C calls this. The shell treats prefs.ui.set of shutdown clean as
-       the save finishing. These events only name a step that did not. */
-    window.__pavQuit = () => {
-      const pending = beginQuit();
-      if (!pending) {
-        emit("pav-quit-stuck").catch(() => {});
-        return;
-      }
-      emit("pav-quit-began").catch(() => {});
-      pending.then((ok) => {
-        emit(ok === false ? "pav-quit-failed" : "pav-quit-done").catch(() => {});
-      }).catch(() => {
-        emit("pav-quit-failed").catch(() => {});
-      });
-    };
-    current.onCloseRequested(async () => {
+     /* Ctrl+C calls this. The shell treats prefs.ui.set of shutdown clean as
+        the save finishing. These events only name a step that did not. */
+     window.__pavQuit = () => {
+       const pending = beginQuit();
+       if (!pending) {
+         emit("pav-quit-stuck").catch(() => {});
+         return;
+       }
+       emit("pav-quit-began").catch(() => {});
+       pending.then((ok) => {
+         emit(ok === false ? "pav-quit-failed" : "pav-quit-done").catch(() => {});
+       }).catch(() => {
+         emit("pav-quit-failed").catch(() => {});
+       });
+     };
+     /* Called from Rust at RunEvent::Exit before the core thread stops.
+        Closes any open Web Inspector, which holds an inspector transport
+        that races EGL teardown and raises NeedDebuggerBreak on exit. */
+      window.__pavDrainWebkit = () => {
+        if (typeof host.onBeforeExit === "function") {
+          return Promise.resolve(host.onBeforeExit()).catch(() => undefined);
+        }
+        return Promise.resolve();
+      };
+     current.onCloseRequested(async () => {
       const pending = beginQuit();
       if (!pending) {
         return;

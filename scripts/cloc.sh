@@ -40,6 +40,7 @@ exec cloc \
   --not-match-d='(^|/)build-mini(/|$)' \
   --not-match-d='(^|/)dist(/|$)' \
   --not-match-d='(^|/)target(/|$)' \
+  --not-match-d='(^|/)third_party(/|$)' \
   --not-match-d='(^|/)\.vite(/|$)' \
   --not-match-d='(^|/)\.git(/|$)' \
   --not-match-d='(^|/)tests/unity/framework(/|$)' \

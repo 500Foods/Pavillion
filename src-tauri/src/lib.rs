@@ -559,9 +559,33 @@ pub fn run(workdir: &str) {
             WINDOW_READY.store(false, Ordering::SeqCst);
             if let Some(window) = app.get_webview_window("main") { report_window(&window); }
         }
-        tauri::RunEvent::Exit => { stop_events(); unsafe { pavillion_stop() }; }
+        tauri::RunEvent::Exit => { stop_core_and_events(&app); }
         _ => {}
     });
+}
+
+#[cfg(debug_assertions)]
+fn drain_webkit_before_exit(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let webview = window.as_ref();
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let _ = webview.eval_with_callback(
+            "if(window.__pavDrainWebkit){Promise.resolve(window.__pavDrainWebkit()).then(()=>void 0)}",
+            move |_result| { let _ = tx.send(()); },
+        );
+        let _ = rx.recv_timeout(std::time::Duration::from_millis(250));
+        let _ = webview.close_devtools();
+        std::thread::sleep(std::time::Duration::from_millis(150));
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn drain_webkit_before_exit(_app: &tauri::AppHandle) {}
+
+fn stop_core_and_events(app: &tauri::AppHandle) {
+    stop_events();
+    drain_webkit_before_exit(app);
+    unsafe { pavillion_stop() };
 }
 
 #[cfg(test)]
