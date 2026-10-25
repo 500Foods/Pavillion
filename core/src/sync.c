@@ -1743,11 +1743,11 @@ static void finish_sync_ok(PavSup *s) {
     }
     pav_body_prefetch(s->account_id);
     if (sync_all_idle()) {
-        int rss_kb = pav_usage_kb();
-        if (rss_kb > 0) {
-            char mem[64];
-            if (pav_format_usage_mb(mem, sizeof(mem), rss_kb) == 0) {
-                pav_log("sync", PAV_TRACE, 1, "full update sync complete, memory: %s", mem);
+        PavMemoryInfo mem_info;
+        if (pav_memory_info(&mem_info) == 0) {
+            char formatted[128];
+            if (pav_format_memory_info(formatted, sizeof(formatted), &mem_info) == 0) {
+                pav_log("sync", PAV_TRACE, 1, "full update sync complete, memory: %s", formatted);
             }
         }
     }

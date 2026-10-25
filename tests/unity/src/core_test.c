@@ -524,6 +524,41 @@ void test_format_usage_mb_groups_commas_and_one_decimal(void) {
     TEST_ASSERT_EQUAL(-1, pav_format_usage_mb(buf, 2, 3537628));
 }
 
+void test_format_memory_info_includes_children(void) {
+    char buf[128];
+    PavMemoryInfo info = { .current_rss_kb = 524288, .peak_rss_kb = 786432,
+                           .children_rss_kb = 2097152, .child_count = 3 };
+
+    TEST_ASSERT_EQUAL(0, pav_format_memory_info(buf, sizeof(buf), &info));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "512.0 MB"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "768.0 MB"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "2,048.0 MB"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "(3 children)"));
+}
+
+void test_fake_set_and_get_memory_info(void) {
+    PavMemoryInfo info;
+
+    pav_platform_fake_set_memory_info(10240, 20480, 512000, 2);
+    TEST_ASSERT_EQUAL(0, pav_memory_info(&info));
+    TEST_ASSERT_EQUAL(10240, info.current_rss_kb);
+    TEST_ASSERT_EQUAL(20480, info.peak_rss_kb);
+    TEST_ASSERT_EQUAL(512000, info.children_rss_kb);
+    TEST_ASSERT_EQUAL(2, info.child_count);
+
+    pav_platform_fake_reset();
+    TEST_ASSERT_EQUAL(-1, pav_memory_info(&info));
+}
+
+void test_format_memory_info_null_rejected(void) {
+    char buf[128];
+    PavMemoryInfo info = { .current_rss_kb = 100, .peak_rss_kb = 200,
+                           .children_rss_kb = 300, .child_count = 1 };
+
+    TEST_ASSERT_EQUAL(-1, pav_format_memory_info(NULL, 0, &info));
+    TEST_ASSERT_EQUAL(-1, pav_format_memory_info(buf, sizeof(buf), NULL));
+}
+
 static const char k_index[] =
     "{\n"
     "  \"kind\": \"pavillion-index\",\n"
@@ -11692,8 +11727,11 @@ int main(void) {
     RUN_TEST(test_log_formats_args_and_literal_percent);
     RUN_TEST(test_log_two_threads_keep_call_order);
     RUN_TEST(test_log_num_args_mismatch_logs_error);
-    RUN_TEST(test_format_usage_mb_groups_commas_and_one_decimal);
-    RUN_TEST(test_parse_index_and_profile);
+     RUN_TEST(test_format_usage_mb_groups_commas_and_one_decimal);
+     RUN_TEST(test_format_memory_info_includes_children);
+     RUN_TEST(test_fake_set_and_get_memory_info);
+     RUN_TEST(test_format_memory_info_null_rejected);
+     RUN_TEST(test_parse_index_and_profile);
     RUN_TEST(test_reject_schema_and_missing_kind);
     RUN_TEST(test_reject_secret_keys);
     RUN_TEST(test_unknown_keys_survive_rewrite);

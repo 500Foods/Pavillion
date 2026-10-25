@@ -2,6 +2,7 @@
 
 #include "platform_internal.h"
 #include "pav_platform.h"
+#include "pavillion.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -247,6 +248,191 @@ int pav_usage_kb(void) {
 
 int pav_posix_usage_kb(void) {
 #ifdef _WIN32
+    PROCESS_MEMORY_COUNTERS info;
+    DWORD copied = sizeof(info);
+    SIZE_T rss_kb;
+
+    if (!GetProcessMemoryInfo(GetCurrentProcess(), &info, copied)) {
+        return -1;
+    }
+    rss_kb = (SIZE_T)info.WorkingSetSize / 1024;
+    if (rss_kb > INT32_MAX) {
+        return -1;
+    }
+    return (int)rss_kb;
+#elif defined(__APPLE__)
+    struct mach_task_basic_info info;
+    mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
+
+    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO,
+                  (task_info_t)&info, &count) != KERN_SUCCESS) {
+        return -1;
+    }
+    return (int)(info.resident_size / 1024);
+#else
+    struct rusage ru;
+
+    if (getrusage(RUSAGE_SELF, &ru) != 0) {
+        return -1;
+    }
+    return (int)ru.ru_maxrss;
+#endif
+}
+
+#ifdef __linux__
+
+static long pav_linux_page_size(void) {
+    long ps = sysconf(_SC_PAGESIZE);
+    if (ps < 0) {
+        ps = 4096;
+    }
+    return ps;
+}
+
+static int pav_linux_current_rss_kb(void) {
+    FILE *f = fopen("/proc/self/statm", "r");
+    unsigned long resident;
+    long pages;
+
+    if (f == NULL) {
+        return -1;
+    }
+    if (fscanf(f, "%*s %lu", &resident) != 1) {
+        fclose(f);
+        return -1;
+    }
+    fclose(f);
+    pages = pav_linux_page_size();
+    {
+        unsigned long kb = (resident * (unsigned long)pages) / 1024;
+        if (kb > INT32_MAX) {
+            return -1;
+        }
+        return (int)kb;
+    }
+}
+
+static int pav_linux_child_rss_sum(void) {
+    DIR *d = opendir("/proc/self/task");
+    struct dirent *ent;
+    long pages = pav_linux_page_size();
+    int total = 0;
+
+    if (d == NULL) {
+        return 0;
+    }
+    while ((ent = readdir(d)) != NULL) {
+        if (ent->d_name[0] == '.') {
+            continue;
+        }
+        {
+            char path[512];
+            FILE *cf;
+            snprintf(path, sizeof(path), "/proc/self/task/%s/children", ent->d_name);
+            cf = fopen(path, "r");
+            if (cf != NULL) {
+                char line[4096];
+                while (fgets(line, sizeof(line), cf) != NULL) {
+                    char *p = line;
+                    while (*p != '\0') {
+                        char *end;
+                        pid_t cpid;
+                        char *start;
+                        while (*p == ' ' || *p == '\t' || *p == '\n') {
+                            p++;
+                        }
+                        if (*p == '\0') {
+                            break;
+                        }
+                        start = p;
+                        cpid = (pid_t)strtoul(p, &end, 10);
+                        if (end == start) {
+                            p++;
+                            continue;
+                        }
+                        {
+                            char cp_path[256];
+                            FILE *rf;
+                            unsigned long resident;
+                            snprintf(cp_path, sizeof(cp_path), "/proc/%d/statm", (int)cpid);
+                            rf = fopen(cp_path, "r");
+                            if (rf != NULL) {
+                                if (fscanf(rf, "%*s %lu", &resident) == 1) {
+                                    unsigned long kb = (resident * (unsigned long)pages) / 1024;
+                                    if (kb < INT32_MAX) {
+                                        total += (int)kb;
+                                    }
+                                }
+                                fclose(rf);
+                            }
+                        }
+                        p = end;
+                    }
+                }
+                fclose(cf);
+            }
+        }
+    }
+    closedir(d);
+    return total;
+}
+
+static int pav_linux_child_count(void) {
+    DIR *d = opendir("/proc/self/task");
+    struct dirent *ent;
+    int count = 0;
+
+    if (d == NULL) {
+        return 0;
+    }
+    while ((ent = readdir(d)) != NULL) {
+        if (ent->d_name[0] == '.') {
+            continue;
+        }
+        {
+            char path[512];
+            FILE *cf;
+            snprintf(path, sizeof(path), "/proc/self/task/%s/children", ent->d_name);
+            cf = fopen(path, "r");
+            if (cf != NULL) {
+                char line[4096];
+                while (fgets(line, sizeof(line), cf) != NULL) {
+                    char *p = line;
+                    while (*p != '\0') {
+                        char *end;
+                        char *start;
+                        while (*p == ' ' || *p == '\t' || *p == '\n') {
+                            p++;
+                        }
+                        if (*p == '\0') {
+                            break;
+                        }
+                        start = p;
+                        (void)strtoul(p, &end, 10);
+                        if (end == start) {
+                            p++;
+                            continue;
+                        }
+                        count++;
+                        p = end;
+                    }
+                }
+                fclose(cf);
+            }
+        }
+    }
+    closedir(d);
+    return count;
+}
+
+#endif /* __linux__ */
+
+int pav_posix_memory_info(PavMemoryInfo *out) {
+    if (out == NULL) {
+        return -1;
+    }
+    memset(out, 0, sizeof(*out));
+#ifdef _WIN32
     {
         PROCESS_MEMORY_COUNTERS info;
         DWORD copied = sizeof(info);
@@ -259,7 +445,10 @@ int pav_posix_usage_kb(void) {
         if (rss_kb > INT32_MAX) {
             return -1;
         }
-        return (int)rss_kb;
+        out->current_rss_kb = (int)rss_kb;
+        out->peak_rss_kb = (int)((SIZE_T)info.PeakWorkingSetSize / 1024);
+        /* TODO: enumerate child processes via CreateToolhelp32Snapshot. */
+        return 0;
     }
 #elif defined(__APPLE__)
     {
@@ -270,18 +459,62 @@ int pav_posix_usage_kb(void) {
                       (task_info_t)&info, &count) != KERN_SUCCESS) {
             return -1;
         }
-        return (int)(info.resident_size / 1024);
+        out->current_rss_kb = (int)(info.resident_size / 1024);
+        {
+            struct rusage ru;
+            if (getrusage(RUSAGE_SELF, &ru) == 0) {
+                out->peak_rss_kb = (int)ru.ru_maxrss;
+            }
+        }
+        /* TODO: enumerate child processes via proc_listpids + proc_pidinfo. */
+        return 0;
     }
 #else
     {
-        struct rusage ru;
+        struct rusage ru_self;
 
-        if (getrusage(RUSAGE_SELF, &ru) != 0) {
+        if (getrusage(RUSAGE_SELF, &ru_self) != 0) {
             return -1;
         }
-        return (int)ru.ru_maxrss;
+        out->current_rss_kb = pav_linux_current_rss_kb();
+        out->peak_rss_kb = (int)ru_self.ru_maxrss;
+        out->children_rss_kb = pav_linux_child_rss_sum();
+        out->child_count = pav_linux_child_count();
+        return 0;
     }
 #endif
+}
+
+int pav_memory_info(PavMemoryInfo *out) {
+    const PavPlatform *platform = pav_platform();
+
+    if (platform != NULL && platform->memory_info != NULL) {
+        return platform->memory_info(out);
+    }
+    return -1;
+}
+
+int pav_format_memory_info(char *out, size_t len, const PavMemoryInfo *info) {
+    char core_mb[32];
+    char peak_mb[32];
+    char child_mb[32];
+
+    if (out == NULL || len == 0 || info == NULL) {
+        return -1;
+    }
+    if (pav_format_usage_mb(core_mb, sizeof(core_mb), info->current_rss_kb) != 0 ||
+        pav_format_usage_mb(peak_mb, sizeof(peak_mb), info->peak_rss_kb) != 0 ||
+        pav_format_usage_mb(child_mb, sizeof(child_mb), info->children_rss_kb) != 0) {
+        return -1;
+    }
+    {
+        int n = snprintf(out, len, "core=%s peak=%s webkit=%s (%d children)",
+                         core_mb, peak_mb, child_mb, info->child_count);
+        if (n < 0 || (size_t)n >= len) {
+            return -1;
+        }
+        return 0;
+    }
 }
 
 int pav_format_utc(char *out, size_t len, int64_t ms) {

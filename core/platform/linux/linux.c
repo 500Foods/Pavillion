@@ -118,6 +118,7 @@ static const PavPlatform *linux_platform(void) {
         platform.srv_lookup = pav_os_srv_lookup;
         platform.volume_free = pav_posix_volume_free;
         platform.usage_kb = pav_posix_usage_kb;
+        platform.memory_info = pav_posix_memory_info;
         ready = 1;
     }
     return &platform;

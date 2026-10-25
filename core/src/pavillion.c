@@ -345,11 +345,11 @@ static void core_boot(void) {
     }
     pav_log("core", PAV_INFO, 2, "core ready: profile %s, %d accounts", profile->id, (int)profile->account_count);
     {
-        int rss_kb = pav_usage_kb();
-        if (rss_kb > 0) {
-            char mem[64];
-            if (pav_format_usage_mb(mem, sizeof(mem), rss_kb) == 0) {
-                pav_log("core", PAV_TRACE, 1, "memory at launch: %s", mem);
+        PavMemoryInfo mem_info;
+        if (pav_memory_info(&mem_info) == 0) {
+            char formatted[128];
+            if (pav_format_memory_info(formatted, sizeof(formatted), &mem_info) == 0) {
+                pav_log("core", PAV_TRACE, 1, "memory at launch: %s", formatted);
             }
         }
     }

@@ -351,6 +351,13 @@ export const helpPages = [
         ],
       },
       {
+        id: "memory",
+        title: "Memory",
+        paragraphs: [
+          "The core reports memory usage as a trace log line at launch and after each full sync. It logs current RSS, peak RSS, and the combined RSS and child count of child processes such as WebKit: core=N.N MB peak=N.N MB webkit=N.N MB (N children). On Linux this reads /proc/self/statm for current RSS (not the high-water-mark ru_maxrss, which never decreases), and sums the /proc/PID/statm of child processes. On macOS the fake platform is used for CI; the production build uses mach_task_basic_info for current RSS and getrusage for peak. Windows uses GetProcessMemoryInfo for both current and peak working set size.",
+        ],
+      },
+      {
         id: "module-bars",
         title: "Module bars",
         paragraphs: [

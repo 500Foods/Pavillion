@@ -17,6 +17,13 @@
 #define PAV_SECRET_LOCKED 2
 #define PAV_SECRET_FAILED 3
 
+typedef struct PavMemoryInfo {
+    int current_rss_kb;
+    int peak_rss_kb;
+    int children_rss_kb;
+    int child_count;
+} PavMemoryInfo;
+
 typedef struct PavPlatform {
     const char *name; /* "linux" or "fake" */
     int (*dir)(int which, char *out, size_t len);
@@ -40,6 +47,9 @@ typedef struct PavPlatform {
     /* Returns the process RSS in kilobytes, or -1 when the platform cannot
        report it. Used for trace logging. */
     int (*usage_kb)(void);
+    /* Fills info with current RSS, peak RSS, and child-process summary.
+       Returns 0, or -1 when unavailable. */
+    int (*memory_info)(PavMemoryInfo *out);
 } PavPlatform;
 
 /* The first install wins. pavillion_start will not replace a test's fake. */
@@ -63,6 +73,9 @@ void pav_platform_fake_set_srv(const char *name, const char *target, int port);
 void pav_platform_fake_set_volume_free(int64_t bytes);
 /* The next usage_kb calls return kb. pav_platform_fake_reset clears it. */
 void pav_platform_fake_set_usage_kb(int kb);
+/* Sets the values returned by the next memory_info call. */
+void pav_platform_fake_set_memory_info(int current_rss_kb, int peak_rss_kb,
+                                       int children_rss_kb, int child_count);
 
 int pav_path_join(char *out, size_t len, const char *a, const char *b);
 int pav_path_is_absolute(const char *path);
@@ -83,6 +96,12 @@ int pav_dir_each(const char *path, int (*visit)(const char *name, void *user), v
 int64_t pav_now_ms(void);
 /* Returns the process RSS in kilobytes, or -1. Wraps platform->usage_kb. */
 int pav_usage_kb(void);
+/* Fills info with current RSS, peak RSS, and child-process summary.
+   Returns 0, or -1 when unavailable. */
+int pav_memory_info(PavMemoryInfo *out);
+/* Formats memory info as "core=N.N MB peak=N.N MB webkit=N.N MB (N children)"
+   into out. Returns 0, or -1 on error. */
+int pav_format_memory_info(char *out, size_t len, const PavMemoryInfo *info);
 /* Writes YYYY-MM-DDThh:mm:ss.sssZ. Returns 0, or -1 when ms is negative. */
 int pav_format_utc(char *out, size_t len, int64_t ms);
 

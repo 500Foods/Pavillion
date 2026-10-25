@@ -39,6 +39,8 @@ static int g_volume_set;
 static int64_t g_volume_free;
 static int g_usage_set;
 static int g_usage_kb;
+static int g_mem_set;
+static PavMemoryInfo g_mem_info;
 
 static void secret_clear(FakeSecret *slot) {
     free(slot->service);
@@ -246,6 +248,8 @@ void pav_platform_fake_reset(void) {
     g_volume_free = 0;
     g_usage_set = 0;
     g_usage_kb = 0;
+    g_mem_set = 0;
+    memset(&g_mem_info, 0, sizeof(g_mem_info));
 }
 
 void pav_platform_fake_set_srv(const char *name, const char *target, int port) {
@@ -285,9 +289,29 @@ static int fake_usage_kb(void) {
     return g_usage_kb;
 }
 
+static int fake_memory_info(PavMemoryInfo *out) {
+    if (out == NULL) {
+        return -1;
+    }
+    if (!g_mem_set) {
+        return -1;
+    }
+    *out = g_mem_info;
+    return 0;
+}
+
 void pav_platform_fake_set_usage_kb(int kb) {
     g_usage_set = 1;
     g_usage_kb = kb;
+}
+
+void pav_platform_fake_set_memory_info(int current_rss_kb, int peak_rss_kb,
+                                      int children_rss_kb, int child_count) {
+    g_mem_set = 1;
+    g_mem_info.current_rss_kb = current_rss_kb;
+    g_mem_info.peak_rss_kb = peak_rss_kb;
+    g_mem_info.children_rss_kb = children_rss_kb;
+    g_mem_info.child_count = child_count;
 }
 
 void pav_platform_fake_set_locked(int locked) {
@@ -316,6 +340,7 @@ const PavPlatform *pav_platform_fake(void) {
         platform.srv_lookup = fake_srv_lookup;
         platform.volume_free = fake_volume_free;
         platform.usage_kb = fake_usage_kb;
+        platform.memory_info = fake_memory_info;
         ready = 1;
     }
     return &platform;
