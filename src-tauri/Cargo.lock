@@ -2993,6 +2993,7 @@ dependencies = [
 name = "pavillion"
 version = "0.69.0"
 dependencies = [
+ "glib",
  "libc",
  "pav_stronghold",
  "serde",
@@ -3002,6 +3003,8 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-single-instance",
+ "webkit2gtk",
+ "webkit2gtk-sys",
  "zeroize",
 ]
 

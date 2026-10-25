@@ -564,6 +564,17 @@ pub fn run(workdir: &str) {
     });
 }
 
+#[cfg(all(debug_assertions, target_os = "linux"))]
+fn terminate_web_process(webview: &tauri::Webview) {
+    let _ = webview.with_webview(|pw| {
+        use glib::object::ObjectType;
+        let raw = pw.inner().as_ptr();
+        unsafe {
+            webkit2gtk_sys::webkit_web_view_terminate_web_process(raw);
+        }
+    });
+}
+
 #[cfg(debug_assertions)]
 fn drain_webkit_before_exit(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -575,6 +586,8 @@ fn drain_webkit_before_exit(app: &tauri::AppHandle) {
         );
         let _ = rx.recv_timeout(std::time::Duration::from_millis(250));
         let _ = webview.close_devtools();
+        #[cfg(target_os = "linux")]
+        terminate_web_process(&webview);
         std::thread::sleep(std::time::Duration::from_millis(150));
     }
 }
