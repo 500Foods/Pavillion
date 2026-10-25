@@ -23,6 +23,9 @@
 #define PAV_CMD_WORKER 1u
 /* Network-bound (H Lock): slow-command WARN only past PAV_SLOW_NET_COMMAND_MS. */
 #define PAV_CMD_NET 2u
+/* High-frequency commands (e.g. window.report) that fire on every resize/move
+   event: skip the TRACE dispatch log on success so the log is not flooded. */
+#define PAV_CMD_SILENT 4u
 #define EVENT_QUEUE_CAP 256
 #define EVENT_NAME_MAX 64
 #define EVENT_JSON_MAX 65536
@@ -103,7 +106,7 @@ static const PavCommand k_commands[] = {
     {"themes.folder.set", pav_themes_folder_set, 0},
     {"themes.list", pav_themes_list, 0},
     {"window.initial", pav_cmd_window_initial, 0},
-    {"window.report", pav_cmd_window_report, 0},
+    {"window.report", pav_cmd_window_report, PAV_CMD_SILENT},
 };
 
 static pthread_mutex_t g_ev_mu = PTHREAD_MUTEX_INITIALIZER;
@@ -1233,6 +1236,7 @@ static void log_command(const char *name, json_t *args, json_t *data, int rc, co
     }
     const PavCommand *cmd = command_find(name);
     int net = cmd != NULL && (cmd->flags & PAV_CMD_NET) != 0;
+    int silent = cmd != NULL && (cmd->flags & PAV_CMD_SILENT) != 0;
 
     if (ms >= (net ? PAV_SLOW_NET_COMMAND_MS : PAV_SLOW_COMMAND_MS)) {
         pav_log("dispatch", PAV_WARN, 2, "slow command %s: %lld ms", name, (long long)ms);
@@ -1240,7 +1244,7 @@ static void log_command(const char *name, json_t *args, json_t *data, int rc, co
         pav_log("dispatch", PAV_DEBUG, 3, "%s %s in %lld ms", name, rc == 0 ? "done" : err->code, (long long)ms);
     } else if (rc != 0) {
         pav_log("dispatch", PAV_DEBUG, 2, "%s failed: %s", name, err->code);
-    } else {
+    } else if (!silent) {
         pav_log("dispatch", PAV_TRACE, 2, "%s %lld ms", name, (long long)ms);
     }
 }
