@@ -340,17 +340,24 @@ export function formatInstant(value, kind, options = {}) {
       return "";
     }
     if (dt.hasSame(now, "day")) {
-      return dt.toFormat(patternFor("time", options));
+      return normalizeAmpm(dt.toFormat(patternFor("time", options)), patternFor("time", options));
     }
     if (dt.hasSame(now, "year")) {
-      return dt.toFormat(patternFor("dateShort", options));
+      return normalizeAmpm(dt.toFormat(patternFor("dateShort", options)), patternFor("dateShort", options));
     }
-    return dt.toFormat(patternFor("date", options));
+    return normalizeAmpm(dt.toFormat(patternFor("date", options)), patternFor("date", options));
   }
-  return dt.toFormat(patternFor(kind, options));
+  return normalizeAmpm(dt.toFormat(patternFor(kind, options)), patternFor(kind, options));
 }
 
-function formatDuration(value, pattern) {
+/* ICU locale data varies: "en" can render "a.m." or "AM." or "am" depending
+   on the platform and ICU data version. Normalize to uppercase AM/PM. */
+function normalizeAmpm(text, pattern) {
+  if (!pattern.includes("a")) {
+    return text;
+  }
+  return text.replace(/\b(a\.?m\.?|p\.?m\.?)/gi, (m) => (m.toLowerCase().startsWith("a") ? "AM" : "PM"));
+}function formatDuration(value, pattern) {
   let dur = null;
   if (typeof value === "number" && Number.isFinite(value)) {
     dur = Duration.fromMillis(value);
