@@ -22,6 +22,9 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <psapi.h>
+#elif defined(__APPLE__)
+#include <mach/mach.h>
+#include <mach/mach_task.h>
 #endif
 
 static const PavPlatform *g_platform;
@@ -246,19 +249,29 @@ int pav_usage_kb(void) {
 int pav_posix_usage_kb(void) {
 #ifdef _WIN32
     {
-        PROCESS_MEMORY_INFO info;
-        SIZE_T copied;
+        PROCESS_MEMORY_COUNTERS info;
+        DWORD copied = sizeof(info);
         SIZE_T rss_kb;
 
-        if (!GetProcessMemoryInfo(GetCurrentProcess(), &info, sizeof(info), &copied) ||
-            copied < sizeof(info)) {
+        if (!GetProcessMemoryInfo(GetCurrentProcess(), &info, copied)) {
             return -1;
         }
-        rss_kb = info.WorkingSetSize / 1024;
+        rss_kb = (SIZE_T)info.WorkingSetSize / 1024;
         if (rss_kb > INT32_MAX) {
             return -1;
         }
         return (int)rss_kb;
+    }
+#elif defined(__APPLE__)
+    {
+        struct mach_task_basic_info info;
+        mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
+
+        if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO,
+                      (task_info_t)&info, &count) != KERN_SUCCESS) {
+            return -1;
+        }
+        return (int)(info.resident_size / 1024);
     }
 #else
     {
@@ -267,7 +280,6 @@ int pav_posix_usage_kb(void) {
         if (getrusage(RUSAGE_SELF, &ru) != 0) {
             return -1;
         }
-        /* ru_maxrss is in kilobytes on Linux and macOS. */
         return (int)ru.ru_maxrss;
     }
 #endif
