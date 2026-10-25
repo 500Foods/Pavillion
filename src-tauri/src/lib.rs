@@ -276,13 +276,18 @@ fn install_quit_handler() {
    quit, which prints `free(): corrupted unsorted chunks` on this terminal.
    The profile write has already finished. No accelerated compositing means
    no GL context racing Mesa's atexit handler. A value already in the
-   environment is left alone. */
+   environment is left alone.
+
+   WEBKIT_DEBUG_OUTPUT=journal routes JSC's dataLog() output (including the
+   NeedDebuggerBreak trap that fires when devtools are opened) to the systemd
+   journal instead of stderr, keeping the terminal clean. A value already in
+   the environment is left alone. */
 fn quiet_webkit_exit() {
-    if std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_some() {
-        return;
+    if std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
+        unsafe { std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1"); }
     }
-    unsafe {
-        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    if std::env::var_os("WEBKIT_DEBUG_OUTPUT").is_none() {
+        unsafe { std::env::set_var("WEBKIT_DEBUG_OUTPUT", "journal"); }
     }
 }
 
@@ -557,6 +562,7 @@ pub fn run(workdir: &str) {
     app.run(|app, event| match event {
         tauri::RunEvent::ExitRequested { .. } => {
             WINDOW_READY.store(false, Ordering::SeqCst);
+            close_devtools_before_exit(app);
             if let Some(window) = app.get_webview_window("main") { report_window(&window); }
         }
         tauri::RunEvent::Exit => { stop_core_and_events(&app); }
@@ -564,40 +570,28 @@ pub fn run(workdir: &str) {
     });
 }
 
-#[cfg(all(debug_assertions, target_os = "linux"))]
-fn terminate_web_process(webview: &tauri::Webview) {
-    let _ = webview.with_webview(|pw| {
-        use glib::object::ObjectType;
-        let raw = pw.inner().as_ptr();
-        unsafe {
-            webkit2gtk_sys::webkit_web_view_terminate_web_process(raw);
-        }
-    });
-}
-
+/* If the Web Inspector is open, its transport is still live inside the
+   WebKit web process. During EGL teardown that connection races and the
+   web process sends NeedDebuggerBreak. We close the inspector here — in
+   ExitRequested, before Tauri begins WebKit shutdown — and give the
+   transport time to drain. Force-killing the web process only made the
+   race worse (it crashed mid-transport), so that is gone. */
 #[cfg(debug_assertions)]
-fn drain_webkit_before_exit(app: &tauri::AppHandle) {
+fn close_devtools_before_exit(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let webview = window.as_ref();
-        let (tx, rx) = std::sync::mpsc::channel::<()>();
-        let _ = webview.eval_with_callback(
-            "if(window.__pavDrainWebkit){Promise.resolve(window.__pavDrainWebkit()).then(()=>void 0)}",
-            move |_result| { let _ = tx.send(()); },
-        );
-        let _ = rx.recv_timeout(std::time::Duration::from_millis(250));
         let _ = webview.close_devtools();
-        #[cfg(target_os = "linux")]
-        terminate_web_process(&webview);
-        std::thread::sleep(std::time::Duration::from_millis(150));
+        std::thread::sleep(std::time::Duration::from_millis(500));
     }
 }
 
 #[cfg(not(debug_assertions))]
-fn drain_webkit_before_exit(_app: &tauri::AppHandle) {}
+#[allow(dead_code)]
+fn close_devtools_before_exit(_app: &tauri::AppHandle) {}
 
 fn stop_core_and_events(app: &tauri::AppHandle) {
+    let _ = app;
     stop_events();
-    drain_webkit_before_exit(app);
     unsafe { pavillion_stop() };
 }
 

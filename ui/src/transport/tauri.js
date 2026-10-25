@@ -87,17 +87,8 @@ export function tauriHost() {
        }).catch(() => {
          emit("pav-quit-failed").catch(() => {});
        });
-     };
-     /* Called from Rust at RunEvent::Exit before the core thread stops.
-        Closes any open Web Inspector, which holds an inspector transport
-        that races EGL teardown and raises NeedDebuggerBreak on exit. */
-      window.__pavDrainWebkit = () => {
-        if (typeof host.onBeforeExit === "function") {
-          return Promise.resolve(host.onBeforeExit()).catch(() => undefined);
-        }
-        return Promise.resolve();
-      };
-     current.onCloseRequested(async () => {
+    };
+    current.onCloseRequested(async () => {
       const pending = beginQuit();
       if (!pending) {
         return;
