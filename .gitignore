@@ -1,4 +1,5 @@
 build/
+build_test/
 build-mini/
 dist/
 node_modules/

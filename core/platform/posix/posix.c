@@ -1,4 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
+#if defined(__APPLE__)
+#define _DARWIN_C_SOURCE 1
+#endif
 
 #include "platform_internal.h"
 #include "pav_platform.h"
@@ -463,7 +466,12 @@ int pav_posix_memory_info(PavMemoryInfo *out) {
         {
             struct rusage ru;
             if (getrusage(RUSAGE_SELF, &ru) == 0) {
+#if defined(__APPLE__)
+                /* macOS stores ru_maxrss in bytes; Linux stores it in KB. */
+                out->peak_rss_kb = (int)(ru.ru_maxrss / 1024);
+#else
                 out->peak_rss_kb = (int)ru.ru_maxrss;
+#endif
             }
         }
         /* TODO: enumerate child processes via proc_listpids + proc_pidinfo. */
