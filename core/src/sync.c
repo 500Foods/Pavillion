@@ -1713,6 +1713,22 @@ static void merge_sup_remotes(PavSup *s, const SyncResult *r) {
     pthread_mutex_unlock(&g_sync_mu);
 }
 
+/* Returns 1 if every enabled account is idle, 0 otherwise. */
+static int sync_all_idle(void) {
+    PavSup *s;
+    int all_idle = 1;
+
+    pthread_mutex_lock(&g_sync_mu);
+    for (s = g_sup; s != NULL; s = s->next) {
+        if (s->enabled && strcmp(s->state, "idle") != 0) {
+            all_idle = 0;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_sync_mu);
+    return all_idle;
+}
+
 static void finish_sync_ok(PavSup *s) {
     if (s->email_delta && s->activity_id > 0) {
         pav_activity_progress(s->activity_id, 0, -1, NULL, "Changes");
@@ -1726,6 +1742,15 @@ static void finish_sync_ok(PavSup *s) {
         pav_log("sync", PAV_WARN, 0, "cache eviction failed");
     }
     pav_body_prefetch(s->account_id);
+    if (sync_all_idle()) {
+        int rss_kb = pav_usage_kb();
+        if (rss_kb > 0) {
+            char mem[64];
+            if (pav_format_usage_mb(mem, sizeof(mem), rss_kb) == 0) {
+                pav_log("sync", PAV_TRACE, 1, "full update sync complete, memory: %s", mem);
+            }
+        }
+    }
 }
 
 static void emit_mailboxes(const char *id) {

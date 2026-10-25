@@ -14,12 +14,14 @@
 #include <time.h>
 #include <unistd.h>
 #ifndef _WIN32
+#include <sys/resource.h>
 #include <sys/statvfs.h>
 #endif
 
 #include "pav_compat.h"
 #ifdef _WIN32
 #include <windows.h>
+#include <psapi.h>
 #endif
 
 static const PavPlatform *g_platform;
@@ -230,6 +232,45 @@ int64_t pav_now_ms(void) {
         return platform->now_ms();
     }
     return pav_posix_now_ms();
+}
+
+int pav_usage_kb(void) {
+    const PavPlatform *platform = pav_platform();
+
+    if (platform != NULL && platform->usage_kb != NULL) {
+        return platform->usage_kb();
+    }
+    return -1;
+}
+
+int pav_posix_usage_kb(void) {
+#ifdef _WIN32
+    {
+        PROCESS_MEMORY_INFO info;
+        SIZE_T copied;
+        SIZE_T rss_kb;
+
+        if (!GetProcessMemoryInfo(GetCurrentProcess(), &info, sizeof(info), &copied) ||
+            copied < sizeof(info)) {
+            return -1;
+        }
+        rss_kb = info.WorkingSetSize / 1024;
+        if (rss_kb > INT32_MAX) {
+            return -1;
+        }
+        return (int)rss_kb;
+    }
+#else
+    {
+        struct rusage ru;
+
+        if (getrusage(RUSAGE_SELF, &ru) != 0) {
+            return -1;
+        }
+        /* ru_maxrss is in kilobytes on Linux and macOS. */
+        return (int)ru.ru_maxrss;
+    }
+#endif
 }
 
 int pav_format_utc(char *out, size_t len, int64_t ms) {

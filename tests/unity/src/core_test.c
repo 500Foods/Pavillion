@@ -508,6 +508,22 @@ void test_log_num_args_mismatch_logs_error(void) {
     free(text);
 }
 
+void test_format_usage_mb_groups_commas_and_one_decimal(void) {
+    char buf[64];
+
+    TEST_ASSERT_EQUAL(0, pav_format_usage_mb(buf, sizeof(buf), 3537628));
+    TEST_ASSERT_EQUAL_STRING("3,454.7 MB", buf);
+    TEST_ASSERT_EQUAL(0, pav_format_usage_mb(buf, sizeof(buf), 524288));
+    TEST_ASSERT_EQUAL_STRING("512.0 MB", buf);
+    TEST_ASSERT_EQUAL(0, pav_format_usage_mb(buf, sizeof(buf), 1048576));
+    TEST_ASSERT_EQUAL_STRING("1,024.0 MB", buf);
+    TEST_ASSERT_EQUAL(0, pav_format_usage_mb(buf, sizeof(buf), 12345));
+    TEST_ASSERT_EQUAL_STRING("12.1 MB", buf);
+    TEST_ASSERT_EQUAL(-1, pav_format_usage_mb(buf, sizeof(buf), -1));
+    TEST_ASSERT_EQUAL(-1, pav_format_usage_mb(NULL, 0, 100));
+    TEST_ASSERT_EQUAL(-1, pav_format_usage_mb(buf, 2, 3537628));
+}
+
 static const char k_index[] =
     "{\n"
     "  \"kind\": \"pavillion-index\",\n"
@@ -11676,6 +11692,7 @@ int main(void) {
     RUN_TEST(test_log_formats_args_and_literal_percent);
     RUN_TEST(test_log_two_threads_keep_call_order);
     RUN_TEST(test_log_num_args_mismatch_logs_error);
+    RUN_TEST(test_format_usage_mb_groups_commas_and_one_decimal);
     RUN_TEST(test_parse_index_and_profile);
     RUN_TEST(test_reject_schema_and_missing_kind);
     RUN_TEST(test_reject_secret_keys);

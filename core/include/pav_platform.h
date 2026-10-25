@@ -37,6 +37,9 @@ typedef struct PavPlatform {
     /* 0 and *out is the free bytes available to this user on the volume
        that holds path. path may be a file or a directory. -1 when unknown. */
     int (*volume_free)(const char *path, int64_t *out);
+    /* Returns the process RSS in kilobytes, or -1 when the platform cannot
+       report it. Used for trace logging. */
+    int (*usage_kb)(void);
 } PavPlatform;
 
 /* The first install wins. pavillion_start will not replace a test's fake. */
@@ -58,6 +61,8 @@ void pav_platform_fake_set_locked(int locked);
 void pav_platform_fake_set_srv(const char *name, const char *target, int port);
 /* The next volume_free calls return bytes. pav_platform_fake_reset clears it. */
 void pav_platform_fake_set_volume_free(int64_t bytes);
+/* The next usage_kb calls return kb. pav_platform_fake_reset clears it. */
+void pav_platform_fake_set_usage_kb(int kb);
 
 int pav_path_join(char *out, size_t len, const char *a, const char *b);
 int pav_path_is_absolute(const char *path);
@@ -74,8 +79,10 @@ int64_t pav_file_size(const char *path);
    directory cannot be opened. A non-zero visit result stops the walk. */
 int pav_dir_each(const char *path, int (*visit)(const char *name, void *user), void *user);
 
-/* Installed clock, or the real clock when no platform is installed yet. */
+/* The installed clock, or the real clock when no platform is installed yet. */
 int64_t pav_now_ms(void);
+/* Returns the process RSS in kilobytes, or -1. Wraps platform->usage_kb. */
+int pav_usage_kb(void);
 /* Writes YYYY-MM-DDThh:mm:ss.sssZ. Returns 0, or -1 when ms is negative. */
 int pav_format_utc(char *out, size_t len, int64_t ms);
 

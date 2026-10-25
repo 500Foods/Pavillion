@@ -344,6 +344,15 @@ static void core_boot(void) {
         pav_log("core", PAV_ERROR, 1, "cannot restore account state for %s", profile->id);
     }
     pav_log("core", PAV_INFO, 2, "core ready: profile %s, %d accounts", profile->id, (int)profile->account_count);
+    {
+        int rss_kb = pav_usage_kb();
+        if (rss_kb > 0) {
+            char mem[64];
+            if (pav_format_usage_mb(mem, sizeof(mem), rss_kb) == 0) {
+                pav_log("core", PAV_TRACE, 1, "memory at launch: %s", mem);
+            }
+        }
+    }
     if (pav_sync_boot((json_t *)profile->doc, profile->id) != 0) {
         pav_log("core", PAV_ERROR, 1, "cannot start sync for %s", profile->id);
     }
@@ -3103,6 +3112,57 @@ int pav_log_trim_preview(int mb, PavLogStats *out) {
 
 int pav_log_trim(int mb, PavLogStats *out) {
     return log_request(LOG_REQ_TRIM, mb, out);
+}
+
+int pav_format_usage_mb(char *out, size_t len, int kb) {
+    double mb = (double)kb / 1024.0;
+    int ip = (int)mb; /* integer part */
+    int dec = (int)((mb - (double)ip) * 10.0 + 0.5); /* one decimal, rounded */
+    char intpart[32];
+    size_t pos = 0;
+    int n;
+    int i;
+
+    if (out == NULL || len == 0 || kb < 0) {
+        return -1;
+    }
+    if (dec >= 10) {
+        dec -= 10;
+        ip += 1;
+    }
+    /* Format integer part with comma grouping. */
+    n = snprintf(intpart, sizeof(intpart), "%d", ip);
+    if (n < 0 || (size_t)n >= sizeof(intpart)) {
+        return -1;
+    }
+    {
+        size_t intlen = (size_t)n;
+        size_t groups = (intlen - 1) / 3 + 1;
+        size_t needed = intlen + (groups - 1) + 1 + 1 + 1 + 2 + 1; /* commas, dot, digit, space, "MB", NUL */
+        size_t grp_pos;
+
+        if (needed > len) {
+            return -1;
+        }
+        /* Write integer part with commas into the output buffer. */
+        grp_pos = intlen % 3;
+        if (grp_pos == 0 && intlen > 0) {
+            grp_pos = 3;
+        }
+        for (i = 0; i < (int)intlen; i++) {
+            if (i > 0 && i % 3 == (int)grp_pos) {
+                out[pos++] = ',';
+            }
+            out[pos++] = intpart[i];
+        }
+    }
+    out[pos++] = '.';
+    out[pos++] = (char)('0' + dec);
+    out[pos++] = ' ';
+    out[pos++] = 'M';
+    out[pos++] = 'B';
+    out[pos] = '\0';
+    return 0;
 }
 
 /* An ERROR waits up to about 250 ms for its log.db commit (H-4 Lock). */

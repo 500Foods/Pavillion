@@ -129,4 +129,8 @@ void pav_log_flush(void);
 int pav_log_thread_start(void);
 void pav_log_thread_shutdown(void);
 
+/* Formats process RSS as "N,N,N.N MB" (e.g. "3,452.3 MB") into out.
+   kb is the RSS in kilobytes. Returns 0, or -1 on overflow. */
+int pav_format_usage_mb(char *out, size_t len, int kb);
+
 #endif
