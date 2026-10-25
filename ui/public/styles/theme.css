@@ -1243,9 +1243,126 @@
   color: var(--pav-text);
 }
 
-.pav-root .help-split {
+.pav-root .help-content {
   flex: 1;
+  display: flex;
   min-height: 0;
+  --pav-help-transition: 160ms;
+  /* D-10: --pav-bar-zoom is set on .button-bar (which includes .help-bar)
+     by applyZoom in shell.js; the filter panel lives in .help-content, so
+     it needs the same variable for icon and width sizing. */
+  --pav-bar-zoom: 1;
+  /* Clip the filter panel so its left edge is never visible when hidden. */
+  overflow: hidden;
+}
+
+/* Chevron width is rem. WebKit zoom on .help-bar scales that box (the padding
+   around the icon) but not a rem svg, which is why the icon multiplies by
+   --pav-bar-zoom on its own. The panel is not inside that zoom, so its width
+   multiplies once more to keep the same padding at every toolbar scale. */
+.pav-root .help-bar,
+.pav-root .help-content {
+  --pav-help-icon-box: calc(var(--pav-bar-icon-size) + var(--pav-bar-pad-y) * 2);
+  --pav-help-control-width: calc(var(--pav-help-icon-box) * var(--pav-bar-zoom));
+}
+
+.pav-root .help-bar .help-filter-chevron {
+  box-sizing: border-box;
+  flex: none;
+  justify-content: center;
+  width: var(--pav-help-icon-box);
+  margin-right: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.pav-root .help-filter-chevron :is(.icon, svg) {
+  width: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+  height: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+  font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+  color: var(--pav-text);
+  transition: transform var(--pav-help-transition) ease;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.pav-root .help-filter-chevron[aria-pressed="true"] :is(.icon, svg) {
+  transform: rotate(180deg);
+}
+
+/* 1px vertical separator between the chevron and the Help title, matching
+   the help-jump border-left pattern (divided by --pav-bar-zoom). */
+.pav-root .help-filter-separator {
+  flex: none;
+  width: 0;
+  border-left: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
+}
+
+.pav-root .help-filter-panel {
+  flex: none;
+  box-sizing: border-box;
+  width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--pav-help-index-bg);
+  color: var(--pav-help-index-text);
+  border-right: 0 solid var(--pav-help-index-border);
+  overflow: hidden;
+  opacity: 0;
+  transition: width var(--pav-help-transition) ease, opacity var(--pav-help-transition) ease;
+}
+
+.pav-root .help-filter-panel[aria-hidden="false"] {
+  width: var(--pav-help-control-width);
+  border-right-width: calc(1px / var(--pav-bar-zoom));
+  opacity: 1;
+}
+
+/* Top toolbar: border-bottom separates it from the help content. */
+.pav-root .help-bar {
+  border-bottom: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
+}
+
+/* Bottom toolbar: sits below the help content, flex: none so it doesn't
+   stretch the article/content area. */
+.pav-root .help-toolbar-bottom {
+  flex: none;
+}
+
+.pav-root .help-filter-icon-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.15rem;
+  padding: 0.2rem 0;
+  width: 100%;
+  min-width: var(--pav-help-control-width);
+}
+
+.pav-root .help-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--pav-help-index-text);
+  padding: 0.35rem 0;
+  border-radius: 0.3rem;
+  cursor: pointer;
+}
+
+.pav-root .help-filter-chip :is(.icon, svg) {
+  width: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+  height: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+  font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+  flex: none;
+}
+
+.pav-root .help-filter-chip[aria-pressed="true"] {
+  background: var(--pav-help-index-current);
+  color: var(--pav-help-index-text);
 }
 
 .pav-root .help-index {
@@ -1253,15 +1370,25 @@
   color: var(--pav-help-index-text);
 }
 
-.pav-root .help-split > .split-resize {
+.pav-root .help-content > .split-resize {
   border-left-color: var(--pav-help-index-border);
-  border-right-color: var(--pav-help-index-border);
+  border-right-color: transparent;
 }
 
 .pav-root .help-index .tree ul {
   margin: 0;
-  padding: 0 0 0 0.75rem;
+  padding: 0;
   list-style: none;
+}
+
+/* Index rows use the bar's horizontal pad (~14px), not the tree indent. */
+.pav-root .help-index .tree,
+.pav-root .help-index .tree ul {
+  margin: 0;
+  padding: 0;
+}
+.pav-root .help-index .tree button {
+  padding: 0.2rem 0 0.2rem var(--pav-bar-pad-x);
 }
 
 .pav-root .help-index .tree button {

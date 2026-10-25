@@ -35,10 +35,11 @@ export const helpPages = [
         id: "reader",
         title: "How to use Help",
         paragraphs: [
-          "The list on the left is the index. The page on the right is the topic. Drag the bar between them to change the width. The width is saved. The bar above the page has the title, then search, then Back. Search matches a title or the words on a page, and Enter opens the first hit.",
+          "The list on the left is the index. The page on the right is the topic. Drag the bar between them to change the width. The width is saved. The bar above the page has a chevron, then the title, then search, then Back. Search matches a title or the words on a page, and Enter opens the first hit.",
+          "The chevron to the left of the title toggles a filter panel. A 1px vertical separator sits to the right of the chevron. The chevron and the panel are the same width, just wide enough for the icon. When the panel opens it fades in and the index shifts right by that width, so the panel's right border lines up with the chevron's separator. Closing it shifts the index back. Index titles use the same horizontal padding as a toolbar button. The panel holds filter chips as icons only: All (heart), Pages (star), Dev (flag), Settings (bookmark), and Mail (tag). Hover or focus a chip to read its label. One chip is pressed at a time. All shows every topic. Pages shows the app and Introduction. Dev shows the Developer topics. Settings shows Settings and its sub-pages. Mail shows the Mail topics. Picking a chip narrows the index to that category. Pressing the chevron again slides the panel out, fades it away, and the chevron turns back.",
           "Back returns to the tab that was open before Help, one step. It stays off when there is no such tab, or when that tab has been closed.",
           "Escape clears the search and leaves the page you were reading. A match on a page title keeps every section of that page in the index. A match in the text keeps only those sections in the index, and the page still shows the whole topic.",
-          "Pages are added as features land. A short page means that part of the app is not built yet. A help icon on the right of a page's top bar opens that topic here.",
+          "Pages are added as features land. A short page means that part of the app is not built yet. A help icon on the right of a page's top bar opens that topic here. Below the content row is a bottom toolbar that holds a Refresh button on the left, and Copy, Save, and Print on the right. The same single pixel top border as other module footers divides the toolbar from the page.",
         ],
       },
     ],

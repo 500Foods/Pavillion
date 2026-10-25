@@ -624,10 +624,21 @@ export const shellMarkup = `<div class="shell">
             <button type="button" id="demo-activity" hidden>Run demo activity</button>
             <button type="button" id="open-test-tab" hidden>Open test tab</button>
           </div>
-          <div class="split help-split">
+          <div class="help-content split">
+            <div class="help-filter-panel" id="help-filter-panel" aria-hidden="true">
+              <div class="help-filter-icon-strip">
+                <button type="button" id="help-filter-all" class="help-filter-chip" data-help-filter="all" aria-pressed="true" aria-label="All"><i class="icon fa-sharp-duotone fa-solid fa-heart" aria-hidden="true"></i></button>
+                <button type="button" id="help-filter-pages" class="help-filter-chip" data-help-filter="pages" aria-pressed="false" aria-label="Pages"><i class="icon fa-sharp-duotone fa-solid fa-star" aria-hidden="true"></i></button>
+                <button type="button" id="help-filter-dev" class="help-filter-chip" data-help-filter="dev" aria-pressed="false" aria-label="Dev"><i class="icon fa-sharp-duotone fa-solid fa-flag" aria-hidden="true"></i></button>
+                <button type="button" id="help-filter-settings" class="help-filter-chip" data-help-filter="settings" aria-pressed="false" aria-label="Settings"><i class="icon fa-sharp-duotone fa-solid fa-bookmark" aria-hidden="true"></i></button>
+                <button type="button" id="help-filter-mail" class="help-filter-chip" data-help-filter="mail" aria-pressed="false" aria-label="Mail"><i class="icon fa-sharp-duotone fa-solid fa-tag" aria-hidden="true"></i></button>
+              </div>
+            </div>
             <div class="pane pane-list help-index" id="help-index"></div>
             <button type="button" class="split-resize" data-split="help" aria-label="Resize help panes"></button>
             <div class="pane pane-detail help-article" id="help-article" tabindex="-1"></div>
+          </div>
+           <div class="button-bar pav-module-footer help-toolbar-bottom" id="help-toolbar-bottom" role="toolbar" aria-label="Help actions">
           </div>
         </div>
       </div>

@@ -144,3 +144,74 @@ test("D-10: the Help toolbar has the title, search, then Back to the opener", as
     el.remove();
   }
 });
+
+test("the Help chevron toggles the filter panel and rotates", async () => {
+  const el = document.createElement("div");
+  document.body.append(el);
+  try {
+    await mount(el, createApi(mockTransport()));
+    const bar = document.querySelector("#help-toolbar");
+    const title = bar.querySelector(".pav-module-title");
+    const chevron = document.querySelector("#help-filter-toggle");
+    expect(chevron).not.toBeNull();
+    /* chevron is the first child, followed by the separator and the title */
+    expect(bar.firstElementChild).toBe(chevron);
+    expect(chevron.previousElementSibling).toBeNull();
+    const separator = bar.querySelector(".help-filter-separator");
+    expect(separator).not.toBeNull();
+    expect(chevron.nextElementSibling).toBe(separator);
+    expect(separator.nextElementSibling).toBe(title);
+
+    const panel = document.querySelector("#help-filter-panel");
+    expect(panel).not.toBeNull();
+    expect(panel.getAttribute("aria-hidden")).toBe("true");
+    expect(chevron.getAttribute("aria-pressed")).toBe("false");
+
+    chevron.click();
+    expect(chevron.getAttribute("aria-pressed")).toBe("true");
+    expect(panel.getAttribute("aria-hidden")).toBe("false");
+
+    chevron.click();
+    expect(chevron.getAttribute("aria-pressed")).toBe("false");
+    expect(panel.getAttribute("aria-hidden")).toBe("true");
+
+    /* Space and Enter also toggle */
+    chevron.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true }));
+    expect(chevron.getAttribute("aria-pressed")).toBe("true");
+    chevron.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(chevron.getAttribute("aria-pressed")).toBe("false");
+  } finally {
+    unmount();
+    el.remove();
+  }
+});
+
+test("the filter panel chips narrow the help index by category", async () => {
+  const el = document.createElement("div");
+  document.body.append(el);
+  try {
+    await mount(el, createApi(mockTransport()));
+    const allChip = document.querySelector("#help-filter-all");
+    const devChip = document.querySelector("#help-filter-dev");
+    expect(allChip).not.toBeNull();
+    expect(devChip).not.toBeNull();
+
+    /* Initially all pages are shown */
+    expect(document.querySelector("#help-index").textContent).toContain("Developer");
+    expect(document.querySelector("#help-index").textContent).toContain("Introduction");
+
+    devChip.click();
+    expect(devChip.getAttribute("aria-pressed")).toBe("true");
+    expect(allChip.getAttribute("aria-pressed")).toBe("false");
+    /* Dev category shows only the developer page */
+    expect(document.querySelector("#help-index").textContent).toContain("Developer");
+    expect(document.querySelector("#help-index").textContent).not.toContain("Introduction");
+
+    allChip.click();
+    expect(allChip.getAttribute("aria-pressed")).toBe("true");
+    expect(document.querySelector("#help-index").textContent).toContain("Introduction");
+  } finally {
+    unmount();
+    el.remove();
+  }
+});

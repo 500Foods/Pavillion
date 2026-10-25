@@ -160,6 +160,12 @@ function applyZoom() {
       }
     }
   }
+  /* Propagate the toolbar zoom variable to .help-content so the chevron and
+     filter panel icons scale at the toolbar rate, not the index/content rate. */
+  const helpZoom = ui.zoom.shell * ui.zoom.navButtons;
+  for (const helpContent of mountRoot.querySelectorAll(".help-content")) {
+    helpContent.style.setProperty("--pav-bar-zoom", String(helpZoom));
+  }
   if (logView) {
     logView.setZoom(ui.zoom.log);
   }
@@ -193,6 +199,9 @@ function zoomKeyAt(target) {
     return "";
   }
   if (target.closest(".button-bar")) {
+    return "navButtons";
+  }
+  if (target.closest("#help-filter-panel")) {
     return "navButtons";
   }
   if (target.closest(".nav-body") || target.closest("#month")) {
@@ -2965,7 +2974,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
   forwarder = createForwarder(log);
   unforward = forwardEvents(mountRoot, forwarder);
   bindMailTree();
-  helpView = createHelpView(mountRoot, undefined, { onBack: helpGoBack });
+  helpView = createHelpView(mountRoot, undefined, { onBack: helpGoBack, tooltips: widgets && widgets.tooltips });
   paintHelpBack();
   mountRoot.addEventListener("click", onHelpJump);
   accountsView = createAccountsView(api, mountRoot, {

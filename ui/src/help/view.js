@@ -1,5 +1,5 @@
 import { helpPages } from "./pages.js";
-import { moduleToolbar, mountBar } from "../common/module-bar.js";
+import { moduleToolbar, moduleFooter, mountBar } from "../common/module-bar.js";
 
 /* A blank query keeps every page. A hit on the page title keeps every section.
    Otherwise only the sections whose title, text, or sample match are kept. */
@@ -33,32 +33,130 @@ export function filterHelp(pages, query) {
 }
 
 /* options.onBack: Back pressed (D-10). The toolbar is built into #help-toolbar
-   by the shared module bar: title Help, search right, Back right of search. */
+   by the shared module bar: title Help, search right, Back right of search.
+   A chevron toggle to the left of the title opens a filter panel that slides
+   in from the left and takes the full height of the help index. The chevron
+   has a 1px vertical separator to its right (matching the search border),
+   and the index shifts right by the panel width when the panel is open so the
+   panel's right border aligns with the chevron separator. The panel fades in
+   and out along with the slide.
+
+   The filter panel, index, split-resize, and article live in .help-content,
+   a flex row inside #panel-help. Below it is #help-toolbar-bottom, a
+   pav-module-footer, holding Refresh on the left and Copy/Save/Print on the
+   right.
+
+   options.tooltips: the tooltip host from shell.js, used to bind labels to the
+   icon-only filter chips. */
 export function createHelpView(root, pages = helpPages, options = {}) {
   const toolbarHost = root.querySelector("#help-toolbar");
+  const doc = root.ownerDocument || document;
   if (toolbarHost && !toolbarHost.querySelector("#help-search")) {
     mountBar(toolbarHost, moduleToolbar({
       title: "Help",
       search: { id: "help-search", label: "Search help", placeholder: "Search help" },
       after: [{ id: "help-back", action: "back", icon: "fa-arrow-left", text: "Back", label: "Back", onClick: () => typeof options.onBack === "function" && options.onBack() }],
-    }, root.ownerDocument || document));
+    }, doc));
   }
-  const backButton = root.querySelector("#help-back");
+  const footerHost = root.querySelector("#help-toolbar-bottom");
+  if (footerHost && !footerHost.querySelector("button")) {
+    mountBar(footerHost, moduleFooter({
+      label: "Help actions",
+      onRefresh: () => { if (typeof options.onRefresh === "function") options.onRefresh(); },
+      end: [
+        { id: "help-copy", action: "copy", icon: "fa-copy", text: "Copy", label: "Copy topic", onClick: () => {} },
+        { id: "help-save", action: "save", icon: "fa-save", text: "Save", label: "Save topic", onClick: () => {} },
+        { id: "help-print", action: "print", icon: "fa-print", text: "Print", label: "Print topic", onClick: () => {} },
+      ],
+    }, doc));
+  }
+  const titleSpan = toolbarHost && toolbarHost.querySelector(".pav-module-title");
+  const chevron = doc.createElement("button");
+  chevron.type = "button";
+  chevron.id = "help-filter-toggle";
+  chevron.className = "help-filter-chevron";
+  chevron.setAttribute("aria-label", "Toggle filter panel");
+  chevron.setAttribute("aria-pressed", "false");
+  const chevronIcon = doc.createElement("i");
+  chevronIcon.className = "icon fa-sharp-duotone fa-solid fa-chevron-right";
+  chevronIcon.setAttribute("aria-hidden", "true");
+  chevron.append(chevronIcon);
+  if (titleSpan && titleSpan.parentNode) {
+    titleSpan.parentNode.insertBefore(chevron, titleSpan);
+  }
+  if (titleSpan && titleSpan.parentNode && !titleSpan.parentNode.querySelector(".help-filter-separator")) {
+    const separator = doc.createElement("div");
+    separator.className = "help-filter-separator";
+    separator.setAttribute("aria-hidden", "true");
+    titleSpan.parentNode.insertBefore(separator, titleSpan);
+  }
+
+  const split = root.querySelector(".help-content");
+  const index = root.querySelector("#help-index");
+  const article = root.querySelector("#help-article");
+  let filterPanel = root.querySelector("#help-filter-panel");
+  if (!filterPanel && split) {
+    filterPanel = doc.createElement("div");
+    filterPanel.id = "help-filter-panel";
+    filterPanel.className = "help-filter-panel";
+    filterPanel.setAttribute("aria-hidden", "true");
+    const strip = doc.createElement("div");
+    strip.className = "help-filter-icon-strip";
+     const filters = [
+       { id: "help-filter-all", label: "All", tip: "All", icon: "fa-sharp-duotone fa-solid fa-heart", cat: "all" },
+       { id: "help-filter-pages", label: "Pages", tip: "Pages", icon: "fa-sharp-duotone fa-solid fa-star", cat: "pages" },
+       { id: "help-filter-dev", label: "Dev", tip: "Dev", icon: "fa-sharp-duotone fa-solid fa-flag", cat: "dev" },
+       { id: "help-filter-settings", label: "Settings", tip: "Settings", icon: "fa-sharp-duotone fa-solid fa-bookmark", cat: "settings" },
+       { id: "help-filter-mail", label: "Mail", tip: "Mail", icon: "fa-sharp-duotone fa-solid fa-tag", cat: "mail" },
+     ];
+     for (const spec of filters) {
+       const chip = doc.createElement("button");
+       chip.type = "button";
+       chip.id = spec.id;
+       chip.className = "help-filter-chip";
+       chip.dataset.helpFilter = spec.cat;
+       chip.setAttribute("aria-pressed", spec.cat === "all" ? "true" : "false");
+       chip.setAttribute("aria-label", spec.tip);
+       const icon = doc.createElement("i");
+       icon.className = `icon ${spec.icon}`;
+       icon.setAttribute("aria-hidden", "true");
+       chip.append(icon);
+       if (options.tooltips) {
+         options.tooltips.bind(chip, spec.tip);
+       }
+       strip.append(chip);
+     }
+    filterPanel.append(strip);
+    split.insertBefore(filterPanel, index);
+  }
+   const backButton = root.querySelector("#help-back");
   if (backButton) {
     backButton.disabled = true;
   }
   const search = root.querySelector("#help-search");
-  const index = root.querySelector("#help-index");
-  const article = root.querySelector("#help-article");
   let query = "";
   let pageId = pages[0] ? pages[0].id : "";
   let sectionId = "";
+  let filterActive = "all";
+
+  const FILTER_CATEGORIES = {
+    pages: new Set(["app", "introduction"]),
+    dev: new Set(["developer"]),
+    settings: new Set(["settings"]),
+    mail: new Set(["mail"]),
+  };
 
   function paint() {
     if (!index || !article) {
       return;
     }
-    const hits = filterHelp(pages, query);
+    const hits = filterHelp(pages, query).filter((hit) => {
+      if (filterActive === "all") {
+        return true;
+      }
+      const set = FILTER_CATEGORIES[filterActive];
+      return set ? set.has(hit.page.id) : true;
+    });
     if (hits.length > 0 && !hits.some((hit) => hit.page.id === pageId)) {
       pageId = hits[0].page.id;
       sectionId = "";
@@ -194,12 +292,50 @@ export function createHelpView(root, pages = helpPages, options = {}) {
     paint();
   }
 
+  function onToggle() {
+    const expanded = chevron.getAttribute("aria-pressed") === "true";
+    chevron.setAttribute("aria-pressed", String(!expanded));
+    if (chevronIcon) {
+      chevronIcon.classList.toggle("fa-chevron-right", expanded);
+      chevronIcon.classList.toggle("fa-chevron-left", !expanded);
+    }
+    if (filterPanel) {
+      filterPanel.setAttribute("aria-hidden", String(expanded));
+    }
+    if (split) {
+      split.classList.toggle("help-filter-open", !expanded);
+    }
+  }
+
   if (search) {
     search.addEventListener("input", onInput);
     search.addEventListener("keydown", onKey);
   }
   if (index) {
     index.addEventListener("click", onIndexClick);
+  }
+  if (chevron && filterPanel) {
+    chevron.addEventListener("click", onToggle);
+    chevron.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        onToggle();
+      }
+    });
+  }
+  const filterChips = filterPanel ? [...filterPanel.querySelectorAll("[data-help-filter]")] : [];
+  const TIP_MAP = { all: "All", pages: "Pages", dev: "Dev", settings: "Settings", mail: "Mail" };
+  for (const chip of filterChips) {
+    chip.addEventListener("click", () => {
+      filterActive = chip.dataset.helpFilter;
+      for (const other of filterChips) {
+        other.setAttribute("aria-pressed", String(other === chip));
+      }
+      paint();
+    });
+    if (options.tooltips && !chip.getAttribute("aria-label")) {
+      options.tooltips.bind(chip, TIP_MAP[chip.dataset.helpFilter]);
+    }
   }
   paint();
 
@@ -232,6 +368,9 @@ export function createHelpView(root, pages = helpPages, options = {}) {
       }
       if (index) {
         index.removeEventListener("click", onIndexClick);
+      }
+      if (chevron) {
+        chevron.removeEventListener("click", onToggle);
       }
     },
   };

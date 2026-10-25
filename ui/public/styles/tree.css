@@ -21,6 +21,16 @@
   padding-left: var(--pav-tree-indent);
 }
 
+/* Help index is a title list, not a mailbox tree. Loaded after theme.css. */
+.pav-root .help-index .tree,
+.pav-root .help-index .tree ul {
+  padding-left: 0;
+}
+.pav-root .help-index .tree button {
+  padding-left: var(--pav-bar-pad-x);
+  padding-right: 0;
+}
+
 .pav-root .tree li {
   margin: 0;
   padding: 0;
