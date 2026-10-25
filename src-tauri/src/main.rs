@@ -78,6 +78,7 @@ fn default_workdir() -> String {
 }
 
 fn main() {
+    pavillion_lib::install_native_stderr_capture();
     pavillion_lib::block_quit_signals();
     if let Some(code) = cli_exit_code() {
         std::process::exit(code);

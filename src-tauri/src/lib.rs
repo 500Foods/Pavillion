@@ -1,4 +1,5 @@
 use std::ffi::{CStr, CString, c_char, c_void};
+mod capture;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use std::sync::Mutex;
 use serde_json::{json, Value};
@@ -40,6 +41,9 @@ unsafe extern "C" {
 pub fn core_log(level: i32, message: &str) {
     let text = CString::new(message.replace('\0', " ")).unwrap_or_default();
     unsafe { pav_ui_log(c"shell".as_ptr(), level, text.as_ptr()); }
+}
+pub fn install_native_stderr_capture() {
+    capture::install_native_stderr_capture();
 }
 macro_rules! shell_warn { ($($arg:tt)*) => { core_log(1, &format!($($arg)*)) }; }
 macro_rules! shell_error { ($($arg:tt)*) => { core_log(0, &format!($($arg)*)) }; }
@@ -278,16 +282,15 @@ fn install_quit_handler() {
    no GL context racing Mesa's atexit handler. A value already in the
    environment is left alone.
 
-   WEBKIT_DEBUG_OUTPUT=journal routes JSC's dataLog() output (including the
-   NeedDebuggerBreak trap that fires when devtools are opened) to the systemd
-   journal instead of stderr, keeping the terminal clean. A value already in
-   the environment is left alone. */
+    WEBKIT_DISABLE_COMPOSITING_MODE=1 turns off accelerated compositing in the
+    main web process. A value already in the environment is left alone.
+
+    Native stderr from WebKitGTK's child processes (including JSC's
+    "received NeedDebuggerBreak trap" on inspector detachment) is captured by
+    the native_stderr module instead of routed to the systemd journal. */
 fn quiet_webkit_exit() {
     if std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
         unsafe { std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1"); }
-    }
-    if std::env::var_os("WEBKIT_DEBUG_OUTPUT").is_none() {
-        unsafe { std::env::set_var("WEBKIT_DEBUG_OUTPUT", "journal"); }
     }
 }
 
