@@ -114,7 +114,7 @@ The license is [MIT](LICENSE.md).
 [![Count Lines of Code](https://github.com/500Foods/Pavillion/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/main.yml)
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-26 00:49:49 UTC
+Last updated at 2026-10-26 01:13:10 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
@@ -127,17 +127,16 @@ JSON                            13              0              0           2606
 Bourne Shell                    10            103            175           1534
 CMake                           22            384            184           1398
 Rust                             5             90             76           1287
-C++                              2            125            110            557
 make                             1             22             21            155
-HTML                            24              4              0            138
+HTML                            25              5              0            148
 YAML                             4             24             27            138
 SQL                              4              0              0            130
 Text                             2              8              0             57
 TOML                             2              8              5             54
 -------------------------------------------------------------------------------
-SUM:                           798          34266          12609         706187
+SUM:                           797          34142          12499         705640
 -------------------------------------------------------------------------------
-47 Files were skipped (duplicate, binary, or without source code):
+44 Files were skipped (duplicate, binary, or without source code):
   png: 17
   eml: 9
   conf: 2
@@ -145,7 +144,6 @@ SUM:                           798          34266          12609         706187
   lock: 2
   theme: 2
   version: 2
-  asc: 1
   c: 1
   gitattributes: 1
   icns: 1
@@ -154,8 +152,6 @@ SUM:                           798          34266          12609         706187
   license: 1
   notice: 1
   pavillion_pin: 1
-  rpm: 1
-  xz: 1
 ```
 <!--CLOC-END-->
 
