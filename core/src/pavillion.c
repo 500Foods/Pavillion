@@ -19,8 +19,11 @@
 #include "pav_store.h"
 #include "pav_sync.h"
 #include "pavillion.h"
-
 #include "window_state.h"
+
+#include <gmime/gmime.h>
+#include <jansson.h>
+#include <sqlite3.h>
 
 #include <ctype.h>
 #include <errno.h>
@@ -344,6 +347,9 @@ static void core_boot(void) {
         pav_log("core", PAV_ERROR, 1, "cannot restore account state for %s", profile->id);
     }
     pav_log("core", PAV_INFO, 2, "core ready: profile %s, %d accounts", profile->id, (int)profile->account_count);
+    pav_log("core", PAV_TRACE, 1, "library loaded:  SQLite %s", sqlite3_libversion());
+    pav_log("core", PAV_TRACE, 1, "library loaded:  Jansson %s", jansson_version_str());
+    pav_log("core", PAV_TRACE, 3, "library loaded:  GMime %d.%d.%d", GMIME_MAJOR_VERSION, GMIME_MINOR_VERSION, GMIME_MICRO_VERSION);
     {
         PavMemoryInfo mem_info;
         if (pav_memory_info(&mem_info) == 0) {
@@ -2204,6 +2210,7 @@ static int64_t g_log_session;
 static int g_log_cap_mb = 10;
 static char g_log_switch_path[4096];
 static int g_log_dest;
+static int g_log_suppress_stderr;
 
 static int g_log_alive;
 static int g_log_shutdown;
@@ -2334,8 +2341,13 @@ static void abs_after_ms(struct timespec *ts, int ms) {
 
 /* stderr only when no database can hold the line: before any workdir exists
    or after log.db failed to open, every level (H Lock, 2026-10-19: logs go
-   to the database only). The test sink keeps stderr quiet. */
+   to the database only). The test sink keeps stderr quiet. g_log_suppress_stderr
+   is set by the frontend when it forwards captured stderr, to prevent the
+   forwarded line from being written back to the pipe that generates it. */
 static int stderr_too_unlocked(int level) {
+    if (g_log_suppress_stderr) {
+        return 0;
+    }
     if (g_log_dest == LOG_DEST_EXPLICIT) {
         return 0;
     }
@@ -3041,6 +3053,15 @@ int pav_log_set_cap_mb(int mb) {
     g_log_cap_mb = mb;
     pthread_mutex_unlock(&g_log_mu);
     return 0;
+}
+
+int pav_log_suppress_stderr(int on) {
+    int prev;
+    pthread_mutex_lock(&g_log_mu);
+    prev = g_log_suppress_stderr;
+    g_log_suppress_stderr = on ? 1 : 0;
+    pthread_mutex_unlock(&g_log_mu);
+    return prev;
 }
 
 static int log_request(int req, int mb, PavLogStats *out) {

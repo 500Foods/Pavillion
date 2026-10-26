@@ -259,6 +259,18 @@ fn main() {
                 }
             }
         }
+        if let Ok(ver) = std::process::Command::new("pkg-config")
+            .args(["--modversion", "webkit2gtk-4.1"])
+            .output()
+        {
+            if ver.status.success() {
+                let text = String::from_utf8_lossy(&ver.stdout);
+                let v = text.trim();
+                if !v.is_empty() {
+                    println!("cargo:rustc-env=WEBKITGTK_VERSION={v}");
+                }
+            }
+        }
     }
     println!("cargo:rerun-if-changed=../core/CMakeLists.txt");
     println!("cargo:rerun-if-changed=../core/include/pavillion.h");

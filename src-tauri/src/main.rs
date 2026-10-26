@@ -80,6 +80,12 @@ fn default_workdir() -> String {
 fn main() {
     pavillion_lib::install_native_stderr_capture();
     pavillion_lib::block_quit_signals();
+    if let Some(ver) = option_env!("WEBKITGTK_VERSION") {
+        if !ver.is_empty() {
+            let line = format!("library loaded:  WebKitGTK {}", ver);
+            pavillion_lib::core_log(4, &line);
+        }
+    }
     if let Some(code) = cli_exit_code() {
         std::process::exit(code);
     }

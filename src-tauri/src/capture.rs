@@ -2,6 +2,7 @@ use std::ffi::CString;
 
 unsafe extern "C" {
     fn pav_ui_log(subsystem: *const std::os::raw::c_char, level: std::os::raw::c_int, message: *const std::os::raw::c_char) -> std::os::raw::c_int;
+    fn pav_log_suppress_stderr(on: std::os::raw::c_int) -> std::os::raw::c_int;
 }
 
 pub fn install_native_stderr_capture() {
@@ -71,6 +72,8 @@ fn forward_log(level: i32, subsystem: &str, message: &str) {
     let subsystem_c = CString::new(subsystem).unwrap_or_default();
     let message_c = CString::new(message).unwrap_or_default();
     unsafe {
+        pav_log_suppress_stderr(1);
         pav_ui_log(subsystem_c.as_ptr(), level, message_c.as_ptr());
+        pav_log_suppress_stderr(0);
     }
 }

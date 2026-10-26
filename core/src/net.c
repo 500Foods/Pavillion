@@ -873,7 +873,36 @@ int pav_net_start(void) {
             pav_log("http", PAV_ERROR, 0, "curl_global_init failed");
             return -1;
         }
-        pav_log("http", PAV_DEBUG, 1, "net started (%s)", curl_version());
+        pav_log("http", PAV_DEBUG, 0, "network started");
+        {
+            const char *ver = curl_version();
+            const char *start = ver;
+            const char *p = ver;
+            while (*p != '\0') {
+                if (*p == ' ') {
+                    if (p > start) {
+                        char buf[256];
+                        size_t len = (size_t)(p - start);
+                        if (len >= sizeof(buf)) len = sizeof(buf) - 1;
+                        memcpy(buf, start, len);
+                        buf[len] = '\0';
+                        pav_log("http", PAV_TRACE, 1, "network library loaded:  %s", buf);
+                    }
+                    p++;
+                    start = p;
+                } else {
+                    p++;
+                }
+            }
+            if (p > start) {
+                char buf[256];
+                size_t len = (size_t)(p - start);
+                if (len >= sizeof(buf)) len = sizeof(buf) - 1;
+                memcpy(buf, start, len);
+                buf[len] = '\0';
+                pav_log("http", PAV_TRACE, 1, "network library loaded:  %s", buf);
+            }
+        }
         g_net_started = 1;
         g_overall_cap = 0;
         g_overall_in_flight = 0;

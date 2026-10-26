@@ -112,6 +112,11 @@ typedef struct PavLogStats {
 /* preferences.log_max_mb, 1 to 100 (default 10). The cap trimmed to at
    shutdown and by pav_log_trim(0). */
 int pav_log_set_cap_mb(int mb);
+
+/* Suppresses stderr echo while forwarding captured stderr from the shell
+   frontend, so a forwarded line is not written back into the pipe that
+   captured it. Returns the previous state. Thread-safe. */
+int pav_log_suppress_stderr(int on);
 /* Each runs on the log thread and needs log.db open. Returns 0, or -1. */
 int pav_log_stats(PavLogStats *out);
 /* Estimate after a trim to mb (1 to 100). Deletes nothing. */
