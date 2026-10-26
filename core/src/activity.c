@@ -1367,7 +1367,9 @@ static void end_still_running(void) {
 }
 
 void pav_activity_shutdown(void) {
-    pav_log("activity", PAV_DEBUG, 0, "shutting down, cancelling running work");
+    if (g_attached) {
+        pav_log("activity", PAV_DEBUG, 0, "shutting down, cancelling running work");
+    }
     join_demos();
     end_still_running();
     pthread_mutex_lock(&g_mu);

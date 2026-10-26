@@ -482,6 +482,9 @@ int pav_posix_memory_info(PavMemoryInfo *out) {
         }
         out->current_rss_kb = pav_linux_current_rss_kb();
         out->peak_rss_kb = (int)ru_self.ru_maxrss;
+        if (out->peak_rss_kb < out->current_rss_kb) {
+            out->peak_rss_kb = out->current_rss_kb;
+        }
         out->children_rss_kb = pav_linux_child_rss_sum();
         out->child_count = pav_linux_child_count();
         return 0;

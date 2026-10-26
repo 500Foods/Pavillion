@@ -60,11 +60,41 @@ fn capture_reader(read_fd: i32) {
 
 fn handle_line(line: &[u8]) {
     if let Ok(text) = std::str::from_utf8(line) {
-        if text.contains("received NeedDebuggerBreak trap") {
+        if let Some((level, subsystem, message)) = parse_pav_line(text) {
+            forward_log(level, &subsystem, &message);
+        } else if text.contains("received NeedDebuggerBreak trap") {
             forward_log(1, "webkit", text);
         } else {
             forward_log(2, "native_stderr", text);
         }
+    }
+}
+
+fn parse_pav_line(line: &str) -> Option<(i32, String, String)> {
+    let bytes = line.as_bytes();
+    if bytes.len() < 33 || bytes[24] != b' ' || bytes[30] != b' ' {
+        return None;
+    }
+    let level_str = line.get(25..30).unwrap_or("").trim();
+    let level = level_from_name(level_str)?;
+    let rest = line.get(31..)?;
+    let gap = rest.find("  ")?;
+    if gap == 0 {
+        return None;
+    }
+    let subsystem = rest[..gap].to_string();
+    let message = rest[gap + 2..].to_string();
+    Some((level, subsystem, message))
+}
+
+fn level_from_name(name: &str) -> Option<i32> {
+    match name {
+        "ERROR" => Some(0),
+        "WARN"  => Some(1),
+        "INFO"  => Some(2),
+        "DEBUG" => Some(3),
+        "TRACE" => Some(4),
+        _ => None,
     }
 }
 

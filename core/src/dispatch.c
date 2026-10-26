@@ -1116,7 +1116,7 @@ static int cmd_log_tail(json_t *args, json_t **data, PavError *err) {
     json_t *value;
     uint64_t since = 0;
     int limit = PAV_LOGRING_CAP;
-    int min_level = PAV_DEBUG;
+    int min_level = PAV_TRACE;
     const json_t *subsystems = NULL;
     char buf[512];
 
