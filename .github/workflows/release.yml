@@ -114,10 +114,12 @@ jobs:
         run: |
           printf '%s\n' "${{ inputs.build || '0' }}" > PAVILLION_BUILD
           make lib
-          npm --prefix ui install
+          (cd ui && npm install)
           # Tauri's bundler is only switched on here, for msi. Linux keeps
           # bundle.active false (system WebKit, hand rpm).
-          npm --prefix ui exec -- tauri build --bundles msi \
+          # Root has no package.json; call the CLI ui/ installed, from the root
+          # so it finds src-tauri/.
+          ./ui/node_modules/.bin/tauri build --bundles msi \
             --config '{"bundle":{"active":true,"targets":["msi"]}}'
       - name: Collect
         run: |

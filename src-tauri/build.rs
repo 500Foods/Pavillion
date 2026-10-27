@@ -254,7 +254,11 @@ fn main() {
             if dir.status.success() {
                 let text = String::from_utf8_lossy(&dir.stdout);
                 let libdir = text.trim();
-                if !libdir.is_empty() {
+                // A system libdir needs no runpath; Fedora rpmbuild QA rejects
+                // a standard one like /usr/lib64 (check-rpaths 0x0001).
+                let system = matches!(libdir, "/usr/lib64" | "/usr/lib" | "/lib64" | "/lib")
+                    || libdir.starts_with("/usr/lib/x86_64-linux-gnu");
+                if !libdir.is_empty() && !system {
                     println!("cargo:rustc-link-arg=-Wl,-rpath,{libdir}");
                 }
             }
