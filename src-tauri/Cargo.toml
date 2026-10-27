@@ -23,6 +23,17 @@ compression = ["tauri/compression"]
 # Native start splash (src/splash.rs). Already linked by Tauri on Linux.
 gtk = "0.18"
 
+[target.'cfg(windows)'.dependencies]
+# Native start splash (src/splash.rs). Both already in the tree via Tauri.
+png = "0.18"
+windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_UI_WindowsAndMessaging"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Native start splash (src/splash.rs). Already in the tree via Tauri.
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSData", "NSGeometry"] }
+objc2-app-kit = { version = "0.3", features = ["NSBox", "NSColor", "NSImage", "NSImageView", "NSControl", "NSView", "NSResponder", "NSWindow", "NSGraphics"] }
+
 [dependencies]
 zeroize = "1"
 tauri = { version = "2", default-features = false, features = [

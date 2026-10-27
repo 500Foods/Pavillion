@@ -14,11 +14,6 @@ hostServices.onTheme = (resolved) => {
    the first layout. The shell does not wait on the load. */
 let kitQueued = null;
 let kitLive = false;
-/* Settles when the kit script loads or fails, so the splash can wait for it. */
-let kitSettled;
-const kitDone = new Promise((resolve) => {
-  kitSettled = resolve;
-});
 
 function requestKit(kitHtml) {
   if (kitLive) {
@@ -56,10 +51,8 @@ function markKit(message) {
 function watchKit(script) {
   script.addEventListener("load", () => {
     markKit("FA kit: script loaded");
-    kitSettled();
   });
   script.addEventListener("error", () => {
-    kitSettled();
     void Promise.resolve(log("ui", "error", "FA kit: script failed to load")).catch(() => {});
   });
 }
@@ -149,8 +142,36 @@ hostServices.reload = () => reloadIcons();
    splash; the shell also gives up after 5 s. Or on failure. A hidden
    WebKit view may not run animation frames, so a short timer stands in for
    the first paint. Rust ignores a second send. */
-/* Longest the splash waits for the kit script (network). */
-const KIT_WAIT_MS = 3000;
+/* Longest the splash waits for the icons (network). Under the shell's 5 s. */
+const KIT_WAIT_MS = 4000;
+
+/* The kit script only loads a loader: it then fetches the Font Awesome
+   bundle, which swaps <i class="fa-..."> for <svg> in a later animation
+   frame, so the script load event comes before any icon is drawn. While it
+   converts, Font Awesome puts fontawesome-i2svg-pending on <html> and then
+   swaps it for fontawesome-i2svg-complete (docs: SVG Async Loading). Wait
+   for that class on <html>, then let one frame paint. */
+function faComplete() {
+  const html = document.documentElement;
+  return new Promise((resolve) => {
+    if (html.classList.contains("fontawesome-i2svg-complete")) {
+      resolve();
+      return;
+    }
+    const observer = new MutationObserver(() => {
+      if (html.classList.contains("fontawesome-i2svg-complete")) {
+        observer.disconnect();
+        resolve();
+      }
+    });
+    observer.observe(html, { attributes: true, attributeFilter: ["class"] });
+  });
+}
+
+async function iconsSwapped() {
+  await faComplete();
+  await afterFirstPaint();
+}
 
 function appReady() {
   hostServices.appReady();
@@ -161,7 +182,7 @@ try {
   await mount(document.querySelector("#app"), api, { hostServices });
   await Promise.race([afterFirstPaint(), new Promise((resolve) => setTimeout(resolve, 32))]);
   releaseKit();
-  await Promise.race([kitDone, new Promise((resolve) => setTimeout(resolve, KIT_WAIT_MS))]);
+  await Promise.race([iconsSwapped(), new Promise((resolve) => setTimeout(resolve, KIT_WAIT_MS))]);
   appReady();
 } finally {
   appReady();
