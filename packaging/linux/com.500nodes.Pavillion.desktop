@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Pavillion
+Comment=Mail, calendars, and contacts
+Exec=pavillion %u
+Icon=com.500nodes.Pavillion
+Terminal=false
+Categories=Network;Email;Calendar;ContactManagement;
+MimeType=x-scheme-handler/mailto;text/calendar;text/vcard;
+StartupWMClass=pavillion

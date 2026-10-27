@@ -1,6 +1,6 @@
 # W — SHIP
 
-**Status:** W-1 complete (2026-10-16). W-2 complete (2026-10-19). W-3 and W-4 are not started. The index names the next phase.
+**Status:** W-1 complete (2026-10-16). W-2 complete (2026-10-19). W-3 is in progress (release workflow, 2026-10-27). W-4 is not started. The index names the next phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 Continuous integration, the test fixtures every network phase depends on, the testing rules, and packaging. W-1 and W-2 come early. W-3 and W-4 come right after daily-driver mail (milestone 3), before calendars and files, so the Betterbird replacement is installable on its own.
@@ -13,7 +13,7 @@ One phase is one session. Do not start the next one in the same conversation.
 | --- | --- | --- | --- |
 | W-1 | CI on GitHub Actions: `make test` and `make build` on Fedora | Medium | Complete |
 | W-2 | JMAP fixtures: a recorded fixture server and a disposable Stalwart container with seeded accounts | Hard | Complete |
-| W-3 | Fedora rpm, the dnf repository, desktop file, autostart | Medium | Not started |
+| W-3 | Fedora rpm, the dnf repository, desktop file, autostart, release workflow | Medium | In progress |
 | W-4 | Arch `PKGBUILD` (Omarchy) | Easy | Not started |
 
 Kind: **Easy** is one file and a check. **Medium** crosses one boundary. **Hard** is a new process the tests depend on.
@@ -52,7 +52,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 ### Packaging (was old plan §12)
 
 - One executable, `pavillion`. `make build` builds the release binary and copies it to `dist/pavillion`. Cargo writes `src-tauri/target/release/pavillion` on the way. `build/` is the C library and tests. `ui/dist/` is the page Tauri embeds. `make clean` removes `build/` and `dist/`. V-1 does not split that name. See the V Lock.
-- WebKit bytes are never inside the ELF. No static link, no vendored WebKit, no AppImage, and no other bundle that would copy the library in. `bundle.active` is false, so `make build` produces no AppImage, deb, or rpm. `.deb` stays out. `pavillion` has a dynamic `NEEDED` entry for system `libwebkit2gtk-4.1` (and the GTK, JavaScriptCore, and libsoup libraries Tauri needs with it). A command-line start maps those libraries. The rpm depends on `webkit2gtk4.1`, so the process maps the system copy. The bytes stay in that system package. The binary contains neither Chromium nor a copy of WebKit.
+- WebKit bytes are never inside the ELF or the rpm. No static link and no vendored WebKit. `bundle.active` is false, so `make build` produces no AppImage, deb, or rpm. The rpm is hand-written (`packaging/rpm/pavillion.spec`) around `dist/pavillion` and `Requires` the system packages. A `.deb` (system WebKit, `Depends` on `libwebkit2gtk-4.1-0`) and an AppImage are planned later, after rpm, msi, and dmg (Andrew, 2026-10-27). The AppImage is the one Linux artifact that may carry WebKit; it is a convenience download, never the dnf path. `pavillion` has a dynamic `NEEDED` entry for system `libwebkit2gtk-4.1` (and the GTK, JavaScriptCore, and libsoup libraries Tauri needs with it). A command-line start maps those libraries. The rpm depends on `webkit2gtk4.1`, so the process maps the system copy. The bytes stay in that system package. The binary contains neither Chromium nor a copy of WebKit.
 - Release compile: LTO, opt-level 3, `panic = "abort"`, strip. No UPX. The rpm is already compressed, UPX raises RSS and startup, and a packed ELF that fails `--version` is a second artifact to distrust. The size that matters for the window is the system WebKit, which stays a dependency and is not copied into the package.
 - `ui/dist` gzipped size is recorded in Accomplished when H-2 (CodeMirror), N-3 (Tabulator), and O-2 (SunEditor) land. Those three are accepted. A further UI library needs a Lock change first. The recorded size is not a reason to drop one of the three.
 - Dynamic link only, for curl, SQLite, OpenSSL (via curl), Jansson, GMime, libical, libsecret, and libuuid. Lua 5.5 and lexbor are the exceptions: they are vendored (R-1, N-2) so the version is pinned and there is no system package to depend on. Do not static-link the system libraries to "make one file".
@@ -62,6 +62,16 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - Autostart optional via `tauri-plugin-autostart` (XDG autostart), off by default, with a start-minimized option. Reminders and retention only run while the app runs, so Settings recommends autostart.
 - Wayland: no X11-only APIs; test under GNOME (Fedora) and Hyprland (Omarchy). Document `WEBKIT_DISABLE_DMABUF_RENDERER=1` as a fallback for rendering glitches. That variable is not the exit workaround. The GUI sets `WEBKIT_DISABLE_COMPOSITING_MODE=1` when it is unset, before the webview exists, so WebKitGTK 2.52 does not abort its web process during EGL teardown (bug 303336). An inherited value wins. Tray optional (Wayland support varies).
 - Fonts: Vanadium Sans is the primary UI font and Vanadium Mono the monospace. Whether they ship in the package or rely on a system install is open (W-Q2); the UI falls back to `system-ui` and `ui-monospace`.
+
+### Releases (Andrew, 2026-10-27)
+
+- The public version is `X.Y` (the phase stamp's first two parts). The first release is `0.69`. `Z` is the local build number. Andrew picks a commit he likes ("release 0.69.338 as 0.69") and it ships as `X.Y`. A new public release happens when `Y` warrants it.
+- Trigger: `.github/workflows/release.yml`, `workflow_dispatch` with inputs `version` (X.Y), `ref` (SHA or branch), `build` (Z, for About), `notes`, and `draft` (default true, a dry run). `gh workflow run release.yml -f version=0.69 -f ref=<sha> -f build=338 -f draft=false`. The workflow seeds `PAVILLION_BUILD` on the runner; nobody bumps it locally for a release.
+- Artifacts, in order: Fedora rpm and Windows msi first; macOS dmg after a few Windows and Linux rounds; then deb and AppImage; then iPad, then maybe Android. Unsigned until signing lands (Authenticode, Apple notarization, rpm GPG key with the dnf repo).
+- The msi is the only place Tauri's bundler runs (`--bundles msi` with `bundle.active` switched on for that build only). Linux keeps the hand rpm.
+- Checksums are SHA-256 only: a `<file>.sha256` beside each asset on the GitHub Release and `sha256` in `web/releases.json`.
+- `web/releases.json` (schema 1, newest first) is the brochure's only data source: `releases[]` of `{version, build, date, commit, commitUrl, releaseUrl, notes, assets[]}`, each asset `{platform, arch, filename, url, size, sha256}`, `platform` one of `linux-rpm`, `linux-deb`, `linux-appimage`, `windows-msi`, `macos-dmg`. `scripts/release-json.sh` writes it. A non-draft release commits it to `main` and calls `static.yml` to redeploy Pages.
+- `main.yml` (cloc) also pushes to `main` with `GITHUB_TOKEN`. The release push does `pull --rebase` and retries three times; a local commit made while a release runs needs `git pull --rebase` before Andrew pushes.
 
 ## W-1: CI on GitHub Actions
 
@@ -133,7 +143,9 @@ Revert green: [run 38962706169](https://github.com/500Foods/Pavillion/actions/ru
 
 **Work items:**
 
-- [ ] `packaging/rpm/pavillion.spec` building from a source tarball with `make build`, installing `/usr/bin/pavillion`, the desktop file, icons, and the metainfo file.
+- [ ] `packaging/rpm/pavillion.spec` installing `/usr/bin/pavillion`, the desktop file, icons, and the metainfo file. First cut (2026-10-27) packages the CI-built `dist/pavillion`, desktop file, and icons; the metainfo file and a source-rpm build are still open.
+- [ ] `.github/workflows/release.yml` producing the rpm and msi on a GitHub Release (see Releases).
+- [ ] `.deb` and AppImage, after rpm, msi, and dmg.
 - [ ] No UPX step (Packaging Lock).
 - [ ] A dnf repository layout (`createrepo_c`), signing key, and a `.repo` file; where it is hosted is open question W-Q1.
 - [ ] Autostart setting through `tauri-plugin-autostart`.
@@ -187,3 +199,4 @@ Revert green: [run 38962706169](https://github.com/500Foods/Pavillion/actions/ru
 - 2026-10-20 Policy (Andrew): `macos-core` and `windows-core` are required; `continue-on-error` removed from both. Platform breaks are fixed in the same round, never deferred.
 - 2026-10-21 W-2's open seed line corrected: mailboxes are M-3c, and the corpus messages are M-4. The 2026-10-19 log line that sent both to M-3 is that morning's note. [M-SYNC.md](M-SYNC.md) owns the split.
 - 2026-10-21 The recorded-fixture line and the mailbox half of the seed line landed in M-3c. Corpus messages stay deferred to M-4.
+- 2026-10-27 Andrew: releases are `X.Y` (first `0.69`), manual `workflow_dispatch` on a chosen ref, rpm (system WebKit) and msi first, dmg next, then deb and AppImage (no longer banned), SHA-256 only, `web/releases.json` feeds the brochure. Added `packaging/rpm/pavillion.spec`, `packaging/linux/com.500nodes.Pavillion.desktop`, `web/releases.json`, `scripts/release-json.sh`, `.github/workflows/release.yml`, and `workflow_call` on `static.yml`. Local `rpmbuild` on Fedora 44 from the existing release binary: `pavillion-0.69-1.fc44.x86_64.rpm`, 2515349 bytes, requires `webkit2gtk4.1` and the system libraries. The msi job has not run. No commit.

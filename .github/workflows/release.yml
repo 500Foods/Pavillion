@@ -1,0 +1,178 @@
+# W-SHIP release workflow (Andrew, 2026-10-27).
+# Manual: Actions -> Release -> Run workflow, or
+#   gh workflow run release.yml -f version=0.69 -f ref=<sha> -f build=338
+# Builds <ref>, publishes GitHub Release v<version> (X.Y), appends
+# web/releases.json on main, and redeploys Pages. Unsigned for now.
+# First artifacts: rpm (system WebKit) and msi. deb, AppImage, dmg come later.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Public version X.Y (e.g. 0.69)"
+        required: true
+      ref:
+        description: "Commit SHA or branch to release"
+        required: true
+        default: main
+      build:
+        description: "Build number Z shown in About (e.g. 338). Blank = 0."
+        required: false
+      notes:
+        description: "One-line release notes for releases.json"
+        required: false
+      draft:
+        description: "Create the GitHub Release as a draft (dry run)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.r.outputs.sha }}
+    steps:
+      - name: Check version
+        run: |
+          [[ "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+$ ]] || { echo "version must be X.Y"; exit 1; }
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - id: r
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  linux-rpm:
+    needs: prepare
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - run: dnf install -y git rpm-build
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - name: Install Fedora packages
+        run: dnf install -y $(grep -vE '^[[:space:]]*(#|$)' scripts/fedora-deps.txt)
+      - name: Build
+        run: |
+          # make build adds one to PAVILLION_BUILD; seed it so the result is Z.
+          b="${{ inputs.build }}"; printf '%s\n' "$(( ${b:-1} - 1 ))" > PAVILLION_BUILD
+          make build
+      - name: rpm
+        run: |
+          rpmbuild -bb packaging/rpm/pavillion.spec \
+            --define "_sourcedir $PWD" --define "_rpmdir $PWD/out" \
+            --define "_build_name_fmt %%{NAME}-%%{VERSION}-%%{RELEASE}.%%{ARCH}.rpm" \
+            --define "pav_version ${{ inputs.version }}"
+          mkdir -p assets && mv out/*.rpm assets/
+          cd assets && for f in *; do sha256sum "$f" > "$f.sha256"; done
+          rpm -qpR *.rpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: asset-linux-rpm
+          path: assets/*
+
+  windows-msi:
+    needs: prepare
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          path-type: inherit
+          update: true
+          install: >-
+            make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-jansson
+            mingw-w64-ucrt-x86_64-sqlite3
+            mingw-w64-ucrt-x86_64-curl
+            mingw-w64-ucrt-x86_64-gmime
+            mingw-w64-ucrt-x86_64-rust
+      - name: Build msi
+        env:
+          CMAKE_GENERATOR: MSYS Makefiles
+          CFLAGS: -I/ucrt64/include
+          LDFLAGS: -L/ucrt64/lib -lws2_32
+        run: |
+          printf '%s\n' "${{ inputs.build || '0' }}" > PAVILLION_BUILD
+          make lib
+          npm --prefix ui install
+          # Tauri's bundler is only switched on here, for msi. Linux keeps
+          # bundle.active false (system WebKit, hand rpm).
+          npm --prefix ui exec -- tauri build --bundles msi \
+            --config '{"bundle":{"active":true,"targets":["msi"]}}'
+      - name: Collect
+        run: |
+          mkdir -p assets
+          # TODO(W-SHIP): MinGW runtime DLLs (gmime, glib, curl, jansson, sqlite)
+          # must ship beside pavillion.exe; ldd + bundle.resources once the
+          # first msi is looked at on a real Windows box.
+          for f in src-tauri/target/release/bundle/msi/*.msi; do
+            cp "$f" "assets/Pavillion-${{ inputs.version }}-x86_64.msi"
+          done
+          cd assets && for f in *; do sha256sum "$f" > "$f.sha256"; done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: asset-windows-msi
+          path: assets/*
+
+  publish:
+    needs: [prepare, linux-rpm, windows-msi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: asset-*
+          path: assets
+          merge-multiple: true
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="v${{ inputs.version }}"
+          if ! gh release view "$v" >/dev/null 2>&1; then
+            gh release create "$v" --target "${{ needs.prepare.outputs.sha }}" \
+              --title "Pavillion ${{ inputs.version }}" \
+              --notes "${{ inputs.notes || 'Unsigned build.' }}" \
+              ${{ inputs.draft && '--draft' || '' }}
+          fi
+          gh release upload "$v" assets/* --clobber
+      - name: releases.json
+        if: ${{ !inputs.draft }}
+        run: |
+          b="${{ inputs.version }}.${{ inputs.build || '0' }}"
+          bash scripts/release-json.sh "${{ inputs.version }}" \
+            "${{ needs.prepare.outputs.sha }}" "$b" assets "${{ inputs.notes }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add web/releases.json
+          git commit -m "Release ${{ inputs.version }} (web/releases.json)"
+          # main.yml (cloc) may push README.md meanwhile: retry with rebase.
+          for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break; sleep 5; done
+
+  pages:
+    needs: publish
+    if: ${{ !inputs.draft }}
+    uses: ./.github/workflows/static.yml

@@ -1,11 +1,89 @@
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-<title>
-Pavillion
-</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pavillion — mail, calendars, and contacts</title>
+<meta name="description" content="Pavillion is a fast, private desktop client for mail, calendars, and contacts.">
+<link rel="icon" href="mark.png">
+<style>
+:root{--bg:#0b0d10;--panel:#12161b;--line:#222a33;--text:#e7ebef;--dim:#8d99a6;--accent:#5fa8ff;--accent2:#9b7bff}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 "Vanadium Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+.wrap{max-width:1040px;margin:0 auto;padding:0 24px}
+header{position:relative;overflow:hidden;padding:96px 0 72px;text-align:center}
+header::before{content:"";position:absolute;inset:-40% -10% auto;height:620px;background:radial-gradient(closest-side,rgba(95,168,255,.18),transparent),radial-gradient(closest-side at 70% 40%,rgba(155,123,255,.14),transparent);pointer-events:none}
+.mark{width:128px;height:128px;opacity:0;animation:in .8s .2s ease forwards}
+h1{font-size:clamp(40px,7vw,68px);letter-spacing:-.02em;margin:18px 0 6px;font-weight:650}
+.tag{color:var(--dim);font-size:clamp(17px,2.2vw,21px);max-width:640px;margin:0 auto}
+@keyframes in{to{opacity:1}}
+.cta{margin-top:36px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:12px 22px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-weight:600}
+.btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));border:0;color:#fff}
+.btn:hover{text-decoration:none;filter:brightness(1.1)}
+.meta{margin-top:14px;color:var(--dim);font-size:14px}
+section{padding:56px 0;border-top:1px solid var(--line)}
+h2{font-size:28px;margin:0 0 24px;font-weight:620}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--dim);font-size:15px}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th,td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--dim);font-weight:500;font-size:13px;text-transform:uppercase;letter-spacing:.06em}
+code,.sha{font-family:"Vanadium Mono",ui-monospace,monospace;font-size:12px;color:var(--dim);word-break:break-all}
+.chip{display:inline-block;margin:2px 6px 2px 0;padding:2px 10px;border:1px solid var(--line);border-radius:99px;font-size:13px}
+.empty{color:var(--dim)}
+footer{padding:40px 0 60px;color:var(--dim);font-size:14px;text-align:center;border-top:1px solid var(--line)}
+</style>
 </head>
 <body>
-Pavillion 
+<header>
+  <div class="wrap">
+    <img class="mark" src="mark.png" alt="Pavillion">
+    <h1>Pavillion</h1>
+    <p class="tag">Mail, calendars, and contacts in one quiet, fast desktop app. Native where it counts, private by default, and built for people who live in their inbox.</p>
+    <div class="cta" id="cta"><a class="btn" href="https://github.com/500Foods/Pavillion">View on GitHub</a></div>
+    <div class="meta" id="meta">No release yet — the first is on its way.</div>
+  </div>
+</header>
+
+<section><div class="wrap">
+  <h2>Why Pavillion</h2>
+  <div class="grid">
+    <div class="card"><h3>JMAP first</h3><p>Modern mail sync that is quick to open and quick to catch up, with a local store you can search instantly.</p></div>
+    <div class="card"><h3>Small and native</h3><p>A C core and a system web view. No bundled browser, no telemetry, no in-app updater.</p></div>
+    <div class="card"><h3>Safe by design</h3><p>Messages are sanitized before they render. Nothing runs, nothing phones home.</p></div>
+    <div class="card"><h3>Everywhere you work</h3><p>Linux and Windows today, macOS next, iPad after that.</p></div>
+  </div>
+</div></section>
+
+<section id="downloads"><div class="wrap">
+  <h2>Downloads</h2>
+  <div id="releases" class="empty">Loading releases…</div>
+  <p class="meta">Builds are unsigned for now. Verify a download with <code>sha256sum &lt;file&gt;</code> against the value listed.</p>
+</div></section>
+
+<footer>Pavillion · MIT License · <a href="https://github.com/500Foods/Pavillion">500Foods/Pavillion</a></footer>
+
+<script>
+const LABEL={"linux-rpm":"Fedora (rpm)","linux-deb":"Debian/Ubuntu (deb)","linux-appimage":"Linux (AppImage)","windows-msi":"Windows (msi)","macos-dmg":"macOS (dmg)"};
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const mb=n=>n?(n/1048576).toFixed(1)+" MB":"";
+function guess(){const u=navigator.userAgent;return /Windows/.test(u)?"windows-msi":/Mac/.test(u)?"macos-dmg":/Linux/.test(u)?"linux-rpm":null}
+fetch("releases.json",{cache:"no-cache"}).then(r=>r.json()).then(j=>{
+  const rel=j.releases||[],box=document.getElementById("releases");
+  if(!rel.length){box.textContent="No releases yet.";return}
+  const cur=rel[0],want=guess(),pick=cur.assets.find(a=>a.platform===want)||cur.assets[0];
+  if(pick)document.getElementById("cta").insertAdjacentHTML("afterbegin",
+    `<a class="btn primary" href="${esc(pick.url)}">Download ${esc(cur.version)} · ${esc(LABEL[pick.platform]||pick.platform)}</a>`);
+  document.getElementById("meta").innerHTML=`Version ${esc(cur.version)} · released ${esc(cur.date)} · <a href="#downloads">all platforms &amp; versions</a>`;
+  box.className="";
+  box.innerHTML=`<table><thead><tr><th>Version</th><th>Files</th><th>SHA-256</th></tr></thead><tbody>${rel.map(r=>
+    `<tr><td><strong>${esc(r.version)}</strong><br><span class="meta">${esc(r.date)} · <a href="${esc(r.commitUrl)}">${esc(r.commit.slice(0,7))}</a> · <a href="${esc(r.releaseUrl)}">notes</a></span></td>
+     <td>${r.assets.map(a=>`<a class="chip" href="${esc(a.url)}">${esc(LABEL[a.platform]||a.platform)} <span class="meta">${mb(a.size)}</span></a>`).join("")}</td>
+     <td>${r.assets.map(a=>`<div class="sha">${esc(a.filename)}<br>${esc(a.sha256)}</div>`).join("")}</td></tr>`).join("")}</tbody></table>`;
+}).catch(()=>{document.getElementById("releases").textContent="Could not load releases."});
+</script>
 </body>
 </html>
-

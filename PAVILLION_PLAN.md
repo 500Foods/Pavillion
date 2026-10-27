@@ -156,7 +156,7 @@ Row order decides what is next: the next phase is the first row, top to bottom, 
 | 75 | N-8 | Notifications and mail shortcuts | Medium | |
 | 76 | N-9 | Folder retention | Medium | |
 | | | *Milestone 3: daily-driver mail (old P1–P3)* | | |
-| 77 | W-3 | rpm, dnf repository, desktop integration | Medium | |
+| 77 | W-3 | rpm, dnf repository, desktop integration, release workflow (X.Y, rpm + msi first) | Medium | |
 | 78 | W-4 | Arch `PKGBUILD` | Easy | |
 | 79 | V-1 | CLI socket, dispatch, `status`, `help --json` | Hard | |
 | 80 | V-2 | Bot keys, pause, audit | Medium | |
@@ -254,7 +254,7 @@ Andrew put three libraries back the same day v0.6 had taken them out, and moved 
 
 - **Log view.** H-2 and H-3 are steps 30 and 31, immediately after H-1 and before I-1. H-2 installs CodeMirror 6, shows the live log, and creates the Activity|Log control. I-2 fills the Activity side. It does not ship a `<pre>` tail for H-2 to replace.
 - **Lists and composer.** N-3 uses Tabulator for mail. Contacts (S) and files (U) share that table. O-2 uses SunEditor inside the existing sandbox, with a plain-text mode. None of the three waits on a smaller substitute failing. N-3a (step 135, Andrew, 2026-10-22) is that same table with From and Subject for the selected folder, pulled ahead of N-1 so a sync can be seen. It is not a second list, and it does not replace N-3. The mailbox tree (E) and the activity table (I-2) stay plain DOM. Calendar grids stay plain DOM.
-- **WebKit.** The ELF does not contain WebKit bytes. No static link, no vendored WebKit, no AppImage. One executable, `pavillion`. It has a dynamic `NEEDED` entry for system `libwebkit2gtk`. There is no `pavillion-gui`. The rpm depends on the system package, so the process maps that copy. A command-line start maps it too. That is accepted (V, 2026-10-18).
+- **WebKit.** The ELF and the rpm do not contain WebKit bytes. No static link, no vendored WebKit. deb and AppImage are planned later, after rpm, msi, and dmg (Andrew, 2026-10-27); see the W-SHIP Releases Lock. One executable, `pavillion`. It has a dynamic `NEEDED` entry for system `libwebkit2gtk`. There is no `pavillion-gui`. The rpm depends on the system package, so the process maps that copy. A command-line start maps it too. That is accepted (V, 2026-10-18).
 - **Size.** `ui/dist` gzipped size is recorded when H-2, N-3, and O-2 land. That record is not a reason to drop Tabulator, CodeMirror, or SunEditor. A further UI library needs a Lock change. No UPX.
 
 ## Review notes (2026-10-16, v0.6)
