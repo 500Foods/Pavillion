@@ -228,7 +228,7 @@ test("without the option there is no indicator column", () => {
 
 test("resize round: columns default unresizable, indicator divider, resize events, fitted titles, widths", async () => {
   const { tabulatorOptions, indicatorColumn } = await import("./table.js");
-  expect(tabulatorOptions({ columns: [{ field: "a", headerSort: false }] }, [], { open: false }).columnDefaults).toEqual({ resizable: false, headerTooltip: false });
+  expect(tabulatorOptions({ columns: [{ field: "a", headerSort: false }] }, [], { open: false }).columnDefaults).toEqual({ resizable: false });
   expect(indicatorColumn(() => null).cssClass).toBe("pav-table-indicator pav-col-divider-right");
   expect(modulesFor({ columns: [{ field: "a", resizable: true }] })).toContain("ResizeColumnsModule");
   expect(modulesFor({ columns: [{ field: "a" }] })).not.toContain("ResizeColumnsModule");
@@ -427,4 +427,27 @@ test("D-UI Tooltips: header cells get the shared tooltip from the title, no nati
     expect(c.getElement().hasAttribute("title")).toBe(false);
   }
   handle.destroy();
+});
+
+test("indicatorColumn: onHeader turns the dots into a Choose columns button", () => {
+  const seen = [];
+  const col = indicatorColumn(() => null, "id", document, (button) => seen.push(button));
+  expect(col.title).toBe("Choose columns");
+  const button = col.titleFormatter();
+  expect(button.tagName).toBe("BUTTON");
+  expect(button.getAttribute("aria-label")).toBe("Choose columns");
+  button.click();
+  expect(seen).toEqual([button]);
+  expect(indicatorColumn(() => null).title).toBe("Row indicator");
+  expect(indicatorColumn(() => null).titleFormatter().tagName).toBe("I");
+});
+
+test("tabulatorOptions strips download keys unless the Download module is on", async () => {
+  const { tabulatorOptions } = await import("./table.js");
+  const cols = [{ field: "a", download: false, titleDownload: "A", accessorDownload: () => "x" }];
+  const off = tabulatorOptions({ columns: cols, indicator: true }, [], { open: false });
+  expect(off.columns.every((c) => !("download" in c) && !("titleDownload" in c) && !("accessorDownload" in c))).toBe(true);
+  expect(cols[0].download).toBe(false);
+  const on = tabulatorOptions({ columns: cols, download: true }, [], { open: false });
+  expect(on.columns[0].titleDownload).toBe("A");
 });

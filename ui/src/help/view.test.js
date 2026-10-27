@@ -35,6 +35,8 @@ test("the help button opens the index and search opens a page", async () => {
     const panel = document.querySelector("#panel-help");
     expect(panel.hidden).toBe(false);
     expect(document.querySelector("#help-article h2").textContent).toBe(`Pavillion ${APP_VERSION}`);
+    expect(document.querySelector("#help-article .pav-mark-lockup img").getAttribute("src")).toBe("/mark.png");
+    expect(document.querySelector("#help-article .pav-mark-lockup h2")).not.toBeNull();
     expect(document.querySelector("#help-index").textContent).toContain("Developer");
     expect(document.querySelector("#open-test-tab").hidden).toBe(true);
 

@@ -54,6 +54,26 @@ test("Reset shows every column, and Escape or an outside click closes", () => {
 
 test("opening again replaces the old popover", () => {
   const { anchor } = setup();
-  openColumnChooser(anchor, { columns: COLUMNS, hidden: [], onChange() {} });
+  const other = document.createElement("button");
+  anchor.after(other);
+  openColumnChooser(other, { columns: COLUMNS, hidden: [], onChange() {} });
   expect(document.querySelectorAll(".pav-column-chooser").length).toBe(1);
+});
+
+test("opening again on the same anchor toggles it closed", () => {
+  const { anchor } = setup();
+  expect(openColumnChooser(anchor, { columns: COLUMNS, hidden: [], onChange() {} })).toBeNull();
+  expect(document.querySelector(".pav-column-chooser")).toBeNull();
+  expect(anchor.getAttribute("aria-expanded")).toBe("false");
+});
+
+test("below-right puts the popover's left edge at the anchor's left", () => {
+  document.body.replaceChildren();
+  const anchor = document.createElement("button");
+  document.body.append(anchor);
+  anchor.getBoundingClientRect = () => ({ left: 40, right: 60, top: 10, bottom: 30, width: 20, height: 20 });
+  const chooser = openColumnChooser(anchor, { columns: COLUMNS, hidden: [], onChange() {}, placement: "below-right" });
+  expect(chooser.element.style.left).toBe("40px");
+  expect(chooser.element.style.top).toBe("30px");
+  chooser.close();
 });

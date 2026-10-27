@@ -3,7 +3,7 @@
    plus the modules a table asks for (never TabulatorFull). Screens call
    createTable(el, {columns, data, rowId, onRowClick, rowClass, groupBy,
    groupHeader, groupOrder, footerElement, select, onRender, download, filter,
-   indicator, fitTitles, onColumnResized, onWidths}). Columns resize only when they set
+   indicator, onIndicatorHeader, fitTitles, onColumnResized, onWidths}). Columns resize only when they set
    resizable:true (TABULATOR.md Fitted titles, resizing).
    The table fills el (height 100%, virtual rows) and ResizeTable redraws it
    on resize and when a hidden panel is shown. The look is .pav-table on
@@ -82,12 +82,33 @@ function faIcon(name, documentRef) {
   return icon;
 }
 
-/* stateOf(id) returns "current", "editing" or null. */
-export function indicatorColumn(stateOf, rowId = "id", documentRef = globalThis.document) {
+/* stateOf(id) returns "current", "editing" or null. onHeader(button), when
+   given, makes the header dots a button that opens the column chooser
+   (TABULATOR.md Row indicator column). */
+function indicatorHeader(onHeader, documentRef) {
+  const icon = faIcon("fa-ellipsis-vertical", documentRef);
+  if (typeof onHeader !== "function") {
+    return icon;
+  }
+  const button = documentRef.createElement("button");
+  button.type = "button";
+  button.className = "pav-table-indicator-button";
+  button.setAttribute("aria-label", "Choose columns");
+  button.setAttribute("aria-haspopup", "dialog");
+  button.setAttribute("aria-expanded", "false");
+  button.append(icon);
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    onHeader(button);
+  });
+  return button;
+}
+
+export function indicatorColumn(stateOf, rowId = "id", documentRef = globalThis.document, onHeader = null) {
   return {
     field: INDICATOR_FIELD,
-    title: "Row indicator",
-    titleFormatter: () => faIcon("fa-ellipsis-vertical", documentRef),
+    title: typeof onHeader === "function" ? "Choose columns" : "Row indicator",
+    titleFormatter: () => indicatorHeader(onHeader, documentRef),
     width: INDICATOR_WIDTH,
     minWidth: INDICATOR_WIDTH,
     frozen: true,
@@ -119,11 +140,23 @@ function markRow(row, rowClass) {
   }
 }
 
+/* TABULATOR.md Download options: without the Download module, Tabulator
+   rejects these column keys, so strip them from the copies it gets. */
+const DOWNLOAD_KEYS = ["download", "titleDownload", "accessorDownload"];
+function withoutDownload(column) {
+  const copy = { ...column };
+  for (const key of DOWNLOAD_KEYS) {
+    delete copy[key];
+  }
+  return copy;
+}
+
 /* The Tabulator options for a createTable call (exported for tests). */
 export function tabulatorOptions(options, data, gate, documentRef = globalThis.document) {
-  const columns = options.indicator
-    ? [indicatorColumn(gate.stateOf || (() => null), options.rowId || "id", documentRef), ...(options.columns || [])]
+  const allColumns = options.indicator
+    ? [indicatorColumn(gate.stateOf || (() => null), options.rowId || "id", documentRef, options.onIndicatorHeader), ...(options.columns || [])]
     : options.columns || [];
+  const columns = options.download ? allColumns : allColumns.map(withoutDownload);
   const sortable = (options.columns || []).some((c) => c.headerSort !== false);
   return {
     data,
@@ -134,7 +167,7 @@ export function tabulatorOptions(options, data, gate, documentRef = globalThis.d
     renderVertical: "virtual",
     autoResize: true,
     placeholder: options.placeholder || "",
-    columnDefaults: { resizable: false, headerTooltip: false, ...(sortable ? { headerSortTristate: true } : {}) },
+    columnDefaults: { resizable: false, ...(sortable ? { headerSortTristate: true } : {}) },
     ...(sortable ? { headerSortElement: (_column, dir) => sortIcon(dir, documentRef) } : {}),
     ...(options.groupBy ? { groupBy: options.groupBy, groupStartOpen: true, groupToggleElement: "header" } : {}),
     ...(typeof options.groupHeader === "function"

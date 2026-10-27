@@ -19,6 +19,10 @@ default = ["compression"]
 # are listed below; compression is the only one that switches.
 compression = ["tauri/compression"]
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# Native start splash (src/splash.rs). Already linked by Tauri on Linux.
+gtk = "0.18"
+
 [dependencies]
 zeroize = "1"
 tauri = { version = "2", default-features = false, features = [

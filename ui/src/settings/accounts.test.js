@@ -1015,12 +1015,8 @@ test("toolbar Add, Clone and search, and footer Refresh first", async () => {
   await withView(async (callSpy) => {
     const toolbar = document.querySelector("#accounts-toolbar");
     expect(toolbar.querySelector(".pav-module-title").textContent).toBe("Accounts");
-    expect([...toolbar.querySelectorAll("button[data-module-action]")].map((b) => b.dataset.moduleAction)).toEqual(["add", "clone", "delete", "columns"]);
-    const order = [...toolbar.children];
-    const cols = toolbar.querySelector("#accounts-columns");
-    expect(order.indexOf(cols)).toBeGreaterThan(order.indexOf(toolbar.querySelector(".pav-module-spacer")));
-    expect(order.indexOf(cols)).toBeLessThan(order.indexOf(toolbar.querySelector(".pav-module-search")));
-    expect(cols.querySelector("i").className).toContain("fa-table-columns");
+    expect([...toolbar.querySelectorAll("button[data-module-action]")].map((b) => b.dataset.moduleAction)).toEqual(["add", "clone", "delete"]);
+    expect(toolbar.querySelector("#accounts-columns")).toBeNull();
     expect(toolbar.lastElementChild.classList.contains("help-jump")).toBe(true);
     expect(document.querySelector("#account-clone").disabled).toBe(true);
     const footerFirst = document.querySelector("#accounts-footer .pav-module-nav button");
@@ -1076,9 +1072,17 @@ test("accountsCsv quotes, guards formulas, and carries only export fields", asyn
   expect(text).toBe("Number,Name,Server,JMAP,IMAP,SMTP,Mail,Contacts,Calendars,Files,Email\r\n001,\"A, \"\"B\"\"\",s,yes,no,no,yes,no,no,no,'=cmd\r\n");
 });
 
+/* The table is mocked, so stand in for the row indicator header button. */
+function clickIndicatorHeader() {
+  const button = document.createElement("button");
+  button.className = "pav-table-indicator-button";
+  document.querySelector("#accounts-tree").append(button);
+  globalThis.__lastTableOptions.onIndicatorHeader(button);
+}
+
 test("the column chooser hides a column and saves it under preferences.ui.tables", async () => {
   await withView(async (callSpy) => {
-    document.querySelector("#accounts-columns").click();
+    clickIndicatorHeader();
     const box = document.querySelector(".pav-column-chooser");
     expect(box).not.toBeNull();
     expect(box.querySelector('[data-field="name"]').disabled).toBe(true);
@@ -1103,7 +1107,7 @@ test("the accounts table asks for the row indicator, sizes the pane for it, and 
     await addSavedAccount();
     await vi.waitFor(() => expect(document.querySelector(".accounts-tree-pane").style.minWidth).not.toBe(""));
     expect(document.querySelector(".accounts-tree-pane").style.minWidth).toBe(`${tableMinWidth(accountColumns(document)) + 22 + 2}px`);
-    document.querySelector("#accounts-columns").click();
+    clickIndicatorHeader();
     expect(document.querySelector('.pav-column-chooser [data-field="__pav_indicator"]')).toBeNull();
   });
   expect(CHOOSER_COLUMNS.some((c) => c.field === "__pav_indicator")).toBe(false);
@@ -1206,7 +1210,7 @@ test("resize round: a resized column saves its width, Reset clears widths and re
     globalThis.__lastTableOptions.onColumnResized("name", 400);
     await vi.waitFor(() => expect(saved()?.tables?.accounts?.widths).toEqual({ jmap: 131 }), { timeout: 3000 });
     expect(globalThis.__lastTableOptions.fitTitles).toEqual(["jmap", "imap", "smtp", "mail", "contacts", "calendars", "files"]);
-    document.querySelector("#accounts-columns").click();
+    clickIndicatorHeader();
     const box = document.querySelector('.pav-column-chooser [data-field="smtp"]');
     box.checked = false;
     box.dispatchEvent(new Event("change"));

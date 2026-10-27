@@ -10,9 +10,10 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(() => ({
   clearScreen: false,
   build: {
-    /* The app loads from disk, not the network; the main chunk passed 500 kB
-       with K-Q12 (503 kB, 153 kB gzip). Tabulator stays in its own chunk. */
-    chunkSizeWarningLimit: 600,
+    /* Desktop UI ships in the Tauri binary (no network fetch). Dynamic
+       import() splitting does not buy load time. Main ~669 kB / ~201 kB gzip;
+       Tabulator stays its own chunk (~243 kB / ~58 kB gzip). */
+    chunkSizeWarningLimit: 2000,
     rollupOptions: {
       input: resolve(root, "index.html"),
     },

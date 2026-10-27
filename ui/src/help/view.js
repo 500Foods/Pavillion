@@ -229,7 +229,18 @@ export function createHelpView(root, pages = helpPages, options = {}) {
     const title = document.createElement("h2");
     title.id = "help-title";
     title.textContent = hit.page.title;
-    article.append(title);
+    if (hit.page.id === "app") {
+      /* Mark above the version title, as wide as it (D-UI.md Help mark). */
+      const lockup = document.createElement("div");
+      lockup.className = "pav-mark-lockup";
+      const mark = document.createElement("img");
+      mark.src = "/mark.png";
+      mark.alt = "";
+      lockup.append(mark, title);
+      article.append(lockup);
+    } else {
+      article.append(title);
+    }
     article.setAttribute("aria-labelledby", "help-title");
     for (const section of hit.page.sections) {
       const block = document.createElement("section");

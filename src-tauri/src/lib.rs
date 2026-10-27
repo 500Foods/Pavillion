@@ -1,5 +1,6 @@
 use std::ffi::{CStr, CString, c_char, c_void};
 mod capture;
+mod splash;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use std::sync::Mutex;
 use serde_json::{json, Value};
@@ -12,7 +13,7 @@ static WINDOW_READY: AtomicBool = AtomicBool::new(false);
 /* Shown only after the saved rectangle is applied and the cover is laid out.
    A missed signal still shows the window. */
 static WINDOW_PLACED: AtomicBool = AtomicBool::new(false);
-static WINDOW_PAINTED: AtomicBool = AtomicBool::new(false);
+static APP_READY: AtomicBool = AtomicBool::new(false);
 static WINDOW_SHOWN: AtomicBool = AtomicBool::new(false);
 #[used]
 static STRONGHOLD_KEEP: (
@@ -124,26 +125,27 @@ fn report_window(window: &tauri::WebviewWindow) {
 fn reveal_window(window: &tauri::WebviewWindow) {
     if WINDOW_SHOWN.swap(true, Ordering::SeqCst) { return; }
     let _ = window.show();
+    splash::close(window.app_handle());
     WINDOW_READY.store(true, Ordering::SeqCst);
 }
 fn try_reveal(window: &tauri::WebviewWindow) {
-    if WINDOW_PLACED.load(Ordering::SeqCst) && WINDOW_PAINTED.load(Ordering::SeqCst) {
+    if WINDOW_PLACED.load(Ordering::SeqCst) && APP_READY.load(Ordering::SeqCst) {
         reveal_window(window);
     }
 }
-fn note_splash_painted(window: &tauri::WebviewWindow) {
-    WINDOW_PAINTED.store(true, Ordering::SeqCst);
+fn note_app_ready(window: &tauri::WebviewWindow) {
+    APP_READY.store(true, Ordering::SeqCst);
     try_reveal(window);
 }
 fn arm_reveal_timeout(window: tauri::WebviewWindow) {
-    let built = std::thread::Builder::new().name("splash-reveal".into()).stack_size(512 * 1024).spawn(move || {
-        std::thread::sleep(std::time::Duration::from_secs(2));
+    let built = std::thread::Builder::new().name("app-ready-wait".into()).stack_size(512 * 1024).spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(5));
         if WINDOW_SHOWN.load(Ordering::SeqCst) { return; }
-        shell_warn!("splash did not paint; showing the window");
-        WINDOW_PAINTED.store(true, Ordering::SeqCst);
+        shell_warn!("page did not say ready; showing the window");
+        APP_READY.store(true, Ordering::SeqCst);
         try_reveal(&window);
     });
-    if built.is_err() { shell_warn!("cannot wait for the splash"); }
+    if built.is_err() { shell_warn!("cannot wait for the page"); }
 }
 fn apply_initial(window: &tauri::WebviewWindow) {
     let data = match core_data("window.initial", &json!({"monitors": monitor_list(window)})) {
@@ -506,13 +508,7 @@ fn build_app(workdir: &str, single_instance: bool) -> Result<tauri::App, tauri::
         let name = scheme.to_string();
         builder = builder.register_uri_scheme_protocol(scheme, move |_ctx, request| scheme_reply(&name, &request));
     }
-    builder.on_page_load(|webview, payload| {
-        if payload.event() != tauri::webview::PageLoadEvent::Finished || webview.label() != "main" { return; }
-        let url = payload.url().as_str();
-        if url.starts_with("about:") { return; }
-        let Some(window) = webview.get_webview_window("main") else { return };
-        note_splash_painted(&window);
-    }).setup(move |app| {
+    builder.setup(move |app| {
         IN_BUILD.store(false, Ordering::SeqCst);
         start_core(&workdir);
         start_events(app.handle());
@@ -524,9 +520,10 @@ fn build_app(workdir: &str, single_instance: bool) -> Result<tauri::App, tauri::
             }
         });
         let painted = window.clone();
-        app.listen("pav-splash-painted", move |_| note_splash_painted(&painted));
+        app.listen("pav-app-ready", move |_| note_app_ready(&painted));
         arm_reveal_timeout(window.clone());
         apply_initial(&window);
+        splash::show(&window);
         app.listen("pav-quit-began", |_| note_page(PAGE_BEGAN));
         app.listen("pav-quit-stuck", |_| {
             note_page(PAGE_STUCK);

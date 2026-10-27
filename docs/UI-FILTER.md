@@ -13,8 +13,7 @@ same way.
 
 ## Status
 
-Not started. The accounts search field already follows it; the mail and file
-tables will when they get a search field.
+Partly in place (2026-10-27). The Accounts search field follows the pattern. The vertical filter panel (below) exists in Help only (e27292b, 2026-10-24, "just the UI bits"). The Accounts module does not have one yet. Mail and Files will pick up both when they get a search field.
 
 ## The pattern
 
@@ -96,3 +95,15 @@ state, and `visibleNodes` checks visibility before it pushes a child.
 - The navigator and the footer counts walk only the shown rows.
 - A filter change does not emit a core command unless the module decides to
   persist it.
+
+## Vertical filter panel (2026-10-24, Help)
+
+This is the reusable left-edge filter bar. Help is the only module that has it so far: `ui/src/help/view.js` (`createHelpView`), markup in `ui/src/shell/template.js` (`#help-filter-panel`), and CSS in `ui/public/styles/theme.css` (`.help-filter-*`).
+
+- **Toggle:** a chevron button (`fa-chevron-right`, `aria-pressed`, label "Toggle filter panel") is inserted before the module toolbar's `.pav-module-title`, followed by a 1px separator that matches the search field border.
+- **Panel:** a full-height column, inserted as the first child of the module's content flex row, before the index. Closed, it is `width: 0; opacity: 0` with `aria-hidden="true"`. Open, it is `width: var(--pav-help-control-width)` with a right border, and width and opacity animate over `--pav-help-transition`. The panel's right border lines up with the chevron separator.
+- **Chips:** an icon-only vertical strip (`.help-filter-icon-strip`) of `.help-filter-chip` buttons, one active at a time (`aria-pressed`), each with an `aria-label` and a fancy tooltip from the shell tooltip host (`options.tooltips.bind`). Help's chips are All, Pages, Dev, Settings and Mail. They combine with the toolbar search: search first, then the category set.
+- **Zoom:** `shell.js` maps `#help-filter-panel` to the `navButtons` zoom (Button bars), the same as the module bars.
+- **State:** the chosen chip lives in memory only and is not persisted.
+
+**To reuse it:** the classes and the theme variables are still named `help-*`. Before a second module (Accounts first) adopts it, lift it into `ui/src/common/` as a helper next to `module-bar.js` with neutral `pav-filter-*` classes and `--pav-filter-*` variables in all four theme files. The module passes a chip list `{id, tip, icon, cat}` and an `onChange(cat)` callback, and keeps its own predicate (Help: page-id sets; a Tabulator module: `table.setFilter`). This lift is not done yet and needs a Lock entry in D-UI.md first.

@@ -3,19 +3,22 @@ import { mount } from "./index.js";
 import { tauriHost, tauriTransport } from "./transport/tauri.js";
 import { clampUi } from "./prefs.js";
 import { installLogHooks } from "./log.js";
-import { APP_VERSION } from "./version.js";
 
 const api = createApi(tauriTransport());
 const hostServices = tauriHost();
 hostServices.onTheme = (resolved) => {
   document.documentElement.dataset.pavTheme = resolved === "light" ? "light" : "dark";
-  matchSplash();
 };
 /* The kit loader fetches its bundle and then runs that bundle on the main
    thread. Insert the script after the first paint so that work is outside
    the first layout. The shell does not wait on the load. */
 let kitQueued = null;
 let kitLive = false;
+/* Settles when the kit script loads or fails, so the splash can wait for it. */
+let kitSettled;
+const kitDone = new Promise((resolve) => {
+  kitSettled = resolve;
+});
 
 function requestKit(kitHtml) {
   if (kitLive) {
@@ -53,8 +56,10 @@ function markKit(message) {
 function watchKit(script) {
   script.addEventListener("load", () => {
     markKit("FA kit: script loaded");
+    kitSettled();
   });
   script.addEventListener("error", () => {
+    kitSettled();
     void Promise.resolve(log("ui", "error", "FA kit: script failed to load")).catch(() => {});
   });
 }
@@ -137,79 +142,27 @@ function afterFirstPaint() {
 
 hostServices.reload = () => reloadIcons();
 
-function splashNode() {
-  return document.getElementById("splash");
+/* The shell keeps the window hidden behind its native splash until this
+   event, then shows the window and fades the splash out (D-UI.md Native
+   splash). Sent after the mounted shell has laid out and the FA kit has
+   loaded (or KIT_WAIT_MS passed), so its icon swap happens behind the
+   splash; the shell also gives up after 5 s. Or on failure. A hidden
+   WebKit view may not run animation frames, so a short timer stands in for
+   the first paint. Rust ignores a second send. */
+/* Longest the splash waits for the kit script (network). */
+const KIT_WAIT_MS = 3000;
+
+function appReady() {
+  hostServices.appReady();
 }
 
-function paintSplashVersion() {
-  const line = document.querySelector("#splash p");
-  if (line) {
-    line.textContent = `Pavillion ${APP_VERSION}`;
-  }
-}
-
-/* The cover inherits the dark defaults. Once the shell has a theme, match
-   its canvas, text, and font so the fade reveals the same colors. */
-function matchSplash() {
-  const splash = splashNode();
-  const root = document.querySelector(".pav-root");
-  if (!splash || !root) {
-    return;
-  }
-  const style = getComputedStyle(root);
-  const bg = style.backgroundColor;
-  if (bg && bg !== "transparent" && bg !== "rgba(0, 0, 0, 0)") {
-    splash.style.background = bg;
-  }
-  splash.style.color = style.color;
-  splash.style.fontFamily = style.fontFamily;
-}
-
-function dismissSplash() {
-  const splash = splashNode();
-  if (!splash) {
-    return;
-  }
-  matchSplash();
-  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (reduce) {
-    splash.remove();
-    return;
-  }
-  splash.setAttribute("aria-hidden", "true");
-  splash.classList.add("is-done");
-  const remove = () => {
-    if (splash.isConnected) {
-      splash.remove();
-    }
-  };
-  splash.addEventListener("transitionend", (event) => {
-    if (event.propertyName === "opacity") {
-      remove();
-    }
-  });
-  window.setTimeout(remove, 600);
-}
-
-/* Two seconds from when this module starts, which is when the cover is
-   already on screen. The shell may finish sooner. Fade-out waits for both. */
-const SPLASH_DWELL_MS = 2000;
-const splashShownAt = performance.now();
-
-function finishSplash() {
-  if (!splashNode()) {
-    return;
-  }
-  const wait = Math.max(0, SPLASH_DWELL_MS - (performance.now() - splashShownAt));
-  window.setTimeout(dismissSplash, wait);
-}
-
-paintSplashVersion();
 try {
   await initIcons();
   await mount(document.querySelector("#app"), api, { hostServices });
-  await afterFirstPaint();
+  await Promise.race([afterFirstPaint(), new Promise((resolve) => setTimeout(resolve, 32))]);
   releaseKit();
+  await Promise.race([kitDone, new Promise((resolve) => setTimeout(resolve, KIT_WAIT_MS))]);
+  appReady();
 } finally {
-  finishSplash();
+  appReady();
 }

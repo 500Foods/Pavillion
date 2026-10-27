@@ -193,6 +193,7 @@ export function createAccountsView(api, root, options = {}) {
       sizePane(columns);
       table = createTable(treeEl, {
         indicator: true,
+        onIndicatorHeader: (anchor) => chooseColumns(anchor),
         columns,
         data: rows,
         rowId: "id",
@@ -269,6 +270,7 @@ export function createAccountsView(api, root, options = {}) {
   function chooseColumns(anchor) {
     openColumnChooser(anchor, {
       label: "Account columns",
+      placement: "below-right",
       columns: CHOOSER_COLUMNS,
       hidden: hiddenColumns(),
       onChange(hidden, field) {
@@ -393,7 +395,6 @@ export function createAccountsView(api, root, options = {}) {
         { id: "account-clone", action: "clone", icon: "fa-clone", text: "Clone", label: "Clone the selected account", onClick: cloneSelected },
         { id: "account-delete", action: "delete", icon: "fa-trash", text: "Delete", label: "Delete the selected account", onClick: () => void removeSelected() },
       ],
-      tools: [{ id: "accounts-columns", action: "columns", icon: "fa-table-columns", label: "Columns", onClick: () => chooseColumns(root.querySelector("#accounts-columns")) }],
       search: { id: "accounts-search", label: "Search accounts", placeholder: "Search accounts", onInput: applySearch },
     }, document));
     footerEl = mountBar(root.querySelector("#accounts-footer"), moduleFooter({

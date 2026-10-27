@@ -31,6 +31,10 @@ function asError(err) {
 
 export function tauriHost() {
   const host = {
+    /* Tells the shell to show the window and fade its native splash out. */
+    appReady() {
+      emit("pav-app-ready").catch(() => {});
+    },
     setRootFontSize(scale) {
       const value = Number(scale);
       if (!Number.isFinite(value)) {

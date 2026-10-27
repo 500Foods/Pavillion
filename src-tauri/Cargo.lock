@@ -2993,6 +2993,7 @@ dependencies = [
 name = "pavillion"
 version = "0.69.0"
 dependencies = [
+ "gtk",
  "libc",
  "pav_stronghold",
  "serde",
