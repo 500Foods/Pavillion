@@ -41,7 +41,7 @@ else
 PLATFORM_TEST_LIBS :=
 endif
 
-.PHONY: all lib dev build test clean mini it-up it-seed it-down it-reset test-it fuzz-sanitize
+.PHONY: all lib dev build test clean mini appimage it-up it-seed it-down it-reset test-it fuzz-sanitize
 
 all: lib
 
@@ -153,6 +153,10 @@ mini: PAVILLION_BUILD
 	@echo "mini packed   $$(stat -c%s $(MINI_DIST)) bytes"
 	@if [ -f $(DIST_DIR)/pavillion ]; then echo "make build    $$(stat -c%s $(DIST_DIR)/pavillion) bytes"; fi
 	@$(PRINT_ELAPSED)
+
+# Portable AppImage (bundles WebKitGTK, W-SHIP) from the unpacked release binary. Run make build first.
+appimage:
+	bash packaging/linux/appimage.sh
 
 test: PAVILLION_BUILD $(TEST_BIN)
 	bash scripts/run-test.sh
