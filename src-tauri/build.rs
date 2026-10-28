@@ -206,6 +206,8 @@ fn main() {
                 }
             }
         }
+    }
+    // curl and GMime are needed by the C core on every target (MSYS2 pkg-config on Windows).
         if let Ok(libs) = std::process::Command::new("pkg-config")
             .args(["--libs", "libcurl"])
             .output()
@@ -222,7 +224,7 @@ fn main() {
             }
         }
         let mut pc_path = std::env::var("PKG_CONFIG_PATH").unwrap_or_default();
-        if let Ok(home) = std::env::var("HOME") {
+        if let (true, Ok(home)) = (cfg!(target_os = "linux"), std::env::var("HOME")) {
             let extra = format!("{home}/.local/lib/pkgconfig");
             if pc_path.is_empty() {
                 pc_path = extra;
@@ -246,6 +248,7 @@ fn main() {
                 }
             }
         }
+    if cfg!(target_os = "linux") {
         if let Ok(dir) = std::process::Command::new("pkg-config")
             .args(["--variable=libdir", "gmime-3.0"])
             .env("PKG_CONFIG_PATH", &pc_path)
