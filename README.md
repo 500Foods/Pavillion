@@ -123,7 +123,7 @@ The license is [MIT](LICENSE.md). Third-party notices (including LGPL runtimes i
 
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-28 03:31:20 UTC
+Last updated at 2026-10-28 03:38:56 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
@@ -136,14 +136,14 @@ JSON                            14              0              0           2640
 Rust                             6            124            117           1707
 Bourne Shell                    13            108            208           1627
 CMake                           22            384            184           1398
-HTML                            26              8              0            423
+HTML                            26              8              0            428
 YAML                             6             41             53            391
 make                             1             23             22            157
 SQL                              4              0              0            130
 TOML                             2             11              8             63
 Text                             2              8              0             57
 -------------------------------------------------------------------------------
-SUM:                           807          34236          12621         706885
+SUM:                           807          34236          12621         706890
 -------------------------------------------------------------------------------
 49 Files were skipped (duplicate, binary, or without source code):
   png: 18
