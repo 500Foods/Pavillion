@@ -49,7 +49,29 @@ th,td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line);vert
 th{color:var(--dim);font-weight:500;font-size:13px;text-transform:uppercase;letter-spacing:.06em}
 code,.sha{font-family:"Vanadium Mono",ui-monospace,monospace;font-size:12px;color:var(--dim);word-break:break-all}
 .chip{display:inline-flex;align-items:center;gap:6px;margin:2px 6px 2px 0;padding:2px 10px;border:1px solid var(--line);border-radius:99px;font-size:13px}
+.pkg{display:inline-flex;align-items:center;gap:8px;font-weight:600}
+.pkg .tag{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel);font-size:13px;letter-spacing:.04em}
+.platforms{color:var(--dim);font-size:14px;line-height:1.45}
+.platforms strong{display:block;color:var(--text);font-weight:600;font-size:15px;margin-bottom:2px}
+.sha-block{display:flex;flex-direction:column;gap:4px;min-width:0}
+.sha-block a{font-size:13px;font-weight:600;color:var(--text);word-break:break-all}
+.sha-block a:hover{color:var(--accent)}
+.sha-block code{display:block;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:#0e1217;font-size:11px;line-height:1.4;color:var(--dim);word-break:break-all}
+.dl table{table-layout:fixed}
+.dl th:nth-child(1){width:18%}
+.dl th:nth-child(2){width:28%}
+.dl th:nth-child(3){width:14%}
+.dl th:nth-child(4){width:10%}
+.dl th:nth-child(5){width:30%}
+.dl td{padding:16px 10px}
 .empty{color:var(--dim)}
+@media(max-width:720px){
+  .dl table,.dl thead,.dl tbody,.dl th,.dl td,.dl tr{display:block;width:100%}
+  .dl thead{display:none}
+  .dl tr{border:1px solid var(--line);border-radius:12px;margin-bottom:12px;padding:8px 4px;background:var(--panel)}
+  .dl td{border:0;padding:8px 12px}
+  .dl td::before{content:attr(data-label);display:block;color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+}
 footer{padding:40px 0 60px;color:var(--dim);font-size:14px;text-align:center;border-top:1px solid var(--line)}
 </style>
 <script src="https://kit.fontawesome.com/45801522ef.js" crossorigin="anonymous"></script>
@@ -84,24 +106,48 @@ footer{padding:40px 0 60px;color:var(--dim);font-size:14px;text-align:center;bor
 <footer>Pavillion · <a href="https://github.com/500Foods/Pavillion/blob/main/LICENSE.md">MIT</a> · <a href="THIRD_PARTY.md">Licenses</a> · <a href="https://github.com/500Foods/Pavillion">500Foods/Pavillion</a></footer>
 
 <script>
-const LABEL={"linux-rpm":"Fedora (rpm)","linux-deb":"Debian/Ubuntu (deb)","linux-appimage":"Linux (AppImage)","windows-msi":"Windows (msi)","macos-dmg":"macOS (dmg)"};
-const PLATFORM_ICON={"linux-rpm":"fa-brands fa-linux","linux-deb":"fa-brands fa-linux","linux-appimage":"fa-brands fa-linux","windows-msi":"fa-brands fa-windows","macos-dmg":"fa-brands fa-apple"};
-const platformIcon=p=>`<i class="${PLATFORM_ICON[p]||"fa-solid fa-download"}" aria-hidden="true"></i>`;
+const META={
+  "windows-msi":{os:"Windows",osIcon:"fa-brands fa-windows",pkg:"MSI",pkgIcon:"fa-solid fa-box",cta:"Windows (MSI)",families:["Windows 10 / 11"]},
+  "linux-rpm":{os:"Fedora",osIcon:"fa-brands fa-fedora",pkg:"RPM",pkgIcon:"fa-solid fa-box",cta:"Fedora (RPM)",families:["Fedora","RHEL","CentOS Stream","Rocky","Alma","openSUSE"]},
+  "linux-deb":{os:"Debian / Ubuntu",osIcon:"fa-brands fa-linux",pkg:"DEB",pkgIcon:"fa-solid fa-box",cta:"Debian/Ubuntu (deb)",families:["Debian","Ubuntu","Linux Mint"]},
+  "linux-appimage":{os:"Linux",osIcon:"fa-brands fa-linux",pkg:"AppImage",pkgIcon:"fa-solid fa-box",cta:"Linux (AppImage)",families:["Most Linux desktops"]},
+  "macos-dmg":{os:"macOS",osIcon:"fa-brands fa-apple",pkg:"DMG",pkgIcon:"fa-solid fa-box",cta:"macOS (DMG)",families:["macOS"]}
+};
+const meta=p=>META[p]||{os:p,osIcon:"fa-solid fa-download",pkg:p,pkgIcon:"fa-solid fa-box",cta:p,families:[]};
+const icon=cls=>`<i class="${cls}" aria-hidden="true"></i>`;
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const mb=n=>n?(n/1048576).toFixed(1)+" MB":"";
+const mb=n=>n?(n/1048576).toFixed(1)+" MB":"—";
 function guess(){const u=navigator.userAgent;return /Windows/.test(u)?"windows-msi":/Mac/.test(u)?"macos-dmg":/Linux/.test(u)?"linux-rpm":null}
+function assetRows(r){
+  return r.assets.map((a,i)=>{
+    const m=meta(a.platform);
+    const ver=i===0
+      ? `<strong>${esc(r.version)}</strong><br><span class="meta">${esc(r.date)} · <a href="${esc(r.commitUrl)}">${esc(r.commit.slice(0,7))}</a> · <a href="${esc(r.releaseUrl)}">notes</a></span>`
+      : `<span class="meta">↳ ${esc(r.version)}</span>`;
+    const platforms=`<div class="platforms"><strong>${icon(m.osIcon)} ${esc(m.os)}</strong>${esc(m.families.join(" · "))}</div>`;
+    const pkg=`<a class="pkg" href="${esc(a.url)}"><span class="tag">${icon(m.pkgIcon)} ${esc(m.pkg)}</span></a>`;
+    const sha=`<div class="sha-block"><a href="${esc(a.url)}">${esc(a.filename)}</a><code>${esc(a.sha256)}</code></div>`;
+    return `<tr>
+      <td data-label="Version">${ver}</td>
+      <td data-label="Platform">${platforms}</td>
+      <td data-label="Package">${pkg}</td>
+      <td data-label="Size">${esc(mb(a.size))}</td>
+      <td data-label="SHA-256">${sha}</td>
+    </tr>`;
+  }).join("");
+}
 fetch("releases.json",{cache:"no-cache"}).then(r=>r.json()).then(j=>{
   const rel=j.releases||[],box=document.getElementById("releases");
   if(!rel.length){box.textContent="No releases yet.";return}
   const cur=rel[0],want=guess(),pick=cur.assets.find(a=>a.platform===want)||cur.assets[0];
-  if(pick)document.getElementById("cta").insertAdjacentHTML("afterbegin",
-    `<a class="btn primary" href="${esc(pick.url)}">${platformIcon(pick.platform)} Download ${esc(cur.version)} · ${esc(LABEL[pick.platform]||pick.platform)}</a>`);
+  if(pick){
+    const m=meta(pick.platform);
+    document.getElementById("cta").insertAdjacentHTML("afterbegin",
+      `<a class="btn primary" href="${esc(pick.url)}">${icon(m.osIcon)} Download ${esc(cur.version)} · ${esc(m.cta)}</a>`);
+  }
   document.getElementById("meta").innerHTML=`Version ${esc(cur.version)} · released ${esc(cur.date)} · <a href="#downloads">all platforms &amp; versions</a>`;
-  box.className="";
-  box.innerHTML=`<table><thead><tr><th>Version</th><th>Files</th><th>SHA-256</th></tr></thead><tbody>${rel.map(r=>
-    `<tr><td><strong>${esc(r.version)}</strong><br><span class="meta">${esc(r.date)} · <a href="${esc(r.commitUrl)}">${esc(r.commit.slice(0,7))}</a> · <a href="${esc(r.releaseUrl)}">notes</a></span></td>
-     <td>${r.assets.map(a=>`<a class="chip" href="${esc(a.url)}">${platformIcon(a.platform)} ${esc(LABEL[a.platform]||a.platform)} <span class="meta">${mb(a.size)}</span></a>`).join("")}</td>
-     <td>${r.assets.map(a=>`<div class="sha">${esc(a.filename)}<br>${esc(a.sha256)}</div>`).join("")}</td></tr>`).join("")}</tbody></table>`;
+  box.className="dl";
+  box.innerHTML=`<table><thead><tr><th>Version</th><th>Platform</th><th>Package</th><th>Size</th><th>SHA-256</th></tr></thead><tbody>${rel.map(assetRows).join("")}</tbody></table>`;
 }).catch(()=>{document.getElementById("releases").textContent="Could not load releases."});
 </script>
 </body>
