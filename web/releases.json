@@ -2,5 +2,33 @@
   "schema": 1,
   "project": "Pavillion",
   "repo": "https://github.com/500Foods/Pavillion",
-  "releases": []
+  "releases": [
+    {
+      "version": "0.69",
+      "build": "0.69.338",
+      "date": "2026-10-28",
+      "commit": "6b8d519c09ae3882fb6689bc4041d9e054a5b61f",
+      "commitUrl": "https://github.com/500Foods/Pavillion/commit/6b8d519c09ae3882fb6689bc4041d9e054a5b61f",
+      "releaseUrl": "https://github.com/500Foods/Pavillion/releases/tag/v0.69",
+      "notes": "First public 0.69 — unsigned rpm + msi.",
+      "assets": [
+        {
+          "platform": "windows-msi",
+          "arch": "x86_64",
+          "filename": "Pavillion-0.69-x86_64.msi",
+          "url": "https://github.com/500Foods/Pavillion/releases/download/v0.69/Pavillion-0.69-x86_64.msi",
+          "size": 4923392,
+          "sha256": "94897ed087190003a31da03c9f5b287247d0a78661c450ec171c9b9a0fdde4bd"
+        },
+        {
+          "platform": "linux-rpm",
+          "arch": "x86_64",
+          "filename": "pavillion-0.69-1.fc44.x86_64.rpm",
+          "url": "https://github.com/500Foods/Pavillion/releases/download/v0.69/pavillion-0.69-1.fc44.x86_64.rpm",
+          "size": 3780187,
+          "sha256": "526556769d5a6c950bb5f1f9d1e5b77810776753c25d25690ededee13f840423"
+        }
+      ]
+    }
+  ]
 }
