@@ -114,7 +114,7 @@ The license is [MIT](LICENSE.md).
 [![Count Lines of Code](https://github.com/500Foods/Pavillion/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/main.yml)
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-27 23:54:54 UTC
+Last updated at 2026-10-28 00:14:09 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
@@ -124,17 +124,17 @@ JavaScript                     116           1931            672          26657
 Markdown                        40           3080              2           6883
 CSS                              7            490             50           3437
 JSON                            14              0              0           2612
-Rust                             6            119            112           1657
+Rust                             6            123            114           1682
 Bourne Shell                    11            105            185           1568
 CMake                           22            384            184           1398
 YAML                             6             40             45            328
-HTML                            25              8              0            193
+HTML                            25              8              0            208
 make                             1             22             21            155
 SQL                              4              0              0            130
 TOML                             2             11              8             63
 Text                             2              8              0             57
 -------------------------------------------------------------------------------
-SUM:                           802          34214          12584         706403
+SUM:                           802          34218          12586         706443
 -------------------------------------------------------------------------------
 48 Files were skipped (duplicate, binary, or without source code):
   png: 18
