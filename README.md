@@ -120,29 +120,29 @@ The license is [MIT](LICENSE.md). Third-party notices (including LGPL runtimes i
 
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-28 00:38:40 UTC
+Last updated at 2026-10-28 00:46:53 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
 C                              264          21728           4471         420051
 C/C++ Header                   282           6288           6834         241214
-JavaScript                     116           1931            672          26657
-Markdown                        40           3083              2           6887
+JavaScript                     116           1931            672          26665
+Markdown                        42           3093              2           6918
 CSS                              7            490             50           3437
 JSON                            14              0              0           2640
 Rust                             6            123            115           1684
-Bourne Shell                    11            105            185           1568
+Bourne Shell                    12            105            195           1579
 CMake                           22            384            184           1398
-YAML                             6             40             45            328
+YAML                             6             40             46            331
 HTML                            25              8              0            208
 make                             1             22             21            155
 SQL                              4              0              0            130
 TOML                             2             11              8             63
 Text                             2              8              0             57
 -------------------------------------------------------------------------------
-SUM:                           802          34221          12587         706477
+SUM:                           805          34231          12598         706530
 -------------------------------------------------------------------------------
-48 Files were skipped (duplicate, binary, or without source code):
+49 Files were skipped (duplicate, binary, or without source code):
   png: 18
   eml: 9
   conf: 2
@@ -158,6 +158,7 @@ SUM:                           802          34221          12587         706477
   ico: 1
   in: 1
   license: 1
+  md: 1
   notice: 1
   pavillion_pin: 1
   spec: 1
