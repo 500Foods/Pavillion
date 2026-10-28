@@ -119,14 +119,18 @@ jobs:
           # bundle.active false (system WebKit, hand rpm).
           # Root has no package.json; call the CLI ui/ installed, from the root
           # so it finds src-tauri/.
-          ./ui/node_modules/.bin/tauri build --bundles msi \
-            --config '{"bundle":{"active":true,"targets":["msi"]}}'
+          # Two passes: build the exe, stage its UCRT64 DLLs (recursive ldd,
+          # see packaging/windows/collect-dlls.sh), then bundle them as
+          # resources. On Windows the resource dir is the install dir, so the
+          # DLLs land beside pavillion.exe.
+          ./ui/node_modules/.bin/tauri build --no-bundle
+          packaging/windows/collect-dlls.sh src-tauri/target/release/pavillion.exe src-tauri/windows-dlls
+          cp LICENSE.md THIRD_PARTY.md src-tauri/windows-dlls/
+          ./ui/node_modules/.bin/tauri bundle --bundles msi \
+            --config '{"bundle":{"active":true,"targets":["msi"],"resources":{"windows-dlls/":"./"}}}'
       - name: Collect
         run: |
           mkdir -p assets
-          # TODO(W-SHIP): MinGW runtime DLLs (gmime, glib, curl, jansson, sqlite)
-          # must ship beside pavillion.exe; ldd + bundle.resources once the
-          # first msi is looked at on a real Windows box.
           for f in src-tauri/target/release/bundle/msi/*.msi; do
             cp "$f" "assets/Pavillion-${{ inputs.version }}-x86_64.msi"
           done

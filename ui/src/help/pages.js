@@ -32,6 +32,14 @@ export const helpPages = [
         ],
       },
       {
+        id: "licenses",
+        title: "Licenses",
+        paragraphs: [
+          "Pavillion is MIT licensed. The C HTML engine (lexbor) is Apache-2.0 and lives under third_party/lexbor in the source tree.",
+          "The Fedora package uses system libraries (WebKitGTK, GMime, curl, and others); those stay with the distribution. The Windows installer ships MinGW DLLs next to the app, including LGPL libraries such as GLib and GMime, loaded dynamically so they can be replaced. A THIRD_PARTY.md file lists them and where to get source; the MSI also installs that file beside the executable. The full text is in the repository and on the project site.",
+        ],
+      },
+      {
         id: "reader",
         title: "How to use Help",
         paragraphs: [

@@ -115,7 +115,7 @@ dnf install $(grep -vE '^[[:space:]]*(#|$)' scripts/fedora-deps.txt)
 
 No argument uses the default data directory. One argument is a working directory. A second argument is an error. The invoking shell expands `~`. Pavillion does not.
 
-The license is [MIT](LICENSE.md).
+The license is [MIT](LICENSE.md). Third-party notices (including LGPL runtimes in the Windows build) are in [THIRD_PARTY.md](THIRD_PARTY.md).
 
 ## Repository Information
 
