@@ -134,12 +134,22 @@ jobs:
           # Bundle looks under target/release/; mini wrote target/mini/.
           EXE_MINI=src-tauri/target/mini/pavillion.exe
           packaging/windows/collect-dlls.sh "$EXE_MINI" src-tauri/windows-dlls
+          # tauri-build drops WebView2Loader.dll next to the profile exe; it is
+          # not a MinGW import so collect-dlls misses it. Ship it beside the
+          # installed exe (windows-dlls → ./) and next to the bundle input.
+          WV2="${EXE_MINI%/*}/WebView2Loader.dll"
+          if [ ! -f "$WV2" ]; then
+            echo "WebView2Loader.dll missing next to $EXE_MINI" >&2
+            exit 1
+          fi
+          cp -f "$WV2" src-tauri/windows-dlls/WebView2Loader.dll
           cp LICENSE.md THIRD_PARTY.md src-tauri/windows-dlls/
           strip --strip-unneeded "$EXE_MINI" || true
           upx --best --lzma -q "$EXE_MINI"
           upx -t -q "$EXE_MINI"
           mkdir -p src-tauri/target/release
           cp -f "$EXE_MINI" src-tauri/target/release/pavillion.exe
+          cp -f "$WV2" src-tauri/target/release/WebView2Loader.dll
           ./ui/node_modules/.bin/tauri bundle --bundles msi \
             --config '{"bundle":{"active":true,"targets":["msi"],"resources":{"windows-dlls/":"./"}}}'
       - name: Collect

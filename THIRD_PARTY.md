@@ -14,7 +14,7 @@ The rpm depends on system libraries (WebKitGTK, GTK, libsecret, GMime, libical, 
 
 ## Windows MSI (redistributed DLLs)
 
-The Windows MSI ships unmodified MSYS2 UCRT64 DLLs next to `pavillion.exe` (dynamic linking; compatible replacements are allowed). Exact set: whatever `packaging/windows/collect-dlls.sh` staged for that build. Source packages: [MSYS2](https://packages.msys2.org/) / [MINGW-packages](https://github.com/msys2/MINGW-packages).
+The Windows MSI ships unmodified MSYS2 UCRT64 DLLs next to `pavillion.exe` (dynamic linking; compatible replacements are allowed), plus Microsoft’s `WebView2Loader.dll` from the WebView2 SDK (via `webview2-com-sys` / tauri-build). Exact MinGW set: whatever `packaging/windows/collect-dlls.sh` staged for that build. Source packages: [MSYS2](https://packages.msys2.org/) / [MINGW-packages](https://github.com/msys2/MINGW-packages). WebView2 Runtime itself is expected on the machine (Edge / Evergreen).
 
 | Library | License |
 |---|---|

@@ -19,3 +19,11 @@ n=$(ls "$out"/*.dll 2>/dev/null | wc -l)
 # Fail loudly if ldd left anything unresolved.
 if ldd "$exe" | grep -q 'not found'; then ldd "$exe" | grep 'not found' >&2; exit 1; fi
 echo "staged $n DLLs in $out"
+
+# WebView2Loader.dll is not a UCRT64 import (tauri-build places it next to the
+# exe). Copy it if present so callers that only run this script still get it.
+wv2="$(dirname "$exe")/WebView2Loader.dll"
+if [ -f "$wv2" ]; then
+  cp -v "$wv2" "$out/"
+fi
+
