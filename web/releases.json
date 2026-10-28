@@ -7,26 +7,34 @@
       "version": "0.69",
       "build": "0.69.338",
       "date": "2026-10-28",
-      "commit": "845a164b9e6b7d4e256e5463081f935a1136fb69",
-      "commitUrl": "https://github.com/500Foods/Pavillion/commit/845a164b9e6b7d4e256e5463081f935a1136fb69",
+      "commit": "1ea251c151dae8ed61c6d668668edc2727382c86",
+      "commitUrl": "https://github.com/500Foods/Pavillion/commit/1ea251c151dae8ed61c6d668668edc2727382c86",
       "releaseUrl": "https://github.com/500Foods/Pavillion/releases/tag/v0.69",
-      "notes": "Windows LOCALAPPDATA workdir (cold start without HOME)",
+      "notes": "Windows curl native CA trust; curl double-free fix",
       "assets": [
+        {
+          "platform": "linux-appimage",
+          "arch": "x86_64",
+          "filename": "Pavillion-0.69-x86_64.AppImage",
+          "url": "https://github.com/500Foods/Pavillion/releases/download/v0.69/Pavillion-0.69-x86_64.AppImage",
+          "size": 84302328,
+          "sha256": "f6670e5da806b5a64c94a2f515faa6d2df56fb61dd3f012c928f20f2dbc287e5"
+        },
         {
           "platform": "windows-msi",
           "arch": "x86_64",
           "filename": "Pavillion-0.69-x86_64.msi",
           "url": "https://github.com/500Foods/Pavillion/releases/download/v0.69/Pavillion-0.69-x86_64.msi",
-          "size": 11763712,
-          "sha256": "3f3a7b88610f5451bb9f8b239293128452f4967dd46aa5e78b599219c1d44a0f"
+          "size": 11755520,
+          "sha256": "32fb7eb15d4b9fab37d9a55314259c858225b5b1be449b308c4057778dd2dccf"
         },
         {
           "platform": "linux-rpm",
           "arch": "x86_64",
           "filename": "pavillion-0.69-1.fc44.x86_64.rpm",
           "url": "https://github.com/500Foods/Pavillion/releases/download/v0.69/pavillion-0.69-1.fc44.x86_64.rpm",
-          "size": 1869812,
-          "sha256": "c6e5621049ceee6a6ca79c24745fe78cfb3aab3609428060c5898cbc85a76d7f"
+          "size": 1869788,
+          "sha256": "3d7437266e0dfbaaa121bcd458335f406289d136d31245fc2949dda15c5c4d5f"
         }
       ]
     }
