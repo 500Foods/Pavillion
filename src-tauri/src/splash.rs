@@ -25,7 +25,7 @@ mod imp {
     use std::rc::Rc;
     use std::time::{Duration, Instant};
 
-    static MARK: &[u8] = include_bytes!("../icons/source.png");
+    static MARK: &[u8] = include_bytes!("../icons/128x128@2x.png"); // 256 px (MARK_LOGICAL_PX @ 2x); not source.png
     thread_local! {
         static SPLASH: RefCell<Option<gtk::DrawingArea>> = const { RefCell::new(None) };
         static SHOWN_AT: Cell<Option<Instant>> = const { Cell::new(None) };
@@ -114,9 +114,9 @@ mod imp {
 /// Windows and macOS share the timing here. A worker thread sleeps through
 /// the envelope and posts each fade step to the main thread, where `native`
 /// keeps the views (they are not `Send`).
-/// The mark source (1024 px RGBA PNG).
+/// The mark bitmap (256 px RGBA PNG).
 #[cfg(any(windows, target_os = "macos"))]
-const MARK: &[u8] = include_bytes!("../icons/source.png");
+const MARK: &[u8] = include_bytes!("../icons/128x128@2x.png"); // 256 px (MARK_LOGICAL_PX @ 2x); not source.png
 
 #[cfg(any(windows, target_os = "macos"))]
 mod imp {

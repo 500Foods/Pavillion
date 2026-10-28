@@ -61,12 +61,17 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
       - name: Install Fedora packages
-        run: dnf install -y $(grep -vE '^[[:space:]]*(#|$)' scripts/fedora-deps.txt)
+        run: dnf install -y $(grep -vE '^[[:space:]]*(#|$)' scripts/fedora-deps.txt) upx ImageMagick
       - name: Build
         run: |
-          # make build adds one to PAVILLION_BUILD; seed it so the result is Z.
+          # Seed PAVILLION_BUILD so make mini's bump lands on Z. Size path
+          # (profile mini, raw UI, mini-assets) then UPX the exe into
+          # dist/pavillion for the rpm. DLLs/system libs stay untouched.
           b="${{ inputs.build }}"; printf '%s\n' "$(( ${b:-1} - 1 ))" > PAVILLION_BUILD
-          make build
+          make mini
+          # rpm installs dist/pavillion; mini wrote dist/pavillion-mini.
+          cp -f dist/pavillion-mini dist/pavillion
+          dist/pavillion --version
       - name: rpm
         run: |
           rpmbuild -bb packaging/rpm/pavillion.spec \
@@ -106,26 +111,35 @@ jobs:
             mingw-w64-ucrt-x86_64-curl
             mingw-w64-ucrt-x86_64-gmime
             mingw-w64-ucrt-x86_64-rust
+            mingw-w64-ucrt-x86_64-upx
+            mingw-w64-ucrt-x86_64-imagemagick
       - name: Build msi
         env:
           CMAKE_GENERATOR: MSYS Makefiles
           CFLAGS: -I/ucrt64/include
           LDFLAGS: -L/ucrt64/lib -lws2_32
+          # Same size flags as make mini (Makefile MINI_RUSTFLAGS).
+          RUSTFLAGS: -C force-unwind-tables=no -C link-arg=-Wl,--gc-sections -C link-arg=-Wl,--as-needed -C link-arg=-Wl,-O1
         run: |
           printf '%s\n' "${{ inputs.build || '0' }}" > PAVILLION_BUILD
           make lib
           (cd ui && npm install)
-          # Tauri's bundler is only switched on here, for msi. Linux keeps
-          # bundle.active false (system WebKit, hand rpm).
-          # Root has no package.json; call the CLI ui/ installed, from the root
-          # so it finds src-tauri/.
-          # Two passes: build the exe, stage its UCRT64 DLLs (recursive ldd,
-          # see packaging/windows/collect-dlls.sh), then bundle them as
-          # resources. On Windows the resource dir is the install dir, so the
-          # DLLs land beside pavillion.exe.
-          ./ui/node_modules/.bin/tauri build --no-bundle
-          packaging/windows/collect-dlls.sh src-tauri/target/release/pavillion.exe src-tauri/windows-dlls
+          # Size path: profile mini, raw UI (no tauri compression), shrink
+          # mark.png. Then collect MinGW DLLs from the unpacked exe, UPX
+          # only pavillion.exe, and MSI-bundle with DLLs as resources.
+          PAVILLION_CMAKE_DIR=build-mini PAVILLION_SIZE=1 \
+            ./ui/node_modules/.bin/tauri build --no-bundle \
+              --config src-tauri/tauri.mini.conf.json \
+              -- --profile mini --no-default-features
+          # Bundle looks under target/release/; mini wrote target/mini/.
+          EXE_MINI=src-tauri/target/mini/pavillion.exe
+          packaging/windows/collect-dlls.sh "$EXE_MINI" src-tauri/windows-dlls
           cp LICENSE.md THIRD_PARTY.md src-tauri/windows-dlls/
+          strip --strip-unneeded "$EXE_MINI" || true
+          upx --best --lzma -q "$EXE_MINI"
+          upx -t -q "$EXE_MINI"
+          mkdir -p src-tauri/target/release
+          cp -f "$EXE_MINI" src-tauri/target/release/pavillion.exe
           ./ui/node_modules/.bin/tauri bundle --bundles msi \
             --config '{"bundle":{"active":true,"targets":["msi"],"resources":{"windows-dlls/":"./"}}}'
       - name: Collect

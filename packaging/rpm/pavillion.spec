@@ -1,7 +1,6 @@
-# W-3. Binary rpm around the dist/pavillion that make build produced.
-# System WebKit: nothing bundled. The release workflow runs
+# W-3. Binary rpm around dist/pavillion (release.yml: make mini, then
+# cp dist/pavillion-mini dist/pavillion). System WebKit: nothing bundled.
 #   rpmbuild -bb --define "_sourcedir $PWD" --define "pav_version X.Y" ...
-# from the repo root after make build.
 %global debug_package %{nil}
 %global __brp_strip %{nil}
 
