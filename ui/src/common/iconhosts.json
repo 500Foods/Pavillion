@@ -1,6 +1,7 @@
 {
-  "scripts": ["kit.fontawesome.com"],
-  "stylesheets": ["fonts.googleapis.com"],
-  "fonts": ["fonts.gstatic.com", "ka-p.fontawesome.com"],
-  "loader": ["ka-p.fontawesome.com"]
+  "scripts": ["kit.fontawesome.com", "code.iconify.design"],
+  "stylesheets": ["fonts.googleapis.com", "cdn.jsdelivr.net"],
+  "fonts": ["fonts.gstatic.com", "ka-p.fontawesome.com", "cdn.jsdelivr.net"],
+  "loader": ["ka-p.fontawesome.com"],
+  "connect": ["api.iconify.design", "api.simplesvg.com", "api.unisvg.com"]
 }

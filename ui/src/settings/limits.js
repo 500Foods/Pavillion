@@ -2,8 +2,10 @@
    blobsMb, and listRows, labeled Database, Document, and Message list.
    Refresh reloads them. Apply writes them through prefs.set. The page
    clamps the megabyte values to 1..1048576 and the message list to
-   1..10000. The log size cap stays on Logs. A fixture without the
-   message-list field omits listRows. */
+   1..10000. Recent icons is preferences.ui.iconRecentMax (1..48). Apply
+   writes it through onRecent, which saves the ui blob, and a fixture
+   without that field leaves it alone. The log size cap stays on Logs.
+   A fixture without the message-list field omits listRows. */
 
 import { iconClass } from "../common/icons/registry.js";
 import { moduleFooter, moduleToolbar, mountBar } from "../common/module-bar.js";
@@ -13,6 +15,9 @@ const MIN_MB = 1;
 const MAX_MB = 1048576;
 const MIN_ROWS = 1;
 const MAX_ROWS = 10000;
+const MIN_RECENT = 1;
+const MAX_RECENT = 48;
+const DEFAULT_RECENT = 12;
 const DEFAULT_BODIES = 2048;
 const DEFAULT_BLOBS = 4096;
 const DEFAULT_ROWS = 10000;
@@ -220,6 +225,7 @@ export function createLimitsSettings(api, root, options = {}) {
   const bodies = root.querySelector("#limits-bodies");
   const blobs = root.querySelector("#limits-blobs");
   const listRowsInput = root.querySelector("#limits-list-rows");
+  const recentInput = root.querySelector("#limits-recent");
   if (!bodies || !blobs) {
     return {
       refresh: () => Promise.resolve(),
@@ -243,6 +249,10 @@ export function createLimitsSettings(api, root, options = {}) {
   let savedBodies = DEFAULT_BODIES;
   let savedBlobs = DEFAULT_BLOBS;
   let savedRows = DEFAULT_ROWS;
+  let savedRecent = DEFAULT_RECENT;
+  if (typeof options.recentMax === "function" && Number.isInteger(options.recentMax())) {
+    savedRecent = options.recentMax();
+  }
   let ticket = 0;
   let measuring = false;
   let stopEvents = null;
@@ -340,6 +350,9 @@ export function createLimitsSettings(api, root, options = {}) {
     if (listRowsInput) {
       listRowsInput.value = String(savedRows);
     }
+    if (recentInput) {
+      recentInput.value = String(savedRecent);
+    }
   }
 
   function onProgress(payload) {
@@ -406,6 +419,9 @@ export function createLimitsSettings(api, root, options = {}) {
       savedBodies = storedMb(cache, "bodiesMb", DEFAULT_BODIES);
       savedBlobs = storedMb(cache, "blobsMb", DEFAULT_BLOBS);
       savedRows = storedRows(cache);
+      if (typeof options.recentMax === "function" && Number.isInteger(options.recentMax())) {
+        savedRecent = options.recentMax();
+      }
       paint();
       if (usage) {
         paintUsage(usage);
@@ -462,7 +478,7 @@ export function createLimitsSettings(api, root, options = {}) {
     });
   }
 
-  function apply() {
+  async function apply() {
     const mine = ticket + 1;
     ticket = mine;
     const bodiesMb = readMb(bodies, savedBodies);
@@ -470,6 +486,14 @@ export function createLimitsSettings(api, root, options = {}) {
     const cachePatch = { bodiesMb, blobsMb };
     if (listRowsInput) {
       cachePatch.listRows = readBounded(listRowsInput, savedRows, MIN_ROWS, MAX_ROWS);
+    }
+    if (recentInput && typeof options.onRecent === "function") {
+      const next = readBounded(recentInput, savedRecent, MIN_RECENT, MAX_RECENT);
+      savedRecent = next;
+      const pending = options.onRecent(next);
+      if (pending && typeof pending.then === "function") {
+        await pending;
+      }
     }
     return api.prefs.set({ cache: cachePatch }).then((prefs) => {
       if (mine !== ticket) {
@@ -495,6 +519,10 @@ export function createLimitsSettings(api, root, options = {}) {
     const input = event.currentTarget;
     if (input === listRowsInput) {
       readBounded(input, savedRows, MIN_ROWS, MAX_ROWS);
+      return;
+    }
+    if (input === recentInput) {
+      readBounded(input, savedRecent, MIN_RECENT, MAX_RECENT);
       return;
     }
     readMb(input, input === bodies ? savedBodies : savedBlobs);
@@ -551,6 +579,10 @@ export function createLimitsSettings(api, root, options = {}) {
     listRowsInput.addEventListener("blur", onBlur);
     listRowsInput.addEventListener("keydown", onKey);
   }
+  if (recentInput) {
+    recentInput.addEventListener("blur", onBlur);
+    recentInput.addEventListener("keydown", onKey);
+  }
   if (measureButton) {
     measureButton.addEventListener("click", onMeasure);
   }
@@ -579,6 +611,10 @@ export function createLimitsSettings(api, root, options = {}) {
       if (listRowsInput) {
         listRowsInput.removeEventListener("blur", onBlur);
         listRowsInput.removeEventListener("keydown", onKey);
+      }
+      if (recentInput) {
+        recentInput.removeEventListener("blur", onBlur);
+        recentInput.removeEventListener("keydown", onKey);
       }
       if (measureButton) {
         measureButton.removeEventListener("click", onMeasure);

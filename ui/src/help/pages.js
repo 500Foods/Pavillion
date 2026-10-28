@@ -161,7 +161,7 @@ export const helpPages = [
         id: "features",
         title: "Features",
         paragraphs: [
-          "Features is a Settings page. Accounts, Themes, Icons, Fonts, Formats, Tabs, Zooms, Logs, Limits, and Mail are the others. Each of those pages has a help icon on the right of its top bar. The icon opens that topic here.",
+          "Features is a Settings page. Accounts, Themes, Icons, Libraries, Assets, Fonts, Formats, Tabs, Zooms, Logs, Limits, and Mail are the others. Each of those pages has a help icon on the right of its top bar. The icon opens that topic here.",
           "The page lists every rail button: Mail, Contacts, Calendars, Tasks, Files, Notes, Argent, Grok Bots, GitHub, Activity, Settings, Update, and Help. Each row shows that button's icon. Drag a row by the bars on its left to change its place. Dragging an icon on the top or bottom bar does the same move: left or right stays in that bar, and crossing to the other bar moves it. A short press on the bar still opens the section. Rows under Top sit on the top bar. Rows under Bottom sit on the bottom bar. A check shows that button. Turning one off hides it and closes its home tab. A hidden button stays in the list and keeps its place, and it does not take a cell on the rail. Settings has no check, so it stays available. Update has no home tab. Mail, Contacts, Calendars, and Files start on. Activity, Update, and Help start on and can be turned off. Tasks, Notes, Argent, Grok Bots, and GitHub start off. The choice is saved and comes back after a restart.",
           "Each row has a shortcut, Ctrl and a number from 1 to 9, or None. A number belongs to one row. Giving it to another row clears it from the first. Mail starts at Ctrl+1, Contacts at Ctrl+2, Calendars at Ctrl+3, Tasks at Ctrl+4, Files at Ctrl+5, Notes at Ctrl+6, and Argent at Ctrl+7. The other rows start with no shortcut. A hidden button's shortcut does nothing. Moving a button does not move its shortcut. A shortcut on Update runs a sync.",
           "If the section in the nav is hidden when the app opens, the nav opens on the first section above the line that is on and has its own nav. If none of those are on, it opens on Settings. Grok Bots, GitHub, Activity, and Update do not take that place. Settings can sit above the line and take it.",
@@ -189,7 +189,7 @@ export const helpPages = [
         title: "Limits",
         paragraphs: [
           "Limits sets how much of this profile stays on disk. Database starts at 2048 MB. Document starts at 4096 MB. Each value is a whole number of megabytes from 1 to 1048576. Database is message text, contacts, and calendars. Document is attachments and files. Beside each one is how much is on disk now, and how much space is free on the volume that holds this storage. Under that, each account has two figures. The Total row adds each column on its own. Database and Document are not added together. Database is how many messages, contacts, and events are on the server, and their size. Document is how many attachments and files are on the server, and their size. A size appears after Check sizes has split mail into message text and attachments. A contact, calendar, or file size that was not reported is left out. While that runs, the page shows a progress bar and a Cancel button. Cancel keeps the last finished size for a store that did not complete. The page shows when a check last finished. Message list starts at 10,000. It is a whole number from 1 to 10,000, and it is how many messages a folder lists. It is not a disk size. Apply saves these limits. Refresh loads the saved values and the quick counts again, and drops an unsaved edit. Refresh during a check does not throw that result away.",
-          "A finished sync removes the oldest opened message text and documents that put the profile over a limit. Drafts, flagged messages, and mail waiting to send stay. Contacts and calendars stay. The log size cap stays on Logs. A later disk budget is another row on this page.",
+          "A finished sync removes the oldest opened message text and documents that put the profile over a limit. Drafts, flagged messages, and mail waiting to send stay. Contacts and calendars stay. The log size cap stays on Logs. Recent icons starts at 12. It is a whole number from 1 to 48, and it is how many Icon Wizard picks are kept. Apply saves it with the other limits. A smaller number drops the older picks. A later disk budget is another row on this page.",
         ],
       },
       {
@@ -230,9 +230,25 @@ export const helpPages = [
         id: "icons",
         title: "Icons",
         paragraphs: [
-          "Settings → Icons lists every icon in the app and the libraries that draw them. The icons are split into tabs, one for each place they appear, such as Nav, Mail, and Mail list. The open tab is a table: a check in Default when that icon has not been changed, the icon, and its name. Font Awesome is on by default. Material Symbols can be turned on. A library address has to be https and on the allowlist; a new host needs a rebuild. An @ before the host is a password and is refused. An @ later in the address, as in the Material font axes, is kept.",
-          "Click a row to open the Icon Wizard. The square on the left is the icon you are editing. Icon Library searches the kit. Icon Foundry edits the HTML, and Preview refreshes the square. SVG and PNG import a file, store it with the profile, and save an image that points at that file. Accept writes the icon at once. Close, Cancel, Escape, and a click outside close the Wizard. That asks only after you have changed the icon. Hold Ctrl and roll the wheel over the Wizard to zoom it from 100% to 300%. It starts at 100%, one notch is 5%, and the Away or Toward switch applies. Revert all clears every saved icon. The roof mark is on the shelf in the Wizard, and it is the shipped Mail icon.",
+          "Settings → Icons lists every icon in the app, grouped by where it appears, such as Nav, Mail, and Mail list. The table is on the left. The column chooser is the wide button at the top left of the table. A check in Default means that icon has not been changed. The icon and its name are always shown. Default and the key can be hidden from that chooser. Drag a heading to move that column, and drag its edge to change the width. Default and the icon remember their width. Name and Key use the spare width. Search matches the name, the key, or the set. The footer walks the rows that are still shown.",
+          "The Icon Wizard is the pane on the right. The square is the icon you are editing. Icon Library searches the kit. Icon Foundry edits the HTML, and Preview refreshes the square. SVG and PNG import a file, store it with the profile, and save an image that points at that file. Accept writes that icon at once. Close and Cancel leave the saved icon. That asks only after you have changed the icon. Choosing another row asks the same way. Hold Ctrl and roll the wheel over the Wizard to zoom it from 100% to 300%. It starts at 100%, one notch is 5%, and the Away or Toward switch applies. Revert all clears every saved icon. The roof mark is the shipped Mail icon. Account icons still open this Wizard as its own window, and a click outside that window closes it the same way.",
           "A saved icon wins over a theme file, and a theme file wins over the shipped icon. The first time this Icons page loads, older saved icons are cleared once.",
+        ],
+      },
+      {
+        id: "libraries",
+        title: "Libraries",
+        paragraphs: [
+          "Settings → Libraries lists the icon families Pavillion ships. Font Awesome starts on. Material Symbols, Iconify, Bootstrap Icons, Phosphor, Tabler Icons, and Remix Icon start off. Rows in one family sit together. The column chooser is the wide button at the top left of the table. Drag a heading to move that column, and drag its edge to change the width. On, Group, and Style remember their width. Name and the address use the spare width. Add starts another Font Awesome row, and Remove drops the selected one. The form on the right sets the name, the family, and the style. A Font Awesome row also takes a kit id, so you can keep more than one kit, each with its own style. The other families build their address from the family and the style. A default set of icons for each row comes later.",
+          "Save writes the list. A change to the address or the on/off switch reloads the window. A name change does not. A Font Awesome style change does not, because the kit address stays the same. A Material or Phosphor style change does reload, because that address changes. Pavillion loads only these families. Another family is added to the app. If you want one that is not here, say so and it can be considered. An @ before the host is a password and is refused. An @ later in the address, as in the Material font axes, is kept.",
+          "Turning Iconify on loads its script. Icons from Iconify do not draw yet. That mapping comes later. Material Symbols, Bootstrap Icons, Phosphor, Tabler Icons, and Remix Icon draw once they are on, when an icon uses their classes. The Icon Wizard still writes Font Awesome and Material.",
+        ],
+      },
+      {
+        id: "assets",
+        title: "Assets",
+        paragraphs: [
+          "Settings → Assets lists icon files stored with this profile. They are grouped by kind: SVG, PNG, PNG original, and Fetched. The column chooser is the wide button at the top left of the table. Drag a heading to move that column, and drag its edge to change the width. Kind and Size remember their width. The id uses the spare width. The pane on the right shows the file. Delete asks, then removes it. The list loads when you open this page. When the files are over 128 MB, the page says so.",
         ],
       },
       {
@@ -372,6 +388,13 @@ export const helpPages = [
         title: "Module bars",
         paragraphs: [
           "A module is one section of a view, such as Accounts or Help. Its toolbar and footer come from moduleToolbar and moduleFooter in ui/src/common/module-bar.js. A new module uses those builders. The toolbar is the title, selection actions, the column chooser, search, then other actions, then the help jump. The footer's first button is Refresh. A list adds First, Previous, Next, and Last, and puts Export on the right. Both bars are button bars, so Button bars zoom applies. Icon-only controls use the shared tooltip, not a native title.",
+        ],
+      },
+      {
+        id: "icon-tables",
+        title: "Icon tables",
+        paragraphs: [
+          "Settings → Icons, Libraries, and Assets use the same Tabulator module as Accounts (ui/src/settings/split-table.js). The column chooser opens from the row-indicator header, the same button Accounts uses. That header is 40 px wide and the button fills the cell. Every data column is resizable, and the table sets movableColumns so those columns can be dragged. The indicator stays frozen. Column order is preferences.ui.tables.<id>.order. Reset clears hidden columns, widths, and that order. Name, Key, the address, and the asset id stretch, and that width is not saved. On, Default, the icon, Group, Style, Kind, and Size remember their width. The table ids are icons, libraries, and assets. The splits are iconPane, libraryPane, and assetPane. A library change of URL or enabled reloads the window after prefs.ui.set. A Font Awesome style change does not, because the kit URL stays the same. The shipped hosts are kit.fontawesome.com, code.iconify.design, fonts.googleapis.com, and cdn.jsdelivr.net. A host outside that list is refused. Iconify's script may call api.iconify.design, api.simplesvg.com, and api.unisvg.com. iconify-icon and data-icon stay out of the sanitizer until icon mapping lands. A stored group and style ride on the library entry. The core leaves them unread.",
         ],
       },
       {

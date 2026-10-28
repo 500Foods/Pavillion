@@ -3,7 +3,7 @@ import { mount } from "./index.js";
 import { tauriHost, tauriTransport } from "./transport/tauri.js";
 import { clampUi } from "./prefs.js";
 import { installLogHooks } from "./log.js";
-import { defaultLibraries } from "./common/iconhosts.js";
+import { defaultLibraries, mergeShippedLibraries } from "./common/iconhosts.js";
 import { librariesFromKit, loadIconLibraries } from "./common/icons/libraries.js";
 
 const api = createApi(tauriTransport());
@@ -59,7 +59,7 @@ async function initIcons() {
   try {
     const stored = clampUi(await api.prefs.ui.get());
     const list = Array.isArray(stored.iconLibraries)
-      ? stored.iconLibraries
+      ? mergeShippedLibraries(stored.iconLibraries)
       : librariesFromKit(stored.fontawesome_kit, defaultLibraries());
     requestLibraries(list);
   } catch (err) {

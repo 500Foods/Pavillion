@@ -10,8 +10,10 @@ import { mockTransport } from "../transport/mock.js";
    fake here: one button per row (data-account-id), each cell drawn by the real
    column formatters, and a row click calls onRowClick like Tabulator does. */
 const fakeTables = [];
-vi.mock("../common/table.js", () => ({
-  INDICATOR_WIDTH: 22,
+vi.mock("../common/table.js", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+  INDICATOR_WIDTH: actual.INDICATOR_WIDTH,
   createTable(el, options) {
     globalThis.__lastTableOptions = options;
     let current = null;
@@ -136,7 +138,8 @@ vi.mock("../common/table.js", () => ({
     fakeTables.push(handle);
     return handle;
   },
-}));
+  };
+});
 
 function getTransport() {
   const transport = mockTransport();
@@ -1112,7 +1115,8 @@ test("the accounts table asks for the row indicator, sizes the pane for it, and 
   await withView(async () => {
     await addSavedAccount();
     await vi.waitFor(() => expect(document.querySelector(".accounts-tree-pane").style.minWidth).not.toBe(""));
-    expect(document.querySelector(".accounts-tree-pane").style.minWidth).toBe(`${tableMinWidth(accountColumns(document)) + 22 + 2}px`);
+    const { INDICATOR_WIDTH } = await import("../common/table.js");
+    expect(document.querySelector(".accounts-tree-pane").style.minWidth).toBe(`${tableMinWidth(accountColumns(document)) + INDICATOR_WIDTH + 2}px`);
     clickIndicatorHeader();
     expect(document.querySelector('.pav-column-chooser [data-field="__pav_indicator"]')).toBeNull();
   });
@@ -1272,7 +1276,8 @@ test("K-Q14 zoom in place: the table gets width and font scales, the pane minimu
     expect(f).toBe(1.5);
     expect(document.querySelector("#accounts-tree").style.zoom).toBe("");
     const { accountColumns, tableMinWidth } = await import("./accounts-table.js");
-    expect(document.querySelector(".accounts-tree-pane").style.minWidth).toBe(`${tableMinWidth(accountColumns(document)) + 22 + 2}px`);
+    const { INDICATOR_WIDTH } = await import("../common/table.js");
+    expect(document.querySelector(".accounts-tree-pane").style.minWidth).toBe(`${tableMinWidth(accountColumns(document)) + INDICATOR_WIDTH + 2}px`);
   });
 });
 

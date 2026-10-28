@@ -48,7 +48,7 @@ export function openColumnChooser(anchor, options, documentRef = anchor.ownerDoc
         hidden = hiddenAfter(hidden, column.field, check.checked);
         options.onChange(hidden, column.field, check.checked);
       });
-      label.append(check, documentRef.createTextNode(column.title));
+      label.append(check, documentRef.createTextNode(column.title || column.label || ""));
       box.append(label);
     }
     const reset = documentRef.createElement("button");

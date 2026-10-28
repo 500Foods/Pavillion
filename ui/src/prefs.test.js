@@ -186,6 +186,41 @@ test("log zoom snaps and the activity view defaults to log", () => {
 
 test("K-Q12 resize round: the accounts split bounds come from code (0.15 to 0.85)", () => {
   expect(clampUi({}).accounts).toEqual({ split: 0.35, min: 0.15, max: 0.85 });
+  expect(clampUi({}).iconPane).toEqual({ split: 0.4, min: 0.2, max: 0.75 });
+  expect(clampUi({}).libraryPane).toEqual({ split: 0.4, min: 0.2, max: 0.75 });
+  expect(clampUi({}).assetPane).toEqual({ split: 0.4, min: 0.2, max: 0.75 });
+  expect(clampUi({ iconPane: { split: 0.99, min: 0.1, max: 0.5 } }).iconPane).toEqual({ split: 0.75, min: 0.2, max: 0.75 });
+  expect(clampUi({
+    iconLibraries: [{
+      id: "fontawesome",
+      name: "Font Awesome",
+      type: "script",
+      url: "https://kit.fontawesome.com/abc.js",
+      enabled: true,
+      group: "fontawesome",
+      style: "sharp-thin",
+      extra: 1,
+    }],
+  }).iconLibraries).toEqual([{
+    id: "fontawesome",
+    name: "Font Awesome",
+    type: "script",
+    url: "https://kit.fontawesome.com/abc.js",
+    enabled: true,
+    group: "fontawesome",
+    style: "sharp-thin",
+  }]);
+  expect(clampUi({
+    iconLibraries: [{
+      id: "x",
+      name: "X",
+      type: "script",
+      url: "https://kit.fontawesome.com/a.js",
+      enabled: false,
+      group: "Bad",
+      style: "no style",
+    }],
+  }).iconLibraries[0].group).toBeUndefined();
   const old = clampUi({ accounts: { split: 0.8, min: 0.15, max: 0.6 } }).accounts;
   expect(old).toEqual({ split: 0.8, min: 0.15, max: 0.85 });
   expect(clampUi({ accounts: { split: 0.99 } }).accounts.split).toBe(0.85);

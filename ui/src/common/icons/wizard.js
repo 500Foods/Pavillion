@@ -180,10 +180,17 @@ export function openIconWizard(parent, options = {}) {
     ? 1
     : colorZoomOf(options.zoom);
   let wheelRemainder = 0;
+  const embed = options.embed === true;
+  const control = {
+    isDirty() {
+      return false;
+    },
+    abandon() {},
+  };
 
-  return new Promise((resolve) => {
-    const dialog = doc.createElement("dialog");
-    dialog.className = "pav-dialog pav-icon-wizard";
+  const pending = new Promise((resolve) => {
+    const dialog = doc.createElement(embed ? "div" : "dialog");
+    dialog.className = embed ? "pav-icon-wizard is-embedded" : "pav-dialog pav-icon-wizard";
     dialog.style.setProperty("--pav-wizard-zoom", String(wizardZoom));
     const head = doc.createElement("div");
     head.className = "pav-icon-wizard-head";
@@ -702,6 +709,9 @@ export function openIconWizard(parent, options = {}) {
       resolve(value);
     }
 
+    control.isDirty = () => edited && activeHtml() !== current;
+    control.abandon = () => finish(null);
+
     if (modes.includes("library")) {
       pages.library = libraryPage();
     }
@@ -741,18 +751,20 @@ export function openIconWizard(parent, options = {}) {
     acceptBtn.addEventListener("click", accept);
     cancelBtn.addEventListener("click", () => requestClose());
     closeBtn.addEventListener("click", () => requestClose());
-    dialog.addEventListener("cancel", (event) => {
-      event.preventDefault();
-      requestClose();
-    });
-    dialog.addEventListener("click", (event) => {
-      const rect = dialog.getBoundingClientRect();
-      const outside = event.clientX < rect.left || event.clientX > rect.right
-        || event.clientY < rect.top || event.clientY > rect.bottom;
-      if (outside) {
+    if (!embed) {
+      dialog.addEventListener("cancel", (event) => {
+        event.preventDefault();
         requestClose();
-      }
-    });
+      });
+      dialog.addEventListener("click", (event) => {
+        const rect = dialog.getBoundingClientRect();
+        const outside = event.clientX < rect.left || event.clientX > rect.right
+          || event.clientY < rect.top || event.clientY > rect.bottom;
+        if (outside) {
+          requestClose();
+        }
+      });
+    }
     dialog.addEventListener("wheel", (event) => {
       if (!event.ctrlKey) {
         return;
@@ -780,9 +792,16 @@ export function openIconWizard(parent, options = {}) {
     if (mode !== "foundry") {
       paintSquare(current || activeHtml(), true);
     }
-    show(dialog);
+    if (!embed) {
+      show(dialog);
+    }
     dialog.dataset.renderSize = String(PNG_RENDER);
   });
+  if (embed) {
+    pending.isDirty = () => control.isDirty();
+    pending.abandon = () => control.abandon();
+  }
+  return pending;
 }
 
 export { paintRender, PNG_RENDER };

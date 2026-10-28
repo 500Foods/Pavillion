@@ -192,6 +192,12 @@
   zoom: var(--pav-wizard-zoom, 1);
 }
 
+.pav-root .pav-icon-wizard.is-embedded {
+  width: auto;
+  max-width: 100%;
+  margin: 0.75rem;
+}
+
 .pav-root .pav-icon-wizard-head {
   display: flex;
   align-items: center;
@@ -315,80 +321,6 @@
   margin: 0.25rem 0 0;
   color: var(--pav-text-muted);
   font-size: 0.85rem;
-}
-
-.pav-root .pav-icon-libraries,
-.pav-root .pav-icon-add,
-.pav-root .pav-icon-asset {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.pav-root .pav-icon-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  margin: 0.75rem 0 0.5rem;
-}
-
-.pav-root .pav-icon-tab {
-  padding: 0.25rem 0.6rem;
-  border: 1px solid var(--pav-border);
-  border-radius: var(--pav-dialog-button-radius);
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.pav-root .pav-icon-tab[aria-selected="true"] {
-  background: var(--pav-surface-button-active);
-}
-
-.pav-root .pav-icon-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.pav-root .pav-icon-table th,
-.pav-root .pav-icon-table td {
-  padding: 0.3rem 0.5rem;
-  text-align: left;
-  border-bottom: 1px solid var(--pav-border);
-  vertical-align: middle;
-}
-
-.pav-root .pav-icon-table th:first-child,
-.pav-root .pav-icon-table .pav-icon-default {
-  width: 5rem;
-  text-align: center;
-}
-
-.pav-root .pav-icon-table tbody tr {
-  cursor: pointer;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.pav-root .pav-icon-table tbody tr:hover,
-.pav-root .pav-icon-table tbody tr:focus-visible {
-  background: var(--pav-surface-button-active);
-}
-
-.pav-root .pav-icon-table .pav-icon-glyph {
-  width: 3rem;
-}
-
-.pav-root .pav-icon-table .pav-icon-glyph .icon,
-.pav-root .pav-icon-table .pav-icon-glyph svg,
-.pav-root .pav-icon-table .pav-icon-glyph img {
-  width: 1.25rem;
-  height: 1.25rem;
-  font-size: 1.25rem;
-  pointer-events: none;
-  -webkit-user-drag: none;
 }
 
 .pav-root .pav-icon-mode[aria-pressed="true"] {

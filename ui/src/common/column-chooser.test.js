@@ -67,6 +67,22 @@ test("opening again on the same anchor toggles it closed", () => {
   expect(anchor.getAttribute("aria-expanded")).toBe("false");
 });
 
+test("a column name uses title, then label, and never the word undefined", () => {
+  document.body.replaceChildren();
+  const anchor = document.createElement("button");
+  document.body.append(anchor);
+  const chooser = openColumnChooser(anchor, {
+    columns: [{ field: "set", label: "Group" }, { field: "bare" }],
+    hidden: [],
+    onChange() {},
+  });
+  const labels = [...chooser.element.querySelectorAll("label")].map((node) => node.textContent);
+  expect(labels[0]).toBe("Group");
+  expect(labels[1]).toBe("");
+  expect(chooser.element.textContent).not.toContain("undefined");
+  chooser.close();
+});
+
 test("below-right puts the popover's left edge at the anchor's left", () => {
   document.body.replaceChildren();
   const anchor = document.createElement("button");

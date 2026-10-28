@@ -4,8 +4,8 @@
 
 #include <string.h>
 
-static const char *const k_script_hosts[] = {"kit.fontawesome.com", NULL};
-static const char *const k_style_hosts[] = {"fonts.googleapis.com", NULL};
+static const char *const k_script_hosts[] = {"kit.fontawesome.com", "code.iconify.design", NULL};
+static const char *const k_style_hosts[] = {"fonts.googleapis.com", "cdn.jsdelivr.net", NULL};
 
 static int host_listed(const char *host, const char *const *list) {
     size_t i;
@@ -168,7 +168,7 @@ int pav_icon_libraries_check(const json_t *ui, char *err, size_t err_len) {
         }
         allowed = strcmp(type, "script") == 0 ? k_script_hosts : k_style_hosts;
         if (!host_listed(host, allowed)) {
-            cfg_err(err, err_len, "a new host needs a rebuild (%s is not allowlisted)", host);
+            cfg_err(err, err_len, "that host is not shipped (%s)", host);
             return -1;
         }
     }

@@ -3,8 +3,11 @@
    plus the modules a table asks for (never TabulatorFull). Screens call
    createTable(el, {columns, data, rowId, onRowClick, rowClass, groupBy,
    groupHeader, groupOrder, footerElement, select, onRender, download, filter,
-   indicator, onIndicatorHeader, fitTitles, onColumnResized, onWidths}). Columns resize only when they set
-   resizable:true (TABULATOR.md Fitted titles, resizing).
+   indicator, onIndicatorHeader, fitTitles, onColumnResized, onWidths, movable,
+   onColumnMoved}). Columns resize only when they set resizable:true
+   (TABULATOR.md Fitted titles, resizing). movable sets Tabulator
+   movableColumns and registers MoveColumnsModule. There is no column
+   movable flag in Tabulator 6.6.
    The table fills el (height 100%, virtual rows) and ResizeTable redraws it
    on resize and when a hidden panel is shown. The look is .pav-table on
    --pav-* variables in theme.css; no Tabulator stylesheet is loaded.
@@ -46,6 +49,11 @@ export function modulesFor(options) {
   if (options.indicator || columns.some((c) => c.frozen)) {
     names.push("FrozenColumnsModule");
   }
+  /* After FrozenColumns, so a frozen indicator is already marked and is not
+     a drag source (TABULATOR.md Movable columns). */
+  if (options.movable) {
+    names.push("MoveColumnsModule");
+  }
   if (columns.some((c) => c.resizable === true)) {
     names.push("ResizeColumnsModule");
   }
@@ -74,7 +82,7 @@ export function sortIcon(dir, documentRef = globalThis.document) {
 /* Row indicator column (TABULATOR.md): a frozen narrow first column showing
    the current row (caret) or a row state set by the page (editing: pen). */
 export const INDICATOR_FIELD = "__pav_indicator";
-export const INDICATOR_WIDTH = 22;
+export const INDICATOR_WIDTH = 40;
 const INDICATOR_ICONS = { current: iconClass("table.current"), editing: iconClass("table.editing") };
 
 function faIcon(name, documentRef) {
@@ -177,6 +185,7 @@ export function tabulatorOptions(options, data, gate, documentRef = globalThis.d
       : {}),
     ...((options.columns || []).some((c) => c.bottomCalc) ? { columnCalcs: "table" } : {}),
     ...(options.select ? { selectableRows: 1, selectableRowsCheck: () => gate.open } : {}),
+    ...(options.movable ? { movableColumns: true } : {}),
     ...(options.download ? { downloadRowRange: "all", downloadConfig: { rowGroups: false, columnCalcs: false } } : {}),
     ...(options.footerElement ? { footerElement: options.footerElement } : {}),
     ...(typeof options.rowClass === "function" ? { rowFormatter: (row) => markRow(row, options.rowClass) } : {}),
@@ -403,6 +412,19 @@ export function createTable(el, options) {
       }
       relayout();
     });
+    table.on("columnMoved", (_column, columns) => {
+      if (typeof options.onColumnMoved !== "function" || !Array.isArray(columns)) {
+        return;
+      }
+      const order = [];
+      for (const column of columns) {
+        const field = column && typeof column.getField === "function" ? column.getField() : "";
+        if (field && field !== INDICATOR_FIELD) {
+          order.push(field);
+        }
+      }
+      options.onColumnMoved(order);
+    });
     if (typeof options.onRowClick === "function") {
       table.on("rowClick", (_event, row) => options.onRowClick(row.getData()));
     }
@@ -455,6 +477,19 @@ export function createTable(el, options) {
     scrollbarWidth() {
       const holder = el.querySelector(".tabulator-tableholder");
       return holder ? Math.max(0, holder.offsetWidth - holder.clientWidth) : 0;
+    },
+    /* Put data columns into this field order (Reset). The indicator stays put. */
+    setColumnOrder(fields) {
+      if (!built || !Array.isArray(fields) || typeof table.getColumn !== "function") {
+        return;
+      }
+      const list = fields.filter((field) => field && field !== INDICATOR_FIELD && table.getColumn(field));
+      for (let i = 1; i < list.length; i += 1) {
+        const column = table.getColumn(list[i]);
+        if (column && typeof column.move === "function") {
+          column.move(list[i - 1], true);
+        }
+      }
     },
     /* Set one column's width (Reset restores the coded widths). */
     setColumnWidth(field, width) {

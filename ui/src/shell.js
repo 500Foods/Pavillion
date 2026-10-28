@@ -23,11 +23,13 @@ import { createLogView } from "./log/view.js";
 import { createMailList } from "./mail/list.js";
 import { createMailNav } from "./mail/nav.js";
 import { renderRow } from "./tree/render.js";
-import { defaultLibraries } from "./common/iconhosts.js";
+import { defaultLibraries, mergeShippedLibraries } from "./common/iconhosts.js";
 import { iconNode, navEntries } from "./common/icons/registry.js";
 import { librariesFromKit } from "./common/icons/libraries.js";
 import { readAssetBytes, storeRenderedPng } from "./common/icons/bytes.js";
 import { mountIconsPanel, storeSvgText } from "./common/icons/panel.js";
+import { mountLibrariesPanel } from "./settings/libraries.js";
+import { mountAssetsPanel } from "./settings/assets.js";
 import { openIconWizard } from "./common/icons/wizard.js";
 import { bindColorPicker } from "./common/coloris.js";
 import { DEFAULT_UI, FEATURE_KEYS, RAIL_KEYS, chordsOf, clampUi, railOf, snapZoom } from "./prefs.js";
@@ -380,6 +382,8 @@ function applyMark() {
 }
 
 let iconsPanel = null;
+let librariesPanel = null;
+let assetsPanel = null;
 let canSave = false;
 let themeChoice = "system";
 let themePast = [];
@@ -863,7 +867,11 @@ async function loadPrefs() {
     iconsMigrated = true;
   }
   if (Array.isArray(stored.iconLibraries)) {
-    ui.iconLibraries = stored.iconLibraries;
+    const merged = mergeShippedLibraries(stored.iconLibraries);
+    ui.iconLibraries = merged;
+    if (merged.length !== stored.iconLibraries.length) {
+      iconsMigrated = true;
+    }
   } else {
     ui.iconLibraries = librariesFromKit(stored.fontawesome_kit, defaultLibraries());
     iconsMigrated = true;
@@ -1825,6 +1833,8 @@ function bindSettings() {
     });
   }
   ensureIconsPanel();
+  ensureLibrariesPanel();
+  ensureAssetsPanel();
   const themeList = mountRoot.querySelector("#theme-list");
   if (themeList) {
     themeList.addEventListener("change", (event) => {
@@ -1911,6 +1921,21 @@ function bindSettings() {
       }
       if (button.dataset.heading === "icons") {
         ensureIconsPanel();
+        if (iconsPanel) {
+          iconsPanel.paintRows();
+        }
+      }
+      if (button.dataset.heading === "libraries") {
+        ensureLibrariesPanel();
+        if (librariesPanel) {
+          librariesPanel.paint();
+        }
+      }
+      if (button.dataset.heading === "assets") {
+        ensureAssetsPanel();
+        if (assetsPanel) {
+          assetsPanel.refresh();
+        }
       }
       showNav("settings");
       openHome("settings", { heading: button.dataset.heading });
@@ -1918,14 +1943,40 @@ function bindSettings() {
   }
 }
 
-function ensureIconsPanel() {
-  const hostEl = mountRoot && mountRoot.querySelector("#icons-panel");
-  if (!hostEl || iconsPanel) {
-    return;
-  }
-  iconsPanel = mountIconsPanel(hostEl, {
+function tableStore() {
+  return {
+    tableHidden(id) {
+      const entry = ui.tables && ui.tables[id];
+      return entry && Array.isArray(entry.hidden) ? entry.hidden : [];
+    },
+    saveTableHidden(id, hidden) {
+      ui.tables = { ...(ui.tables || {}), [id]: { ...((ui.tables && ui.tables[id]) || {}), hidden } };
+      persistLayout();
+    },
+    tableWidths(id) {
+      const entry = ui.tables && ui.tables[id];
+      return entry && entry.widths && typeof entry.widths === "object" ? entry.widths : {};
+    },
+    saveTableWidths(id, widths) {
+      ui.tables = { ...(ui.tables || {}), [id]: { ...((ui.tables && ui.tables[id]) || {}), widths } };
+      persistLayout();
+    },
+    tableOrder(id) {
+      const entry = ui.tables && ui.tables[id];
+      return entry && Array.isArray(entry.order) ? entry.order : [];
+    },
+    saveTableOrder(id, order) {
+      ui.tables = { ...(ui.tables || {}), [id]: { ...((ui.tables && ui.tables[id]) || {}), order } };
+      persistLayout();
+    },
+  };
+}
+
+function iconPageCtx() {
+  return {
     ui,
     api,
+    ...tableStore(),
     saveNow() {
       dirty = true;
       return flushUiSave();
@@ -1950,14 +2001,14 @@ function ensureIconsPanel() {
     search(body) {
       return api.iconlib.search(body);
     },
-    loadLibraries(list) {
-      if (host && typeof host.loadLibraries === "function") {
-        host.loadLibraries(list);
+    reload() {
+      if (host && typeof host.reload === "function") {
+        host.reload();
       }
     },
     pickFile: pickIconFile,
     storePng: (bytes, transform) => storeRenderedPng(api, bytes, transform),
-    swatches: ui.colorSwatches,
+    swatches: () => ui.colorSwatches,
     wizardZoom: () => ui.iconWizardZoom,
     onWizardZoom(next) {
       ui.iconWizardZoom = next;
@@ -1965,7 +2016,28 @@ function ensureIconsPanel() {
       scheduleUiSave();
     },
     toward: () => ui.zoom.wheel === "toward",
-  });
+  };
+}
+
+function ensureIconsPanel() {
+  if (!mountRoot || iconsPanel || !mountRoot.querySelector("#icons-tree")) {
+    return;
+  }
+  iconsPanel = mountIconsPanel(mountRoot, iconPageCtx());
+}
+
+function ensureLibrariesPanel() {
+  if (!mountRoot || librariesPanel || !mountRoot.querySelector("#libraries-tree")) {
+    return;
+  }
+  librariesPanel = mountLibrariesPanel(mountRoot, iconPageCtx());
+}
+
+function ensureAssetsPanel() {
+  if (!mountRoot || assetsPanel || !mountRoot.querySelector("#assets-tree")) {
+    return;
+  }
+  assetsPanel = mountAssetsPanel(mountRoot, iconPageCtx());
 }
 
 async function pickIconFile(kind) {
@@ -2524,6 +2596,9 @@ export async function startShell(surface, nextApi, nextHost, result) {
   bindSplit("files");
   bindSplit("help");
   bindSplit("accounts");
+  bindSplit("iconPane");
+  bindSplit("libraryPane");
+  bindSplit("assetPane");
   bindSettings();
   bindUpdate();
   bindDemo(result.debug === true);
@@ -2856,22 +2931,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
   mountRoot.addEventListener("click", onHelpJump);
   accountsView = createAccountsView(api, mountRoot, {
     host,
-    tableHidden(id) {
-      const entry = ui.tables && ui.tables[id];
-      return entry && Array.isArray(entry.hidden) ? entry.hidden : [];
-    },
-    saveTableHidden(id, hidden) {
-      ui.tables = { ...(ui.tables || {}), [id]: { ...((ui.tables && ui.tables[id]) || {}), hidden } };
-      persistLayout();
-    },
-    tableWidths(id) {
-      const entry = ui.tables && ui.tables[id];
-      return entry && entry.widths && typeof entry.widths === "object" ? entry.widths : {};
-    },
-    saveTableWidths(id, widths) {
-      ui.tables = { ...(ui.tables || {}), [id]: { ...((ui.tables && ui.tables[id]) || {}), widths } };
-      persistLayout();
-    },
+    ...tableStore(),
     timeZone: () => logTimeZone,
     confirm(text, name) {
       if (!widgets) {
@@ -2903,6 +2963,13 @@ export async function startShell(surface, nextApi, nextHost, result) {
     timeZone: () => logTimeZone,
     onError(text) {
       showBanner(text);
+    },
+    recentMax: () => ui.iconRecentMax,
+    onRecent(next) {
+      ui.iconRecentMax = next;
+      ui.iconRecent = Array.isArray(ui.iconRecent) ? ui.iconRecent.slice(0, next) : [];
+      dirty = true;
+      return flushUiSave();
     },
   });
   limitsSettings.refresh();

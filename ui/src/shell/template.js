@@ -72,6 +72,8 @@ export const shellMarkup = `<div class="shell">
               <button type="button" data-heading="features" aria-current="true">Features</button>
               <button type="button" data-heading="theme">Themes</button>
               <button type="button" data-heading="icons">Icons</button>
+              <button type="button" data-heading="libraries">Libraries</button>
+              <button type="button" data-heading="assets">Assets</button>
               <button type="button" data-heading="fonts">Fonts</button>
               <button type="button" data-heading="formats">Formats</button>
               <button type="button" data-heading="tabs">Tabs</button>
@@ -273,6 +275,10 @@ export const shellMarkup = `<div class="shell">
                   <input id="limits-list-rows" type="number" min="1" max="10000" step="1" value="10000" inputmode="numeric" />
                   <span class="zoom-value">rows</span>
                 </label>
+                <label class="zoom"><span class="zoom-label">Recent icons</span>
+                  <input id="limits-recent" type="number" min="1" max="48" step="1" value="12" inputmode="numeric" />
+                  <span class="zoom-value">icons</span>
+                </label>
               </div>
               <div class="limits-check">
                 <button type="button" id="limits-measure">Check sizes</button>
@@ -297,7 +303,7 @@ export const shellMarkup = `<div class="shell">
                   </tr>
                 </tfoot>
               </table>
-              <p class="muted">Database is message text, contacts, and calendars. Document is attachments and files. They stay on this machine up to these sizes. Beside each one is what is on disk now, and the free space on the volume that holds this storage. Each account lists how many of those entries are on the server, and their size. The Total row adds each column on its own. Database and Document are not added together. Database counts messages, contacts, and events. Document counts attachments and files. A size is shown after Check sizes has split mail into message text and attachments. A contact, calendar, or file size that was not reported is left out. A progress bar and Cancel show while that runs, and the line beside the button is when it last finished. Message list is how many messages a folder shows, newest first. It starts at 10000 and is a whole number from 1 to 10000. It is not a disk size. Apply saves these limits. The next finished sync drops the oldest opened message text and documents that are over a limit. Drafts, flagged messages, and mail waiting to send stay. Contacts and calendars stay. The log size cap is on Logs.</p>
+              <p class="muted">Database is message text, contacts, and calendars. Document is attachments and files. They stay on this machine up to these sizes. Beside each one is what is on disk now, and the free space on the volume that holds this storage. Each account lists how many of those entries are on the server, and their size. The Total row adds each column on its own. Database and Document are not added together. Database counts messages, contacts, and events. Document counts attachments and files. A size is shown after Check sizes has split mail into message text and attachments. A contact, calendar, or file size that was not reported is left out. A progress bar and Cancel show while that runs, and the line beside the button is when it last finished. Message list is how many messages a folder shows, newest first. It starts at 10000 and is a whole number from 1 to 10000. It is not a disk size. Recent icons is how many Icon Wizard picks are kept, from 1 to 48, starting at 12. Apply saves these limits. The next finished sync drops the oldest opened message text and documents that are over a limit. Drafts, flagged messages, and mail waiting to send stay. Contacts and calendars stay. The log size cap is on Logs.</p>
             </div>
             <div class="button-bar pav-module-footer" id="limits-footer" role="toolbar" aria-label="Limits actions"></div>
           </div>
@@ -384,15 +390,56 @@ export const shellMarkup = `<div class="shell">
             <div class="button-bar pav-module-footer" id="formats-footer" role="toolbar" aria-label="Formats actions"></div>
           </div>
           <div data-settings="icons" hidden>
-            <div class="button-bar settings-bar" role="toolbar" aria-label="Icons">
-              <span class="settings-bar-title">Icons</span>
-              <span class="log-bar-spacer"></span>
+            <div class="button-bar pav-module-toolbar" id="icons-toolbar" role="toolbar" aria-label="Icons">
               <button type="button" class="help-jump" data-help-page="settings" data-help-section="icons" aria-label="Help for Icons">
                 <i class="icon fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
               </button>
             </div>
-            <div class="settings-body" id="icons-panel"></div>
-           </div>
+            <div class="settings-body">
+              <div class="settings-split">
+                <div class="settings-tree-pane" id="icons-tree-pane">
+                  <div id="icons-tree" class="settings-tree"></div>
+                </div>
+                <button type="button" class="split-resize" data-split="iconPane" aria-label="Resize icon panes"></button>
+                <div class="settings-form-pane" id="icons-form"></div>
+              </div>
+            </div>
+            <div class="button-bar pav-module-footer" id="icons-footer" role="toolbar" aria-label="Icon actions"></div>
+          </div>
+          <div data-settings="libraries" hidden>
+            <div class="button-bar pav-module-toolbar" id="libraries-toolbar" role="toolbar" aria-label="Libraries">
+              <button type="button" class="help-jump" data-help-page="settings" data-help-section="libraries" aria-label="Help for Libraries">
+                <i class="icon fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="settings-body">
+              <div class="settings-split">
+                <div class="settings-tree-pane" id="libraries-tree-pane">
+                  <div id="libraries-tree" class="settings-tree"></div>
+                </div>
+                <button type="button" class="split-resize" data-split="libraryPane" aria-label="Resize library panes"></button>
+                <div class="settings-form-pane" id="libraries-form"></div>
+              </div>
+            </div>
+            <div class="button-bar pav-module-footer" id="libraries-footer" role="toolbar" aria-label="Library actions"></div>
+          </div>
+          <div data-settings="assets" hidden>
+            <div class="button-bar pav-module-toolbar" id="assets-toolbar" role="toolbar" aria-label="Assets">
+              <button type="button" class="help-jump" data-help-page="settings" data-help-section="assets" aria-label="Help for Assets">
+                <i class="icon fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="settings-body">
+              <div class="settings-split">
+                <div class="settings-tree-pane" id="assets-tree-pane">
+                  <div id="assets-tree" class="settings-tree"></div>
+                </div>
+                <button type="button" class="split-resize" data-split="assetPane" aria-label="Resize asset panes"></button>
+                <div class="settings-form-pane" id="assets-form"></div>
+              </div>
+            </div>
+            <div class="button-bar pav-module-footer" id="assets-footer" role="toolbar" aria-label="Asset actions"></div>
+          </div>
            <div data-settings="tabs" hidden>
              <div class="button-bar settings-bar" role="toolbar" aria-label="Tabs">
                <span class="settings-bar-title">Tabs</span>

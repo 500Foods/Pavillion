@@ -1936,13 +1936,13 @@
   margin: 0;
 }
 
-.pav-root .accounts-split {
+.pav-root :is(.accounts-split, .settings-split) {
   display: flex;
   flex: 1;
   min-height: 0;
 }
 
-.pav-root .accounts-tree-pane {
+.pav-root :is(.accounts-tree-pane, .settings-tree-pane) {
   flex: 0 0 35%;
   display: flex;
   flex-direction: column;
@@ -1954,28 +1954,81 @@
 }
 
 /* K-Q7: one 1px line like the nav edge; the 6px handle is invisible on it. */
-.pav-root .accounts-split > .split-resize {
+.pav-root :is(.accounts-split, .settings-split) > .split-resize {
   border: 0;
   margin: 0 -3px;
   position: relative;
   z-index: 2;
 }
 
-.pav-root .accounts-form-pane {
+.pav-root :is(.accounts-form-pane, .settings-form-pane) {
   flex: 1;
   min-width: 20rem;
   min-height: 0;
   overflow: auto;
 }
 
-.pav-root .accounts-tree {
+.pav-root :is(.accounts-tree, .settings-tree) {
   flex: 1;
   min-height: 0;
   min-width: 0;
 }
 
-.pav-root .accounts-tree .accounts-empty {
+.pav-root .accounts-tree .accounts-empty,
+.pav-root .settings-tree .settings-empty {
   padding: 0.75rem;
+}
+
+.pav-root .settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  max-width: 36rem;
+}
+
+.pav-root .settings-form-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.pav-root .settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pav-root .settings-field input,
+.pav-root .settings-field select {
+  font: inherit;
+  color: inherit;
+  background: var(--pav-surface-button);
+  border: 1px solid var(--pav-border);
+  border-radius: var(--pav-dialog-button-radius);
+  padding: 0.3rem 0.45rem;
+}
+
+.pav-root .settings-check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.pav-root .settings-form-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.pav-root .settings-empty {
+  margin: 0;
+  color: var(--pav-text-muted);
+}
+
+.pav-root .settings-asset-preview {
+  display: block;
+  max-width: 8rem;
+  max-height: 8rem;
+  object-fit: contain;
 }
 
 .pav-root .accounts-tree-list {
@@ -2471,12 +2524,22 @@
 .pav-root .pav-table .tabulator-group:not(.tabulator-group-visible) .pav-group-toggle {
   transform: rotate(-90deg);
 }
-/* Row indicator column (TABULATOR.md): frozen, centred icon, no padding. */
+/* Row indicator column (TABULATOR.md): frozen, centred icon, no padding.
+   The header button fills the 40 px cell so the chooser is easy to click. */
 .pav-root .pav-table .tabulator-cell.pav-table-indicator,
+.pav-root .pav-table .tabulator-col.pav-table-indicator,
 .pav-root .pav-table .tabulator-col.pav-table-indicator .tabulator-col-content {
   padding: 0;
   text-align: center;
   justify-content: center;
+}
+.pav-root .pav-table .tabulator-col.pav-table-indicator .tabulator-col-content,
+.pav-root .pav-table .tabulator-col.pav-table-indicator .tabulator-col-title-holder,
+.pav-root .pav-table .tabulator-col.pav-table-indicator .tabulator-col-title {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 1.75rem;
 }
 .pav-root .pav-table .tabulator-cell.pav-table-indicator {
   color: var(--pav-table-indicator);
@@ -2661,7 +2724,7 @@
   flex: none;
 }
 /* D-10: a module fills its area; a split body meets both bars. */
-.pav-root [data-settings="accounts"] > .settings-body {
+.pav-root :is([data-settings="accounts"], [data-settings="icons"], [data-settings="libraries"], [data-settings="assets"]) > .settings-body {
   display: flex;
   flex-direction: column;
   padding: 0;
@@ -2682,6 +2745,14 @@
 .pav-root .pav-table .tabulator-cell.pav-col-check {
   justify-content: center;
   text-align: center;
+}
+
+.pav-root .pav-table .pav-icon-cell :is(.icon, svg, img) {
+  width: 1.25rem;
+  height: 1.25rem;
+  font-size: 1.25rem;
+  pointer-events: none;
+  -webkit-user-drag: none;
 }
 
 /* D-UI module footer: Refresh spins once per click (module-bar.js). */
@@ -2727,8 +2798,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
   width: 100%;
   height: 100%;
+  min-width: 100%;
+  min-height: 1.75rem;
   padding: 0;
   border: 0;
   background: none;

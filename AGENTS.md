@@ -58,7 +58,7 @@ Tasks, Notes, and Argent are icons and empty homes. GitHub is an icon. Do not bu
 
 No framework and no CSS library. Semantic `--pav-*` variables. Widgets scope under `.pav-root`. Times are 24 h. Default zone is `America/Vancouver`.
 
-Allowed libraries, installed by the phase that first needs them: Tabulator for mail, contacts, and files lists; CodeMirror 6 for the log and later HTML/Lua source; SunEditor inside the sandboxed composer, plus a plain-text mode. The mailbox tree, the activity table, and calendar grids stay plain DOM. Another UI library needs a Lock change first.
+Allowed libraries, installed by the phase that first needs them: Tabulator for mail, contacts, and files lists, and for Settings → Icons, Libraries, and Assets; CodeMirror 6 for the log and later HTML/Lua source; SunEditor inside the sandboxed composer, plus a plain-text mode. The mailbox tree, the activity table, and calendar grids stay plain DOM. Another UI library needs a Lock change first.
 
 The page does not read `Pavillion.json`. Layout the user can change lives in the opaque `preferences.ui` blob (64 KB). The core does not interpret it, except the icon-library allowlist when that phase lands. The page clamps. Zoom writes at most every 300 ms and on `pagehide`.
 

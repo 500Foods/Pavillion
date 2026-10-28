@@ -76,11 +76,12 @@ vi.mock("tabulator-tables", () => {
     ResizeColumnsModule: mod("resizeColumns"),
     FilterModule: mod("filter"),
     FrozenColumnsModule: mod("frozenColumns"),
+    MoveColumnsModule: mod("moveColumns"),
     TabulatorFull: "full",
   };
 });
 
-import { createTable, indicatorColumn, INDICATOR_FIELD, INDICATOR_WIDTH, modulesFor, sortIcon } from "./table.js";
+import { createTable, indicatorColumn, INDICATOR_FIELD, INDICATOR_WIDTH, modulesFor, sortIcon, tabulatorOptions } from "./table.js";
 import { accountColumns } from "../settings/accounts-table.js";
 
 test("a plain table registers only the base modules, fills its element, and loads data once", async () => {
@@ -337,7 +338,7 @@ test("zoom in place: setScale sets the font, scales fixed columns from base widt
     const col = { width, getField: () => field, getElement: () => document.createElement("div"), getWidth: () => col.width, setWidth: (w) => { col.width = w; }, isVisible: () => true };
     cols[field] = col;
   };
-  mk(INDICATOR_FIELD, 22);
+  mk(INDICATOR_FIELD, INDICATOR_WIDTH);
   mk("n", 60);
   mk("name", 300);
   t.getColumn = (f) => cols[f];
@@ -345,7 +346,7 @@ test("zoom in place: setScale sets the font, scales fixed columns from base widt
   t.redraw = () => {};
   t.handlers.tableBuilt();
   expect(cols.n.width).toBe(90);
-  expect(cols[INDICATOR_FIELD].width).toBe(33);
+  expect(cols[INDICATOR_FIELD].width).toBe(Math.round(INDICATOR_WIDTH * 1.5));
   expect(cols.name.width).toBe(300); /* Name absorbs; never scaled */
   cols.n.width = 120;
   t.handlers.columnResized(cols.n);
@@ -450,4 +451,40 @@ test("tabulatorOptions strips download keys unless the Download module is on", a
   expect(cols[0].download).toBe(false);
   const on = tabulatorOptions({ columns: cols, download: true }, [], { open: false });
   expect(on.columns[0].titleDownload).toBe("A");
+});
+
+test("movable columns register MoveColumns, keep the indicator fixed, and report field order", async () => {
+  expect(modulesFor({ movable: true, indicator: true, columns: [{ field: "a", headerSort: false }] })).toEqual([
+    "FormatModule", "InteractionModule", "ResizeTableModule", "FrozenColumnsModule", "MoveColumnsModule",
+  ]);
+  expect(modulesFor({ columns: [{ field: "a", headerSort: false }] })).not.toContain("MoveColumnsModule");
+  const opts = tabulatorOptions({ movable: true, indicator: true, columns: [{ field: "a", resizable: true, headerSort: false }] }, [], { open: false });
+  expect(opts.movableColumns).toBe(true);
+  expect(opts.columns[0]).toMatchObject({ field: INDICATOR_FIELD, frozen: true, resizable: false });
+  expect("movable" in opts.columns[0]).toBe(false);
+  expect(tabulatorOptions({ columns: [{ field: "a", headerSort: false }] }, [], { open: false }).movableColumns).toBeUndefined();
+  const el = document.createElement("div");
+  const moved = [];
+  const before = made.length;
+  const handle = createTable(el, {
+    movable: true,
+    indicator: true,
+    columns: [{ field: "a", headerSort: false }, { field: "b", headerSort: false }],
+    data: [{ id: "x" }],
+    onColumnMoved: (order) => moved.push(order),
+  });
+  await vi.waitFor(() => expect(made.length).toBe(before + 1));
+  const t = made.at(-1);
+  t.handlers.tableBuilt();
+  t.handlers.columnMoved(null, [
+    { getField: () => INDICATOR_FIELD },
+    { getField: () => "b" },
+    { getField: () => "a" },
+  ]);
+  expect(moved).toEqual([["b", "a"]]);
+  const calls = [];
+  t.getColumn = (field) => ({ move: (to, after) => calls.push([field, to, after]) });
+  handle.setColumnOrder(["b", "a"]);
+  expect(calls).toEqual([["a", "b", true]]);
+  handle.destroy();
 });

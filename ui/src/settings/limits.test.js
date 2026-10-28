@@ -345,6 +345,7 @@ test("Settings → Limits shows the defaults, saves them, and keeps the help jum
     "Database",
     "Document",
     "Message list",
+    "Recent icons",
   ]);
   expect(pane.querySelector("#limits-list-rows").value).toBe("10000");
   expect([...pane.querySelectorAll(".limits-kind")].map((node) => node.textContent)).toEqual([
@@ -402,5 +403,39 @@ test("Apply writes the message list cap and clamps it", async () => {
   rows.value = "nope";
   rows.dispatchEvent(new Event("blur"));
   expect(rows.value).toBe("10000");
+  settings.destroy();
+});
+
+test("Apply writes the recent icon cap when the field is present", async () => {
+  const transport = mockTransport();
+  const root = document.createElement("div");
+  // html-ok: static test fixture, not outside data.
+  root.innerHTML = `
+    <div id="limits-toolbar" class="button-bar"></div>
+    <input id="limits-bodies" type="number" value="2048" />
+    <input id="limits-blobs" type="number" value="4096" />
+    <input id="limits-list-rows" type="number" value="10000" />
+    <input id="limits-recent" type="number" min="1" max="48" value="12" />
+    <div id="limits-footer" class="button-bar"></div>`;
+  document.body.append(root);
+  const caps = [];
+  const settings = createLimitsSettings(createApi(transport), root, {
+    recentMax: () => 12,
+    onRecent(next) {
+      caps.push(next);
+      return Promise.resolve(true);
+    },
+  });
+  await settings.refresh();
+  const recent = root.querySelector("#limits-recent");
+  expect(recent.value).toBe("12");
+  recent.value = "0";
+  await settings.apply();
+  expect(caps).toEqual([1]);
+  expect(recent.value).toBe("1");
+  recent.value = "99";
+  await settings.apply();
+  expect(caps).toEqual([1, 48]);
+  expect(transport.seen.filter((item) => item.cmd === "prefs.set").pop().args.cache.listRows).toBe(10000);
   settings.destroy();
 });

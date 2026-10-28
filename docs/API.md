@@ -872,7 +872,7 @@ Errors: `bad_args`, `not_ready`, `internal`.
 
 State: real (G-2)
 
-Replaces `preferences.ui` with the argument object. This is not a merge. The object is at most 64 KB of compact JSON and must not contain `password`, `token`, `secret`, or `refresh_token`. When `iconLibraries` is present, each entry is an https script on `kit.fontawesome.com` or an https stylesheet on `fonts.googleapis.com`. An `@` in the query or fragment is not credentials (the Material preset uses font axes). Userinfo (`user:pass@host`) is refused. An off-list host is `bad_args` and the message says a new host needs a rebuild. A blob without `iconLibraries` is unchanged.
+Replaces `preferences.ui` with the argument object. This is not a merge. The object is at most 64 KB of compact JSON and must not contain `password`, `token`, `secret`, or `refresh_token`. When `iconLibraries` is present, each entry is an https script on `kit.fontawesome.com` or `code.iconify.design`, or an https stylesheet on `fonts.googleapis.com` or `cdn.jsdelivr.net`. Optional `group` and `style` are stored and unread by the core. An `@` in the query or fragment is not credentials (the Material preset uses font axes). Userinfo (`user:pass@host`) is refused. An off-list host is `bad_args` and the message says that host is not shipped. A blob without `iconLibraries` is unchanged. Adding these hosts or the optional fields does not bump `PAVILLION_API_VERSION`.
 
 Args: the new object.
 

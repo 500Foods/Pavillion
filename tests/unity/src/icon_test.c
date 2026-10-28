@@ -263,7 +263,7 @@ void test_icon_assets_and_catalog(void) {
     call_fail("prefs.ui.set",
               "{\"iconLibraries\":[{\"id\":\"extra\",\"name\":\"Extra\",\"type\":\"script\","
               "\"url\":\"https://evil.example/a.js\",\"enabled\":true}]}",
-              "bad_args", "not allowlisted");
+              "bad_args", "not shipped");
     call_fail("prefs.ui.set",
               "{\"iconLibraries\":[{\"id\":\"material\",\"name\":\"Material Symbols\",\"type\":\"stylesheet\","
               "\"url\":\"https://user:pass@fonts.googleapis.com/css2?family=x\",\"enabled\":false}]}",
@@ -279,6 +279,21 @@ void test_icon_assets_and_catalog(void) {
                    "\"enabled\":false}]}");
     TEST_ASSERT_TRUE(json_is_array(json_object_get(data, "iconLibraries")));
     json_decref(data);
+    data = call_ok("prefs.ui.set",
+                   "{\"iconLibraries\":[{\"id\":\"iconify\",\"name\":\"Iconify\",\"type\":\"script\","
+                   "\"url\":\"https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js\",\"enabled\":false}]}");
+    TEST_ASSERT_TRUE(json_is_array(json_object_get(data, "iconLibraries")));
+    json_decref(data);
+    data = call_ok("prefs.ui.set",
+                   "{\"iconLibraries\":[{\"id\":\"bootstrap\",\"name\":\"Bootstrap Icons\",\"type\":\"stylesheet\","
+                   "\"url\":\"https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css\","
+                   "\"enabled\":false}]}");
+    TEST_ASSERT_TRUE(json_is_array(json_object_get(data, "iconLibraries")));
+    json_decref(data);
+    call_fail("prefs.ui.set",
+              "{\"iconLibraries\":[{\"id\":\"extra\",\"name\":\"Extra\",\"type\":\"script\","
+              "\"url\":\"https://api.iconify.design/all.js\",\"enabled\":true}]}",
+              "bad_args", "not shipped");
 
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT(

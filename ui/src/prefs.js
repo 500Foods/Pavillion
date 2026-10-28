@@ -1,4 +1,5 @@
 import { colorZoomOf, swatchList } from "./common/coloris.js";
+import { libraryExtras } from "./common/iconhosts.js";
 import { normalizeFormats } from "./formats.js";
 import { normalizeFilter } from "./log/filter.js";
 import { clampSession } from "./shell/session.js";
@@ -45,6 +46,9 @@ export const DEFAULT_UI = {
   files: { split: 0.5, min: 0.25, max: 0.75 },
   help: { split: 0.25, min: 0.15, max: 0.6 },
   accounts: { split: 0.35, min: 0.15, max: 0.85 },
+  iconPane: { split: 0.4, min: 0.2, max: 0.75 },
+  libraryPane: { split: 0.4, min: 0.2, max: 0.75 },
+  assetPane: { split: 0.4, min: 0.2, max: 0.75 },
   zoom: {
     shell: 1,
     navButtons: 1,
@@ -96,6 +100,9 @@ const KNOWN = new Set([
   "files",
   "help",
   "accounts",
+  "iconPane",
+  "libraryPane",
+  "assetPane",
   "zoom",
   "icons",
   "fontawesome_kit",
@@ -360,6 +367,7 @@ function librariesOf(raw) {
     type: entry && entry.type === "stylesheet" ? "stylesheet" : "script",
     url: entry && typeof entry.url === "string" ? entry.url : "",
     enabled: Boolean(entry && entry.enabled),
+    ...libraryExtras(entry),
   }));
 }
 
@@ -421,6 +429,9 @@ export function clampUi(raw) {
     files: paneSplit(src.files, DEFAULT_UI.files),
     help: paneSplit(src.help, DEFAULT_UI.help),
     accounts: paneSplit(src.accounts, DEFAULT_UI.accounts, true),
+    iconPane: paneSplit(src.iconPane, DEFAULT_UI.iconPane, true),
+    libraryPane: paneSplit(src.libraryPane, DEFAULT_UI.libraryPane, true),
+    assetPane: paneSplit(src.assetPane, DEFAULT_UI.assetPane, true),
     zoom,
     icons: iconsOf(src.icons),
     iconRecentMax: recentMaxOf(src.iconRecentMax),
