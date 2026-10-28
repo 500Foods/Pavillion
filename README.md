@@ -14,7 +14,7 @@ A Linux desktop for the mail, contacts, calendars, and files on a self-hosted St
 
 [Stalwart](https://stalw.art/) already presents those four in one [JMAP](https://jmap.io/) session. Pavillion is the client for that session. The same window is the CRM: correspondence, people, calendar, and files in one place, on a server the operator runs, with a local store so the record remains readable when the server is quiet. Tasks, notes, and ledgers follow on that store. One person, one process, one active profile. A small team shares the server. Each person runs Pavillion.
 
-The spelling is deliberate. Pavillion, not a misspelling, and not an older British or French form.
+The spelling is deliberate. Pavillion, not a misspelling, and not an older British or French form. For, like, a million reasons 😄
 
 ## This build
 
