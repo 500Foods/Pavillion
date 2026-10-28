@@ -1,12 +1,11 @@
-# Pavillion
-
-[Site](https://500foods.github.io/Pavillion/) · downloads and release notes
-
 [![CI](https://github.com/500Foods/Pavillion/actions/workflows/ci.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/ci.yml)
 [![Release](https://github.com/500Foods/Pavillion/actions/workflows/release.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/release.yml)
 [![Latest release](https://img.shields.io/github/v/release/500Foods/Pavillion?label=latest)](https://github.com/500Foods/Pavillion/releases/latest)
 [![Count Lines of Code](https://github.com/500Foods/Pavillion/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/main.yml)
 
+# <img src="ui/public/mark.png" alt="" width="40" height="40" align="absmiddle"> Pavillion
+
+[Site](https://500foods.github.io/Pavillion/) · downloads and release notes
 
 A Linux desktop for the mail, contacts, calendars, and files on a self-hosted Stalwart server, and the private record of the people and the work that mail belongs to.
 
