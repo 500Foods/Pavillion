@@ -7,8 +7,8 @@
       "version": "0.69",
       "build": "0.69.338",
       "date": "2026-10-28",
-      "commit": "6a4886ac6f755e4b760d913950fe362050fa485a",
-      "commitUrl": "https://github.com/500Foods/Pavillion/commit/6a4886ac6f755e4b760d913950fe362050fa485a",
+      "commit": "b14ef9c906af09264f6de333c5b5931d728dc629",
+      "commitUrl": "https://github.com/500Foods/Pavillion/commit/b14ef9c906af09264f6de333c5b5931d728dc629",
       "releaseUrl": "https://github.com/500Foods/Pavillion/releases/tag/v0.69",
       "notes": "",
       "assets": [
@@ -17,16 +17,16 @@
           "arch": "x86_64",
           "filename": "Pavillion-0.69-x86_64.msi",
           "url": "https://github.com/500Foods/Pavillion/releases/download/v0.69/Pavillion-0.69-x86_64.msi",
-          "size": 11685888,
-          "sha256": "97d458a506202f9a4a745c83065157e28f09a8536c3803bd7980f40b38c9cede"
+          "size": 11763712,
+          "sha256": "584ec6645c8d881f7d65c3e11f54788215abd73da00805e62cdb0f9a973bcbee"
         },
         {
           "platform": "linux-rpm",
           "arch": "x86_64",
           "filename": "pavillion-0.69-1.fc44.x86_64.rpm",
           "url": "https://github.com/500Foods/Pavillion/releases/download/v0.69/pavillion-0.69-1.fc44.x86_64.rpm",
-          "size": 1869932,
-          "sha256": "a460fe1ee78ba952074649ca749d7c4d1bbd6085d772d23c73ae8fbbf8a8427e"
+          "size": 1869772,
+          "sha256": "9c13ee0a91aba358c8ee169dcdf07f5c72a8420c45fa6ebde68ae012901407a3"
         }
       ]
     }
