@@ -10,3 +10,7 @@
 
 # Vendored trees stay out of GitHub language stats (Linguist).
 third_party/** linguist-vendored
+
+# ThrowTheSwitch Unity (test harness). unity_internals.h is what
+# Linguist was counting as C++ (~100 KB / ~5%).
+tests/unity/framework/** linguist-vendored

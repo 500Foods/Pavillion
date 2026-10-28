@@ -2,6 +2,8 @@
 [![Release](https://github.com/500Foods/Pavillion/actions/workflows/release.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/release.yml)
 [![Latest release](https://img.shields.io/github/v/release/500Foods/Pavillion?label=latest)](https://github.com/500Foods/Pavillion/releases/latest)
 [![Count Lines of Code](https://github.com/500Foods/Pavillion/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/main.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
+[![Made with Tauri](https://img.shields.io/badge/Made%20with-Tauri-24C8DB?logo=tauri&logoColor=white)](https://tauri.app/)
 
 # <img src="ui/public/mark.png" alt="" width="40" height="40" align="absmiddle"> Pavillion
 
