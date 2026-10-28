@@ -57,26 +57,27 @@ code,.sha{font-family:"Vanadium Mono",ui-monospace,monospace;font-size:12px;colo
 .plat .head svg,.plat .head i,.plat .row svg,.plat .row i{width:1em;height:1em;flex:0 0 auto}
 .plat .row{display:inline-flex;align-items:center;gap:8px;color:var(--dim);padding-left:2px}
 .plat .row svg,.plat .row i{opacity:.9}
-.pkg{display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-decoration:none;color:var(--text)}
+.pkg{display:flex;flex-direction:column;align-items:center;gap:8px;text-decoration:none;color:var(--text);width:100%}
 .pkg:hover{text-decoration:none;filter:brightness(1.08)}
 .pkg .tag{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel);font-size:13px;font-weight:650;letter-spacing:.04em}
 .pkg .tag svg,.pkg .tag i{width:1em;height:1em}
-.pkg .size{color:var(--dim);font-size:13px;padding-left:2px}
-.file{display:flex;flex-direction:column;gap:6px;min-width:0}
-.file .name{display:inline-flex;align-items:center;gap:8px;color:var(--text);font-weight:600;font-size:13px;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.pkg .size{color:var(--dim);font-size:13px;text-align:center}
+.file{display:flex;flex-direction:column;gap:6px;width:max-content;max-width:100%}
+.file .name{display:inline-flex;align-items:center;gap:8px;color:var(--text);font-weight:600;font-size:13px;text-decoration:none;white-space:nowrap}
 .file .name:hover{color:var(--accent);text-decoration:none}
 .file .name svg,.file .name i{width:1em;height:1em;flex:0 0 auto;color:var(--dim)}
-.file .sha{display:block;margin:0;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:#0e1217;font-family:"Vanadium Mono",ui-monospace,monospace;font-size:10px;line-height:1.35;color:var(--dim);white-space:nowrap;overflow-x:auto;cursor:pointer;user-select:all}
+.file .sha{display:inline-block;margin:0;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:#0e1217;font-family:"Vanadium Mono",ui-monospace,monospace;font-size:clamp(9px,0.72vw,11px);line-height:1.35;color:var(--dim);white-space:nowrap;cursor:pointer;user-select:all}
 .file .sha:hover{border-color:var(--accent);color:var(--text)}
 .file .sha.copied{color:#7dcea0;border-color:#3d6b4f}
 .dl{overflow-x:auto}
-.dl table{table-layout:fixed;min-width:860px}
-.dl th:nth-child(1){width:18%}
-.dl th:nth-child(2){width:26%}
-.dl th:nth-child(3){width:12%}
-.dl th:nth-child(4){width:44%}
+.dl table{table-layout:auto;width:100%;min-width:920px}
+.dl th:nth-child(1),.dl td.ver-cell{width:1%;white-space:nowrap}
+.dl th:nth-child(2){width:1%;white-space:nowrap}
+.dl th:nth-child(3),.dl td.pkg-cell{width:1%;text-align:center;vertical-align:middle}
+.dl th:nth-child(3){text-align:center}
+.dl th:nth-child(4),.dl td.file-cell{width:auto}
 .dl td{padding:18px 12px}
-.dl td.ver-cell{border-right:1px solid var(--line);background:rgba(18,22,27,.55)}
+.dl td.ver-cell{border-right:1px solid var(--line);background:rgba(18,22,27,.55);vertical-align:top}
 .empty{color:var(--dim)}
 @media(max-width:720px){
   .dl table{min-width:0}
@@ -86,7 +87,11 @@ code,.sha{font-family:"Vanadium Mono",ui-monospace,monospace;font-size:12px;colo
   .dl td{border:0;padding:8px 12px}
   .dl td.ver-cell{border-right:0;background:transparent}
   .dl td::before{content:attr(data-label);display:block;color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
-  .file .sha{white-space:normal;word-break:break-all}
+  .dl th:nth-child(3),.dl td.pkg-cell{text-align:left}
+  .pkg{align-items:flex-start}
+  .pkg .size{text-align:left}
+  .file{width:auto;max-width:100%}
+  .file .sha{display:block;white-space:normal;word-break:break-all;font-size:10px}
 }
 footer{padding:40px 0 60px;color:var(--dim);font-size:14px;text-align:center;border-top:1px solid var(--line)}
 </style>
@@ -188,8 +193,8 @@ function releaseBlock(r, hasPrior){
     const ver=i===0?`<td class="ver-cell" data-label="Version" rowspan="${n}">${verCell(r,n,hasPrior)}</td>`:"";
     return `<tr>${ver}
       <td data-label="Platform">${platCell(m)}</td>
-      <td data-label="Package">${pkgCell(a,m)}</td>
-      <td data-label="File">${fileCell(a)}</td>
+      <td class="pkg-cell" data-label="Package">${pkgCell(a,m)}</td>
+      <td class="file-cell" data-label="File">${fileCell(a)}</td>
     </tr>`;
   }).join("");
 }

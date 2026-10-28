@@ -46,6 +46,32 @@ pub fn core_log(level: i32, message: &str) {
 pub fn install_native_stderr_capture() {
     capture::install_native_stderr_capture();
 }
+
+/// Default workdir when the CLI passes none.
+/// Linux/macOS: `$HOME/.local/share/pavillion`. Windows: `%LOCALAPPDATA%\pavillion`.
+pub fn default_workdir_path() -> Option<String> {
+    #[cfg(windows)]
+    {
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            if !local.is_empty() {
+                return Some(format!("{local}\\pavillion"));
+            }
+        }
+        if let Ok(profile) = std::env::var("USERPROFILE") {
+            if !profile.is_empty() {
+                return Some(format!("{profile}\\AppData\\Local\\pavillion"));
+            }
+        }
+        return None;
+    }
+    #[cfg(not(windows))]
+    {
+        match std::env::var("HOME") {
+            Ok(home) if !home.is_empty() => Some(format!("{home}/.local/share/pavillion")),
+            _ => None,
+        }
+    }
+}
 macro_rules! shell_warn { ($($arg:tt)*) => { core_log(1, &format!($($arg)*)) }; }
 macro_rules! shell_error { ($($arg:tt)*) => { core_log(0, &format!($($arg)*)) }; }
 pub fn unknown_subcommand() -> i32 {
@@ -426,7 +452,7 @@ fn canonical_workdir(workdir: &str) -> String {
 fn instance_identifier(base: &str, workdir: &str) -> String {
     use sha2::{Digest, Sha256};
     let canonical = canonical_workdir(workdir);
-    let default = std::env::var("HOME").ok().filter(|h| !h.is_empty()).map(|h| canonical_workdir(&format!("{h}/.local/share/pavillion")));
+    let default = default_workdir_path().map(|p| canonical_workdir(&p));
     if default.as_deref() == Some(canonical.as_str()) {
         return base.to_string();
     }

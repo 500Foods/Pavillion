@@ -68,10 +68,10 @@ fn publish_host_flags(selftest: bool) {
 }
 
 fn default_workdir() -> String {
-    match std::env::var("HOME") {
-        Ok(home) if !home.is_empty() => format!("{home}/.local/share/pavillion"),
-        _ => {
-            pavillion_lib::core_log(0, "HOME is not set");
+    match pavillion_lib::default_workdir_path() {
+        Some(path) => path,
+        None => {
+            pavillion_lib::core_log(0, "default workdir unavailable (HOME/LOCALAPPDATA unset)");
             std::process::exit(1);
         }
     }
