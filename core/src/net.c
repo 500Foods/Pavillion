@@ -741,6 +741,7 @@ static void *server_thread_main(void *arg) {
                         }
                     }
                     if (item_to_finish) {
+                        /* complete_request has already cleaned up eh. */
                         int requeue = complete_request(s, item_to_finish, res);
                         if (requeue) {
                             item_to_finish->in_flight = 0;
@@ -750,11 +751,10 @@ static void *server_thread_main(void *arg) {
                             s->q_count++;
                         } else {
                             free(item_to_finish);
-                            item_to_finish = NULL;
                         }
-                    }
-                    if (!item_to_finish) {
-                        if (eh) curl_easy_cleanup(eh);
+                    } else if (eh) {
+                        curl_multi_remove_handle(s->multi, eh);
+                        curl_easy_cleanup(eh);
                     }
                     pthread_cond_broadcast(&s->cv);
                     pthread_mutex_unlock(&s->mu);
