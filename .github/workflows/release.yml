@@ -38,14 +38,14 @@ concurrency:
 
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       sha: ${{ steps.r.outputs.sha }}
     steps:
       - name: Check version
         run: |
           [[ "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+$ ]] || { echo "version must be X.Y"; exit 1; }
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref }}
       - id: r
@@ -53,11 +53,11 @@ jobs:
 
   linux-rpm:
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: fedora:latest
     steps:
       - run: dnf install -y git rpm-build
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.prepare.outputs.sha }}
       - name: Install Fedora packages
@@ -76,7 +76,7 @@ jobs:
           mkdir -p assets && mv out/*.rpm assets/
           cd assets && for f in *; do sha256sum "$f" > "$f.sha256"; done
           rpm -qpR *.rpm
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: asset-linux-rpm
           path: assets/*
@@ -88,7 +88,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.prepare.outputs.sha }}
       - uses: msys2/setup-msys2@v2
@@ -131,20 +131,20 @@ jobs:
             cp "$f" "assets/Pavillion-${{ inputs.version }}-x86_64.msi"
           done
           cd assets && for f in *; do sha256sum "$f" > "$f.sha256"; done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: asset-windows-msi
           path: assets/*
 
   publish:
     needs: [prepare, linux-rpm, windows-msi]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: main
           fetch-depth: 0
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: asset-*
           path: assets

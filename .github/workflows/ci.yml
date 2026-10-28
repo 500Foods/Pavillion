@@ -13,20 +13,20 @@ permissions:
 
 jobs:
   fedora:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: fedora:latest
     steps:
       - name: Install git
         run: dnf install -y git
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Fedora packages
         run: |
           dnf install -y $(grep -vE '^[[:space:]]*(#|$)' scripts/fedora-deps.txt)
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -37,7 +37,7 @@ jobs:
             cargo-fedora-
 
       - name: Cache npm
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.npm
           key: npm-fedora-${{ hashFiles('ui/package-lock.json') }}
@@ -51,7 +51,7 @@ jobs:
         run: make build
 
       - name: Upload pavillion
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: pavillion-${{ github.sha }}
           path: dist/pavillion
@@ -62,7 +62,7 @@ jobs:
   macos-core:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install core libraries
         run: brew install jansson sqlite cmake socat jq gmime
@@ -82,7 +82,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: msys2/setup-msys2@v2
         with:

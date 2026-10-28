@@ -1,5 +1,13 @@
 # Pavillion
 
+[Site](https://500foods.github.io/Pavillion/) · downloads and release notes
+
+[![CI](https://github.com/500Foods/Pavillion/actions/workflows/ci.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/ci.yml)
+[![Release](https://github.com/500Foods/Pavillion/actions/workflows/release.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/500Foods/Pavillion?label=latest)](https://github.com/500Foods/Pavillion/releases/latest)
+[![Count Lines of Code](https://github.com/500Foods/Pavillion/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/main.yml)
+
+
 A Linux desktop for the mail, contacts, calendars, and files on a self-hosted Stalwart server, and the private record of the people and the work that mail belongs to.
 
 [Stalwart](https://stalw.art/) already presents those four in one [JMAP](https://jmap.io/) session. Pavillion is the client for that session. The same window is the CRM: correspondence, people, calendar, and files in one place, on a server the operator runs, with a local store so the record remains readable when the server is quiet. Tasks, notes, and ledgers follow on that store. One person, one process, one active profile. A small team shares the server. Each person runs Pavillion.
@@ -111,7 +119,6 @@ The license is [MIT](LICENSE.md).
 
 ## Repository Information
 
-[![Count Lines of Code](https://github.com/500Foods/Pavillion/actions/workflows/main.yml/badge.svg)](https://github.com/500Foods/Pavillion/actions/workflows/main.yml)
 <!--CLOC-START -->
 ```cloc
 Last updated at 2026-10-28 00:24:45 UTC
