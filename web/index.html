@@ -53,13 +53,14 @@ code,.sha{font-family:"Vanadium Mono",ui-monospace,monospace;font-size:12px;colo
 .ver .line{color:var(--dim);font-size:14px}
 .ver .line a{font-weight:500}
 .plat{display:flex;flex-direction:column;gap:4px;font-size:14px;line-height:1.35}
-.plat .head{display:inline-flex;align-items:center;gap:8px;color:var(--text);font-weight:650;font-size:15px;margin-bottom:4px}
+.plat .head{display:inline-flex;align-items:center;gap:8px;color:var(--text);font-weight:650;font-size:15px;margin-bottom:4px;text-decoration:none}
+.plat a.head:hover{color:var(--accent);text-decoration:none}
 .plat .head svg,.plat .head i,.plat .row svg,.plat .row i{width:1em;height:1em;flex:0 0 auto}
 .plat .row{display:inline-flex;align-items:center;gap:8px;color:var(--dim);padding-left:2px}
 .plat .row svg,.plat .row i{opacity:.9}
 .pkg{display:flex;flex-direction:column;align-items:center;gap:8px;text-decoration:none;color:var(--text);width:100%}
 .pkg:hover{text-decoration:none;filter:brightness(1.08)}
-.pkg .tag{display:inline-flex;align-items:center;justify-content:center;min-width:7.5rem;padding:0;border:0;background:none;color:var(--text);font-size:15px;font-weight:700;letter-spacing:.04em}
+.pkg .tag{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:7.5rem;padding:0;border:0;background:none;color:var(--text);font-size:15px;font-weight:700;letter-spacing:.04em}
 .pkg .tag svg,.pkg .tag i{width:1em;height:1em}
 .pkg .size{color:var(--dim);font-size:13px;text-align:center}
 .file{display:flex;flex-direction:column;gap:6px;width:max-content;max-width:100%}
@@ -155,12 +156,15 @@ const meta=k=>CATALOG.find(c=>c.key===k)||{key:k,family:k,familyIcon:"fa-solid f
 const icon=cls=>cls?`<i class="${cls}" aria-hidden="true"></i>`:"";
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const mb=n=>n?(n/1048576).toFixed(1)+" MB":"—";
-function platCell(m){
+function platCell(m,a){
   const rows=m.lines.map(l=>`<span class="row">${icon(l.icon)}${esc(l.label)}</span>`).join("");
-  return `<div class="plat"><span class="head">${icon(m.familyIcon)} ${esc(m.family)}</span>${rows}</div>`;
+  const head=a
+    ? `<a class="head" href="${esc(a.url)}">${icon(m.familyIcon)} ${esc(m.family)}</a>`
+    : `<span class="head">${icon(m.familyIcon)} ${esc(m.family)}</span>`;
+  return `<div class="plat">${head}${rows}</div>`;
 }
 function pkgCell(a,m){
-  const tag=`<span class="tag">${esc(m.pkg)}</span>`;
+  const tag=`<span class="tag">${icon("fa-solid fa-box")} ${esc(m.pkg)}</span>`;
   if(!a)return `<div class="pkg tbd">${tag}<span class="size">TBD</span></div>`;
   return `<a class="pkg" href="${esc(a.url)}">${tag}<span class="size">${esc(mb(a.size))}</span></a>`;
 }
@@ -181,7 +185,7 @@ function releaseBlock(r,fillTbd,verCellHtml){
   return rows.map(({m,a},i)=>{
     const ver=i===0?`<td class="ver-cell" data-label="Version" rowspan="${n}">${verCellHtml(built)}</td>`:"";
     return `<tr class="${a?"":"tbd"}">${ver}
-      <td class="plat-cell" data-label="Platform">${platCell(m)}</td>
+      <td class="plat-cell" data-label="Platform">${platCell(m,a)}</td>
       <td class="pkg-cell" data-label="Package">${pkgCell(a,m)}</td>
       <td class="file-cell" data-label="File">${fileCell(a)}</td>
     </tr>`;
