@@ -36,13 +36,15 @@ th{color:var(--dim);font-weight:500;font-size:13px;text-transform:uppercase;lett
 .file .sha{display:inline-block;margin:0;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:#0e1217;font-family:ui-monospace,monospace;font-size:clamp(9px,0.72vw,11px);color:var(--dim);white-space:nowrap;cursor:pointer}
 .file .sha.copied{color:#7dcea0;border-color:#3d6b4f}
 td.ver-cell{border-right:1px solid var(--line);background:rgba(18,22,27,.55)}
-td.pkg-cell{text-align:center;vertical-align:middle;width:1%;white-space:nowrap}
-td.ver-cell{width:1%;min-width:20%;white-space:nowrap}
-td.plat-cell{width:auto;min-width:20%;white-space:nowrap}
+td.pkg-cell{text-align:center;vertical-align:middle;width:1%;min-width:10%;white-space:nowrap}
+td.ver-cell{width:1%;min-width:10%;white-space:nowrap}
+td.plat-cell{width:auto;min-width:10%;white-space:nowrap}
 td.file-cell{width:1%;white-space:nowrap}
 .dl table{table-layout:auto;width:100%;min-width:0}
 .plat .head,.plat .row,.file .name{white-space:nowrap}
 .empty{color:var(--dim);padding:24px 0}
+.dl tr.tbd .plat,.pkg.tbd,.pkg.tbd .tag,.file.tbd .name{color:var(--dim)}
+.pkg.tbd .tag{border-style:dashed;background:transparent}
 footer{padding:40px 0 60px;color:var(--dim);font-size:14px;text-align:center;border-top:1px solid var(--line)}
 </style>
 <script src="https://kit.fontawesome.com/45801522ef.js" crossorigin="anonymous"></script>
@@ -58,27 +60,68 @@ footer{padding:40px 0 60px;color:var(--dim);font-size:14px;text-align:center;bor
 </div></section>
 <footer>Pavillion · <a href="./">Home</a> · <a href="https://github.com/500Foods/Pavillion/releases">GitHub Releases</a></footer>
 <script>
-const META={
-  "windows-msi":{family:"Windows",familyIcon:"fa-brands fa-windows",pkg:"MSI",pkgIcon:"fa-solid fa-box",lines:[{icon:"",label:"Windows 10"},{icon:"",label:"Windows 11"}]},
-  "linux-rpm":{family:"Linux",familyIcon:"fa-brands fa-linux",pkg:"RPM",pkgIcon:"fa-solid fa-box",lines:[{icon:"fa-brands fa-fedora",label:"Fedora 43+"},{icon:"fa-brands fa-redhat",label:"RHEL 9+"},{icon:"fa-brands fa-centos",label:"CentOS Stream 9+"}]},
-  "linux-deb":{family:"Linux",familyIcon:"fa-brands fa-linux",pkg:"DEB",pkgIcon:"fa-solid fa-box",lines:[{icon:"fa-brands fa-debian",label:"Debian 12+"},{icon:"fa-brands fa-ubuntu",label:"Ubuntu 22.04+"}]},
-  "linux-appimage":{family:"Linux",familyIcon:"fa-brands fa-linux",pkg:"AppImage",pkgIcon:"fa-solid fa-box",lines:[{icon:"fa-brands fa-linux",label:"Most Linux desktops"}]},
-  "macos-dmg":{family:"macOS",familyIcon:"fa-brands fa-apple",pkg:"DMG",pkgIcon:"fa-solid fa-box",lines:[{icon:"",label:"macOS 14+"}]}
-};
-const meta=p=>META[p]||{family:p,familyIcon:"fa-solid fa-download",pkg:p,pkgIcon:"fa-solid fa-box",lines:[]};
+// Shared downloads-table helper (duplicated in index.html and releases.html; keep in sync).
+// CATALOG order is the W-SHIP artifact matrix; key = platform:arch.
+const L=(icon,label)=>({icon,label});
+const CATALOG=[
+  {key:"linux-rpm:x86_64",family:"Linux",familyIcon:"fa-brands fa-linux",pkg:"RPM",cta:"Linux (RPM)",
+   lines:[L("fa-brands fa-fedora","Fedora 43+"),L("fa-brands fa-redhat","RHEL 9+"),L("fa-brands fa-centos","CentOS Stream 9+")]},
+  {key:"linux-appimage:x86_64",family:"Linux",familyIcon:"fa-brands fa-linux",pkg:"AppImage",cta:"Linux (AppImage)",
+   lines:[L("fa-brands fa-linux","Most Linux desktops (glibc)")]},
+  {key:"linux-deb:x86_64",family:"Linux",familyIcon:"fa-brands fa-linux",pkg:"DEB",cta:"Debian/Ubuntu (DEB)",
+   lines:[L("fa-brands fa-debian","Debian 12+"),L("fa-brands fa-ubuntu","Ubuntu 22.04+")]},
+  {key:"windows-msi:x86_64",family:"Windows",familyIcon:"fa-brands fa-windows",pkg:"MSI",cta:"Windows x64 (MSI)",
+   lines:[L("","Windows 10/11"),L("fa-solid fa-microchip","x64")]},
+  {key:"windows-msi:aarch64",family:"Windows",familyIcon:"fa-brands fa-windows",pkg:"MSI",cta:"Windows ARM64 (MSI)",
+   lines:[L("","Windows 11"),L("fa-solid fa-microchip","ARM64")]},
+  {key:"macos-dmg:aarch64",family:"macOS",familyIcon:"fa-brands fa-apple",pkg:"DMG",cta:"macOS Apple Silicon (DMG)",
+   lines:[L("fa-solid fa-microchip","Apple Silicon"),L("","macOS 14+")]},
+  {key:"macos-dmg:x86_64",family:"macOS",familyIcon:"fa-brands fa-apple",pkg:"DMG",cta:"macOS Intel (DMG)",
+   lines:[L("fa-solid fa-microchip","Intel"),L("","macOS 14+")]}
+];
+const akey=a=>`${a.platform}:${a.arch||"x86_64"}`;
+const meta=k=>CATALOG.find(c=>c.key===k)||{key:k,family:k,familyIcon:"fa-solid fa-download",pkg:k,cta:k,lines:[]};
 const icon=cls=>cls?`<i class="${cls}" aria-hidden="true"></i>`:"";
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const mb=n=>n?(n/1048576).toFixed(1)+" MB":"—";
-function platCell(m){return `<div class="plat"><span class="head">${icon(m.familyIcon)} ${esc(m.family)}</span>${m.lines.map(l=>`<span class="row">${icon(l.icon)}${esc(l.label)}</span>`).join("")}</div>`}
-function pkgCell(a,m){return `<a class="pkg" href="${esc(a.url)}"><span class="tag">${icon(m.pkgIcon)} ${esc(m.pkg)}</span><span class="size">${esc(mb(a.size))}</span></a>`}
-function fileCell(a){return `<div class="file"><a class="name" href="${esc(a.url)}">${icon("fa-solid fa-file-arrow-down")} <span>${esc(a.filename)}</span></a><code class="sha" title="Click to copy SHA-256" data-sha="${esc(a.sha256)}">${esc(a.sha256)}</code></div>`}
+function platCell(m){
+  const rows=m.lines.map(l=>`<span class="row">${icon(l.icon)}${esc(l.label)}</span>`).join("");
+  return `<div class="plat"><span class="head">${icon(m.familyIcon)} ${esc(m.family)}</span>${rows}</div>`;
+}
+function pkgCell(a,m){
+  const tag=`<span class="tag">${icon("fa-solid fa-box")} ${esc(m.pkg)}</span>`;
+  if(!a)return `<div class="pkg tbd">${tag}<span class="size">TBD</span></div>`;
+  return `<a class="pkg" href="${esc(a.url)}">${tag}<span class="size">${esc(mb(a.size))}</span></a>`;
+}
+function fileCell(a){
+  if(!a)return `<div class="file tbd"><span class="name">${icon("fa-regular fa-clock")} <span>TBD</span></span></div>`;
+  return `<div class="file"><a class="name" href="${esc(a.url)}">${icon("fa-solid fa-file-arrow-down")} <span>${esc(a.filename)}</span></a><code class="sha" title="Click to copy SHA-256" data-sha="${esc(a.sha256)}">${esc(a.sha256)}</code></div>`;
+}
+// rows: catalog order; fillTbd=true renders every catalog row (TBD when missing),
+// false renders real assets only. Unknown assets append at the end.
+function releaseRows(r,fillTbd){
+  const assets=r.assets||[],by=new Map(assets.map(a=>[akey(a),a]));
+  const rows=CATALOG.filter(c=>fillTbd||by.has(c.key)).map(c=>({m:c,a:by.get(c.key)}));
+  assets.filter(a=>!CATALOG.some(c=>c.key===akey(a))).forEach(a=>rows.push({m:meta(akey(a)),a}));
+  return rows;
+}
+function releaseBlock(r,fillTbd,verCellHtml){
+  const rows=releaseRows(r,fillTbd),n=rows.length,built=(r.assets||[]).length;
+  return rows.map(({m,a},i)=>{
+    const ver=i===0?`<td class="ver-cell" data-label="Version" rowspan="${n}">${verCellHtml(built)}</td>`:"";
+    return `<tr class="${a?"":"tbd"}">${ver}
+      <td class="plat-cell" data-label="Platform">${platCell(m)}</td>
+      <td class="pkg-cell" data-label="Package">${pkgCell(a,m)}</td>
+      <td class="file-cell" data-label="File">${fileCell(a)}</td>
+    </tr>`;
+  }).join("");
+}
 function verCell(r,n){return `<div class="ver"><span class="v">${esc(r.version)}</span><span class="line">${esc(r.date)}</span><span class="line"><a href="${esc(r.commitUrl)}">${esc(r.commit.slice(0,7))}</a></span><span class="line"><a href="${esc(r.releaseUrl)}">Release notes</a></span><span class="line">Builds: ${n}</span></div>`}
-function releaseBlock(r){const n=r.assets.length;return r.assets.map((a,i)=>{const m=meta(a.platform);const ver=i===0?`<td class="ver-cell" rowspan="${n}">${verCell(r,n)}</td>`:"";return `<tr>${ver}<td class="plat-cell">${platCell(m)}</td><td class="pkg-cell">${pkgCell(a,m)}</td><td class="file-cell">${fileCell(a)}</td></tr>`}).join("")}
 fetch("releases.json",{cache:"no-cache"}).then(r=>r.json()).then(j=>{
   const prior=(j.releases||[]).slice(1),box=document.getElementById("releases");
   if(!prior.length){box.className="empty";box.innerHTML=`No prior releases yet. The current build is on the <a href="./">home page</a>, and the full GitHub history is in <a href="https://github.com/500Foods/Pavillion/releases">Releases</a>.`;return}
   box.className="dl";
-  box.innerHTML=`<table><thead><tr><th>Version</th><th>Platform</th><th>Package</th><th>File</th></tr></thead><tbody>${prior.map(releaseBlock).join("")}</tbody></table>`;
+  box.innerHTML=`<table><thead><tr><th>Version</th><th>Platform</th><th>Package</th><th>File</th></tr></thead><tbody>${prior.map(r=>releaseBlock(r,false,n=>verCell(r,n))).join("")}</tbody></table>`;
 }).catch(()=>{document.getElementById("releases").textContent="Could not load releases."});
 document.addEventListener("click",async e=>{
   const el=e.target.closest("code.sha[data-sha]"); if(!el)return; e.preventDefault();

@@ -71,6 +71,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - Tauri's bundler runs only for the msi (`--bundles msi`) and the AppImage (`--bundles appimage`), with `bundle.active` switched on for that build only. Linux keeps the hand rpm.
 - Checksums are SHA-256 only: a `<file>.sha256` beside each asset on the GitHub Release and `sha256` in `web/releases.json`.
 - `web/releases.json` (schema 1, newest first) is the brochure's only data source: `releases[]` of `{version, build, date, commit, commitUrl, releaseUrl, notes, assets[]}`, each asset `{platform, arch, filename, url, size, sha256}`, `platform` one of `linux-rpm`, `linux-deb`, `linux-appimage`, `windows-msi`, `macos-dmg`. `scripts/release-json.sh` writes it. A non-draft release commits it to `main` and calls `static.yml` to redeploy Pages.
+- The brochure home table always shows the full artifact matrix for the latest release, one row per artifact (matched on `platform` + `arch`), with TBD (dimmed, no link) for unshipped rows, in this order: Linux rpm, Linux AppImage, Linux deb, Windows x64, Windows ARM64, macOS Apple Silicon, macOS Intel. `releases.html` shows only real assets for prior releases, same order.
 - `main.yml` (cloc) also pushes to `main` with `GITHUB_TOKEN`. The release push does `pull --rebase` and retries three times; a local commit made while a release runs needs `git pull --rebase` before Andrew pushes.
 
 ## W-1: CI on GitHub Actions

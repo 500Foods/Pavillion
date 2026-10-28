@@ -152,9 +152,10 @@ fn main() {
         .args(["-S", "core", "-B", &dir_name])
         .current_dir(&repo);
     if size {
-        configure.arg("-DCMAKE_BUILD_TYPE=MinSizeRel").arg(
-            "-DCMAKE_C_FLAGS_MINSIZEREL=-Oz -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -DNDEBUG",
-        );
+        let opt = size_opt_flag();
+        configure.arg("-DCMAKE_BUILD_TYPE=MinSizeRel").arg(format!(
+            "-DCMAKE_C_FLAGS_MINSIZEREL={opt} -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident -DNDEBUG"
+        ));
     }
     let configured = configure.status().expect("failed to run cmake");
     if !configured.success() {
@@ -305,5 +306,28 @@ fn main() {
         .app_manifest(tauri_build::AppManifest::new().commands(&["core"]));
     if let Err(err) = tauri_build::try_build(attributes) {
         panic!("failed to run tauri-build: {err}");
+    }
+}
+
+/// `-Oz` where the C compiler accepts it (GCC 12+, clang); `-Os` otherwise
+/// (GCC 11 on ubuntu-22.04 for the AppImage). If the probe compiler cannot be
+/// spawned at all, keep `-Oz` so existing rpm/msi builds are unchanged.
+fn size_opt_flag() -> &'static str {
+    println!("cargo:rerun-if-env-changed=CC");
+    let cc = std::env::var("CC").unwrap_or_else(|_| "cc".into());
+    let out = std::path::PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
+    let src = out.join("oz_probe.c");
+    std::fs::write(&src, "int main(void){return 0;}\n").expect("write oz_probe.c");
+    match std::process::Command::new(&cc)
+        .arg("-Oz")
+        .arg("-c")
+        .arg(&src)
+        .arg("-o")
+        .arg(out.join("oz_probe.o"))
+        .stderr(std::process::Stdio::null())
+        .status()
+    {
+        Ok(s) if !s.success() => "-Os",
+        _ => "-Oz",
     }
 }
