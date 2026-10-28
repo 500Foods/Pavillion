@@ -7,3 +7,6 @@
 *.png binary
 *.ico binary
 *.icns binary
+
+# Vendored trees stay out of GitHub language stats (Linguist).
+third_party/** linguist-vendored
