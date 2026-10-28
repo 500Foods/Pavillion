@@ -183,7 +183,9 @@ static QUIT_PAGE: AtomicU8 = AtomicU8::new(0);
 /* The scavenger thread takes SIGINT with the default action, which kills the
    process. The handler only counts. sigwait still collects a signal that every
    thread has blocked. HANDLED is how many counts the watcher has accepted. */
+#[cfg_attr(not(unix), allow(dead_code))]
 static QUIT_HITS: AtomicU32 = AtomicU32::new(0);
+#[cfg_attr(not(unix), allow(dead_code))]
 static QUIT_HANDLED: AtomicU32 = AtomicU32::new(0);
 const PAGE_BEGAN: u8 = 1;
 const PAGE_STUCK: u8 = 2;
@@ -236,6 +238,7 @@ fn stop_events() {
     EVENT_TX.lock().unwrap_or_else(|err| err.into_inner()).take();
 }
 
+#[cfg(unix)]
 fn quit_signals() -> libc::sigset_t {
     let mut set: libc::sigset_t = unsafe { std::mem::zeroed() };
     unsafe {
@@ -251,6 +254,7 @@ fn quit_signals() -> libc::sigset_t {
    thread before any child exists so the page inherits the block and stays up
    to run the save. bmalloc's scavenger, inside this process, waits with the
    mask cleared. A default SIGINT there kills the app before sigwait runs. */
+#[cfg(unix)]
 pub fn block_quit_signals() {
     let set = quit_signals();
     if unsafe { libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut()) } != 0 {
@@ -259,10 +263,12 @@ pub fn block_quit_signals() {
     }
 }
 
+#[cfg(unix)]
 unsafe extern "C" fn on_quit_signal(_sig: i32) {
     QUIT_HITS.fetch_add(1, Ordering::SeqCst);
 }
 
+#[cfg(unix)]
 fn install_quit_handler() {
     unsafe {
         let mut action: libc::sigaction = std::mem::zeroed();
@@ -305,6 +311,22 @@ fn quit_timeout_message() -> &'static str {
     }
 }
 
+#[cfg(not(unix))]
+pub fn block_quit_signals() {}
+
+#[cfg(not(unix))]
+fn install_quit_handler() {}
+
+/* No POSIX signals off Unix. Window close drives the save; this thread just
+   idles so watch_sigint never fires. Console Ctrl+C can be wired later. */
+#[cfg(not(unix))]
+fn wait_quit_signal() -> bool {
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(3600));
+    }
+}
+
+#[cfg(unix)]
 fn wait_quit_signal() -> bool {
     let set = quit_signals();
     loop {

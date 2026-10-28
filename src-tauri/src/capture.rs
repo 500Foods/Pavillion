@@ -5,6 +5,10 @@ unsafe extern "C" {
     fn pav_log_suppress_stderr(on: std::os::raw::c_int) -> std::os::raw::c_int;
 }
 
+#[cfg(not(unix))]
+pub fn install_native_stderr_capture() {}
+
+#[cfg(unix)]
 pub fn install_native_stderr_capture() {
     if !cfg!(target_os = "linux") {
         return;
@@ -31,6 +35,7 @@ pub fn install_native_stderr_capture() {
     }
 }
 
+#[cfg(unix)]
 fn capture_reader(read_fd: i32) {
     let mut buf = [0u8; 1024];
     let mut line: Vec<u8> = Vec::new();
@@ -58,6 +63,7 @@ fn capture_reader(read_fd: i32) {
     }
 }
 
+#[cfg_attr(not(unix), allow(dead_code))]
 fn handle_line(line: &[u8]) {
     if let Ok(text) = std::str::from_utf8(line) {
         if let Some((level, subsystem, message)) = parse_pav_line(text) {
@@ -70,6 +76,7 @@ fn handle_line(line: &[u8]) {
     }
 }
 
+#[cfg_attr(not(unix), allow(dead_code))]
 fn parse_pav_line(line: &str) -> Option<(i32, String, String)> {
     let bytes = line.as_bytes();
     if bytes.len() < 33 || bytes[24] != b' ' || bytes[30] != b' ' {
@@ -87,6 +94,7 @@ fn parse_pav_line(line: &str) -> Option<(i32, String, String)> {
     Some((level, subsystem, message))
 }
 
+#[cfg_attr(not(unix), allow(dead_code))]
 fn level_from_name(name: &str) -> Option<i32> {
     match name {
         "ERROR" => Some(0),
@@ -98,6 +106,7 @@ fn level_from_name(name: &str) -> Option<i32> {
     }
 }
 
+#[cfg_attr(not(unix), allow(dead_code))]
 fn forward_log(level: i32, subsystem: &str, message: &str) {
     let subsystem_c = CString::new(subsystem).unwrap_or_default();
     let message_c = CString::new(message).unwrap_or_default();
