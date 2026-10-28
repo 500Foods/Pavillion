@@ -374,6 +374,16 @@ static int setup_request(PavNetServer *s, NetReqItem *item) {
     if (req->ca_file && req->ca_file[0] != '\0') {
         curl_easy_setopt(eh, CURLOPT_CAINFO, req->ca_file);
     }
+#ifdef _WIN32
+    else {
+        /* MSYS2 libcurl uses OpenSSL with a compiled-in CA bundle path under
+         * the MSYS2 prefix, which the MSI does not ship. Trust the Windows
+         * certificate store instead (works with OpenSSL and Schannel). */
+        curl_easy_setopt(eh, CURLOPT_CAINFO, NULL);
+        curl_easy_setopt(eh, CURLOPT_CAPATH, NULL);
+        curl_easy_setopt(eh, CURLOPT_SSL_OPTIONS, (long)CURLSSLOPT_NATIVE_CA);
+    }
+#endif
 
     if (apply_auth_header(req) != 0) {
         req->status_code = 0;
