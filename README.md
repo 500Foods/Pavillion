@@ -14,7 +14,7 @@ A Linux desktop for the mail, contacts, calendars, and files on a self-hosted St
 
 [Stalwart](https://stalw.art/) already presents those four in one [JMAP](https://jmap.io/) session. Pavillion is the client for that session. The same window is the CRM: correspondence, people, calendar, and files in one place, on a server the operator runs, with a local store so the record remains readable when the server is quiet. Tasks, notes, and ledgers follow on that store. One person, one process, one active profile. A small team shares the server. Each person runs Pavillion.
 
-The spelling is deliberate. Pavillion, not a misspelling, and not an older British or French form.
+The spelling is deliberate. Pavillion, not a misspelling, and not an older British or French form. For, like, a million reasons 😄
 
 ## This build
 
@@ -123,7 +123,7 @@ The license is [MIT](LICENSE.md). Third-party notices (including LGPL runtimes i
 
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-28 05:53:05 UTC
+Last updated at 2026-10-28 06:26:20 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
@@ -132,7 +132,7 @@ C/C++ Header                   282           6288           6834         241214
 JavaScript                     116           1931            672          26665
 Markdown                        42           3092              2           6926
 CSS                              7            490             50           3437
-JSON                            14              0              0           2643
+JSON                            14              0              0           2651
 Rust                             6            125            120           1727
 Bourne Shell                    13            108            208           1627
 CMake                           22            384            184           1398
@@ -143,7 +143,7 @@ SQL                              4              0              0            130
 TOML                             2             11              8             63
 Text                             2              8              0             57
 -------------------------------------------------------------------------------
-SUM:                           807          34237          12635         706994
+SUM:                           807          34237          12635         707002
 -------------------------------------------------------------------------------
 49 Files were skipped (duplicate, binary, or without source code):
   png: 18
