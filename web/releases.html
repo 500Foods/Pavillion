@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pavillion — prior releases</title>
+<meta name="description" content="Prior Pavillion releases, packages, and SHA-256 checksums.">
+<link rel="icon" href="mark.png">
+<style>
+:root{--bg:#0b0d10;--panel:#12161b;--line:#222a33;--text:#e7ebef;--dim:#8d99a6;--accent:#5fa8ff;--accent2:#9b7bff}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 "Vanadium Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+header{padding:48px 0 24px}
+header .back{color:var(--dim);font-size:14px}
+h1{font-size:32px;margin:12px 0 6px;font-weight:650}
+.tag{color:var(--dim);margin:0}
+section{padding:24px 0 56px}
+table{width:100%;border-collapse:collapse;font-size:15px;table-layout:fixed;min-width:860px}
+th,td{text-align:left;padding:18px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--dim);font-weight:500;font-size:13px;text-transform:uppercase;letter-spacing:.06em}
+.dl{overflow-x:auto}
+.ver{display:flex;flex-direction:column;gap:6px;line-height:1.35}
+.ver .v{font-size:22px;font-weight:650}
+.ver .line{color:var(--dim);font-size:14px}
+.plat{display:flex;flex-direction:column;gap:4px;font-size:14px}
+.plat .head{display:inline-flex;align-items:center;gap:8px;font-weight:650;font-size:15px;margin-bottom:4px}
+.plat .row{display:inline-flex;align-items:center;gap:8px;color:var(--dim)}
+.plat .head svg,.plat .head i,.plat .row svg,.plat .row i,.pkg .tag svg,.pkg .tag i,.file .name svg,.file .name i{width:1em;height:1em;flex:0 0 auto}
+.pkg{display:flex;flex-direction:column;gap:8px;color:var(--text);text-decoration:none}
+.pkg .tag{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel);font-size:13px;font-weight:650}
+.pkg .size{color:var(--dim);font-size:13px}
+.file{display:flex;flex-direction:column;gap:6px;min-width:0}
+.file .name{display:inline-flex;align-items:center;gap:8px;color:var(--text);font-weight:600;font-size:13px;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.file .sha{display:block;margin:0;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:#0e1217;font-family:ui-monospace,monospace;font-size:10px;color:var(--dim);white-space:nowrap;overflow-x:auto;cursor:pointer}
+.file .sha.copied{color:#7dcea0;border-color:#3d6b4f}
+td.ver-cell{border-right:1px solid var(--line);background:rgba(18,22,27,.55)}
+.empty{color:var(--dim);padding:24px 0}
+footer{padding:40px 0 60px;color:var(--dim);font-size:14px;text-align:center;border-top:1px solid var(--line)}
+</style>
+<script src="https://kit.fontawesome.com/45801522ef.js" crossorigin="anonymous"></script>
+</head>
+<body>
+<header><div class="wrap">
+  <a class="back" href="./">← Pavillion</a>
+  <h1>Prior releases</h1>
+  <p class="tag">Older builds stay here; the home page always shows the latest.</p>
+</div></header>
+<section><div class="wrap">
+  <div id="releases" class="dl empty">Loading…</div>
+</div></section>
+<footer>Pavillion · <a href="./">Home</a> · <a href="https://github.com/500Foods/Pavillion/releases">GitHub Releases</a></footer>
+<script>
+const META={
+  "windows-msi":{family:"Windows",familyIcon:"fa-brands fa-windows",pkg:"MSI",pkgIcon:"fa-solid fa-box",lines:[{icon:"",label:"Windows 10"},{icon:"",label:"Windows 11"}]},
+  "linux-rpm":{family:"Linux",familyIcon:"fa-brands fa-linux",pkg:"RPM",pkgIcon:"fa-solid fa-box",lines:[{icon:"fa-brands fa-fedora",label:"Fedora 43+"},{icon:"fa-brands fa-redhat",label:"RHEL 9+"},{icon:"fa-brands fa-centos",label:"CentOS Stream 9+"}]},
+  "linux-deb":{family:"Linux",familyIcon:"fa-brands fa-linux",pkg:"DEB",pkgIcon:"fa-solid fa-box",lines:[{icon:"fa-brands fa-debian",label:"Debian 12+"},{icon:"fa-brands fa-ubuntu",label:"Ubuntu 22.04+"}]},
+  "linux-appimage":{family:"Linux",familyIcon:"fa-brands fa-linux",pkg:"AppImage",pkgIcon:"fa-solid fa-box",lines:[{icon:"fa-brands fa-linux",label:"Most Linux desktops"}]},
+  "macos-dmg":{family:"macOS",familyIcon:"fa-brands fa-apple",pkg:"DMG",pkgIcon:"fa-solid fa-box",lines:[{icon:"",label:"macOS 14+"}]}
+};
+const meta=p=>META[p]||{family:p,familyIcon:"fa-solid fa-download",pkg:p,pkgIcon:"fa-solid fa-box",lines:[]};
+const icon=cls=>cls?`<i class="${cls}" aria-hidden="true"></i>`:"";
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const mb=n=>n?(n/1048576).toFixed(1)+" MB":"—";
+function platCell(m){return `<div class="plat"><span class="head">${icon(m.familyIcon)} ${esc(m.family)}</span>${m.lines.map(l=>`<span class="row">${icon(l.icon)}${esc(l.label)}</span>`).join("")}</div>`}
+function pkgCell(a,m){return `<a class="pkg" href="${esc(a.url)}"><span class="tag">${icon(m.pkgIcon)} ${esc(m.pkg)}</span><span class="size">${esc(mb(a.size))}</span></a>`}
+function fileCell(a){return `<div class="file"><a class="name" href="${esc(a.url)}">${icon("fa-solid fa-file-arrow-down")} <span>${esc(a.filename)}</span></a><code class="sha" title="Click to copy SHA-256" data-sha="${esc(a.sha256)}">${esc(a.sha256)}</code></div>`}
+function verCell(r,n){return `<div class="ver"><span class="v">${esc(r.version)}</span><span class="line">${esc(r.date)}</span><span class="line"><a href="${esc(r.commitUrl)}">${esc(r.commit.slice(0,7))}</a></span><span class="line"><a href="${esc(r.releaseUrl)}">Release notes</a></span><span class="line">Builds: ${n}</span></div>`}
+function releaseBlock(r){const n=r.assets.length;return r.assets.map((a,i)=>{const m=meta(a.platform);const ver=i===0?`<td class="ver-cell" rowspan="${n}">${verCell(r,n)}</td>`:"";return `<tr>${ver}<td>${platCell(m)}</td><td>${pkgCell(a,m)}</td><td>${fileCell(a)}</td></tr>`}).join("")}
+fetch("releases.json",{cache:"no-cache"}).then(r=>r.json()).then(j=>{
+  const prior=(j.releases||[]).slice(1),box=document.getElementById("releases");
+  if(!prior.length){box.className="empty";box.innerHTML=`No prior releases yet. The current build is on the <a href="./">home page</a>, and the full GitHub history is in <a href="https://github.com/500Foods/Pavillion/releases">Releases</a>.`;return}
+  box.className="dl";
+  box.innerHTML=`<table><thead><tr><th>Version</th><th>Platform</th><th>Package</th><th>File</th></tr></thead><tbody>${prior.map(releaseBlock).join("")}</tbody></table>`;
+}).catch(()=>{document.getElementById("releases").textContent="Could not load releases."});
+document.addEventListener("click",async e=>{
+  const el=e.target.closest("code.sha[data-sha]"); if(!el)return; e.preventDefault();
+  try{await navigator.clipboard.writeText(el.getAttribute("data-sha")||"");el.classList.add("copied");setTimeout(()=>el.classList.remove("copied"),1200)}
+  catch(_){const r=document.createRange();r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r)}
+});
+</script>
+</body>
+</html>

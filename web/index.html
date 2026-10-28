@@ -26,7 +26,7 @@
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 "Vanadium Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
 a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
-.wrap{max-width:1040px;margin:0 auto;padding:0 24px}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
 header{position:relative;overflow:hidden;padding:96px 0 72px;text-align:center}
 header::before{content:"";position:absolute;inset:-40% -10% auto;height:620px;background:radial-gradient(closest-side,rgba(95,168,255,.18),transparent),radial-gradient(closest-side at 70% 40%,rgba(155,123,255,.14),transparent);pointer-events:none}
 .mark{width:128px;height:128px;opacity:0;animation:in .8s .2s ease forwards}
@@ -48,29 +48,45 @@ table{width:100%;border-collapse:collapse;font-size:15px}
 th,td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line);vertical-align:top}
 th{color:var(--dim);font-weight:500;font-size:13px;text-transform:uppercase;letter-spacing:.06em}
 code,.sha{font-family:"Vanadium Mono",ui-monospace,monospace;font-size:12px;color:var(--dim);word-break:break-all}
-.chip{display:inline-flex;align-items:center;gap:6px;margin:2px 6px 2px 0;padding:2px 10px;border:1px solid var(--line);border-radius:99px;font-size:13px}
-.pkg{display:inline-flex;align-items:center;gap:8px;font-weight:600}
-.pkg .tag{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel);font-size:13px;letter-spacing:.04em}
-.platforms{color:var(--dim);font-size:14px;line-height:1.45}
-.platforms strong{display:block;color:var(--text);font-weight:600;font-size:15px;margin-bottom:2px}
-.sha-block{display:flex;flex-direction:column;gap:4px;min-width:0}
-.sha-block a{font-size:13px;font-weight:600;color:var(--text);word-break:break-all}
-.sha-block a:hover{color:var(--accent)}
-.sha-block code{display:block;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:#0e1217;font-size:11px;line-height:1.4;color:var(--dim);word-break:break-all}
-.dl table{table-layout:fixed}
+.ver{display:flex;flex-direction:column;gap:6px;line-height:1.35}
+.ver .v{font-size:22px;font-weight:650;letter-spacing:-.02em}
+.ver .line{color:var(--dim);font-size:14px}
+.ver .line a{font-weight:500}
+.plat{display:flex;flex-direction:column;gap:4px;font-size:14px;line-height:1.35}
+.plat .head{display:inline-flex;align-items:center;gap:8px;color:var(--text);font-weight:650;font-size:15px;margin-bottom:4px}
+.plat .head svg,.plat .head i,.plat .row svg,.plat .row i{width:1em;height:1em;flex:0 0 auto}
+.plat .row{display:inline-flex;align-items:center;gap:8px;color:var(--dim);padding-left:2px}
+.plat .row svg,.plat .row i{opacity:.9}
+.pkg{display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-decoration:none;color:var(--text)}
+.pkg:hover{text-decoration:none;filter:brightness(1.08)}
+.pkg .tag{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel);font-size:13px;font-weight:650;letter-spacing:.04em}
+.pkg .tag svg,.pkg .tag i{width:1em;height:1em}
+.pkg .size{color:var(--dim);font-size:13px;padding-left:2px}
+.file{display:flex;flex-direction:column;gap:6px;min-width:0}
+.file .name{display:inline-flex;align-items:center;gap:8px;color:var(--text);font-weight:600;font-size:13px;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.file .name:hover{color:var(--accent);text-decoration:none}
+.file .name svg,.file .name i{width:1em;height:1em;flex:0 0 auto;color:var(--dim)}
+.file .sha{display:block;margin:0;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:#0e1217;font-family:"Vanadium Mono",ui-monospace,monospace;font-size:10px;line-height:1.35;color:var(--dim);white-space:nowrap;overflow-x:auto;cursor:pointer;user-select:all}
+.file .sha:hover{border-color:var(--accent);color:var(--text)}
+.file .sha.copied{color:#7dcea0;border-color:#3d6b4f}
+.dl{overflow-x:auto}
+.dl table{table-layout:fixed;min-width:860px}
 .dl th:nth-child(1){width:18%}
-.dl th:nth-child(2){width:28%}
-.dl th:nth-child(3){width:14%}
-.dl th:nth-child(4){width:10%}
-.dl th:nth-child(5){width:30%}
-.dl td{padding:16px 10px}
+.dl th:nth-child(2){width:26%}
+.dl th:nth-child(3){width:12%}
+.dl th:nth-child(4){width:44%}
+.dl td{padding:18px 12px}
+.dl td.ver-cell{border-right:1px solid var(--line);background:rgba(18,22,27,.55)}
 .empty{color:var(--dim)}
 @media(max-width:720px){
+  .dl table{min-width:0}
   .dl table,.dl thead,.dl tbody,.dl th,.dl td,.dl tr{display:block;width:100%}
   .dl thead{display:none}
   .dl tr{border:1px solid var(--line);border-radius:12px;margin-bottom:12px;padding:8px 4px;background:var(--panel)}
   .dl td{border:0;padding:8px 12px}
+  .dl td.ver-cell{border-right:0;background:transparent}
   .dl td::before{content:attr(data-label);display:block;color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+  .file .sha{white-space:normal;word-break:break-all}
 }
 footer{padding:40px 0 60px;color:var(--dim);font-size:14px;text-align:center;border-top:1px solid var(--line)}
 </style>
@@ -107,32 +123,73 @@ footer{padding:40px 0 60px;color:var(--dim);font-size:14px;text-align:center;bor
 
 <script>
 const META={
-  "windows-msi":{os:"Windows",osIcon:"fa-brands fa-windows",pkg:"MSI",pkgIcon:"fa-solid fa-box",cta:"Windows (MSI)",families:["Windows 10 / 11"]},
-  "linux-rpm":{os:"Fedora",osIcon:"fa-brands fa-fedora",pkg:"RPM",pkgIcon:"fa-solid fa-box",cta:"Fedora (RPM)",families:["Fedora","RHEL","CentOS Stream","Rocky","Alma","openSUSE"]},
-  "linux-deb":{os:"Debian / Ubuntu",osIcon:"fa-brands fa-linux",pkg:"DEB",pkgIcon:"fa-solid fa-box",cta:"Debian/Ubuntu (deb)",families:["Debian","Ubuntu","Linux Mint"]},
-  "linux-appimage":{os:"Linux",osIcon:"fa-brands fa-linux",pkg:"AppImage",pkgIcon:"fa-solid fa-box",cta:"Linux (AppImage)",families:["Most Linux desktops"]},
-  "macos-dmg":{os:"macOS",osIcon:"fa-brands fa-apple",pkg:"DMG",pkgIcon:"fa-solid fa-box",cta:"macOS (DMG)",families:["macOS"]}
+  "windows-msi":{
+    family:"Windows", familyIcon:"fa-brands fa-windows",
+    pkg:"MSI", pkgIcon:"fa-solid fa-box", cta:"Windows (MSI)",
+    lines:[{icon:"",label:"Windows 10"},{icon:"",label:"Windows 11"}]
+  },
+  "linux-rpm":{
+    family:"Linux", familyIcon:"fa-brands fa-linux",
+    pkg:"RPM", pkgIcon:"fa-solid fa-box", cta:"Linux (RPM)",
+    lines:[
+      {icon:"fa-brands fa-fedora",label:"Fedora 43+"},
+      {icon:"fa-brands fa-redhat",label:"RHEL 9+"},
+      {icon:"fa-brands fa-centos",label:"CentOS Stream 9+"}
+    ]
+  },
+  "linux-deb":{
+    family:"Linux", familyIcon:"fa-brands fa-linux",
+    pkg:"DEB", pkgIcon:"fa-solid fa-box", cta:"Debian/Ubuntu (deb)",
+    lines:[{icon:"fa-brands fa-debian",label:"Debian 12+"},{icon:"fa-brands fa-ubuntu",label:"Ubuntu 22.04+"}]
+  },
+  "linux-appimage":{
+    family:"Linux", familyIcon:"fa-brands fa-linux",
+    pkg:"AppImage", pkgIcon:"fa-solid fa-box", cta:"Linux (AppImage)",
+    lines:[{icon:"fa-brands fa-linux",label:"Most Linux desktops"}]
+  },
+  "macos-dmg":{
+    family:"macOS", familyIcon:"fa-brands fa-apple",
+    pkg:"DMG", pkgIcon:"fa-solid fa-box", cta:"macOS (DMG)",
+    lines:[{icon:"",label:"macOS 14+"}]
+  }
 };
-const meta=p=>META[p]||{os:p,osIcon:"fa-solid fa-download",pkg:p,pkgIcon:"fa-solid fa-box",cta:p,families:[]};
-const icon=cls=>`<i class="${cls}" aria-hidden="true"></i>`;
+const meta=p=>META[p]||{family:p,familyIcon:"fa-solid fa-download",pkg:p,pkgIcon:"fa-solid fa-box",cta:p,lines:[]};
+const icon=cls=>cls?`<i class="${cls}" aria-hidden="true"></i>`:"";
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const mb=n=>n?(n/1048576).toFixed(1)+" MB":"—";
 function guess(){const u=navigator.userAgent;return /Windows/.test(u)?"windows-msi":/Mac/.test(u)?"macos-dmg":/Linux/.test(u)?"linux-rpm":null}
-function assetRows(r){
+function platCell(m){
+  const rows=m.lines.map(l=>`<span class="row">${icon(l.icon)}${esc(l.label)}</span>`).join("");
+  return `<div class="plat"><span class="head">${icon(m.familyIcon)} ${esc(m.family)}</span>${rows}</div>`;
+}
+function pkgCell(a,m){
+  return `<a class="pkg" href="${esc(a.url)}"><span class="tag">${icon(m.pkgIcon)} ${esc(m.pkg)}</span><span class="size">${esc(mb(a.size))}</span></a>`;
+}
+function fileCell(a){
+  return `<div class="file"><a class="name" href="${esc(a.url)}">${icon("fa-solid fa-file-arrow-down")} <span>${esc(a.filename)}</span></a><code class="sha" title="Click to copy SHA-256" data-sha="${esc(a.sha256)}">${esc(a.sha256)}</code></div>`;
+}
+function verCell(r,nBuilds,hasPrior){
+  const prior=hasPrior
+    ? `<a href="releases.html">Prior releases</a>`
+    : `<a href="https://github.com/500Foods/Pavillion/releases">Prior releases</a>`;
+  return `<div class="ver">
+    <span class="v">${esc(r.version)}</span>
+    <span class="line">${esc(r.date)}</span>
+    <span class="line"><a href="${esc(r.commitUrl)}">${esc(r.commit.slice(0,7))}</a></span>
+    <span class="line"><a href="${esc(r.releaseUrl)}">Release notes</a></span>
+    <span class="line">Builds: ${nBuilds}</span>
+    <span class="line">${prior}</span>
+  </div>`;
+}
+function releaseBlock(r, hasPrior){
+  const n=r.assets.length;
   return r.assets.map((a,i)=>{
     const m=meta(a.platform);
-    const ver=i===0
-      ? `<strong>${esc(r.version)}</strong><br><span class="meta">${esc(r.date)} · <a href="${esc(r.commitUrl)}">${esc(r.commit.slice(0,7))}</a> · <a href="${esc(r.releaseUrl)}">notes</a></span>`
-      : `<span class="meta">↳ ${esc(r.version)}</span>`;
-    const platforms=`<div class="platforms"><strong>${icon(m.osIcon)} ${esc(m.os)}</strong>${esc(m.families.join(" · "))}</div>`;
-    const pkg=`<a class="pkg" href="${esc(a.url)}"><span class="tag">${icon(m.pkgIcon)} ${esc(m.pkg)}</span></a>`;
-    const sha=`<div class="sha-block"><a href="${esc(a.url)}">${esc(a.filename)}</a><code>${esc(a.sha256)}</code></div>`;
-    return `<tr>
-      <td data-label="Version">${ver}</td>
-      <td data-label="Platform">${platforms}</td>
-      <td data-label="Package">${pkg}</td>
-      <td data-label="Size">${esc(mb(a.size))}</td>
-      <td data-label="SHA-256">${sha}</td>
+    const ver=i===0?`<td class="ver-cell" data-label="Version" rowspan="${n}">${verCell(r,n,hasPrior)}</td>`:"";
+    return `<tr>${ver}
+      <td data-label="Platform">${platCell(m)}</td>
+      <td data-label="Package">${pkgCell(a,m)}</td>
+      <td data-label="File">${fileCell(a)}</td>
     </tr>`;
   }).join("");
 }
@@ -143,12 +200,29 @@ fetch("releases.json",{cache:"no-cache"}).then(r=>r.json()).then(j=>{
   if(pick){
     const m=meta(pick.platform);
     document.getElementById("cta").insertAdjacentHTML("afterbegin",
-      `<a class="btn primary" href="${esc(pick.url)}">${icon(m.osIcon)} Download ${esc(cur.version)} · ${esc(m.cta)}</a>`);
+      `<a class="btn primary" href="${esc(pick.url)}">${icon(m.familyIcon)} Download ${esc(cur.version)} · ${esc(m.cta)}</a>`);
   }
-  document.getElementById("meta").innerHTML=`Version ${esc(cur.version)} · released ${esc(cur.date)} · <a href="#downloads">all platforms &amp; versions</a>`;
+  document.getElementById("meta").innerHTML=`Version ${esc(cur.version)} · released ${esc(cur.date)} · <a href="#downloads">all platforms</a> · <a href="releases.html">prior releases</a>`;
+  // Latest only on the home table; older live on releases.html
   box.className="dl";
-  box.innerHTML=`<table><thead><tr><th>Version</th><th>Platform</th><th>Package</th><th>Size</th><th>SHA-256</th></tr></thead><tbody>${rel.map(assetRows).join("")}</tbody></table>`;
+  box.innerHTML=`<table><thead><tr><th>Version</th><th>Platform</th><th>Package</th><th>File</th></tr></thead><tbody>${releaseBlock(cur, true)}</tbody></table>`;
 }).catch(()=>{document.getElementById("releases").textContent="Could not load releases."});
+document.addEventListener("click",async e=>{
+  const el=e.target.closest("code.sha[data-sha]");
+  if(!el)return;
+  e.preventDefault();
+  const v=el.getAttribute("data-sha")||"";
+  try{
+    await navigator.clipboard.writeText(v);
+    el.classList.add("copied");
+    el.title="Copied";
+    setTimeout(()=>{el.classList.remove("copied");el.title="Click to copy SHA-256"},1200);
+  }catch(_){
+    const r=document.createRange();r.selectNodeContents(el);
+    const s=window.getSelection();s.removeAllRanges();s.addRange(r);
+  }
+});
+</script>
 </script>
 </body>
 </html>
