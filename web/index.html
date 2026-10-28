@@ -22,13 +22,13 @@
 <meta name="twitter:image" content="https://500foods.github.io/Pavillion/mark.png">
 <meta name="twitter:image:alt" content="Pavillion mark">
 <style>
-:root{--bg:#0b0d10;--panel:#12161b;--line:#222a33;--text:#e7ebef;--dim:#8d99a6;--accent:#5fa8ff;--accent2:#9b7bff}
+:root{--bg:#100b0b;--panel:#1b1214;--line:#332226;--text:#efe7e7;--dim:#a69191;--accent:#ff5f5f;--accent2:#c00000}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 "Vanadium Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
 a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
 .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
 header{position:relative;overflow:hidden;padding:96px 0 72px;text-align:center}
-header::before{content:"";position:absolute;inset:-40% -10% auto;height:620px;background:radial-gradient(closest-side,rgba(95,168,255,.18),transparent),radial-gradient(closest-side at 70% 40%,rgba(155,123,255,.14),transparent);pointer-events:none}
+header::before{content:"";position:absolute;inset:-40% -10% auto;height:620px;background:radial-gradient(closest-side,rgba(255,95,95,.18),transparent),radial-gradient(closest-side at 70% 40%,rgba(192,0,0,.14),transparent);pointer-events:none}
 .mark{width:128px;height:128px;opacity:0;animation:in .8s .2s ease forwards}
 h1{font-size:clamp(40px,7vw,68px);letter-spacing:-.02em;margin:18px 0 6px;font-weight:650}
 .tag{color:var(--dim);font-size:clamp(17px,2.2vw,21px);max-width:640px;margin:0 auto}
@@ -67,7 +67,7 @@ code,.sha{font-family:"Vanadium Mono",ui-monospace,monospace;font-size:12px;colo
 .file .name{display:inline-flex;align-items:center;gap:8px;color:var(--text);font-weight:600;font-size:13px;text-decoration:none;white-space:nowrap}
 .file .name:hover{color:var(--accent);text-decoration:none}
 .file .name svg,.file .name i{width:1em;height:1em;flex:0 0 auto;color:var(--dim)}
-.file .sha{display:inline-block;margin:0;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:#0e1217;font-family:"Vanadium Mono",ui-monospace,monospace;font-size:clamp(9px,0.72vw,11px);line-height:1.35;color:var(--dim);white-space:nowrap;cursor:pointer;user-select:all}
+.file .sha{display:inline-block;margin:0;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:#140e0e;font-family:"Vanadium Mono",ui-monospace,monospace;font-size:clamp(9px,0.72vw,11px);line-height:1.35;color:var(--dim);white-space:nowrap;cursor:pointer;user-select:all}
 .file .sha:hover{border-color:var(--accent);color:var(--text)}
 .file .sha.copied{color:#7dcea0;border-color:#3d6b4f}
 .dl{overflow-x:auto}
@@ -79,7 +79,7 @@ code,.sha{font-family:"Vanadium Mono",ui-monospace,monospace;font-size:12px;colo
 .dl th:nth-child(4),.dl td.file-cell{width:1%;white-space:nowrap}
 .plat .head,.plat .row,.file .name{white-space:nowrap}
 .dl td{padding:18px 12px}
-.dl td.ver-cell{border-right:1px solid var(--line);background:rgba(18,22,27,.55);vertical-align:top}
+.dl td.ver-cell{border-right:1px solid var(--line);background:rgba(27,18,20,.55);vertical-align:top}
 .empty{color:var(--dim)}
 .dl tr.tbd .plat,.pkg.tbd,.pkg.tbd .tag,.file.tbd .name{color:var(--dim)}
 .pkg.tbd .tag{color:var(--dim);font-weight:600}
