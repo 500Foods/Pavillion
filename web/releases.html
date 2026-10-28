@@ -16,6 +16,7 @@ header{padding:48px 0 24px}
 header .back{color:var(--dim);font-size:14px}
 h1{font-size:32px;margin:12px 0 6px;font-weight:650}
 .tag{color:var(--dim);margin:0}
+.meta{margin-top:14px;color:var(--dim);font-size:14px}
 section{padding:24px 0 56px}
 table{width:100%;border-collapse:collapse;font-size:15px;table-layout:auto;min-width:920px}
 th,td{text-align:left;padding:18px 12px;border-bottom:1px solid var(--line);vertical-align:top}
@@ -59,6 +60,7 @@ footer{padding:40px 0 60px;color:var(--dim);font-size:14px;text-align:center;bor
 </div></header>
 <section><div class="wrap">
   <div id="releases" class="dl empty">Loading…</div>
+  <p class="meta">Builds are unsigned for now. Verify a download with <code>sha256sum &lt;file&gt;</code> against the value listed. Older OS versions may still run, but they are untested and unsupported. If you need a specific platform or older release supported, <a href="https://github.com/500Foods/Pavillion/issues/new">open an issue</a>.</p>
 </div></section>
 <footer>Pavillion · <a href="./">Home</a> · <a href="https://github.com/500Foods/Pavillion/releases">GitHub Releases</a></footer>
 <script>
@@ -73,9 +75,9 @@ const CATALOG=[
   {key:"linux-deb:x86_64",family:"Linux",familyIcon:"fa-brands fa-linux",pkg:"DEB",cta:"Debian/Ubuntu (DEB)",
    lines:[L("fa-brands fa-debian","Debian 12+"),L("fa-brands fa-ubuntu","Ubuntu 22.04+")]},
   {key:"macos-dmg:aarch64",family:"macOS",familyIcon:"fa-brands fa-apple",pkg:"DMG",cta:"macOS Apple Silicon (DMG)",
-   lines:[L("fa-solid fa-microchip","Apple Silicon"),L("","macOS 14+")]},
+   lines:[L("fa-solid fa-microchip","Apple Silicon"),L("","macOS 15+")]},
   {key:"macos-dmg:x86_64",family:"macOS",familyIcon:"fa-brands fa-apple",pkg:"DMG",cta:"macOS Intel (DMG)",
-   lines:[L("fa-solid fa-microchip","Intel"),L("","macOS 14+")]},
+   lines:[L("fa-solid fa-microchip","Intel"),L("","macOS 15+")]},
   {key:"windows-msi:x86_64",family:"Windows",familyIcon:"fa-brands fa-windows",pkg:"MSI",cta:"Windows x64 (MSI)",
    lines:[L("","Windows 10/11"),L("fa-solid fa-microchip","x64")]},
   {key:"windows-msi:aarch64",family:"Windows",familyIcon:"fa-brands fa-windows",pkg:"MSI",cta:"Windows ARM64 (MSI)",
