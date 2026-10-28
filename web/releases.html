@@ -36,8 +36,12 @@ th{color:var(--dim);font-weight:500;font-size:13px;text-transform:uppercase;lett
 .file .sha{display:inline-block;margin:0;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:#0e1217;font-family:ui-monospace,monospace;font-size:clamp(9px,0.72vw,11px);color:var(--dim);white-space:nowrap;cursor:pointer}
 .file .sha.copied{color:#7dcea0;border-color:#3d6b4f}
 td.ver-cell{border-right:1px solid var(--line);background:rgba(18,22,27,.55)}
-td.pkg-cell{text-align:center;vertical-align:middle;width:1%}
-td.file-cell{width:auto}
+td.pkg-cell{text-align:center;vertical-align:middle;width:1%;white-space:nowrap}
+td.ver-cell{width:1%;min-width:20%;white-space:nowrap}
+td.plat-cell{width:auto;min-width:20%;white-space:nowrap}
+td.file-cell{width:1%;white-space:nowrap}
+.dl table{table-layout:auto;width:100%;min-width:0}
+.plat .head,.plat .row,.file .name{white-space:nowrap}
 .empty{color:var(--dim);padding:24px 0}
 footer{padding:40px 0 60px;color:var(--dim);font-size:14px;text-align:center;border-top:1px solid var(--line)}
 </style>
@@ -69,7 +73,7 @@ function platCell(m){return `<div class="plat"><span class="head">${icon(m.famil
 function pkgCell(a,m){return `<a class="pkg" href="${esc(a.url)}"><span class="tag">${icon(m.pkgIcon)} ${esc(m.pkg)}</span><span class="size">${esc(mb(a.size))}</span></a>`}
 function fileCell(a){return `<div class="file"><a class="name" href="${esc(a.url)}">${icon("fa-solid fa-file-arrow-down")} <span>${esc(a.filename)}</span></a><code class="sha" title="Click to copy SHA-256" data-sha="${esc(a.sha256)}">${esc(a.sha256)}</code></div>`}
 function verCell(r,n){return `<div class="ver"><span class="v">${esc(r.version)}</span><span class="line">${esc(r.date)}</span><span class="line"><a href="${esc(r.commitUrl)}">${esc(r.commit.slice(0,7))}</a></span><span class="line"><a href="${esc(r.releaseUrl)}">Release notes</a></span><span class="line">Builds: ${n}</span></div>`}
-function releaseBlock(r){const n=r.assets.length;return r.assets.map((a,i)=>{const m=meta(a.platform);const ver=i===0?`<td class="ver-cell" rowspan="${n}">${verCell(r,n)}</td>`:"";return `<tr>${ver}<td>${platCell(m)}</td><td class="pkg-cell">${pkgCell(a,m)}</td><td class="file-cell">${fileCell(a)}</td></tr>`}).join("")}
+function releaseBlock(r){const n=r.assets.length;return r.assets.map((a,i)=>{const m=meta(a.platform);const ver=i===0?`<td class="ver-cell" rowspan="${n}">${verCell(r,n)}</td>`:"";return `<tr>${ver}<td class="plat-cell">${platCell(m)}</td><td class="pkg-cell">${pkgCell(a,m)}</td><td class="file-cell">${fileCell(a)}</td></tr>`}).join("")}
 fetch("releases.json",{cache:"no-cache"}).then(r=>r.json()).then(j=>{
   const prior=(j.releases||[]).slice(1),box=document.getElementById("releases");
   if(!prior.length){box.className="empty";box.innerHTML=`No prior releases yet. The current build is on the <a href="./">home page</a>, and the full GitHub history is in <a href="https://github.com/500Foods/Pavillion/releases">Releases</a>.`;return}

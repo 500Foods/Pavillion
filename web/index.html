@@ -70,12 +70,13 @@ code,.sha{font-family:"Vanadium Mono",ui-monospace,monospace;font-size:12px;colo
 .file .sha:hover{border-color:var(--accent);color:var(--text)}
 .file .sha.copied{color:#7dcea0;border-color:#3d6b4f}
 .dl{overflow-x:auto}
-.dl table{table-layout:auto;width:100%;min-width:920px}
-.dl th:nth-child(1),.dl td.ver-cell{width:1%;white-space:nowrap}
-.dl th:nth-child(2){width:1%;white-space:nowrap}
-.dl th:nth-child(3),.dl td.pkg-cell{width:1%;text-align:center;vertical-align:middle}
+.dl table{table-layout:auto;width:100%}
+.dl th:nth-child(1),.dl td.ver-cell{width:1%;min-width:20%;white-space:nowrap}
+.dl th:nth-child(2),.dl td.plat-cell{width:auto;min-width:20%;white-space:nowrap}
+.dl th:nth-child(3),.dl td.pkg-cell{width:1%;white-space:nowrap;text-align:center;vertical-align:middle}
 .dl th:nth-child(3){text-align:center}
-.dl th:nth-child(4),.dl td.file-cell{width:auto}
+.dl th:nth-child(4),.dl td.file-cell{width:1%;white-space:nowrap}
+.plat .head,.plat .row,.file .name{white-space:nowrap}
 .dl td{padding:18px 12px}
 .dl td.ver-cell{border-right:1px solid var(--line);background:rgba(18,22,27,.55);vertical-align:top}
 .empty{color:var(--dim)}
@@ -192,7 +193,7 @@ function releaseBlock(r, hasPrior){
     const m=meta(a.platform);
     const ver=i===0?`<td class="ver-cell" data-label="Version" rowspan="${n}">${verCell(r,n,hasPrior)}</td>`:"";
     return `<tr>${ver}
-      <td data-label="Platform">${platCell(m)}</td>
+      <td class="plat-cell" data-label="Platform">${platCell(m)}</td>
       <td class="pkg-cell" data-label="Package">${pkgCell(a,m)}</td>
       <td class="file-cell" data-label="File">${fileCell(a)}</td>
     </tr>`;
