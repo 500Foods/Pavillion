@@ -224,13 +224,23 @@ jobs:
       - name: GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          DRAFT: ${{ inputs.draft }}
         run: |
           v="v${{ inputs.version }}"
-          if ! gh release view "$v" >/dev/null 2>&1; then
+          # workflow_dispatch booleans arrive as true/false or "true"/"false".
+          if [ "$DRAFT" = "true" ]; then draft=1; else draft=0; fi
+          if gh release view "$v" >/dev/null 2>&1; then
+            is_draft=$(gh release view "$v" --json isDraft --jq .isDraft)
+            if [ "$draft" = 1 ] && [ "$is_draft" != "true" ]; then
+              echo "::notice::draft=true is a dry run and $v is already published: skipping GitHub Release upload. Assets remain as workflow artifacts."
+              exit 0
+            fi
+          else
+            flag=""
+            if [ "$draft" = 1 ]; then flag="--draft"; fi
             gh release create "$v" --target "${{ needs.prepare.outputs.sha }}" \
               --title "Pavillion ${{ inputs.version }}" \
-              --notes "${{ inputs.notes || 'Unsigned build.' }}" \
-              ${{ inputs.draft && '--draft' || '' }}
+              --notes "${{ inputs.notes || 'Unsigned build.' }}" $flag
           fi
           gh release upload "$v" assets/* --clobber
       - name: releases.json
