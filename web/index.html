@@ -59,7 +59,7 @@ code,.sha{font-family:"Vanadium Mono",ui-monospace,monospace;font-size:12px;colo
 .plat .row svg,.plat .row i{opacity:.9}
 .pkg{display:flex;flex-direction:column;align-items:center;gap:8px;text-decoration:none;color:var(--text);width:100%}
 .pkg:hover{text-decoration:none;filter:brightness(1.08)}
-.pkg .tag{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel);font-size:13px;font-weight:650;letter-spacing:.04em}
+.pkg .tag{display:inline-flex;align-items:center;justify-content:center;min-width:7.5rem;padding:0;border:0;background:none;color:var(--text);font-size:15px;font-weight:700;letter-spacing:.04em}
 .pkg .tag svg,.pkg .tag i{width:1em;height:1em}
 .pkg .size{color:var(--dim);font-size:13px;text-align:center}
 .file{display:flex;flex-direction:column;gap:6px;width:max-content;max-width:100%}
@@ -73,7 +73,7 @@ code,.sha{font-family:"Vanadium Mono",ui-monospace,monospace;font-size:12px;colo
 .dl table{table-layout:auto;width:100%}
 .dl th:nth-child(1),.dl td.ver-cell{width:1%;min-width:10%;white-space:nowrap}
 .dl th:nth-child(2),.dl td.plat-cell{width:auto;min-width:10%;white-space:nowrap}
-.dl th:nth-child(3),.dl td.pkg-cell{width:1%;min-width:10%;white-space:nowrap;text-align:center;vertical-align:middle}
+.dl th:nth-child(3),.dl td.pkg-cell{width:1%;min-width:10%;white-space:nowrap;text-align:center;vertical-align:top}
 .dl th:nth-child(3){text-align:center}
 .dl th:nth-child(4),.dl td.file-cell{width:1%;white-space:nowrap}
 .plat .head,.plat .row,.file .name{white-space:nowrap}
@@ -81,7 +81,8 @@ code,.sha{font-family:"Vanadium Mono",ui-monospace,monospace;font-size:12px;colo
 .dl td.ver-cell{border-right:1px solid var(--line);background:rgba(18,22,27,.55);vertical-align:top}
 .empty{color:var(--dim)}
 .dl tr.tbd .plat,.pkg.tbd,.pkg.tbd .tag,.file.tbd .name{color:var(--dim)}
-.pkg.tbd .tag{border-style:dashed;background:transparent}
+.pkg.tbd .tag{color:var(--dim);font-weight:600}
+.dl td.pkg-cell,.dl td.file-cell,.dl td.plat-cell{vertical-align:top}
 @media(max-width:720px){
   .dl table{min-width:0}
   .dl table,.dl thead,.dl tbody,.dl th,.dl td,.dl tr{display:block;width:100%}
@@ -140,14 +141,14 @@ const CATALOG=[
    lines:[L("fa-brands fa-linux","Most Linux desktops (glibc)")]},
   {key:"linux-deb:x86_64",family:"Linux",familyIcon:"fa-brands fa-linux",pkg:"DEB",cta:"Debian/Ubuntu (DEB)",
    lines:[L("fa-brands fa-debian","Debian 12+"),L("fa-brands fa-ubuntu","Ubuntu 22.04+")]},
-  {key:"windows-msi:x86_64",family:"Windows",familyIcon:"fa-brands fa-windows",pkg:"MSI",cta:"Windows x64 (MSI)",
-   lines:[L("","Windows 10/11"),L("fa-solid fa-microchip","x64")]},
-  {key:"windows-msi:aarch64",family:"Windows",familyIcon:"fa-brands fa-windows",pkg:"MSI",cta:"Windows ARM64 (MSI)",
-   lines:[L("","Windows 11"),L("fa-solid fa-microchip","ARM64")]},
   {key:"macos-dmg:aarch64",family:"macOS",familyIcon:"fa-brands fa-apple",pkg:"DMG",cta:"macOS Apple Silicon (DMG)",
    lines:[L("fa-solid fa-microchip","Apple Silicon"),L("","macOS 14+")]},
   {key:"macos-dmg:x86_64",family:"macOS",familyIcon:"fa-brands fa-apple",pkg:"DMG",cta:"macOS Intel (DMG)",
    lines:[L("fa-solid fa-microchip","Intel"),L("","macOS 14+")]}
+  {key:"windows-msi:x86_64",family:"Windows",familyIcon:"fa-brands fa-windows",pkg:"MSI",cta:"Windows x64 (MSI)",
+   lines:[L("","Windows 10/11"),L("fa-solid fa-microchip","x64")]},
+  {key:"windows-msi:aarch64",family:"Windows",familyIcon:"fa-brands fa-windows",pkg:"MSI",cta:"Windows ARM64 (MSI)",
+   lines:[L("","Windows 11"),L("fa-solid fa-microchip","ARM64")]},
 ];
 const akey=a=>`${a.platform}:${a.arch||"x86_64"}`;
 const meta=k=>CATALOG.find(c=>c.key===k)||{key:k,family:k,familyIcon:"fa-solid fa-download",pkg:k,cta:k,lines:[]};
@@ -159,7 +160,7 @@ function platCell(m){
   return `<div class="plat"><span class="head">${icon(m.familyIcon)} ${esc(m.family)}</span>${rows}</div>`;
 }
 function pkgCell(a,m){
-  const tag=`<span class="tag">${icon("fa-solid fa-box")} ${esc(m.pkg)}</span>`;
+  const tag=`<span class="tag">${esc(m.pkg)}</span>`;
   if(!a)return `<div class="pkg tbd">${tag}<span class="size">TBD</span></div>`;
   return `<a class="pkg" href="${esc(a.url)}">${tag}<span class="size">${esc(mb(a.size))}</span></a>`;
 }

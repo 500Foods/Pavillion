@@ -29,14 +29,14 @@ th{color:var(--dim);font-weight:500;font-size:13px;text-transform:uppercase;lett
 .plat .row{display:inline-flex;align-items:center;gap:8px;color:var(--dim)}
 .plat .head svg,.plat .head i,.plat .row svg,.plat .row i,.pkg .tag svg,.pkg .tag i,.file .name svg,.file .name i{width:1em;height:1em;flex:0 0 auto}
 .pkg{display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--text);text-decoration:none;width:100%}
-.pkg .tag{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel);font-size:13px;font-weight:650}
+.pkg .tag{display:inline-flex;align-items:center;justify-content:center;min-width:7.5rem;padding:0;border:0;background:none;color:var(--text);font-size:15px;font-weight:700;letter-spacing:.04em}
 .pkg .size{color:var(--dim);font-size:13px;text-align:center}
 .file{display:flex;flex-direction:column;gap:6px;width:max-content;max-width:100%}
 .file .name{display:inline-flex;align-items:center;gap:8px;color:var(--text);font-weight:600;font-size:13px;text-decoration:none;white-space:nowrap}
 .file .sha{display:inline-block;margin:0;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:#0e1217;font-family:ui-monospace,monospace;font-size:clamp(9px,0.72vw,11px);color:var(--dim);white-space:nowrap;cursor:pointer}
 .file .sha.copied{color:#7dcea0;border-color:#3d6b4f}
 td.ver-cell{border-right:1px solid var(--line);background:rgba(18,22,27,.55)}
-td.pkg-cell{text-align:center;vertical-align:middle;width:1%;min-width:10%;white-space:nowrap}
+td.pkg-cell{text-align:center;vertical-align:top;width:1%;min-width:10%;white-space:nowrap}
 td.ver-cell{width:1%;min-width:10%;white-space:nowrap}
 td.plat-cell{width:auto;min-width:10%;white-space:nowrap}
 td.file-cell{width:1%;white-space:nowrap}
@@ -44,7 +44,8 @@ td.file-cell{width:1%;white-space:nowrap}
 .plat .head,.plat .row,.file .name{white-space:nowrap}
 .empty{color:var(--dim);padding:24px 0}
 .dl tr.tbd .plat,.pkg.tbd,.pkg.tbd .tag,.file.tbd .name{color:var(--dim)}
-.pkg.tbd .tag{border-style:dashed;background:transparent}
+.pkg.tbd .tag{color:var(--dim);font-weight:600}
+.dl td.pkg-cell,.dl td.file-cell,.dl td.plat-cell{vertical-align:top}
 footer{padding:40px 0 60px;color:var(--dim);font-size:14px;text-align:center;border-top:1px solid var(--line)}
 </style>
 <script src="https://kit.fontawesome.com/45801522ef.js" crossorigin="anonymous"></script>
@@ -70,14 +71,14 @@ const CATALOG=[
    lines:[L("fa-brands fa-linux","Most Linux desktops (glibc)")]},
   {key:"linux-deb:x86_64",family:"Linux",familyIcon:"fa-brands fa-linux",pkg:"DEB",cta:"Debian/Ubuntu (DEB)",
    lines:[L("fa-brands fa-debian","Debian 12+"),L("fa-brands fa-ubuntu","Ubuntu 22.04+")]},
-  {key:"windows-msi:x86_64",family:"Windows",familyIcon:"fa-brands fa-windows",pkg:"MSI",cta:"Windows x64 (MSI)",
-   lines:[L("","Windows 10/11"),L("fa-solid fa-microchip","x64")]},
-  {key:"windows-msi:aarch64",family:"Windows",familyIcon:"fa-brands fa-windows",pkg:"MSI",cta:"Windows ARM64 (MSI)",
-   lines:[L("","Windows 11"),L("fa-solid fa-microchip","ARM64")]},
   {key:"macos-dmg:aarch64",family:"macOS",familyIcon:"fa-brands fa-apple",pkg:"DMG",cta:"macOS Apple Silicon (DMG)",
    lines:[L("fa-solid fa-microchip","Apple Silicon"),L("","macOS 14+")]},
   {key:"macos-dmg:x86_64",family:"macOS",familyIcon:"fa-brands fa-apple",pkg:"DMG",cta:"macOS Intel (DMG)",
    lines:[L("fa-solid fa-microchip","Intel"),L("","macOS 14+")]}
+  {key:"windows-msi:x86_64",family:"Windows",familyIcon:"fa-brands fa-windows",pkg:"MSI",cta:"Windows x64 (MSI)",
+   lines:[L("","Windows 10/11"),L("fa-solid fa-microchip","x64")]},
+  {key:"windows-msi:aarch64",family:"Windows",familyIcon:"fa-brands fa-windows",pkg:"MSI",cta:"Windows ARM64 (MSI)",
+   lines:[L("","Windows 11"),L("fa-solid fa-microchip","ARM64")]},
 ];
 const akey=a=>`${a.platform}:${a.arch||"x86_64"}`;
 const meta=k=>CATALOG.find(c=>c.key===k)||{key:k,family:k,familyIcon:"fa-solid fa-download",pkg:k,cta:k,lines:[]};
@@ -89,7 +90,7 @@ function platCell(m){
   return `<div class="plat"><span class="head">${icon(m.familyIcon)} ${esc(m.family)}</span>${rows}</div>`;
 }
 function pkgCell(a,m){
-  const tag=`<span class="tag">${icon("fa-solid fa-box")} ${esc(m.pkg)}</span>`;
+  const tag=`<span class="tag">${esc(m.pkg)}</span>`;
   if(!a)return `<div class="pkg tbd">${tag}<span class="size">TBD</span></div>`;
   return `<a class="pkg" href="${esc(a.url)}">${tag}<span class="size">${esc(mb(a.size))}</span></a>`;
 }
