@@ -552,7 +552,7 @@ fn build_app(workdir: &str, single_instance: bool) -> Result<tauri::App, tauri::
         }
     }
     let mut builder = builder.plugin(tauri_plugin_dialog::init()).invoke_handler(tauri::generate_handler![core]);
-    for scheme in ["pav-blob", "pav-cid", "pav-link", "pav-theme"] {
+    for scheme in ["pav-blob", "pav-cid", "pav-link", "pav-theme", "pav-asset", "pav-system"] {
         let name = scheme.to_string();
         builder = builder.register_uri_scheme_protocol(scheme, move |_ctx, request| scheme_reply(&name, &request));
     }

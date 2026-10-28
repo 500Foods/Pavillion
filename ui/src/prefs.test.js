@@ -212,6 +212,21 @@ test("formats keeps valid kind strings and drops the rest", () => {
   expect(clampUi({}).formats).toEqual({});
 });
 
+test("the color picker zoom starts at 200% and steps by 5%", () => {
+  expect(clampUi({}).colorPickerZoom).toBe(2);
+  expect(clampUi({ colorPickerZoom: 9 }).colorPickerZoom).toBe(3);
+  expect(clampUi({ colorPickerZoom: 1.3 }).colorPickerZoom).toBe(1.3);
+  expect(clampUi({ colorPickerZoom: 1.33 }).colorPickerZoom).toBe(1.35);
+  expect(clampUi({ colorPickerZoom: "nope" }).colorPickerZoom).toBe(2);
+  expect(clampUi({}).colorSwatches).toEqual([]);
+  expect(clampUi({ colorSwatches: ["#ABC", "#aabbcc", "nope", "#112233"] }).colorSwatches).toEqual(["#aabbcc", "#112233"]);
+  const many = Array.from({ length: 30 }, (_, i) => `#${i.toString(16).padStart(6, "0")}`);
+  expect(clampUi({ colorSwatches: many }).colorSwatches).toHaveLength(24);
+  expect(clampUi({}).iconWizardZoom).toBe(1);
+  expect(clampUi({ iconWizardZoom: 1.33 }).iconWizardZoom).toBe(1.35);
+  expect(clampUi({ iconWizardZoom: 9 }).iconWizardZoom).toBe(3);
+});
+
 test("K-Q14: Accounts table and form zoom keys default to 1 and clamp like panes", () => {
   const z = clampUi({}).zoom;
   expect(z.accountsTable).toBe(1);

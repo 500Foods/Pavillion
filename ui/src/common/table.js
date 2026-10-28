@@ -9,6 +9,8 @@
    on resize and when a hidden panel is shown. The look is .pav-table on
    --pav-* variables in theme.css; no Tabulator stylesheet is loaded.
    Formatters, headers and the footer are DOM built with textContent. */
+import { iconClass } from "./icons/registry.js";
+
 let loading = null;
 const registered = new Set();
 
@@ -63,8 +65,8 @@ function register(lib, names) {
 /* Tri-state header sort icon in the kit style (K-Q12). */
 export function sortIcon(dir, documentRef = globalThis.document) {
   const icon = documentRef.createElement("i");
-  const name = dir === "asc" ? "fa-sort-up" : dir === "desc" ? "fa-sort-down" : "fa-sort";
-  icon.className = `pav-sort-icon fa-sharp-duotone fa-solid ${name}`;
+  const name = dir === "asc" ? iconClass("table.sort.asc") : dir === "desc" ? iconClass("table.sort.desc") : iconClass("table.sort");
+  icon.className = `pav-sort-icon ${name}`;
   icon.setAttribute("aria-hidden", "true");
   return icon;
 }
@@ -73,11 +75,11 @@ export function sortIcon(dir, documentRef = globalThis.document) {
    the current row (caret) or a row state set by the page (editing: pen). */
 export const INDICATOR_FIELD = "__pav_indicator";
 export const INDICATOR_WIDTH = 22;
-const INDICATOR_ICONS = { current: "fa-caret-right", editing: "fa-pen" };
+const INDICATOR_ICONS = { current: iconClass("table.current"), editing: iconClass("table.editing") };
 
 function faIcon(name, documentRef) {
   const icon = documentRef.createElement("i");
-  icon.className = `fa-sharp-duotone fa-solid ${name}`;
+  icon.className = name.includes(" ") ? name : `fa-sharp-duotone fa-solid ${name}`;
   icon.setAttribute("aria-hidden", "true");
   return icon;
 }
@@ -86,7 +88,7 @@ function faIcon(name, documentRef) {
    given, makes the header dots a button that opens the column chooser
    (TABULATOR.md Row indicator column). */
 function indicatorHeader(onHeader, documentRef) {
-  const icon = faIcon("fa-ellipsis-vertical", documentRef);
+  const icon = faIcon(iconClass("table.menu"), documentRef);
   if (typeof onHeader !== "function") {
     return icon;
   }

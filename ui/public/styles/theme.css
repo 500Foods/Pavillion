@@ -2081,13 +2081,179 @@
   font-size: 0.85rem;
 }
 
-.pav-root .accounts-line input[type="color"] {
-  width: 2.5rem;
-  height: 1.5rem;
+.pav-root .accounts-line input.accounts-color,
+.pav-root .accounts-line .clr-field:has(> .accounts-color) {
+  flex: 0 0 1.75rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  min-width: 0;
   padding: 0;
-  background: transparent;
+  box-sizing: border-box;
+}
+
+.pav-root .accounts-line input.accounts-color {
   border: 1px solid var(--pav-border);
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
   cursor: pointer;
+}
+
+.pav-root .accounts-line .clr-field:has(> .accounts-color) {
+  border: 1px solid var(--pav-border);
+}
+
+.pav-root .accounts-line .clr-field:has(> .accounts-color) input.accounts-color {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.pav-root .clr-field:has(> .accounts-color) > button {
+  width: 100%;
+  height: 100%;
+  left: 0;
+  right: 0;
+  border-radius: 0;
+}
+
+/* Coloris sits in this layer, above the form and inside an open dialog.
+   Clicks outside the dialog pass through. The library face is 200 by 100;
+   --pav-color-zoom starts at 2 and scales the layout, not CSS zoom, so the
+   marker stays under the pointer. */
+.pav-root .pav-color-host {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  pointer-events: none;
+}
+
+.pav-root .pav-color-host .clr-picker {
+  --pav-color-zoom: 2;
+  pointer-events: auto;
+  width: calc(200px * var(--pav-color-zoom));
+  border-radius: calc(10px * var(--pav-color-zoom));
+}
+
+.pav-root .pav-color-host .clr-picker .clr-gradient {
+  height: calc(100px * var(--pav-color-zoom));
+  margin-bottom: calc(15px * var(--pav-color-zoom));
+}
+
+.pav-root .pav-color-host .clr-picker .clr-marker {
+  width: calc(12px * var(--pav-color-zoom));
+  height: calc(12px * var(--pav-color-zoom));
+  margin: calc(-6px * var(--pav-color-zoom)) 0 0 calc(-6px * var(--pav-color-zoom));
+}
+
+.pav-root .pav-color-host .clr-picker .clr-hue,
+.pav-root .pav-color-host .clr-picker .clr-alpha {
+  width: calc(100% - (40px * var(--pav-color-zoom)));
+  height: calc(8px * var(--pav-color-zoom));
+  margin: calc(5px * var(--pav-color-zoom)) calc(20px * var(--pav-color-zoom));
+}
+
+.pav-root .pav-color-host .clr-picker .clr-hue div,
+.pav-root .pav-color-host .clr-picker .clr-alpha div {
+  width: calc(16px * var(--pav-color-zoom));
+  height: calc(16px * var(--pav-color-zoom));
+  margin-left: calc(-8px * var(--pav-color-zoom));
+}
+
+.pav-root .pav-color-host .clr-picker .clr-hue input[type="range"],
+.pav-root .pav-color-host .clr-picker .clr-alpha input[type="range"] {
+  width: calc(100% + (32px * var(--pav-color-zoom)));
+  height: calc(16px * var(--pav-color-zoom));
+  left: calc(-16px * var(--pav-color-zoom));
+  top: calc(-4px * var(--pav-color-zoom));
+}
+
+.pav-root .pav-color-host .clr-picker input.clr-color {
+  width: calc(100% - (80px * var(--pav-color-zoom)));
+  height: calc(32px * var(--pav-color-zoom));
+  margin: calc(15px * var(--pav-color-zoom)) calc(20px * var(--pav-color-zoom)) calc(20px * var(--pav-color-zoom)) auto;
+  padding: 0 calc(10px * var(--pav-color-zoom));
+  border-radius: calc(16px * var(--pav-color-zoom));
+  font-size: calc(14px * var(--pav-color-zoom));
+}
+
+.pav-root .pav-color-host .clr-picker .clr-preview {
+  width: calc(32px * var(--pav-color-zoom));
+  height: calc(32px * var(--pav-color-zoom));
+  margin: calc(15px * var(--pav-color-zoom)) 0 calc(20px * var(--pav-color-zoom)) calc(20px * var(--pav-color-zoom));
+}
+
+.pav-root .pav-color-host .clr-picker .clr-format {
+  width: calc(100% - (40px * var(--pav-color-zoom)));
+  margin: 0 calc(20px * var(--pav-color-zoom)) calc(20px * var(--pav-color-zoom));
+}
+
+.pav-root .pav-color-host .clr-picker .clr-segmented {
+  border-radius: calc(15px * var(--pav-color-zoom));
+  font-size: calc(12px * var(--pav-color-zoom));
+}
+
+.pav-root .pav-color-host .clr-picker .clr-segmented label {
+  padding: calc(4px * var(--pav-color-zoom)) 0;
+}
+
+.pav-root .pav-color-host .clr-picker .clr-swatches {
+  width: calc(100% - (32px * var(--pav-color-zoom)));
+  margin: 0 calc(16px * var(--pav-color-zoom));
+}
+
+.pav-root .pav-color-host .clr-picker .clr-swatches div {
+  padding-bottom: calc(8px * var(--pav-color-zoom));
+}
+
+.pav-root .pav-color-host .clr-picker .clr-swatches button {
+  width: calc(20px * var(--pav-color-zoom));
+  height: calc(20px * var(--pav-color-zoom));
+  margin: 0 calc(4px * var(--pav-color-zoom)) calc(6px * var(--pav-color-zoom));
+}
+
+.pav-root .pav-color-host .clr-picker .pav-color-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(8px * var(--pav-color-zoom));
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 0 calc(8px * var(--pav-color-zoom));
+  order: 3;
+}
+
+.pav-root .pav-color-host .clr-picker .pav-color-actions button {
+  display: grid;
+  place-items: center;
+  width: calc(28px * var(--pav-color-zoom));
+  height: calc(28px * var(--pav-color-zoom));
+  margin: 0;
+  padding: 0;
+  border: 1px solid white;
+  border-radius: calc(8px * var(--pav-color-zoom));
+  background: transparent;
+  color: white;
+  cursor: pointer;
+  order: 0;
+  flex: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pav-root .pav-color-host .clr-picker .pav-color-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.pav-root .pav-color-host .clr-picker .pav-color-actions .icon,
+.pav-root .pav-color-host .clr-picker .pav-color-actions svg {
+  width: calc(14px * var(--pav-color-zoom));
+  height: calc(14px * var(--pav-color-zoom));
+  font-size: calc(14px * var(--pav-color-zoom));
+  pointer-events: none;
+  -webkit-user-drag: none;
 }
 
 .pav-root .accounts-result {

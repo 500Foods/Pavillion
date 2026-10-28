@@ -20,6 +20,10 @@ test("the swatch draws on the account color and refuses unsafe markup", () => {
   const bad = accountSwatch({ icon: '<img src="x" onerror="alert(1)">', color: "#123456" });
   expect(bad.querySelector("img")).toBeNull();
   expect(bad.querySelector("i").className).toContain("fa-envelope");
+  const mark = accountSwatch({ icon: '<img src="pav-system:mark" alt="">', color: "#123456" });
+  expect(mark.querySelector("img").getAttribute("src")).toBe("pav-system://mark");
+  const span = accountSwatch({ icon: '<span class="material-symbols-sharp">star</span>', color: "#123456" });
+  expect(span.querySelector("span").textContent).toBe("star");
 });
 
 test("a feature box needs the tested capability and the sync flag", () => {

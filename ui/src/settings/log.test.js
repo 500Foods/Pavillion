@@ -6,6 +6,7 @@ import { createLogSettings, formatMb, statsText } from "./log.js";
 
 function pane() {
   const root = document.createElement("div");
+  // html-ok: static test fixture, not outside data.
   root.innerHTML = `
     <input id="log-cap" type="range" min="1" max="100" step="1" value="10" />
     <span id="log-cap-value"></span>

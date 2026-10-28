@@ -4,6 +4,7 @@
    outside ^[a-z][a-z0-9-]{0,39}$, position, behavior, a leading hyphen,
    a non-string, and more than 32 names. */
 
+import { iconClass } from "../common/icons/registry.js";
 import { moduleFooter, moduleToolbar, mountBar } from "../common/module-bar.js";
 
 function messageOf(err) {
@@ -96,7 +97,7 @@ export function createMailSettings(api, root, options = {}) {
     },
     end: [{
       action: "apply",
-      icon: "fa-check",
+      icon: iconClass("settings.apply"),
       text: "Apply",
       label: "Save extra CSS properties",
       onClick: () => {

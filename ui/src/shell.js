@@ -23,12 +23,18 @@ import { createLogView } from "./log/view.js";
 import { createMailList } from "./mail/list.js";
 import { createMailNav } from "./mail/nav.js";
 import { renderRow } from "./tree/render.js";
+import { defaultLibraries } from "./common/iconhosts.js";
+import { iconNode, navEntries } from "./common/icons/registry.js";
+import { librariesFromKit } from "./common/icons/libraries.js";
+import { readAssetBytes, storeRenderedPng } from "./common/icons/bytes.js";
+import { mountIconsPanel, storeSvgText } from "./common/icons/panel.js";
+import { openIconWizard } from "./common/icons/wizard.js";
+import { bindColorPicker } from "./common/coloris.js";
 import { DEFAULT_UI, FEATURE_KEYS, RAIL_KEYS, chordsOf, clampUi, railOf, snapZoom } from "./prefs.js";
 import {
   THEME_TEMPLATES,
   buildCatalog,
   effectiveChoice,
-  iconFromHtml,
   liveThemeCss,
   safeAssetUrl,
   schemeOf,
@@ -198,6 +204,10 @@ function zoomKeyAt(target) {
   if (!(target instanceof Element)) {
     return "";
   }
+  /* The Wizard and the color picker zoom themselves. */
+  if (target.closest(".pav-icon-wizard") || target.closest("#clr-picker")) {
+    return "";
+  }
   if (target.closest(".button-bar")) {
     return "navButtons";
   }
@@ -280,73 +290,8 @@ function onWheelZoom(event) {
   stepZoom(key, wheelSteps(event));
 }
 
-const ICON_KEYS = ["mail", "contacts", "calendars", "tasks", "files", "notes", "argent", "bots", "github", "activity", "settings", "update", "help"];
-
 function iconElement(key) {
   return mountRoot.querySelector(`.nav [data-rail="${key}"] .icon`);
-}
-
-/* WebKit's SVG className is read-only. Font Awesome swaps <i> for <svg>, so always replace the node. */
-function paintNavIcon(el, value) {
-  const definition = el.dataset.iconDefinition || "";
-  const raw = unquote(value).trim();
-  const fallback = definition ? `icon ${definition}` : "icon";
-  if (!raw || raw === "none") {
-    el.replaceWith(freshIcon(fallback, definition));
-    return;
-  }
-  if (raw.startsWith("<")) {
-    const parsed = iconFromHtml(raw);
-    if (!parsed) {
-      el.replaceWith(freshIcon(fallback, definition));
-      return;
-    }
-    parsed.classList.add("icon");
-    parsed.setAttribute("aria-hidden", "true");
-    if (definition) {
-      parsed.dataset.iconDefinition = definition;
-    }
-    el.replaceWith(parsed);
-    return;
-  }
-  const asset = /\s/.test(raw) ? "" : safeAssetUrl(raw);
-  if (asset) {
-    const img = document.createElement("img");
-    img.alt = "";
-    img.className = "icon";
-    img.src = asset;
-    img.setAttribute("aria-hidden", "true");
-    if (definition) {
-      img.dataset.iconDefinition = definition;
-    }
-    el.replaceWith(img);
-    return;
-  }
-  el.replaceWith(freshIcon(`icon ${raw}`, definition));
-}
-
-function freshIcon(className, definition) {
-  const node = document.createElement("i");
-  node.className = className;
-  node.setAttribute("aria-hidden", "true");
-  if (definition) {
-    node.dataset.iconDefinition = definition;
-  }
-  return node;
-}
-
-function applyIconOverride(key) {
-  const el = iconElement(key);
-  if (!el) {
-    return;
-  }
-  paintNavIcon(el, ui.icons[key] || "");
-  if (tabCtl) {
-    tabCtl.refreshIcons();
-  }
-  if (featureEditor) {
-    featureEditor.refreshIcons();
-  }
 }
 
 function activeFile() {
@@ -365,29 +310,30 @@ function fileDecl(name) {
   return unquote(themeMap(theme.text).get(name) || "").trim();
 }
 
+/* Override wins, then a file theme's --pav-icon-*, then the shipped default.
+   Replace the node: WebKit's SVG className is read-only after Font Awesome swaps <i>. */
 function applyIcons() {
   if (!mountRoot) {
     return;
   }
   const file = activeFile();
-  const themeMode = Boolean(file) || ui.iconSource !== "override";
-  const computed = getComputedStyle(mountRoot);
-  for (const key of ICON_KEYS) {
-    const el = iconElement(key);
+  for (const entry of navEntries()) {
+    const rail = entry.key.slice("nav.".length);
+    const el = iconElement(rail);
     if (!el) {
       continue;
     }
-    if (file) {
-      paintNavIcon(el, fileDecl(`--pav-icon-${key}`));
-      continue;
+    const themeHtml = file && entry.cssVar ? fileDecl(entry.cssVar) : "";
+    const node = iconNode(entry.key, {
+      icons: ui.icons,
+      themeHtml,
+      documentRef: document,
+      log: (key) => log("ui", "warn", `icon ${key} failed the sanitizer`),
+    });
+    if (node) {
+      el.replaceWith(node);
     }
-    if (!themeMode) {
-      paintNavIcon(el, ui.icons[key] || "");
-      continue;
-    }
-    paintNavIcon(el, computed.getPropertyValue(`--pav-icon-${key}`));
   }
-  paintIconFields();
   applyThemeKit();
   if (tabCtl) {
     tabCtl.refreshIcons();
@@ -395,52 +341,17 @@ function applyIcons() {
   if (featureEditor) {
     featureEditor.refreshIcons();
   }
-}
-
-function paintIconFields() {
-  if (!mountRoot) {
-    return;
-  }
-  const themeMode = ui.iconSource !== "override";
-  const source = mountRoot.querySelector("#icon-source");
-  if (source) {
-    source.value = themeMode ? "theme" : "override";
-  }
-  const computed = getComputedStyle(mountRoot);
-  for (const input of mountRoot.querySelectorAll("#icon-list .icon-input")) {
-    const key = input.dataset.iconKey;
-    input.disabled = themeMode;
-    if (themeMode) {
-      const shown = unquote(computed.getPropertyValue(`--pav-icon-${key}`)).trim();
-      if (shown) {
-        input.value = shown;
-      }
-    } else if (ui.icons[key]) {
-      input.value = ui.icons[key];
-    }
-  }
-  const kit = mountRoot.querySelector("#fa-kit-html");
-  if (kit) {
-    kit.disabled = themeMode;
-    if (themeMode) {
-      const shown = unquote(computed.getPropertyValue("--pav-icon-kit")).trim();
-      if (shown) {
-        kit.value = shown;
-      }
-    } else {
-      kit.value = ui.fontawesome_kit;
-    }
+  if (iconsPanel && typeof iconsPanel.paintRows === "function") {
+    iconsPanel.paintRows();
   }
 }
 
 function applyThemeKit() {
   const file = activeFile();
-  if (!mountRoot || (!file && ui.iconSource === "override") || !host || typeof host.loadKit !== "function") {
+  if (!file || !host || typeof host.loadKit !== "function") {
     return;
   }
-  const kit = file
-    ? fileDecl("--pav-icon-kit")
-    : unquote(getComputedStyle(mountRoot).getPropertyValue("--pav-icon-kit")).trim();
+  const kit = fileDecl("--pav-icon-kit");
   if (!kit || kit.startsWith("<")) {
     return;
   }
@@ -468,31 +379,7 @@ function applyMark() {
   img.classList.add("is-shown");
 }
 
-function paintPreview(preview, value) {
-  const key = preview.dataset.iconKey || "";
-  const raw = String(value || "").trim();
-  let node = raw.startsWith("<") ? iconFromHtml(raw) : null;
-  if (!node) {
-    node = document.createElement("i");
-    node.className = raw.startsWith("<") || raw === "" ? "icon" : `icon ${raw}`;
-  }
-  node.classList.add("icon");
-  if (key) {
-    node.dataset.iconKey = key;
-  }
-  preview.replaceWith(node);
-}
-
-function refreshIconPreviews() {
-  for (const input of mountRoot.querySelectorAll("#icon-list .icon-input")) {
-    const key = input.dataset.iconKey;
-    const preview = mountRoot.querySelector(`#icon-list .icon[data-icon-key="${key}"]`);
-    if (preview) {
-      paintPreview(preview, input.value || input.defaultValue);
-    }
-  }
-}
-
+let iconsPanel = null;
 let canSave = false;
 let themeChoice = "system";
 let themePast = [];
@@ -955,7 +842,6 @@ async function loadPrefs() {
   ui.zoom = stored.zoom;
   ui.activity = stored.activity;
   ui.log = stored.log;
-  ui.icons = stored.icons;
   ui.fontawesome_kit = stored.fontawesome_kit;
   ui.fonts = stored.fonts;
   if (stored.fontSource === "theme" || stored.fontSource === "override") {
@@ -966,9 +852,42 @@ async function loadPrefs() {
   }
   if (stored.iconSource === "theme" || stored.iconSource === "override") {
     ui.iconSource = stored.iconSource;
-  } else {
-    ui.iconSource = stored.icons && Object.keys(stored.icons).length > 0 ? "override" : "theme";
   }
+  let iconsMigrated = false;
+  if (stored.iconsResetD9 === true) {
+    ui.icons = stored.icons;
+    ui.iconsResetD9 = true;
+  } else {
+    ui.icons = {};
+    ui.iconsResetD9 = true;
+    iconsMigrated = true;
+  }
+  if (Array.isArray(stored.iconLibraries)) {
+    ui.iconLibraries = stored.iconLibraries;
+  } else {
+    ui.iconLibraries = librariesFromKit(stored.fontawesome_kit, defaultLibraries());
+    iconsMigrated = true;
+  }
+  ui.iconRecent = stored.iconRecent;
+  ui.iconRecentMax = stored.iconRecentMax;
+  ui.colorSwatches = stored.colorSwatches;
+  ui.colorPickerZoom = stored.colorPickerZoom;
+  ui.iconWizardZoom = stored.iconWizardZoom;
+  bindColorPicker({
+    zoom: ui.colorPickerZoom,
+    swatches: ui.colorSwatches,
+    toward: () => ui.zoom.wheel === "toward",
+    onZoom(next) {
+      ui.colorPickerZoom = next;
+      dirty = true;
+      scheduleUiSave();
+    },
+    onSwatches(next) {
+      ui.colorSwatches = next;
+      dirty = true;
+      scheduleUiSave();
+    },
+  });
   if (stored.themeChoice) {
     ui.themeChoice = stored.themeChoice;
     themeChoice = stored.themeChoice;
@@ -984,26 +903,15 @@ async function loadPrefs() {
   sessionSnapshot = JSON.stringify(ui.session);
   sessionDirty = false;
   paintSessionRestore();
-  const kitInput = mountRoot.querySelector("#fa-kit-html");
-  if (kitInput) {
-    kitInput.value = ui.fontawesome_kit;
-  }
   paintZoomSliders();
   applyZoom();
   applyFonts();
-  if (ui.iconSource === "override") {
-    for (const key of Object.keys(ui.icons)) {
-      applyIconOverride(key);
-    }
-  }
-  for (const input of mountRoot.querySelectorAll("#icon-list .icon-input")) {
-    const key = input.dataset.iconKey;
-    if (ui.icons[key]) {
-      input.value = ui.icons[key];
-    }
-  }
-  refreshIconPreviews();
+  applyIcons();
   canSave = true;
+  if (iconsMigrated) {
+    dirty = true;
+    await flushUiSave();
+  }
 }
 
 const sections = {
@@ -1916,29 +1824,7 @@ function bindSettings() {
       persistLayout();
     });
   }
-  const iconSource = mountRoot.querySelector("#icon-source");
-  if (iconSource) {
-    iconSource.addEventListener("change", () => {
-      const next = iconSource.value === "override" ? "override" : "theme";
-      if (next === "override" && ui.iconSource !== "override") {
-        const computed = getComputedStyle(mountRoot);
-        ui.icons = { ...ui.icons };
-        for (const key of ICON_KEYS) {
-          const shown = unquote(computed.getPropertyValue(`--pav-icon-${key}`)).trim();
-          if (shown) {
-            ui.icons[key] = shown;
-          }
-        }
-        const kit = unquote(computed.getPropertyValue("--pav-icon-kit")).trim();
-        if (kit) {
-          ui.fontawesome_kit = kit;
-        }
-      }
-      ui.iconSource = next;
-      applyIcons();
-      persistLayout();
-    });
-  }
+  ensureIconsPanel();
   const themeList = mountRoot.querySelector("#theme-list");
   if (themeList) {
     themeList.addEventListener("change", (event) => {
@@ -2023,120 +1909,111 @@ function bindSettings() {
       if (button.dataset.heading === "formats" && formatsSettings) {
         formatsSettings.refresh();
       }
+      if (button.dataset.heading === "icons") {
+        ensureIconsPanel();
+      }
       showNav("settings");
       openHome("settings", { heading: button.dataset.heading });
     });
   }
-  const iconForm = mountRoot.querySelector("#icon-form");
-  if (iconForm) {
-    const previewBtn = iconForm.querySelector("#icon-preview");
-    const reloadBtn = iconForm.querySelector("#icon-reload");
+}
 
-    function setDirty(isDirty) {
-      const locked = ui.iconSource !== "override";
-      if (previewBtn) {
-        previewBtn.disabled = locked || !isDirty;
-      }
-      if (reloadBtn) {
-        reloadBtn.disabled = locked || !isDirty;
-      }
-    }
-
-    function updatePreviews() {
-      for (const input of iconForm.querySelectorAll(".icon-input")) {
-        const key = input.dataset.iconKey;
-        const preview = mountRoot.querySelector(`#icon-list .icon[data-icon-key="${key}"]`);
-        if (preview) {
-          paintPreview(preview, input.value || input.defaultValue);
-        }
-      }
-    }
-
-    for (const input of iconForm.querySelectorAll(".icon-input")) {
-      input.addEventListener("input", () => {
-        if (ui.iconSource !== "override") {
-          return;
-        }
-        const key = input.dataset.iconKey;
-        ui.icons[key] = input.value;
-        const preview = mountRoot.querySelector(`#icon-list .icon[data-icon-key="${key}"]`);
-        if (preview) {
-          paintPreview(preview, input.value || input.defaultValue);
-        }
-        for (const other of iconForm.querySelectorAll(".icon-input")) {
-          if (other.value !== other.defaultValue) {
-            setDirty(true);
-            return;
-          }
-        }
-        const kitInput = iconForm.querySelector("#fa-kit-html");
-        if (kitInput && kitInput.value !== kitInput.defaultValue) {
-          setDirty(true);
-          return;
-        }
-        setDirty(false);
-      });
-    }
-
-    const kitInput = iconForm.querySelector("#fa-kit-html");
-    if (kitInput) {
-      kitInput.addEventListener("input", () => {
-        if (ui.iconSource !== "override") {
-          return;
-        }
-        ui.fontawesome_kit = kitInput.value;
-        let dirty = false;
-        for (const input of iconForm.querySelectorAll(".icon-input")) {
-          if (input.value !== input.defaultValue) {
-            dirty = true;
-            break;
-          }
-        }
-        if (!dirty && kitInput.value === kitInput.defaultValue) {
-          setDirty(false);
-        } else {
-          setDirty(true);
-        }
-      });
-    }
-
-    if (previewBtn) {
-      previewBtn.addEventListener("click", (event) => {
-        event.preventDefault();
-        for (const input of iconForm.querySelectorAll(".icon-input")) {
-          ui.icons[input.dataset.iconKey] = input.value;
-        }
-        if (kitInput) {
-          ui.fontawesome_kit = kitInput.value.trim();
-        }
-        dirty = true;
-        flushUiSave().then(() => {
-          for (const key of Object.keys(ui.icons)) {
-            applyIconOverride(key);
-          }
-          setDirty(false);
-        });
-      });
-    }
-
-    iconForm.addEventListener("submit", (event) => {
-      event.preventDefault();
-      for (const input of iconForm.querySelectorAll(".icon-input")) {
-        ui.icons[input.dataset.iconKey] = input.value;
-      }
-      if (kitInput) {
-        ui.fontawesome_kit = kitInput.value.trim();
-      }
-      dirty = true;
-      flushUiSave().then(() => {
-        if (host && typeof host.reload === "function") {
-          host.reload();
-        }
-      });
-    });
-
-    setDirty(false);
+function ensureIconsPanel() {
+  const hostEl = mountRoot && mountRoot.querySelector("#icons-panel");
+  if (!hostEl || iconsPanel) {
+    return;
   }
+  iconsPanel = mountIconsPanel(hostEl, {
+    ui,
+    api,
+    saveNow() {
+      dirty = true;
+      return flushUiSave();
+    },
+    repaint() {
+      applyIcons();
+    },
+    confirm(opts) {
+      if (!widgets) {
+        return Promise.resolve(false);
+      }
+      return widgets.dialogs.confirm(opts);
+    },
+    toast(text, opts) {
+      if (widgets) {
+        widgets.toaster.toast(text, opts);
+      }
+    },
+    themeHtml(entry) {
+      return entry && entry.cssVar ? fileDecl(entry.cssVar) : "";
+    },
+    search(body) {
+      return api.iconlib.search(body);
+    },
+    loadLibraries(list) {
+      if (host && typeof host.loadLibraries === "function") {
+        host.loadLibraries(list);
+      }
+    },
+    pickFile: pickIconFile,
+    storePng: (bytes, transform) => storeRenderedPng(api, bytes, transform),
+    swatches: ui.colorSwatches,
+    wizardZoom: () => ui.iconWizardZoom,
+    onWizardZoom(next) {
+      ui.iconWizardZoom = next;
+      dirty = true;
+      scheduleUiSave();
+    },
+    toward: () => ui.zoom.wheel === "toward",
+  });
+}
+
+async function pickIconFile(kind) {
+  const dialog = host && host.dialog;
+  if (!dialog || typeof dialog.open !== "function") {
+    return null;
+  }
+  const picked = await dialog.open({
+    title: kind === "png" ? "Import PNG" : "Import SVG",
+    filters: [{ name: kind === "png" ? "PNG" : "SVG", extensions: [kind] }],
+  });
+  if (picked == null || picked === "" || Array.isArray(picked)) {
+    return null;
+  }
+  const path = String(picked);
+  if (kind === "svg") {
+    const stored = await api.asset.import({ path, kind: "svg" });
+    const bytes = await readAssetBytes(api, stored.id);
+    await api.asset.delete({ id: stored.id });
+    return { text: new TextDecoder().decode(bytes) };
+  }
+  const stored = await api.asset.import({ path, kind: "png-original" });
+  const bytes = await readAssetBytes(api, stored.id);
+  return { bytes, id: stored.id };
+}
+
+function wizardForCaller(parent, opts) {
+  if (host && typeof host.openIconWizard === "function") {
+    return host.openIconWizard(parent, opts);
+  }
+  return openIconWizard(parent, {
+    ...opts,
+    swatches: ui.colorSwatches,
+    zoom: ui.iconWizardZoom,
+    onZoom(next) {
+      ui.iconWizardZoom = next;
+      dirty = true;
+      scheduleUiSave();
+    },
+    toward: () => ui.zoom.wheel === "toward",
+    libraries: opts && Array.isArray(opts.libraries) && opts.libraries.length ? opts.libraries : ui.iconLibraries,
+    recent: opts && Array.isArray(opts.recent) && opts.recent.length ? opts.recent : ui.iconRecent,
+    search: (opts && opts.search) || ((body) => api.iconlib.search(body)),
+    confirm: (opts && opts.confirm) || ((dialogOpts) => (widgets ? widgets.dialogs.confirm(dialogOpts) : Promise.resolve(false))),
+    pickFile: (opts && opts.pickFile) || pickIconFile,
+    storePng: (opts && opts.storePng) || ((bytes, transform) => storeRenderedPng(api, bytes, transform)),
+    storeSvg: (opts && opts.storeSvg) || ((svg) => storeSvgText(api, svg)),
+  });
 }
 
 function reducedMotion() {
@@ -3002,6 +2879,18 @@ export async function startShell(surface, nextApi, nextHost, result) {
       }
       return widgets.dialogs.confirm({ title: `Delete ${name}?`, text, okLabel: "Delete", danger: true });
     },
+    openIconWizard: wizardForCaller,
+    iconConfirm(opts) {
+      if (!widgets) {
+        return Promise.resolve(false);
+      }
+      return widgets.dialogs.confirm(opts);
+    },
+    iconLibraries: () => ui.iconLibraries,
+    iconRecent: () => ui.iconRecent,
+    swatches: () => ui.colorSwatches,
+    pickFile: pickIconFile,
+    storePng: (bytes, transform) => storeRenderedPng(api, bytes, transform),
   });
   accountsView.setZoom(ui.zoom.shell * ui.zoom.accountsTable, ui.zoom.accountsTable);
   logSettings = createLogSettings(api, mountRoot, {

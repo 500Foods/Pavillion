@@ -423,8 +423,8 @@ static const char *email_default(const char *username) {
     return (username != NULL && username[0] != '\0' && email_is_valid(username)) ? username : "";
 }
 
-/* K-Q9: "" (the default envelope) or a Font Awesome HTML snippet under 4096
-   bytes. The core only bounds it; the page sanitizes it before drawing. */
+/* K-Q9: "" (the default envelope) or an HTML snippet under 4096 bytes.
+   The core only bounds it; the page sanitizes it before drawing. */
 static int icon_is_valid(const char *s) {
     size_t i, n = strlen(s);
 
@@ -819,7 +819,7 @@ int pav_account_add(json_t *args, json_t **data, PavError *err) {
             email = json_string_value(value);
         } else if (strcmp(key, "icon") == 0) {
             if (!json_is_string(value) || !icon_is_valid(json_string_value(value))) {
-                pav_error_set(err, "bad_args", "icon must be empty or a Font Awesome HTML snippet under 4096 bytes", 0);
+                pav_error_set(err, "bad_args", "icon must be empty or an HTML snippet under 4096 bytes", 0);
                 return -1;
             }
             icon = json_string_value(value);
@@ -1200,7 +1200,7 @@ int pav_account_update(json_t *args, json_t **data, PavError *err) {
                 }
             } else if (strcmp(pkey, "icon") == 0) {
                 if (!json_is_string(pval) || !icon_is_valid(json_string_value(pval))) {
-                    pav_error_set(err, "bad_args", "icon must be empty or a Font Awesome HTML snippet under 4096 bytes", 0);
+                    pav_error_set(err, "bad_args", "icon must be empty or an HTML snippet under 4096 bytes", 0);
                     return -1;
                 }
             } else {

@@ -3,6 +3,17 @@
    module footer (navigator bottom left, Refresh always first; list actions
    on the right). DOM built with textContent; look on --pav-* in theme.css. */
 
+import { iconClass } from "./icons/registry.js";
+
+function iconClassName(specIcon) {
+  const text = typeof specIcon === "string" ? specIcon.trim() : "";
+  if (text === "") {
+    return "";
+  }
+  const full = text.split(/\s+/).some((part) => part === "fa-sharp" || part === "fa-sharp-duotone" || part === "fa-brands" || part === "fa-duotone");
+  return full ? `icon ${text}` : `icon fa-sharp-duotone fa-solid ${text}`;
+}
+
 function iconButton(spec, documentRef) {
   const button = documentRef.createElement("button");
   button.type = "button";
@@ -16,7 +27,7 @@ function iconButton(spec, documentRef) {
   button.setAttribute("aria-label", spec.label);
   if (spec.icon) {
     const icon = documentRef.createElement("i");
-    icon.className = `icon fa-sharp-duotone fa-solid ${spec.icon}`;
+    icon.className = iconClassName(spec.icon);
     icon.setAttribute("aria-hidden", "true");
     button.append(icon);
   }
@@ -29,13 +40,13 @@ function iconButton(spec, documentRef) {
   return button;
 }
 
-export const REFRESH = { action: "refresh", icon: "fa-arrows-rotate", label: "Refresh" };
+export const REFRESH = { action: "refresh", icon: iconClass("module.refresh"), label: "Refresh" };
 
 export const NAV_BUTTONS = [
-  { action: "first", icon: "fa-backward-step", label: "First" },
-  { action: "prev", icon: "fa-chevron-left", label: "Previous" },
-  { action: "next", icon: "fa-chevron-right", label: "Next" },
-  { action: "last", icon: "fa-forward-step", label: "Last" },
+  { action: "first", icon: iconClass("module.first"), label: "First" },
+  { action: "prev", icon: iconClass("module.prev"), label: "Previous" },
+  { action: "next", icon: iconClass("module.next"), label: "Next" },
+  { action: "last", icon: iconClass("module.last"), label: "Last" },
 ];
 
 /* options: { title, label, actions: [spec], tools: [spec] (right side, before search), search: { label, placeholder,

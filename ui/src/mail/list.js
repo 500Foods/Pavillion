@@ -5,6 +5,7 @@
    keeps the selected id when that row is still there. Rows past the cap
    are not fetched. */
 
+import { iconClass } from "../common/icons/registry.js";
 import { createTable } from "../common/table.js";
 import { formatInstant } from "../formats.js";
 
@@ -45,9 +46,17 @@ function rowData(cell) {
   return data && typeof data === "object" ? data : {};
 }
 
+const LIST_ICONS = {
+  "fa-flag": iconClass("mail.list.flag"),
+  "fa-reply": iconClass("mail.list.reply"),
+  "fa-share": iconClass("mail.list.share"),
+  "fa-paperclip": iconClass("mail.list.file"),
+};
+
 function icon(doc, name, mark) {
   const node = doc.createElement("i");
-  node.className = `fa-sharp-duotone fa-solid ${name}${mark ? ` ${mark}` : ""}`;
+  const base = LIST_ICONS[name] || `fa-sharp-duotone fa-solid ${name}`;
+  node.className = mark ? `${base} ${mark}` : base;
   node.setAttribute("aria-hidden", "true");
   node.draggable = false;
   node.style.pointerEvents = "none";

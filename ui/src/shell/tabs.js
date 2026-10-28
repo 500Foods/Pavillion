@@ -1,12 +1,13 @@
+import { iconClass } from "../common/icons/registry.js";
 import { clampMaxTabs } from "./session.js";
 
 export const KIND_ICONS = {
-  message: "fa-sharp-duotone fa-solid fa-envelope",
-  contact: "fa-sharp-duotone fa-solid fa-address-card",
-  event: "fa-sharp-duotone fa-solid fa-calendar-day",
-  file: "fa-sharp-duotone fa-solid fa-file",
-  draft: "fa-sharp-duotone fa-solid fa-pen-to-square",
-  browse: "fa-sharp-duotone fa-solid fa-globe",
+  message: iconClass("tab.message"),
+  contact: iconClass("tab.contact"),
+  event: iconClass("tab.event"),
+  file: iconClass("tab.file"),
+  draft: iconClass("tab.draft"),
+  browse: iconClass("tab.browse"),
 };
 
 function isPlain(value) {

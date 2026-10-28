@@ -5,6 +5,7 @@
    1..10000. The log size cap stays on Logs. A fixture without the
    message-list field omits listRows. */
 
+import { iconClass } from "../common/icons/registry.js";
 import { moduleFooter, moduleToolbar, mountBar } from "../common/module-bar.js";
 import { formatInstant } from "../formats.js";
 
@@ -516,7 +517,7 @@ export function createLimitsSettings(api, root, options = {}) {
     },
     end: [{
       action: "apply",
-      icon: "fa-check",
+      icon: iconClass("settings.apply"),
       text: "Apply",
       label: "Save limits",
       onClick: () => {

@@ -26,6 +26,7 @@
 #include "logring.h"
 #include "unity.h"
 #include "sanitize_test.h"
+#include "icon_test.h"
 
 #include <jansson.h>
 
@@ -1246,8 +1247,8 @@ static void profile_text(char *dst, size_t dst_len, const char *storage) {
     TEST_ASSERT_TRUE(wrote > 0 && (size_t)wrote < dst_len);
 }
 
-/* 001's seven tables, 002's mail tables, and the contentless email_fts shadows. */
-enum { PAV_STORE_TABLES = 23 };
+/* 001's seven tables, 002's mail tables, the contentless email_fts shadows, and 004's icon tables. */
+enum { PAV_STORE_TABLES = 25 };
 
 static int user_table_count(const char *path) {
     sqlite3 *db = NULL;
@@ -4514,7 +4515,7 @@ void test_activity_history_capped(void) {
     make_slot(g_cfg_dir, sizeof(g_cfg_dir));
     TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
     snprintf(path, sizeof(path), "%s/default.sqlite", g_cfg_dir);
-    TEST_ASSERT_EQUAL_INT(3, user_version(path));
+    TEST_ASSERT_EQUAL_INT(4, user_version(path));
     TEST_ASSERT_EQUAL_INT(PAV_STORE_TABLES, user_table_count(path));
 
     for (i = 0; i < 501; i++) {
@@ -4557,7 +4558,7 @@ void test_activity_history_capped(void) {
 
     pavillion_stop();
     TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
-    TEST_ASSERT_EQUAL_INT(3, user_version(path));
+    TEST_ASSERT_EQUAL_INT(4, user_version(path));
     rows = activity_rows(1);
     TEST_ASSERT_EQUAL_INT(501, (int)json_array_size(rows));
     TEST_ASSERT_NOT_NULL(find_act(rows, failed_text));
@@ -5244,14 +5245,14 @@ void test_migrate_fresh_to_v1(void) {
     char path[160];
     static const char *names[] = {
         "activity", "account_state", "remote_account", "identity", "mailbox", "sync_state", "kv",
-        "email", "body_cache", "email_fts", "outbox", "draft_local",
+        "email", "body_cache", "email_fts", "outbox", "draft_local", "icon_asset", "icon_meta",
     };
     size_t i;
 
     make_slot(g_cfg_dir, sizeof(g_cfg_dir));
     snprintf(path, sizeof(path), "%s/mail.sqlite", g_cfg_dir);
     open_v1(path);
-    TEST_ASSERT_EQUAL_INT(3, user_version(path));
+    TEST_ASSERT_EQUAL_INT(4, user_version(path));
     TEST_ASSERT_EQUAL_INT(PAV_STORE_TABLES, user_table_count(path));
     TEST_ASSERT_TRUE(journal_is_wal(path));
     for (i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
@@ -5292,11 +5293,11 @@ void test_migrate_is_idempotent(void) {
     g_test_store = store;
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_migrate(store, err, sizeof(err)), err);
-    TEST_ASSERT_EQUAL_INT(3, user_version(path));
+    TEST_ASSERT_EQUAL_INT(4, user_version(path));
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM activity WHERE id=7 AND title='kept'"));
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_migrate(store, err, sizeof(err)), err);
-    TEST_ASSERT_EQUAL_INT(3, user_version(path));
+    TEST_ASSERT_EQUAL_INT(4, user_version(path));
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM activity WHERE id=7 AND title='kept'"));
     TEST_ASSERT_EQUAL_INT(PAV_STORE_TABLES, user_table_count(path));
     close_test_store();
@@ -5319,7 +5320,7 @@ void test_newer_db_is_error(void) {
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT(-1, pav_store_migrate(store, err, sizeof(err)));
     TEST_ASSERT_NOT_NULL(strstr(err, "9"));
-    TEST_ASSERT_NOT_NULL(strstr(err, "3"));
+    TEST_ASSERT_NOT_NULL(strstr(err, "4"));
     TEST_ASSERT_NOT_NULL(strstr(err, "newer"));
     close_test_store();
 }
@@ -5395,7 +5396,7 @@ void test_migrate_v1_to_v2(void) {
     g_test_store = store;
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_migrate(store, err, sizeof(err)), err);
-    TEST_ASSERT_EQUAL_INT(3, user_version(path));
+    TEST_ASSERT_EQUAL_INT(4, user_version(path));
     TEST_ASSERT_TRUE(table_exists(path, "email"));
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM pragma_table_info('email') WHERE name='list_id'"));
     TEST_ASSERT_EQUAL_INT(
@@ -5408,7 +5409,7 @@ void test_migrate_v1_to_v2(void) {
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM kv WHERE key='keep' AND value='yes'"));
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_migrate(store, err, sizeof(err)), err);
-    TEST_ASSERT_EQUAL_INT(3, user_version(path));
+    TEST_ASSERT_EQUAL_INT(4, user_version(path));
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM activity WHERE id=4 AND title='kept-v1'"));
     close_test_store();
 }
@@ -11971,5 +11972,8 @@ int main(void) {
     RUN_TEST(test_search_run_local);
     RUN_TEST(test_index_rebuild);
     RUN_TEST(test_search_200k_under_100ms);
+    RUN_TEST(test_icon_sha256_vectors);
+    RUN_TEST(test_icon_system_mark);
+    RUN_TEST(test_icon_assets_and_catalog);
     return UNITY_END();
 }

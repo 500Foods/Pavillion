@@ -2,6 +2,7 @@ import { Compartment, EditorState, RangeSetBuilder, StateEffect, StateField } fr
 import { Decoration, EditorView, WidgetType } from "@codemirror/view";
 import { LOG_LEVELS, SESSIONS, VIEW_LEVEL_NAMES, countMatches, levelsAtOrAbove, lineVisible, normalizeFilter, queryArgs } from "./filter.js";
 import { fromLocalInput, inRange, normalizeRange, rangeBounds, rangeWidened, toLocalInput } from "./range.js";
+import { iconClass } from "../common/icons/registry.js";
 import { formatInstant } from "../formats.js";
 import { fileLine, parseFileLine, screenLine } from "./format.js";
 
@@ -370,7 +371,7 @@ export function createLogView(parent, api, options = {}) {
   gear.button.classList.add("log-gear");
   gear.button.setAttribute("aria-label", "Log options");
   const gearIcon = document.createElement("i");
-  gearIcon.className = "icon fa-sharp-duotone fa-solid fa-gear";
+  gearIcon.className = `icon ${iconClass("log.settings")}`;
   gearIcon.setAttribute("aria-hidden", "true");
   gear.button.append(gearIcon);
   const follow = checkRow("Follow", (box) => {

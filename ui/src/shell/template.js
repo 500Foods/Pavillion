@@ -4,38 +4,38 @@ export const shellMarkup = `<div class="shell">
         <div class="nav-buttons button-bar" role="toolbar" aria-label="Sections">
           <button type="button" data-section="mail" data-rail="mail" aria-pressed="true" aria-label="Mail">
             <img class="nav-mark" alt="">
-            <i class="icon fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270" data-icon-definition="fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270" aria-hidden="true"></i>
+            <img class="icon" src="pav-system://mark" alt="" data-icon-key="nav.mail">
           </button>
           <button type="button" data-section="contacts" data-rail="contacts" aria-pressed="false" aria-label="Contacts">
-            <i class="icon fa-sharp-duotone fa-solid fa-address-book" data-icon-definition="fa-sharp-duotone fa-solid fa-address-book" aria-hidden="true"></i>
+            <i class="icon fa-sharp-duotone fa-solid fa-address-book" data-icon-key="nav.contacts" data-icon-definition="fa-sharp-duotone fa-solid fa-address-book" aria-hidden="true"></i>
           </button>
           <button type="button" data-section="calendars" data-rail="calendars" aria-pressed="false" aria-label="Calendars">
-            <i class="icon fa-sharp-duotone fa-solid fa-calendar-days" data-icon-definition="fa-sharp-duotone fa-solid fa-calendar-days" aria-hidden="true"></i>
+            <i class="icon fa-sharp-duotone fa-solid fa-calendar-days" data-icon-key="nav.calendars" data-icon-definition="fa-sharp-duotone fa-solid fa-calendar-days" aria-hidden="true"></i>
           </button>
           <button type="button" data-section="tasks" data-rail="tasks" aria-pressed="false" aria-label="Tasks" hidden>
-            <i class="icon fa-sharp-duotone fa-solid fa-list-check" data-icon-definition="fa-sharp-duotone fa-solid fa-list-check" aria-hidden="true"></i>
+            <i class="icon fa-sharp-duotone fa-solid fa-list-check" data-icon-key="nav.tasks" data-icon-definition="fa-sharp-duotone fa-solid fa-list-check" aria-hidden="true"></i>
           </button>
           <button type="button" data-section="files" data-rail="files" aria-pressed="false" aria-label="Files">
-            <i class="icon fa-sharp-duotone fa-solid fa-folder" data-icon-definition="fa-sharp-duotone fa-solid fa-folder" aria-hidden="true"></i>
+            <i class="icon fa-sharp-duotone fa-solid fa-folder" data-icon-key="nav.files" data-icon-definition="fa-sharp-duotone fa-solid fa-folder" aria-hidden="true"></i>
           </button>
           <button type="button" data-section="notes" data-rail="notes" aria-pressed="false" aria-label="Notes" hidden>
-            <i class="icon fa-sharp-duotone fa-solid fa-notebook" data-icon-definition="fa-sharp-duotone fa-solid fa-notebook" aria-hidden="true"></i>
+            <i class="icon fa-sharp-duotone fa-solid fa-notebook" data-icon-key="nav.notes" data-icon-definition="fa-sharp-duotone fa-solid fa-notebook" aria-hidden="true"></i>
           </button>
           <button type="button" data-section="argent" data-rail="argent" aria-pressed="false" aria-label="Argent" hidden>
-            <i class="icon fa-sharp-duotone fa-solid fa-coins" data-icon-definition="fa-sharp-duotone fa-solid fa-coins" aria-hidden="true"></i>
+            <i class="icon fa-sharp-duotone fa-solid fa-coins" data-icon-key="nav.argent" data-icon-definition="fa-sharp-duotone fa-solid fa-coins" aria-hidden="true"></i>
           </button>
         </div>
         <div class="nav-body">
           <div data-nav="mail">
             <div class="tree-toolbar" id="mail-tree-toolbar" role="toolbar" aria-label="Mail tree">
               <button type="button" id="mail-tree-star" data-tree-filter="star" aria-pressed="false" aria-label="Show favorites only">
-                <i class="icon fa-sharp-duotone fa-solid fa-star" aria-hidden="true"></i>
+                <i class="icon fa-sharp-duotone fa-solid fa-star" data-icon-key="mail.tree.star" aria-hidden="true"></i>
               </button>
               <button type="button" id="mail-tree-heart" data-tree-filter="heart" aria-pressed="false" aria-label="Show heart favorites only">
-                <i class="icon fa-sharp-duotone fa-solid fa-heart" aria-hidden="true"></i>
+                <i class="icon fa-sharp-duotone fa-solid fa-heart" data-icon-key="mail.tree.heart" aria-hidden="true"></i>
               </button>
               <button type="button" id="mail-tree-ghost" data-tree-filter="ghost" aria-pressed="false" aria-label="Hide infrequent folders">
-                <i class="icon fa-sharp-duotone fa-solid fa-cloud" aria-hidden="true"></i>
+                <i class="icon fa-sharp-duotone fa-solid fa-cloud" data-icon-key="mail.tree.cloud" aria-hidden="true"></i>
               </button>
             </div>
             <div id="mail-tree" class="tree-root"></div>
@@ -84,24 +84,24 @@ export const shellMarkup = `<div class="shell">
         </div>
         <div class="nav-buttons button-bar" role="toolbar" aria-label="Tools">
           <button type="button" data-section="bots" data-rail="bots" aria-pressed="false" aria-label="Grok Bots" hidden>
-            <i class="icon fa-sharp fa-thin fa-ghost" data-icon-definition="fa-sharp fa-thin fa-ghost" aria-hidden="true"></i>
+            <i class="icon fa-sharp fa-thin fa-ghost" data-icon-key="nav.bots" data-icon-definition="fa-sharp fa-thin fa-ghost" aria-hidden="true"></i>
           </button>
           <button type="button" data-section="github" data-rail="github" aria-pressed="false" aria-label="GitHub" hidden>
-            <i class="icon fa-brands fa-github" data-icon-definition="fa-brands fa-github" aria-hidden="true"></i>
+            <i class="icon fa-brands fa-github" data-icon-key="nav.github" data-icon-definition="fa-brands fa-github" aria-hidden="true"></i>
           </button>
           <button type="button" data-section="activity" data-rail="activity" aria-pressed="false" aria-label="Activity">
-            <i class="icon fa-sharp-duotone fa-solid fa-list-timeline" data-icon-definition="fa-sharp-duotone fa-solid fa-list-timeline" aria-hidden="true"></i>
+            <i class="icon fa-sharp-duotone fa-solid fa-list-timeline" data-icon-key="nav.activity" data-icon-definition="fa-sharp-duotone fa-solid fa-list-timeline" aria-hidden="true"></i>
           </button>
           <button type="button" data-section="settings" data-rail="settings" aria-pressed="false" aria-label="Settings">
-            <i class="icon fa-sharp-duotone fa-solid fa-gear" data-icon-definition="fa-sharp-duotone fa-solid fa-gear" aria-hidden="true"></i>
+            <i class="icon fa-sharp-duotone fa-solid fa-gear" data-icon-key="nav.settings" data-icon-definition="fa-sharp-duotone fa-solid fa-gear" aria-hidden="true"></i>
           </button>
           <button type="button" id="update" data-rail="update" aria-label="Update">
             <span class="update-pie" hidden aria-hidden="true"></span>
-            <i class="icon fa-sharp-duotone fa-solid fa-up-down" data-icon-definition="fa-sharp-duotone fa-solid fa-up-down" aria-hidden="true"></i>
+            <i class="icon fa-sharp-duotone fa-solid fa-up-down" data-icon-key="nav.update" data-icon-definition="fa-sharp-duotone fa-solid fa-up-down" aria-hidden="true"></i>
             <span class="update-badge" hidden></span>
           </button>
           <button type="button" data-section="help" data-rail="help" aria-pressed="false" aria-label="Help">
-            <i class="icon fa-sharp-duotone fa-solid fa-circle-question" data-icon-definition="fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
+            <i class="icon fa-sharp-duotone fa-solid fa-circle-question" data-icon-key="nav.help" data-icon-definition="fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
           </button>
         </div>
         <button type="button" class="nav-resize" id="nav-resize" aria-label="Resize navigation"></button>
@@ -391,100 +391,7 @@ export const shellMarkup = `<div class="shell">
                 <i class="icon fa-sharp-duotone fa-solid fa-circle-question" aria-hidden="true"></i>
               </button>
             </div>
-            <div class="settings-body">
-            <label class="font-row">Source
-              <select id="icon-source">
-                <option value="theme" selected>Theme</option>
-                <option value="override">Override</option>
-              </select>
-            </label>
-             <p class="muted">Theme reads each <code>--pav-icon-*</code> value. That value may be a Font Awesome class string or an <code>&lt;i class='...'&gt;</code> element. Override keeps the values below on this profile.</p>
-             <label class="font-row kit-row">Font Awesome kit
-               <textarea type="text" id="fa-kit-html" class="kit-input" rows="3" spellcheck="false">45801522ef</textarea>
-             </label>
-             <p class="muted">The kit is a Font Awesome kit id (e.g. <code>45801522ef</code>) loaded from <code>kit.fontawesome.com</code>, or raw HTML (e.g. a <code>&lt;script&gt;</code> tag). Changing it requires a page reload to take effect.</p>
-             <form class="icon-form" id="icon-form">
-               <table class="icon-table">
-                 <thead>
-                   <tr>
-                     <th>Nav button</th>
-                     <th>Preview</th>
-                     <th>Icon HTML</th>
-                   </tr>
-                 </thead>
-                 <tbody id="icon-list">
-                   <tr data-icon-key="mail">
-                     <td>Mail</td>
-                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270" data-icon-key="mail"></i></td>
-                     <td><textarea type="text" data-icon-key="mail" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270</textarea></td>
-                   </tr>
-                   <tr data-icon-key="contacts">
-                     <td>Contacts</td>
-                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-address-book" data-icon-key="contacts"></i></td>
-                     <td><textarea type="text" data-icon-key="contacts" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-address-book</textarea></td>
-                   </tr>
-                   <tr data-icon-key="calendars">
-                     <td>Calendars</td>
-                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-calendar-days" data-icon-key="calendars"></i></td>
-                     <td><textarea type="text" data-icon-key="calendars" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-calendar-days</textarea></td>
-                   </tr>
-                   <tr data-icon-key="tasks">
-                     <td>Tasks</td>
-                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-list-check" data-icon-key="tasks"></i></td>
-                     <td><textarea type="text" data-icon-key="tasks" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-list-check</textarea></td>
-                   </tr>
-                   <tr data-icon-key="files">
-                     <td>Files</td>
-                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-folder" data-icon-key="files"></i></td>
-                     <td><textarea type="text" data-icon-key="files" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-folder</textarea></td>
-                   </tr>
-                   <tr data-icon-key="notes">
-                     <td>Notes</td>
-                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-notebook" data-icon-key="notes"></i></td>
-                     <td><textarea type="text" data-icon-key="notes" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-notebook</textarea></td>
-                   </tr>
-                   <tr data-icon-key="argent">
-                     <td>Argent</td>
-                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-coins" data-icon-key="argent"></i></td>
-                     <td><textarea type="text" data-icon-key="argent" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-coins</textarea></td>
-                   </tr>
-                   <tr data-icon-key="bots">
-                     <td>Grok Bots</td>
-                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp fa-thin fa-ghost" data-icon-key="bots"></i></td>
-                     <td><textarea type="text" data-icon-key="bots" class="icon-input" rows="3" spellcheck="false">fa-sharp fa-thin fa-ghost</textarea></td>
-                   </tr>
-                   <tr data-icon-key="github">
-                     <td>GitHub</td>
-                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-brands fa-github" data-icon-key="github"></i></td>
-                     <td><textarea type="text" data-icon-key="github" class="icon-input" rows="3" spellcheck="false">fa-brands fa-github</textarea></td>
-                   </tr>
-                   <tr data-icon-key="activity">
-                     <td>Activity</td>
-                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-list-timeline" data-icon-key="activity"></i></td>
-                     <td><textarea type="text" data-icon-key="activity" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-list-timeline</textarea></td>
-                   </tr>
-                   <tr data-icon-key="settings">
-                     <td>Settings</td>
-                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-gear" data-icon-key="settings"></i></td>
-                     <td><textarea type="text" data-icon-key="settings" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-gear</textarea></td>
-                   </tr>
-                   <tr data-icon-key="update">
-                     <td>Update</td>
-                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-up-down" data-icon-key="update"></i></td>
-                     <td><textarea type="text" data-icon-key="update" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-up-down</textarea></td>
-                   </tr>
-                   <tr data-icon-key="help">
-                     <td>Help</td>
-                     <td class="icon-preview"><span class="icon-preview-scrim"></span><i class="icon fa-sharp-duotone fa-solid fa-circle-question" data-icon-key="help"></i></td>
-                     <td><textarea type="text" data-icon-key="help" class="icon-input" rows="3" spellcheck="false">fa-sharp-duotone fa-solid fa-circle-question</textarea></td>
-                   </tr>
-                 </tbody>
-               </table>
-               <button type="button" id="icon-preview" disabled>Preview</button>
-               <button type="submit" id="icon-reload" disabled>Reload &amp; Save</button>
-             </form>
-              <p class="muted">Icons are rendered from your registered Font Awesome kit. Use class prefixes like <code>fa-sharp-duotone fa-solid</code> for Sharp Duotone Solid, or <code>fa-solid</code> for classic Solid. Or paste raw HTML like an inline SVG.</p>
-            </div>
+            <div class="settings-body" id="icons-panel"></div>
            </div>
            <div data-settings="tabs" hidden>
              <div class="button-bar settings-bar" role="toolbar" aria-label="Tabs">
@@ -531,8 +438,8 @@ export const shellMarkup = `<div class="shell">
                         <legend>Identity</legend>
                         <label class="accounts-line"><span class="accounts-label">Display name</span>
                           <input id="account-name-input" type="text" spellcheck="true" autocomplete="off" />
-                          <input id="account-color-input" type="color" value="#2a7" aria-label="Color" />
-                          <span id="account-icon-choices" class="accounts-icon-choices" role="radiogroup" aria-label="Icon"></span>
+                          <input id="account-color-input" class="accounts-color" type="text" value="#2a7" aria-label="Color" spellcheck="false" autocomplete="off" />
+                          <button type="button" id="account-icon-choose" class="accounts-icon-choices" aria-label="Choose icon"></button>
                         </label>
                         <label class="accounts-line"><span class="accounts-label">Email</span>
                           <input id="account-email-input" type="email" spellcheck="false" autocomplete="off" placeholder="you@example.com" />

@@ -23,7 +23,7 @@ BUILD_START := $(shell date +%s)
 PRINT_ELAPSED = elapsed=$$(( $$(date +%s) - $(BUILD_START) )); printf 'build time    %dh%dm%ds\n' $$((elapsed / 3600)) $$(((elapsed % 3600) / 60)) $$((elapsed % 60))
 
 UNITY_DIR := tests/unity/framework/src
-TEST_SRC := tests/unity/src/core_test.c tests/unity/src/sanitize_test.c
+TEST_SRC := tests/unity/src/core_test.c tests/unity/src/sanitize_test.c tests/unity/src/icon_test.c
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
 PLATFORM_TEST_SRC := core/platform/fake/fake.c
@@ -79,6 +79,9 @@ $(LIB): core/CMakeLists.txt core/include/pavillion.h core/include/pav_config.h \
 	core/src/mime.c core/include/pav_mime.h \
 	core/src/body.c core/include/pav_body.h \
 	core/src/migrations/003_headers.sql \
+	core/src/migrations/004_icons.sql \
+	core/include/pav_icon.h core/src/icon_hosts.c core/src/icon_asset.c \
+	core/src/icon_mark.h core/embed_bytes.cmake ui/public/mark.png \
 	core/src/account_test.c \
 	core/src/sanitize.c core/src/css_filter.c core/include/pav_sanitize.h \
 	third_party/lexbor/CMakeLists.txt third_party/lexbor/PAVILLION_PIN

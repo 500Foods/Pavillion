@@ -24,7 +24,7 @@ test("default theme files match the built-in sheets", () => {
   expect(mapsEqual(light, lightFile)).toBe(true);
   expect(dark.get("color-scheme")).toBe("dark");
   expect(light.get("color-scheme")).toBe("light");
-  expect(dark.get("--pav-icon-mail")).toContain("<i class=");
+  expect(dark.get("--pav-icon-mail")).toContain("pav-system:mark");
   expect(dark.get("--pav-mark")).toBe("none");
   expect(dark.get("--pav-icon-kit")).toBe('"45801522ef"');
 });

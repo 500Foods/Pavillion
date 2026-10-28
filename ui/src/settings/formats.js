@@ -5,6 +5,7 @@
    through prefs.set. A string that matches the current default is left
    out, so time_format still switches 12 h and 24 h. Reset clears that
    row's saved string. Preview shows now and the fixed sample. */
+import { iconClass } from "../common/icons/registry.js";
 
 import { moduleFooter, moduleToolbar, mountBar } from "../common/module-bar.js";
 import {
@@ -490,7 +491,7 @@ export function createFormatsSettings(api, root, options = {}) {
     },
     end: [{
       action: "apply",
-      icon: "fa-check",
+      icon: iconClass("settings.apply"),
       text: "Apply",
       label: "Save formats",
       onClick: () => {

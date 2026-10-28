@@ -1,8 +1,9 @@
 /* Screen text for one activity row. The core owns the record. */
 
+import { iconClass as registryIcon } from "../common/icons/registry.js";
 import { formatInstant } from "../formats.js";
 
-export const MAIL_ICON = "fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270";
+export const MAIL_ICON = registryIcon("activity.mail");
 
 export const APP_ACCOUNT = {
   number: "000",
@@ -11,25 +12,25 @@ export const APP_ACCOUNT = {
 };
 
 const KIND_ROWS = {
-  "sync.mail": ["fa-envelope", "Mail sync"],
-  "sync.contacts": ["fa-address-book", "Contacts sync"],
-  "sync.calendar": ["fa-calendar-days", "Calendar sync"],
-  "sync.files": ["fa-folder", "Files sync"],
-  "body.fetch": ["fa-file-lines", "Fetch body"],
-  "attachment.download": ["fa-paperclip", "Attachment"],
-  "files.upload": ["fa-arrow-up-from-bracket", "Upload"],
-  "files.download": ["fa-arrow-down-to-bracket", "Download"],
-  send: ["fa-paper-plane", "Send"],
-  "index.rebuild": ["fa-magnifying-glass", "Index"],
-  "rules.run": ["fa-filter", "Rules"],
-  import: ["fa-file-import", "Import"],
-  export: ["fa-file-export", "Export"],
-  retention: ["fa-broom", "Retention"],
-  "cache.evict": ["fa-box-archive", "Evict cache"],
-  "search.server": ["fa-magnifying-glass", "Server search"],
-  "queue.flush": ["fa-list-check", "Flush queue"],
-  "account.discover": ["fa-wand-magic-sparkles", "Configure account"],
-  "account.test": ["fa-plug", "Test account"],
+  "sync.mail": ["activity.sync.mail", "Mail sync"],
+  "sync.contacts": ["activity.sync.contacts", "Contacts sync"],
+  "sync.calendar": ["activity.sync.calendar", "Calendar sync"],
+  "sync.files": ["activity.sync.files", "Files sync"],
+  "body.fetch": ["activity.body.fetch", "Fetch body"],
+  "attachment.download": ["activity.attachment", "Attachment"],
+  "files.upload": ["activity.files.upload", "Upload"],
+  "files.download": ["activity.files.download", "Download"],
+  send: ["activity.send", "Send"],
+  "index.rebuild": ["activity.index", "Index"],
+  "rules.run": ["activity.rules", "Rules"],
+  import: ["activity.import", "Import"],
+  export: ["activity.export", "Export"],
+  retention: ["activity.retention", "Retention"],
+  "cache.evict": ["activity.cache", "Evict cache"],
+  "search.server": ["activity.search", "Server search"],
+  "queue.flush": ["activity.queue", "Flush queue"],
+  "account.discover": ["activity.discover", "Configure account"],
+  "account.test": ["activity.test", "Test account"],
 };
 
 const ICON_CLASS = /^[-_a-zA-Z0-9 ]+$/;
@@ -49,11 +50,11 @@ export function kindFace(kind) {
   const row = KIND_ROWS[kind];
   if (!row) {
     return {
-      icon: "fa-sharp fa-thin fa-circle",
+      icon: registryIcon("activity.account"),
       label: typeof kind === "string" && kind !== "" ? kind : "Activity",
     };
   }
-  return { icon: `fa-sharp fa-thin ${row[0]}`, label: row[1] };
+  return { icon: registryIcon(row[0]), label: row[1] };
 }
 
 export function padNumber(value) {
@@ -91,7 +92,7 @@ export function accountFace(accountId, accounts) {
   }
   const found = (Array.isArray(accounts) ? accounts : []).find((item) => item && item.id === accountId);
   if (!found) {
-    return { number: "—", name: accountId, icon: "fa-sharp fa-thin fa-circle" };
+    return { number: "—", name: accountId, icon: registryIcon("activity.account") };
   }
   const name = typeof found.name === "string" && found.name.trim() !== "" ? found.name.trim() : accountId;
   return {

@@ -740,7 +740,7 @@ test("the email is saved with the account and read back", async () => {
   }
 });
 
-async function withView(body) {
+async function withView(body, hostExtra = {}) {
   const el = document.createElement("div");
   document.body.append(el);
   try {
@@ -748,7 +748,10 @@ async function withView(body) {
     const callSpy = vi.spyOn(transport, "call");
     const api = createApi(transport);
     const saves = [];
-    const host = { dialog: { save: async (opts) => { saves.push(opts); return "/tmp/pav-accounts.csv"; } } };
+    const host = {
+      dialog: { save: async (opts) => { saves.push(opts); return "/tmp/pav-accounts.csv"; } },
+      ...hostExtra,
+    };
     await mount(el, api, { hostServices: host });
     openAccountsPanel();
     await body(callSpy, saves);
@@ -825,14 +828,15 @@ test("the table row shows the swatch, protocols, and features after a Test", asy
   });
 });
 
-test("the icon chooser stores a Font Awesome snippet and Save sends it", async () => {
+test("the icon button opens the Wizard and Save sends the snippet", async () => {
   await withView(async (callSpy) => {
     await addSavedAccount();
-    const choices = document.querySelectorAll("#account-icon-choices button[data-icon]");
-    expect(choices.length).toBeGreaterThan(4);
-    expect(document.querySelector('#account-icon-choices [data-icon="envelope"]').getAttribute("aria-checked")).toBe("true");
-    document.querySelector('#account-icon-choices [data-icon="briefcase"]').click();
-    expect(document.querySelector('#account-icon-choices [data-icon="briefcase"]').getAttribute("aria-checked")).toBe("true");
+    const button = document.querySelector("#account-icon-choose");
+    expect(button.querySelector(".fa-envelope")).not.toBeNull();
+    button.click();
+    await vi.waitFor(() => {
+      expect(button.querySelector(".fa-briefcase")).not.toBeNull();
+    });
     document.querySelector("#account-test").click();
     await vi.waitFor(() => {
       expect(document.querySelector("#account-save").disabled).toBe(false);
@@ -845,6 +849,8 @@ test("the icon chooser stores a Font Awesome snippet and Save sends it", async (
     await vi.waitFor(() => {
       expect(document.querySelector('[data-account-id="saved-one"] .account-swatch .fa-briefcase')).not.toBeNull();
     });
+  }, {
+    openIconWizard: async () => ({ html: '<i class="fa-solid fa-briefcase"></i>' }),
   });
 });
 

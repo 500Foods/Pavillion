@@ -9,6 +9,7 @@
 #include "themes.h"
 #include "window_state.h"
 #include "pav_secret.h"
+#include "pav_icon.h"
 
 #include "pav_platform.h"
 #include "pavillion.h"
@@ -76,6 +77,12 @@ static const PavCommand k_commands[] = {
     {"activity.cancel", pav_activity_cmd_cancel, 0},
     {"activity.dismiss", pav_activity_cmd_dismiss, 0},
     {"activity.list", pav_activity_cmd_list, 0},
+    {"asset.delete", pav_cmd_asset_delete, PAV_CMD_WORKER},
+    {"asset.fetch", pav_cmd_asset_fetch, PAV_CMD_WORKER | PAV_CMD_NET},
+    {"asset.import", pav_cmd_asset_import, PAV_CMD_WORKER},
+    {"asset.list", pav_cmd_asset_list, 0},
+    {"asset.put", pav_cmd_asset_put, PAV_CMD_WORKER},
+    {"asset.read", pav_cmd_asset_read, PAV_CMD_WORKER},
     {"cache.usage", pav_cache_usage, PAV_CMD_WORKER | PAV_CMD_NET},
 #ifndef NDEBUG
     {"debug.activity_demo", pav_activity_cmd_demo, PAV_CMD_WORKER},
@@ -83,6 +90,8 @@ static const PavCommand k_commands[] = {
     {"debug.seed_messages", pav_cmd_seed_messages, 0},
 #endif
     {"export.write_text", cmd_export_write_text, 0},
+    {"iconlib.refresh", pav_cmd_iconlib_refresh, PAV_CMD_WORKER | PAV_CMD_NET},
+    {"iconlib.search", pav_cmd_iconlib_search, 0},
     {"identity.list", pav_cmd_identity_list, 0},
     {"index.rebuild", pav_cmd_index_rebuild, 0},
     {"log.client", cmd_log_client, 0},

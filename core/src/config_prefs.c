@@ -1,5 +1,6 @@
 #include "pav_config.h"
 #include "pav_cfg.h"
+#include "pav_icon.h"
 #include "config_internal.h"
 
 #include <jansson.h>
@@ -313,6 +314,10 @@ int pav_profile_write_ui(PavProfile *profile, const char *json, char *err, size_
     if (config_forbidden_key(root, &forbidden)) {
         /* forbidden points into root: format the message before freeing it. */
         cfg_err(err, err_len, "forbidden key %s", forbidden);
+        json_decref(root);
+        return -1;
+    }
+    if (pav_icon_libraries_check(root, err, err_len) != 0) {
         json_decref(root);
         return -1;
     }

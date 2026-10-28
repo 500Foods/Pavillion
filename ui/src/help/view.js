@@ -1,3 +1,4 @@
+import { iconClass } from "../common/icons/registry.js";
 import { helpPages } from "./pages.js";
 import { moduleToolbar, moduleFooter, mountBar } from "../common/module-bar.js";
 
@@ -55,7 +56,7 @@ export function createHelpView(root, pages = helpPages, options = {}) {
     mountBar(toolbarHost, moduleToolbar({
       title: "Help",
       search: { id: "help-search", label: "Search help", placeholder: "Search help" },
-      after: [{ id: "help-back", action: "back", icon: "fa-arrow-left", text: "Back", label: "Back", onClick: () => typeof options.onBack === "function" && options.onBack() }],
+      after: [{ id: "help-back", action: "back", icon: iconClass("help.back"), text: "Back", label: "Back", onClick: () => typeof options.onBack === "function" && options.onBack() }],
     }, doc));
   }
   const footerHost = root.querySelector("#help-toolbar-bottom");
@@ -64,9 +65,9 @@ export function createHelpView(root, pages = helpPages, options = {}) {
       label: "Help actions",
       onRefresh: () => { if (typeof options.onRefresh === "function") options.onRefresh(); },
       end: [
-        { id: "help-copy", action: "copy", icon: "fa-copy", text: "Copy", label: "Copy topic", onClick: () => {} },
-        { id: "help-save", action: "save", icon: "fa-save", text: "Save", label: "Save topic", onClick: () => {} },
-        { id: "help-print", action: "print", icon: "fa-print", text: "Print", label: "Print topic", onClick: () => {} },
+        { id: "help-copy", action: "copy", icon: iconClass("help.copy"), text: "Copy", label: "Copy topic", onClick: () => {} },
+        { id: "help-save", action: "save", icon: iconClass("help.save"), text: "Save", label: "Save topic", onClick: () => {} },
+        { id: "help-print", action: "print", icon: iconClass("help.print"), text: "Print", label: "Print topic", onClick: () => {} },
       ],
     }, doc));
   }
@@ -78,7 +79,7 @@ export function createHelpView(root, pages = helpPages, options = {}) {
   chevron.setAttribute("aria-label", "Toggle filter panel");
   chevron.setAttribute("aria-pressed", "false");
   const chevronIcon = doc.createElement("i");
-  chevronIcon.className = "icon fa-sharp-duotone fa-solid fa-chevron-right";
+  chevronIcon.className = `icon ${iconClass("help.chevron")}`;
   chevronIcon.setAttribute("aria-hidden", "true");
   chevron.append(chevronIcon);
   if (titleSpan && titleSpan.parentNode) {
@@ -103,11 +104,11 @@ export function createHelpView(root, pages = helpPages, options = {}) {
     const strip = doc.createElement("div");
     strip.className = "help-filter-icon-strip";
      const filters = [
-       { id: "help-filter-all", label: "All", tip: "All", icon: "fa-sharp-duotone fa-solid fa-heart", cat: "all" },
-       { id: "help-filter-pages", label: "Pages", tip: "Pages", icon: "fa-sharp-duotone fa-solid fa-star", cat: "pages" },
-       { id: "help-filter-dev", label: "Dev", tip: "Dev", icon: "fa-sharp-duotone fa-solid fa-flag", cat: "dev" },
-       { id: "help-filter-settings", label: "Settings", tip: "Settings", icon: "fa-sharp-duotone fa-solid fa-bookmark", cat: "settings" },
-       { id: "help-filter-mail", label: "Mail", tip: "Mail", icon: "fa-sharp-duotone fa-solid fa-tag", cat: "mail" },
+       { id: "help-filter-all", label: "All", tip: "All", icon: iconClass("help.filter.all"), cat: "all" },
+       { id: "help-filter-pages", label: "Pages", tip: "Pages", icon: iconClass("help.filter.pages"), cat: "pages" },
+       { id: "help-filter-dev", label: "Dev", tip: "Dev", icon: iconClass("help.filter.dev"), cat: "dev" },
+       { id: "help-filter-settings", label: "Settings", tip: "Settings", icon: iconClass("help.filter.settings"), cat: "settings" },
+       { id: "help-filter-mail", label: "Mail", tip: "Mail", icon: iconClass("help.filter.mail"), cat: "mail" },
      ];
      for (const spec of filters) {
        const chip = doc.createElement("button");

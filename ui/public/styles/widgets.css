@@ -185,3 +185,212 @@
 .pav-root .pav-dialog-ok.is-danger {
   color: var(--pav-status-error);
 }
+
+.pav-root .pav-icon-wizard {
+  width: min(52rem, calc(100vw - 2rem));
+  max-width: none;
+  zoom: var(--pav-wizard-zoom, 1);
+}
+
+.pav-root .pav-icon-wizard-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0 0 0.75rem;
+}
+
+.pav-root .pav-icon-wizard-head .pav-dialog-title {
+  margin: 0;
+}
+
+.pav-root .pav-icon-close {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--pav-dialog-border);
+  border-radius: var(--pav-dialog-button-radius);
+  background: transparent;
+  color: var(--pav-dialog-text);
+  cursor: pointer;
+}
+
+.pav-root .pav-icon-close .icon,
+.pav-root .pav-icon-close svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.pav-root .pav-icon-layout {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.pav-root .pav-icon-preview-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.pav-root .pav-icon-square {
+  width: 5.5rem;
+  height: 5.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--pav-dialog-control);
+  border: var(--pav-dialog-border-width) solid var(--pav-dialog-border);
+  border-radius: var(--pav-dialog-button-radius);
+  overflow: hidden;
+}
+
+.pav-root .pav-icon-square .icon,
+.pav-root .pav-icon-square img,
+.pav-root .pav-icon-square svg {
+  width: 3rem;
+  height: 3rem;
+}
+
+.pav-root .pav-icon-chips {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.pav-root .pav-icon-chip {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.pav-root .pav-icon-chip.is-light {
+  background: white;
+  color: black;
+}
+
+.pav-root .pav-icon-chip.is-dark {
+  background: black;
+  color: white;
+}
+
+.pav-root .pav-icon-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.pav-root .pav-icon-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.pav-root .pav-icon-work {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  max-height: 22rem;
+  overflow: auto;
+}
+
+.pav-root .pav-icon-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  width: 100%;
+}
+
+.pav-root .pav-icon-key,
+.pav-root .pav-icon-note {
+  margin: 0.25rem 0 0;
+  color: var(--pav-text-muted);
+  font-size: 0.85rem;
+}
+
+.pav-root .pav-icon-libraries,
+.pav-root .pav-icon-add,
+.pav-root .pav-icon-asset {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.pav-root .pav-icon-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0.75rem 0 0.5rem;
+}
+
+.pav-root .pav-icon-tab {
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--pav-border);
+  border-radius: var(--pav-dialog-button-radius);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pav-root .pav-icon-tab[aria-selected="true"] {
+  background: var(--pav-surface-button-active);
+}
+
+.pav-root .pav-icon-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.pav-root .pav-icon-table th,
+.pav-root .pav-icon-table td {
+  padding: 0.3rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--pav-border);
+  vertical-align: middle;
+}
+
+.pav-root .pav-icon-table th:first-child,
+.pav-root .pav-icon-table .pav-icon-default {
+  width: 5rem;
+  text-align: center;
+}
+
+.pav-root .pav-icon-table tbody tr {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pav-root .pav-icon-table tbody tr:hover,
+.pav-root .pav-icon-table tbody tr:focus-visible {
+  background: var(--pav-surface-button-active);
+}
+
+.pav-root .pav-icon-table .pav-icon-glyph {
+  width: 3rem;
+}
+
+.pav-root .pav-icon-table .pav-icon-glyph .icon,
+.pav-root .pav-icon-table .pav-icon-glyph svg,
+.pav-root .pav-icon-table .pav-icon-glyph img {
+  width: 1.25rem;
+  height: 1.25rem;
+  font-size: 1.25rem;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.pav-root .pav-icon-mode[aria-pressed="true"] {
+  outline: 1px solid var(--pav-accent);
+}

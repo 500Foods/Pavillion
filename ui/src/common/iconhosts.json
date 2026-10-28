@@ -1,0 +1,6 @@
+{
+  "scripts": ["kit.fontawesome.com"],
+  "stylesheets": ["fonts.googleapis.com"],
+  "fonts": ["fonts.gstatic.com", "ka-p.fontawesome.com"],
+  "loader": ["ka-p.fontawesome.com"]
+}

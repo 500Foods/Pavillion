@@ -52,6 +52,7 @@ test("theme.css only references variables", () => {
   expect(css).toMatch(/var\(--pav-help-content-bg\)/);
   expect(css).toMatch(/var\(--pav-help-content-heading\)/);
   expect(css).toMatch(/var\(--pav-help-code-bg\)/);
+  expect(css).toMatch(/\.pav-color-host \.clr-picker \{[^}]*width: calc\(200px \* var\(--pav-color-zoom\)\)/);
 });
 
 test("K-Q14: the table never wraps its calc row, hides the horizontal bar, and pads the header by variable", () => {

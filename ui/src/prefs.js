@@ -1,3 +1,4 @@
+import { colorZoomOf, swatchList } from "./common/coloris.js";
 import { normalizeFormats } from "./formats.js";
 import { normalizeFilter } from "./log/filter.js";
 import { clampSession } from "./shell/session.js";
@@ -110,6 +111,13 @@ const KNOWN = new Set([
   "fontSource",
   "iconSource",
   "formats",
+  "iconLibraries",
+  "iconRecent",
+  "iconRecentMax",
+  "iconsResetD9",
+  "colorSwatches",
+  "colorPickerZoom",
+  "iconWizardZoom",
 ]);
 
 function isObject(value) {
@@ -328,6 +336,71 @@ function sourceOf(value) {
   return value === "theme" || value === "override" ? value : "";
 }
 
+function iconsOf(raw) {
+  if (!isObject(raw)) {
+    return {};
+  }
+  const out = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (typeof value !== "string" || value.length > 8192 || key.length > 80) {
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
+function librariesOf(raw) {
+  if (!Array.isArray(raw)) {
+    return undefined;
+  }
+  return raw.slice(0, 16).map((entry) => ({
+    id: entry && typeof entry.id === "string" ? entry.id : "",
+    name: entry && typeof entry.name === "string" ? entry.name : "",
+    type: entry && entry.type === "stylesheet" ? "stylesheet" : "script",
+    url: entry && typeof entry.url === "string" ? entry.url : "",
+    enabled: Boolean(entry && entry.enabled),
+  }));
+}
+
+function recentMaxOf(raw) {
+  const number = typeof raw === "number" ? raw : Number.parseInt(raw, 10);
+  if (!Number.isFinite(number)) {
+    return 12;
+  }
+  return Math.min(48, Math.max(1, Math.round(number)));
+}
+
+function recentOf(raw, max) {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const out = [];
+  const seen = new Set();
+  for (const item of raw) {
+    if (typeof item !== "string") {
+      continue;
+    }
+    const text = item.trim();
+    if (!text || text.length > 8192 || seen.has(text)) {
+      continue;
+    }
+    seen.add(text);
+    out.push(text);
+    if (out.length >= max) {
+      break;
+    }
+  }
+  return out;
+}
+
+function swatchesOf(raw) {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return swatchList(raw);
+}
+
 /* Fills defaults and clamps. Unknown keys are kept. */
 export function clampUi(raw) {
   const src = isObject(raw) ? raw : {};
@@ -349,7 +422,14 @@ export function clampUi(raw) {
     help: paneSplit(src.help, DEFAULT_UI.help),
     accounts: paneSplit(src.accounts, DEFAULT_UI.accounts, true),
     zoom,
-    icons: isObject(src.icons) ? { ...src.icons } : {},
+    icons: iconsOf(src.icons),
+    iconRecentMax: recentMaxOf(src.iconRecentMax),
+    iconRecent: recentOf(src.iconRecent, recentMaxOf(src.iconRecentMax)),
+    colorSwatches: swatchesOf(src.colorSwatches),
+    colorPickerZoom: colorZoomOf(src.colorPickerZoom),
+    iconWizardZoom: src.iconWizardZoom === undefined || src.iconWizardZoom === null || src.iconWizardZoom === ""
+      ? 1
+      : colorZoomOf(src.iconWizardZoom),
     fontawesome_kit: typeof src.fontawesome_kit === "string" ? src.fontawesome_kit : DEFAULT_UI.fontawesome_kit,
     fonts: fontsOf(src.fonts),
     activity: activityOf(src.activity),
@@ -360,6 +440,13 @@ export function clampUi(raw) {
     chords: chordsOf(src.chords, rail),
     formats: normalizeFormats(src.formats),
   };
+  const libraries = librariesOf(src.iconLibraries);
+  if (libraries) {
+    out.iconLibraries = libraries;
+  }
+  if (src.iconsResetD9 === true) {
+    out.iconsResetD9 = true;
+  }
   const themeChoice = choiceOf(src.themeChoice);
   if (themeChoice) {
     out.themeChoice = themeChoice;

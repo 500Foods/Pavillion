@@ -33,6 +33,20 @@ add_custom_command(
     VERBATIM
 )
 
+set(ICON_MARK_C ${CMAKE_CURRENT_BINARY_DIR}/icon_mark.c)
+add_custom_command(
+    OUTPUT ${ICON_MARK_C}
+    COMMAND ${CMAKE_COMMAND}
+        -DSRC=${CMAKE_CURRENT_SOURCE_DIR}/../ui/public/mark.png
+        -DOUT=${ICON_MARK_C}
+        -DSYMBOL=pav_icon_mark_png
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/embed_bytes.cmake
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../ui/public/mark.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/embed_bytes.cmake
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/icon_mark.h
+    VERBATIM
+)
+
 add_library(pavillion_core STATIC
     src/pavillion.c
     src/logring.c
@@ -69,6 +83,9 @@ add_library(pavillion_core STATIC
      src/mime.c
      src/body.c
      src/account_test.c
+     src/icon_hosts.c
+     src/icon_asset.c
+     ${ICON_MARK_C}
      platform/posix/posix.c)
 target_include_directories(pavillion_core PUBLIC include)
 target_include_directories(pavillion_core PRIVATE platform src ${CMAKE_CURRENT_BINARY_DIR})

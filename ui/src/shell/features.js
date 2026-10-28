@@ -1,3 +1,4 @@
+import { iconClass } from "../common/icons/registry.js";
 import { CHORD_DIGITS, RAIL_ITEMS } from "../prefs.js";
 
 const DRAG_PX = 4;
@@ -16,7 +17,7 @@ export function createFeatureEditor(listEl, handlers) {
     grip.className = "feature-grip";
     grip.setAttribute("aria-hidden", "true");
     const gripIcon = doc.createElement("i");
-    gripIcon.className = "icon fa-sharp-duotone fa-solid fa-bars";
+    gripIcon.className = `icon ${iconClass("features.grip")}`;
     gripIcon.draggable = false;
     grip.append(gripIcon);
 
@@ -53,10 +54,10 @@ export function createFeatureEditor(listEl, handlers) {
       box.dataset.feature = item.key;
       box.setAttribute("aria-label", `Show ${item.label}`);
       const off = doc.createElement("i");
-      off.className = "icon feature-check-off fa-sharp-duotone fa-solid fa-square";
+      off.className = `icon feature-check-off ${iconClass("features.check.off")}`;
       off.setAttribute("aria-hidden", "true");
       const on = doc.createElement("i");
-      on.className = "icon feature-check-on fa-sharp-duotone fa-solid fa-square-check";
+      on.className = `icon feature-check-on ${iconClass("features.check")}`;
       on.setAttribute("aria-hidden", "true");
       check.append(box, off, on);
       row.append(check);

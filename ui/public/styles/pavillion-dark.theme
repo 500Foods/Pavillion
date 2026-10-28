@@ -76,6 +76,9 @@
   /* Roof rose. The mail icon's second duotone color. */
   --pav-swatch-2: #cc9999;
 
+  /* Colors offered in the color picker. Space-separated hex. The page keeps colors you add, up to 24 in the row. */
+  --pav-picker-swatches: #800000 #cc9999 #22aa77 #e8e8e8 #e07070 #d4a24c #7dcea0 #ffffff;
+
   /* Error text. */
   --pav-status-error: #e07070;
 
@@ -122,7 +125,7 @@
   --pav-icon-kit: "45801522ef";
 
   /* Mail nav icon. A value may be an <i class='...'> element, a Font Awesome class string, or an image file name beside this theme. The shell reads the variable and uses that icon. */
-  --pav-icon-mail: "<i class='fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270'></i>";
+  --pav-icon-mail: "<img src='pav-system:mark' alt=''>";
 
   /* Contacts nav icon. Same three forms as Mail. */
   --pav-icon-contacts: "<i class='fa-sharp-duotone fa-solid fa-address-book'></i>";

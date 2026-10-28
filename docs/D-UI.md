@@ -1,6 +1,6 @@
 # D — UI
 
-**Status:** D-4, D-6, and D-7 complete (2026-10-17). D-10 complete (2026-10-21). D-8 complete (2026-10-23). N-3 complete (2026-10-24). The index names Q-2 next (step 62). D-5 and D-9 are not started. The shell preview below is not a phase.
+**Status:** D-4, D-6, and D-7 complete (2026-10-17). D-10 complete (2026-10-21). D-8 complete (2026-10-23). N-3 complete (2026-10-24). D-9 is in progress (pulled forward 2026-10-28). D-5 is not started. The shell preview below is not a phase.
 **Resume:** The index ([PAVILLION_PLAN.md](../PAVILLION_PLAN.md)) names the one phase that may be worked. If that id is not in this file, do not start here.
 
 The first frame, the shell preview, and the theme layer. The shell layout (nav, buttons, home tabs, window) is the [J-TABS.md](J-TABS.md) Lock. Security rules for the main window are the [F-HARDEN.md](F-HARDEN.md) Lock. The tree behind the mail and files navs is [E-TREE.md](E-TREE.md). Mail, contacts, calendars, tasks, files, and notes have their own letters (N, O, S, T, X, U, Y). Argent is Z and is an icon only.
@@ -19,10 +19,10 @@ One phase is one session. Do not start the next one in the same conversation.
 | D-7 | Theme skin: fonts, icons, mark, and HTML in CSS | Medium | Complete |
 | D-5 | Theme extras: density, gradient tuning, the contrast audit | Medium | Not started |
 | D-8 | Settings → Formats: app-wide display formats through Luxon (before N-3) | Medium | Complete |
-| D-9 | Icon Wizard (DRAFT spec, docs only): up to 3 layered icons or images per icon, stored as an HTML snippet | Medium | Not started |
+| D-9 | Icon Wizard + Settings → Icons (DRAFT, absorbs F-3/F-7/F-8 UI): libraries, registry tree, popup with Library / Foundry / SVG / PNG tabs | Hard | In progress |
 | D-10 | Module bars (toolbar and footer convention): Accounts Clone and search, the Help bar with search and Back | Medium | Complete |
 
-Kind: **Easy** is the static frame or one function in `api.js`. **Medium** crosses one boundary. **Hard** is unused.
+Kind: **Easy** is the static frame or one function in `api.js`. **Medium** crosses one boundary. **Hard** spans several surfaces in one phase (D-9 is Hard).
 
 ## How a session works
 
@@ -280,9 +280,9 @@ D-1 keeps the five variables in the lock above. A later theme phase follows Lith
 
 **Accomplished:** The live shell takes `color-scheme`, `--pav-*`, and an uncommented `@font-face` whose `url()` is a local file, rewritten to `pav-theme:`. A remote `https:` or `data:` url that is not a local filename is emptied. A short file inherits Dark for properties it does not declare. The sheet is `#pav-file-theme` on `document.head` and is removed in `stopShell`. The poster does not load the kit. An icon value may be HTML, a Font Awesome class string, or an image filename. The eight keys are mail, contacts, calendars, files, activity, settings, update, and help. The shell accepts one `i` (class only) or one `img` and always replaces the button's `.icon` node. Update is `#update .icon`. While a file is selected, that file's declared icons and `--pav-mark` paint even when Icons source is Override. An undeclared icon key restores `data-icon-definition`. Fonts Source Override still replaces the theme fonts. A profile with no `fontSource` whose fonts differ from the defaults, or no `iconSource` whose `icons` object has keys, migrates to Override. Switching to Override copies the computed values. `<img class="nav-mark">` shows with class `is-shown`. `none` hides it. `pav-theme` is served by `pav_protocol` and is on the `lib.rs` scheme list. CSP allows it on `img-src` and `font-src` only. Theme text caps at 256 KB and an asset at 2 MB. The name is one basename. `make dev` does not apply `tauri.conf.json` CSP, so a `pav-theme:` image is confirmed in `make build`. `make test` is 68 Unity tests and 44 Vitest tests. `rg '#[0-9a-fA-F]{3,6}' ui/src` finds none.
 
-**Lessons learned:** WebKit's `SVGElement.className` is read-only. Font Awesome replaces `<i class="icon">` with `<svg>`, and assigning `className` throws `Attempted to assign to readonly property.` Replace the node. That throw used to skip the save, so the theme looked applied and was forgotten after a restart. `paintTheme` swallows the paint error and the save still runs. A theme choice repaints in place and does not call `location.reload`. Changing the kit id still reloads, from `reloadIcons` in `main.js`. The host hears `light` or `dark` from the file's first `color-scheme` ident, and the same value is not sent twice. `getPropertyValue` may return quotes; strip one matching pair. `iframe.sandbox` is a read-only token list; set the attribute to an empty string. The shared icon sanitizer is still F-7.
+**Lessons learned:** WebKit's `SVGElement.className` is read-only. Font Awesome replaces `<i class="icon">` with `<svg>`, and assigning `className` throws `Attempted to assign to readonly property.` Replace the node. That throw used to skip the save, so the theme looked applied and was forgotten after a restart. `paintTheme` swallows the paint error and the save still runs. A theme choice repaints in place and does not call `location.reload`. Changing the kit id still reloads, from `reloadIcons` in `main.js`. The host hears `light` or `dark` from the file's first `color-scheme` ident, and the same value is not sent twice. `getPropertyValue` may return quotes; strip one matching pair. `iframe.sandbox` is a read-only token list; set the attribute to an empty string. The shared icon sanitizer was planned as F-7; as of 2026-10-28 it lands in D-9.
 
-**Handoff:** J-1 is next, in a fresh session. Do not start it here. D-5 is step 114. Its entry gate is met, and the sequence still runs J-1 first. F-8 still owns the icon editor and will replace this painting. A new `--pav-*` variable ships in both starter files in the same change. `@font-face` in the starters stays a comment. Do not send `file:` through `normalizeTheme`. Do not rewrite a stored `iconSource` on load. `lib.rs` stays a 199-line forwarder. `pav-theme` is already on its scheme list.
+**Handoff:** J-1 is next, in a fresh session. Do not start it here. D-5 is step 114. Its entry gate is met, and the sequence still runs J-1 first. F-8 owned the icon editor when this landed; that work moved into D-9 on 2026-10-28. A new `--pav-*` variable ships in both starter files in the same change. `@font-face` in the starters stays a comment. Do not send `file:` through `normalizeTheme`. Do not rewrite a stored `iconSource` on load. `lib.rs` stays a 199-line forwarder. `pav-theme` is already on its scheme list.
 
 ## D-5: Theme extras
 
@@ -346,63 +346,166 @@ D-1 keeps the five variables in the lock above. A later theme phase follows Lith
 
 **Handoff:** N-3 is next, step 61, in [N-MAIL.md](N-MAIL.md). It was not started. Its entry gate is N-2 and N-3a, both complete, and D-8. The time column calls `formats.js` and does not format a date. `message.list` gains `{view:{kind:"unified", name}}` with `inbox`, `unread`, `flagged`, `drafts`, and `sent`. Unread is every unseen message. Flagged is every flagged message. Inbox, Drafts, and Sent are those roles across accounts. Drafts and Sent show To. The nav entries stay in N-6. Kind `search` stays as Q-1 left it. Kind `threaded` is accepted and stays flat until N-6. `debug.seed_messages` is `{mailboxId, count}`, absent when `NDEBUG` is set, local rows only, clamped to `listRows`, and it does not use the network. The mail list theme extends `.pav-table` in `ui/public/styles/theme.css`. New variables ship in `dark.css`, `light.css`, and both starter `*.theme` files. There is no `ui/styles/list.css`. The Q-1 handoff names that file; this decision wins. The Lock row is the account color bar, from (To in Sent and Drafts), subject, preview, the `dateShort` time, the flag marks, and the attachment icon. `message.list` omits a row whose `keywords` contain `$deleted`, and `total` counts the rows that remain. The keyword stays stored. `mailbox.list` recounts unread and total from local rows and skips `$deleted` (N-Q6). Unread is not seen, not draft, and not `$deleted`. The stored server counts stay for sync. N-5 still moves to Trash or destroys. The search field stays in Q-2. Do not start Q-2. The Accounts table polish stays paused in [TABULATOR.md](TABULATOR.md). Do not touch the quit path. Keep the header insert straight-line. `PAVILLION_API_VERSION` stays 3. The phase stamp is `0.68.0`. `make test`: 247 Unity, 2 Rust, 397 Vitest, exit 0. Gzip -9 of `ui/dist` is 360042 bytes. CI on `a8903db` ([40059550732](https://github.com/500Foods/Pavillion/actions/runs/40059550732)) failed `windows-core` because that instant was pinned to `01:30 PST`. The test now allows `01:30 PST`, `02:30 PDT`, and `02:30 MST`. On `47ee864` ([40062205611](https://github.com/500Foods/Pavillion/actions/runs/40062205611)) fedora and windows-core passed. macos-core failed the zoom-wheel test at 5000 ms. The 20000 ms timeout is in `4d8b53e`. CI [40064822844](https://github.com/500Foods/Pavillion/actions/runs/40064822844) is green: fedora, macos-core, windows-core. The agent does not commit.
 
-## D-9: Icon Wizard (DRAFT)
+## D-9: Icon Wizard and Settings → Icons (DRAFT)
 
-**Kind:** Medium
-**Status:** Not started. DRAFT spec, docs only; no code in this phase until Andrew signs off the open questions. Added 2026-10-19 at Andrew's request (renamed from "icon picker" the same day).
+**Kind:** Hard
+**Status:** In progress (2026-10-28). Andrew pulled this phase forward. D-Q6–D-Q17 stay locked. Last finished work item: Settings → Icons section tabs. Each tab is a plain table with a Default check when the icon has no saved override, the icon at one size, and the name. A row opens the Icon Wizard. Close, Cancel, Escape, and a click on the backdrop close it, and it asks only after an edit. Ctrl+wheel zooms the Wizard from 100% to 300% by 5% (default 100%, `preferences.ui.iconWizardZoom`), and the Away/Toward switch applies. The profile-save fix (`@` only in the URL authority) is in the tree and still needs a rebuild. File-scoped checks for that save: `icons-wizard` Vitest and the Unity icon test. The earlier full `make test` was 255 Unity, 2 Rust, 419 Vitest, exit 0; this slice did not re-run it. The running binary still has the old check until the next build. The next successful save also finishes the one-time icons reset, which clears the stored class-string icons. Still open: Andrew's window check of that swatch, and the SVG and PNG canvas editor (import, scale, rotate, flip, and Apply view store the asset; drag, a mask, and a live canvas are not in yet). Material fill and weight are not on the Library tab; a style value cannot contain the quotes `font-variation-settings` needs. The window is not accepted. Do not mark this phase done. The phase stamp stays `0.69.0`. `PAVILLION_API_VERSION` stays 3. The agent does not commit. Added 2026-10-19 (renamed from "icon picker" the same day). Expanded 2026-10-28: the UI and product work of F-3, F-7, and F-8 is absorbed here. The Icons security Lock stays in [F-HARDEN.md](F-HARDEN.md). F-3, F-7, and F-8 as implementation phases are superseded by D-9.
 
-This records Andrew's ideas. It does not decide the look: layout, sizes, spacing, control styles, previews, and animation are his to set (D-Q6 onward).
+Look (sizes, spacing, control styles, animation) is Andrew's to set. This section fixes what each screen does and what it stores.
 
-**Open item, Settings → Icons editor (diagnosed 2026-10-20, for this rework):** Andrew could not change the nav icons himself: he tried removing Mail's `fa-flip-horizontal` and switching Update to `fa-up-down`. What was found in `ui/src/shell.js` (the `#icon-form` handlers) and in a mock mount:
-1. **Wrong comparison for unsaved changes.** The Preview and Reload & Save buttons compare each field with its `defaultValue`, the default text in the template HTML, not with the saved override. Removing the flip from a saved `fa-paper-plane-top fa-rotate-270 fa-flip-horizontal` makes the field equal the template default again. The editor then counts no change and disables both buttons, so the change cannot be applied or saved (reproduced in a mock mount: both buttons stay disabled). The same happens whenever an edit returns to the shipped value, for example `fa-up-down` now that it is the default.
-2. **Edits are only kept in memory until a button is pressed.** Typing writes `preferences.ui.icons[key]` in memory but schedules no save. The value is written only by Preview or Reload & Save, or by chance with an unrelated later save. Leaving the page without pressing either keeps a stale edit in memory, and it may persist later.
-3. **Saved overrides win over shipped defaults.** With Icon source "Override" (`preferences.ui.iconSource: "override"`), every key saved in `preferences.ui.icons` is used as is, so a new shipped default never reaches a profile that saved all keys. Andrew's profile has `iconSource: "override"` and all eight keys saved, including `mail: "... fa-flip-horizontal"` and `update: "... fa-arrows-rotate"`.
-4. **A file theme ignores overrides.** When the chosen theme is a file theme (not the built-in dark or light), `applyIcons` paints the theme file's `--pav-icon-*` and ignores the overrides at load. A Preview still shows the override until the next reload. This does not affect Andrew today: his `themeChoice` is the built-in `dark`.
-5. **Not the cause:** no class allowlist rejects `fa-flip-horizontal` or `fa-up-down`, and the nav does read `preferences.ui.icons`.
+**Goal:** One popup, the Icon Wizard, opens from any icon slot fully populated (library loaded, current value, default, presets) and returns one sanitized icon value. Settings → Icons lists every icon in the app by where it appears and supplies the library/kit the Wizard uses. The same Wizard serves account icons, profile photos, and later folders and labels.
 
-For the rework:
-- compare against the saved value (or track an explicit dirty flag);
-- save on change, or warn on leave;
-- offer a per-key "Use theme default" that deletes the key from `preferences.ui.icons`;
-- show which source each icon comes from.
+### Settings → Icons module
 
-**Goal:** One popup, the Icon Wizard, that composes an icon and returns it to the caller. Used from Settings → Accounts (the account icon) and from a Settings → Icons page (see D-Q11); later folders and labels.
+What it shows:
 
-**What it does (Andrew's ideas):**
+- **Libraries.** The list in `preferences.ui.iconLibraries` (F-HARDEN Lock shape: type + https URL on the allowlist). **No search metadata ships in the app tree** (D-Q10). Presets offered in the UI (hosts must already be allowlisted): **Font Awesome kit** (`45801522ef`, default enabled) and stubs for **Material Symbols** and **Iconify** (or similar) that the user can enable/add. Add (type, URL or kit id), enable, reorder, remove. On enable/add, fetch that library's script/stylesheet **and** its search metadata; **cache metadata in the profile SQLite** for reuse. One library is **active** for Foundry; Library mode search uses the **FA searcher** when the active/selected lib is FA, else the **generic library searcher** (Iconify and others). An off-list host shows an error and the note that a new host needs a rebuild. The page builds `<script>`/`<link>` from validated URLs; no HTML from settings. Replaces today's kit field and Source select; migrate `ui.fontawesome_kit` into the FA preset entry.
+- **Registry tabs.** Every entry in the icon registry `{ key, section, label, default, sizeHint? }`, one tab per `section` (Nav, Mail, Mail list, and the rest of the registry). The selected tab is a plain table, not Tabulator: a **Default** check when that key has no saved override, the icon at one size, and the name. A click on the row opens the Wizard. The registry covers every icon the UI paints; any code that paints an icon reads it from the registry. The Wizard's 16 px chip (D-Q12) is unchanged.
+- **Recent cap.** Settings → Icons option for how many recent picks to keep (`preferences.ui.iconRecentMax`, default **12**; D-Q13). Trims `iconRecent` when lowered.
+- **Search** filtering the open tab by label or key. **Revert all** (confirm) clears every saved icon. A per-row Revert button is not on this table.
+- **Click a row → Icon Wizard** for that key, preloaded with: key, label, section; current value; default value (theme value if a file theme sets one, else shipped); active library and the enabled list; the presets for that key.
 
-- Up to 3 layers, drawn on top of each other.
-- Each layer has its own color, flip horizontal, flip vertical, rotate, scale, and translate.
-- A layer is a Font Awesome icon or an imported image (SVG, PNG, or JPG, for example a headshot), with the same transforms.
-- Choosing a Font Awesome layer opens a search popup inside the wizard: a search field; a family toggle or pull-down (Classic, Sharp, Duotone, Sharp Duotone, Brands, and any other family the installed Font Awesome provides); a style (Solid, Regular, Light, Thin); then a grid of results.
-- The result replaces the interim account icon value (K-Q9), which already reserves the field for a composed icon.
+What it stores: overrides only, `preferences.ui.icons[key] = html`, through `prefs.ui.set`. A key absent from the map means "use the default". Saving is immediate on Wizard Apply; there is no separate Save button on the page.
 
-**Decisions (Andrew, 2026-10-19):**
+### Icon Wizard popup
 
-- Output: a Font Awesome composition is a self-contained HTML snippet: Font Awesome layers markup with each layer's classes, color, and transforms inline. That snippet is what is stored and what is rendered.
-- Account storage: the account `icon` field holds the snippet, or a reference to it (K-Q9). The interim chooser already stores a one-element snippet, so its values stay valid.
-- Imported images live in a separate asset store, designed in this phase: likely SQLite blobs per profile, with no files outside the database. This is a new storage element to track beside the profile and the store (B Lock, when it is designed).
-- Color: one better color picker than the native `<input type="color">`, shared by the wizard and the account color. It is bundled from npm with a permissive licence (MIT, ISC, BSD, or Apache-2.0), no CDN.
+Chrome (J-1 dialog; D-Q6, Andrew 2026-10-28):
 
-**What is installed today (checked 2026-10-19):** the Font Awesome Pro Plus 7.3.1 SVG kit `45801522ef`, loaded from `kit.fontawesome.com` (D Lock); no `@fortawesome` npm package and no Pro files in the repo (not vendored, by Lock). The D Lock names Duotone, Sharp, and Thin as the families in use. Which further Pro Plus families the kit enables (for example Chisel, Etch, Jelly, Notdog, Slab, Thumbprint, Whiteboard) is set in the kit's settings on fontawesome.com and was not checked from the box.
+- **Title:** the label and section (e.g. "Mail — Nav"); key shown small.
+- **Left square preview:** side length equals the combined height of the two toolbars; shows the icon in progress; updates live on every change; every paint goes through the sanitizer. When the key is small-chrome (D-Q12), also show a **16 px chip** beside the large preview, rendered on **both white and black** backgrounds for contrast.
+- **Toolbar 1:** mode tabs **Icon Library | Icon Foundry | SVG | PNG**, plus **Accept** and **Cancel**. Opens on the tab that matches the current value (FA/Material snippet → Library if it is a single plain icon, else Foundry; `pav-asset:` SVG → SVG; `pav-asset:` bitmap → PNG; system id → Library, System shelf). Accept sanitizes, stores, updates every use live (toast with Undo). Cancel discards. Switching tabs keeps each tab's state for the session; Accept takes the active tab's value.
+- **Dismiss.** Close, Cancel, Escape, and a click on the backdrop all close the Wizard. That asks only when an edit has made the working icon differ from the one that was opened.
+- **Zoom.** Ctrl+wheel over the Wizard zooms it from 100% to 300% by 5% (default 100%, `preferences.ui.iconWizardZoom`). The Away/Toward switch applies. A wheel over the color picker inside the Wizard still zooms the picker.
+- **Toolbar 2:** **default first**, then system shelf, then recent (D-Q13). Curated per-key presets empty in v1 (D-Q16). Choosing one loads it into the work area and the square preview.
+- **Work area** (rest of the panel): the active mode (search grid, Foundry editor, or image canvas).
+- **Revert to default** is **Revert all** on the Icons page. It is not a column on the section table, and it is not required on Toolbar 1.
+- Sanitizer rejection shows under the work area; Accept is disabled; what was removed is listed as text (e.g. `removed: onerror on img; img`).
 
-**Entry gate:** Andrew answers the open questions below.
+#### 1. Icon Library
 
-**Work items:** none yet (DRAFT).
+Pick one icon from a library.
 
-**Tests:** to be written with the spec.
+- **Library select** (enabled libraries, active one preselected) and, for FA, **family** (Classic, Sharp, Duotone, Sharp Duotone, Brands, plus any family the kit enables) and **style** (Solid, Regular, Light, Thin) filters; for Material, style (Outlined/Rounded/Sharp) and fill/weight where the font supports it.
+- **Presets** live on **Toolbar 2** (not duplicated in the work area): default first, then system shelf, then recent picks (D-Q13 locked: shared prefs list, cap via Settings → Icons option default 12; no favourites). Curated `presets: []` stay empty in v1 (D-Q16); may revisit with presets-per-library later.
+- **Search field** over the selected library's **cached** metadata (names + keywords; D-Q10). FA kit → FA searcher (family/style filters); other libs → generic searcher. Results grid fills the work area. Click selects; double-click Accepts. If metadata is not yet cached, fetch-and-store then search.
+- **Light modifiers** for a single icon: color, size step, rotate (90/180/270), flip H/V, fixed width. Anything needing nesting (rotate *and* flip, layers, stacks) shows "Open in Foundry", which carries the current choice across.
+- Output: one `<i class="fa-…">` or `<span class="material-symbols-…">name</span>`, or a system reference.
 
-**Open questions for Andrew:**
+#### 2. Icon Foundry
 
-- D-Q6: Look and behaviour of the wizard and of the search popup: layout, layer list, transform controls, preview sizes, grid density. Not decided here.
-- D-Q7: Sanitizing the snippet on render: the allowlist of tags (`span`, `i`, image element?), classes (`fa-*` only?), and inline style properties (color, `--fa-*` variables, transform?). The shared icon sanitizer accepts one `<i>` today and will need widening.
-- D-Q7a: How image layers sit in the snippet: likely a reference to a stored asset (for example a `pav-asset:` id) that the renderer resolves, not a `data:` URL.
-- D-Q7b: Color picker candidates to evaluate (licence, size, keyboard and alpha support, theming on `--pav-*`): Pickr (`@simonwep/pickr`, MIT), vanilla-colorful (MIT), iro.js (`@jaames/iro`, MPL-2.0, so check the licence rule), Coloris (`@melloware/coloris`, MIT). None is chosen.
-- D-Q8: Asset store design: table layout, ids, dedupe, how an asset is freed when no icon refers to it, and export or backup.
-- D-Q9: Size limits: bytes per imported image, pixel size, SVG sanitizing rules (F-HARDEN icon sanitizer), and total per profile.
-- D-Q10: Font Awesome licence and availability: the kit is Pro Plus but hosted; the search needs icon metadata (names, families, styles, keywords). Use the kit's API, bundle a metadata file, or get a licensed download? Pro files stay out of the repo unless Andrew changes that Lock.
-- D-Q11: Scope of Settings → Icons: it exists today (Source Theme or Override, kit, icon overrides). Does the wizard's page become part of it, a new section within it, or a separate heading?
-- D-Q12: Rendering at small sizes (16 px in the table and tree): how 3 layers and photos stay legible; whether a simplified fallback is drawn below some size.
-- D-Q13: Recent picks and favourites: wanted, and where kept?
+Write icon HTML directly, like Font Awesome's own wizard.
+
+- **CodeMirror 6, HTML mode** (already in `ui/package.json`), multiline. The document is text only; it is never inserted into the DOM. **Preview** button refreshes the preview strip through the sanitizer; no refresh on keystroke.
+- **Tool bar** that edits the text: insert icon (opens the Library search inline, inserts at cursor); wrap selection in `fa-layers` / `fa-stack`; wrap in a span to apply a second transform (this is how rotate + flip is done: an outer element rotates, an inner one flips); flip H/V, rotate (fixed and `--fa-rotate-angle`), scale/grow/shrink, shift (`fa-transform` / `--fa-*` vars), color and duotone colors (`--fa-primary-color`, `--fa-secondary-color`, opacity), animation classes (beat, fade, spin, …; any kit `fa-*`, D-Q12a locked), layer text/counter. Tools act on the element at the cursor.
+- Uses the active FA kit (or Material for ligature spans).
+- Output: the sanitized HTML snippet.
+
+#### 3. SVG
+
+Import an SVG and adjust it.
+
+- **Pick file** (native dialog) or choose a previously imported SVG asset from this profile.
+- Sanitized on import (F-HARDEN sanitizer, SVG rules: no script, no `on*`, no `foreignObject`, no external `href`, no `<use>` to outside, no CSS `url()`); refused with the reason if not.
+- **Canvas editor** (profile-photo style): drag to translate, scale slider/wheel, rotate (free + 90° steps), flip H/V, crop to square viewbox, optional color override for single-color SVGs (`currentColor`), background none/color. Round/square mask preview.
+- Output: the **transformed SVG itself**: transforms baked into a wrapping `<g transform>` and `viewBox`, stored as an asset; snippet is always `<img src="pav-asset:ID">` (D-Q7a). Stays vector. Animation (SMIL/CSS) still runs in the SVG document the `<img>` loads.
+
+#### 4. PNG
+
+Import a bitmap (**PNG only**, D-Q9) and adjust it.
+
+- Same canvas editor as SVG: translate, scale, rotate, flip, square crop, circle/rounded mask, background fill.
+- Output: a **rendering** of the final view, not the raw file: drawn to an offscreen canvas at a fixed output size (**128×128**, D-Q9), encoded PNG, stored as an asset; snippet `<img src="pav-asset:ID">`. The **original is kept** for re-editing (D-Q8).
+- This is the path for profile photos and headshots.
+
+### Outputs by mode
+
+| Mode | Stored value | Asset |
+|---|---|---|
+| Library | one FA `<i>` or Material `<span>`, or `pav-system:ID` img | none |
+| Foundry | sanitized HTML snippet (layers / nesting allowed) | none |
+| SVG | `<img src="pav-asset:ID">` (D-Q7a) | sanitized, transformed SVG |
+| PNG | `<img src="pav-asset:ID">` | rendered PNG (+ optional original) |
+
+Every value is stored as HTML under the key (or the caller's field) and passes the shared sanitizer before any DOM write. No free file paths, no large `data:` URLs in preferences.
+
+### Callers
+
+- Settings → Icons (any registry key).
+- Settings → Accounts: the account `icon` field (K-Q9); replaces the 12-icon row and the `<i>`-only gate in `accountSwatch`.
+- Later: profile photo, folders, labels, Grok Bots. Caller passes `{ title, current, default, presets, modes }` and gets back `{ html }` or cancel; a caller may restrict modes (e.g. photo = PNG only).
+
+### System icons
+
+A built-in shelf of shipped images, referenced by stable id, not by path: first entry `mark` (the roof mark, `src-tauri/icons/source.png` → `ui/public/mark.png`). Resolved by the renderer to the shipped file (`pav-system:mark`, D-Q7a). Shown in the Library presets for every key. Nav Mail's shipped default returns to `mark`.
+
+### Bugs this phase must kill (diagnosed 2026-10-20)
+
+Andrew could not change the nav icons himself (removing Mail's `fa-flip-horizontal`, switching Update to `fa-up-down`). In `ui/src/shell.js` (`#icon-form`):
+1. **Wrong comparison for unsaved changes.** Preview and Reload & Save compare with the field's `defaultValue` (template text), not the saved override; an edit back to the shipped value counts as no change and both buttons stay disabled.
+2. **Edits kept only in memory until a button is pressed.** Typing writes `preferences.ui.icons[key]` in memory with no save; a stale edit may persist later.
+3. **Saved overrides win over shipped defaults.** With `iconSource: "override"` every saved key is used, so a new default never reaches a profile that saved all keys (Andrew's profile: all eight saved).
+4. **A file theme ignores overrides** at load (`applyIcons` paints the theme's `--pav-icon-*`).
+5. Not the cause: no class allowlist rejects those classes.
+
+The rework: dirty = differs from saved; Apply stores immediately; overrides store only changed keys (Revert deletes the key); precedence override > theme > shipped, shown by the source badge; the Source select is removed. Migration: one-shot clear of `preferences.ui.icons` (D-Q14 locked: reset all).
+
+### Decisions
+
+- Andrew, 2026-10-19: Foundry/Library output is a self-contained HTML snippet; the account `icon` field holds it (K-Q9). Imported images live in a per-profile asset store with no files outside the database. One color picker from npm (MIT/ISC/BSD/Apache-2.0), no CDN, shared with the account color. **Resolved D-Q7b:** Coloris; Accounts uses Coloris for color and the Icon Wizard for icon.
+- Andrew, 2026-10-28: one phase (old D-9 + F-3/F-7/F-8 UI). Four mode tabs: Icon Library, Icon Foundry, SVG, PNG. SVG result is the SVG; PNG result is a rendering. Settings → Icons is the grouped registry list plus library/kit choice, and supplies everything the popup needs. Same popup for account icons and profile photos. The roof mark is a pickable system icon (answers old D-Q11: Wizard is opened from the Icons page; the page is the list, not an editor).
+- Andrew, 2026-10-28 (D-Q6): Wizard chrome — left of the top bars, a **square preview** whose side equals the combined height of **two** standard toolbars; it always shows the icon in progress and updates live on every change. **Toolbar 1:** the four mode tabs (Icon Library | Icon Foundry | SVG | PNG) plus **Accept** and **Cancel**. **Toolbar 2:** suggested presets for this key, **default first**, then curated alternatives (and system picks where relevant). Below both bars: the mode work area (search, Foundry editor, or image canvas). No separate Current/Default/Preview strip; the square is the working preview. Accept writes; Cancel discards. (Revert-to-default stays available from the Icons list and/or as a control in the work area — confirm in D-Q13/UI polish if needed.)
+- Andrew, 2026-10-28 (D-Q7): **Broad first, clamp later.** Icon sanitizer is a **blocklist**, not a tight allowlist: support multicolor icons, gradients, and animated SVG (SMIL/CSS) that the user is fond of. Still strip active content that can run script in the main window (`script`, event handlers `on*`, `javascript:` URLs, `iframe`/`object`/`embed`/`foreignObject`, remote `<use href>`, etc.). Style may include colors, gradients, filters, transforms, and animation — refine the blocklist only after real icons break or scare us. **Remote images:** outside https links are fine as a *source*; the Wizard **fetches and stores** the bytes in the asset store and the snippet references the stored asset (`pav-asset:` / system id), never hotlinks the remote URL at paint time. F-HARDEN Icons Lock text for the sanitizer will be revised to this blocklist policy when D-9 is signed off (libraries stay allowlisted https hosts).
+- Andrew, 2026-10-28 (D-Q7a): SVG (and PNG) results always use `<img src="pav-asset:ID">` after store; no inline `<svg>` as the default snippet. System mark uses `pav-system:mark`.
+- Andrew, 2026-10-28 (D-Q7b): Color picker is **Coloris** (`@melloware/coloris`, MIT). Custom `swatches` array we own (seed defaults + optional user-added in prefs); Hex/RGB/HSL toggle + alpha; dark theme. Shared with **Accounts color**. Accounts also uses the **Icon Wizard** for the account icon (both tools).
+- Andrew, 2026-10-28 (D-Q8): Asset store = SQLite in the profile DB; SHA-256 content ids; dedupe on insert; keep PNG originals for re-edit; **no auto-GC** — user browses/deletes via an asset list. Export rides profile backup.
+- Andrew, 2026-10-28 (D-Q9): Bitmap import **PNG only**, **5 MB**/file; stored render **128×128**; soft warn at **128 MB** profile total (no hard block). No JPEG/WebP; no 64×64 twin.
+- Andrew, 2026-10-28 (D-Q10): No bundled icon metadata. Settings → Icons = library list; FA kit shipped default; add Material / Iconify / other kits as links; fetch metadata into profile SQLite cache. FA-specific search tool + separate generic searcher for Iconify and the rest. May use FA Duotone Sharp Solid together with Iconify families.
+- The old 3-layer model is replaced by Foundry (nesting in text) for FA, and by SVG/PNG for images. Mixing a photo with FA layers is not a goal (D-Q15 locked: no mix).
+- Security per F-HARDEN Icons Lock: allowlisted https libraries, kit only (FA Pro not vendored), registry, overrides as key→html, shared sanitizer before every DOM write, CodeMirror is a text editor only.
+
+- Andrew, 2026-10-28 (D-Q12): One value per key (no dual store). Wizard shows a 16 px chip for small-chrome keys on white and black backgrounds. The Icons page paints each icon at one size in the section table (the earlier per-row display size is withdrawn).
+- Andrew, 2026-10-28 (D-Q12a): Allow any `fa-*` class the active kit defines (broader than an animation-only allowlist); sanitizer still strips script vectors.
+- Andrew, 2026-10-28 (D-Q13): Recent picks only (deduped in `preferences.ui.iconRecent`); cap is a Settings → Icons option (default 12, e.g. `preferences.ui.iconRecentMax`); no favourites/stars.
+- Andrew, 2026-10-28 (D-Q14): One-shot reset of all saved icon overrides (`preferences.ui.icons` cleared once); not equals-default prune.
+- Andrew, 2026-10-28 (D-Q15): No combining images with FA layers; modes stay separate.
+- Andrew, 2026-10-28 (D-Q16): Default-only presets for v1 (`presets: []`); may revisit with presets-per-library later.
+- Andrew, 2026-10-28 (D-Q17): Registry = every existing paint path + missing-key test; grow with modules; no speculative keys; account/profile icons are callers not rows.
+### Open questions for Andrew
+
+- D-Q7a: **Locked 2026-10-28.** SVG mode results are always stored as an asset and referenced with `<img src="pav-asset:ID">` (and `pav-system:mark` for the roof mark). Same paint path as bitmaps; prefs stay small; animation still runs inside the SVG the `<img>` loads. Inline sanitized `<svg>` is not the default snippet form (Foundry may still emit FA/`<i>` HTML).
+- D-Q7b: **Locked 2026-10-28.** **Coloris** (`@melloware/coloris`, MIT) — npm, no CDN; Hex/RGB/HSL toggle, alpha, dark theme. Custom swatches via `swatches: string[]` (empty disables). Seed a default row (logo reds + warm neutrals); may persist user-added swatches in prefs. Shared with **Accounts color**; Accounts also opens the **Icon Wizard** for the account icon. iro.js stays out (MPL-2.0).
+- D-Q8: **Locked 2026-10-28.** Per-profile SQLite asset table (bytes in the DB, not loose files). **id** = content-addressed SHA-256 of the bytes (snippet uses a short hex form, e.g. `pav-asset:<hex>`); columns: id, mime, bytes, created, kind (`svg` / `png-render` / `png-original` / `fetch`). **Dedupe** on insert by hash. **Keep PNG originals** beside the rendered PNG so PNG mode can re-open crop/scale. SVG has no separate original. **No automatic GC** — unused assets stay until the user deletes them. Settings (or Wizard) exposes an **asset list** to browse and delete. Export/backup rides the profile DB.
+- D-Q9: **Locked 2026-10-28.** Bitmap import is **PNG only** (refuse JPEG/WebP/other with a clear reason). **Import cap 5 MB** (file bytes). Stored render is a single **128×128** PNG (CSS scales for smaller UI; 64×64 rejected as too soft for real photos). Soft warn in the asset list at **128 MB** per-profile total; never hard-block Accept. SVG mode unchanged (its own path; same 5 MB import cap).
+- D-Q10: **Locked 2026-10-28.** **No metadata bundled in the app tree.** Settings → Icons holds a **list of supported icon libraries** (typed entries on the host allowlist). Ship the **FA kit** (`45801522ef`) as the default enabled library. Users can add further kits/libraries (e.g. Material Symbols, Iconify collections) as links; on add/enable the Wizard **fetches** that library's search metadata (and stylesheet/script as today) and **caches it in the profile SQLite** (blob/table) for offline reuse until refreshed or removed. **Two search surfaces in Library mode:** (1) **FA search** — kit-aware (families/styles: Duotone Sharp Solid etc.); (2) **generic library search** — for Iconify and other non-FA libraries once loaded. Active library (or multi-select of enabled libs) drives which searcher runs. Pro SVGs/CSS/fonts still never vendored into the repo (F-HARDEN); cache is per-profile data, not source.
+- D-Q12: **Locked 2026-10-28.** **One value per key** — no dual large/small store. Wizard square preview also shows a **16 px chip** when the registry marks the key as small-chrome, so mush is visible before Accept. The 16 px chip is drawn on **both a white and a black background** (contrast check without a separate light/dark icon). Settings → Icons is one tab per section and a plain table: a Default check when there is no saved override, the icon at one size, and the name. A row click opens the Wizard. If a photo must work at 16 px, pick a simpler Library glyph for that key or accept the soft look; revisit dual large+small later only if real keys need it.
+- Andrew, 2026-10-28: The Wizard closes from Close, Cancel, Escape, or the backdrop. It asks only after an edit changes the working icon. Ctrl+wheel zooms the Wizard, 100–300% by 5%, default 100%, stored as `preferences.ui.iconWizardZoom`. The Away/Toward switch applies.
+- D-Q12a: **Locked 2026-10-28.** Allow **any `fa-*` class the active kit defines** (animation utilities included: spin, beat, fade, bounce, flip, shake, pulse, speed/delay modifiers, and other kit class names). Sanitizer does **not** strip `fa-*` by animation policy; still strips script vectors / hostile attributes per F-HARDEN blocklist. Nav defaults stay static; Foundry may add motion.
+- D-Q13: **Locked 2026-10-28.** **Recent only** — no favourites/stars. On Accept, push the sanitized snippet into `preferences.ui.iconRecent` (profile prefs): **deduped**, newest first. Cap is a **Settings → Icons option** (default **12**; stored e.g. `preferences.ui.iconRecentMax`). Shared across keys; shown on Toolbar 2 after system shelf. Overrides already pin per-key choices.
+- D-Q14: **Locked 2026-10-28.** **Reset all** — one-shot clear of `preferences.ui.icons` on first load of the new Icons code (migration flag). All eight (and any other) saved overrides go; shipped defaults (incl. Mail → mark when that lands) take effect. No equals-default prune; no leave-as-is.
+- D-Q15: **Locked 2026-10-28.** **No mix.** Library/Foundry = FA (or Material) HTML only; SVG/PNG = `pav-asset:` img only. FA layers/stacks stay FA-only. No photo-inside-layers paint path in D-9.
+- D-Q16: **Locked 2026-10-28.** **Default-only for v1** — registry `presets: []` everywhere; Toolbar 2 shows default + system shelf + recent (no curated alternatives). Rely on Library search. May revisit later with a **presets-per-library** option (not in D-9 scope).
+- D-Q17: **Locked 2026-10-28.** **Every icon `ui/src` paints today** has a registry key (Nav, module bars, Accounts, Help, Settings, existing dialogs/toasts/tree, tab kinds, Update spin, …). Missing-key test fails CI. **Grow with modules** — no speculative keys for unbuilt UI. Account icons and profile photos are Wizard callers, not registry rows (per-entity).
+
+**Entry gate:** Andrew answers the open questions; J-1 and E-7 complete (dialogs, tree engine; both met); F-2 complete.
+
+**Work items (high level, for Grok Build):**
+
+- [x] Libraries: `preferences.ui.iconLibraries`, allowlist from one source (`ui/src/common/iconhosts.json` → C + JS), `prefs.ui.set` validation, CSP Google Fonts hosts, `loadIconLibraries(list)` replacing the raw-HTML kit branch in `ui/src/main.js`, migration of `ui.fontawesome_kit`.
+- [x] Shared sanitizer (**blocklist** per D-Q7: gradients/animation OK; strip script vectors) with the hostile suite; HTML-sink grep test `ui/test/no-html-sinks.test.js`; revise F-HARDEN Icons Lock text to match.
+- [x] Registry `ui/src/common/icons/registry.js` with every painted icon; all painting goes through it; system icon shelf.
+- [x] Settings → Icons rewrite: libraries list, registry tree, badges, search, Revert/Revert all; removes `#icon-form` and its bugs.
+- [x] Wizard popup `ui/src/common/icons/wizard.js`: left square preview, two toolbars (modes+Accept/Cancel; presets), four tabs.
+- [ ] Library tab with metadata search and presets; Foundry tab with CodeMirror and tool bar; SVG and PNG tabs with the shared canvas editor. Search, presets, Foundry, and Material ligatures are in. The canvas editor (drag, mask, live preview) is not.
+- [x] Asset store (core + command), `pav-asset:` / `pav-system:` resolution.
+- [x] Accounts caller (icon field), Nav Mail default = `mark`.
+- [x] Vitest: dirty vs saved; Apply stores only the key; Revert removes the key; Cancel leaves the blob unchanged; no preview on keystroke; library URL validation; sanitizer suite; PNG render size. Unity: library validation, asset store.
+- [x] Help page (`ui/src/help/pages.js`) for Icons and the Wizard.
+
+**Done means:** In Settings → Icons Andrew finds Nav → Mail, opens the Wizard, picks the roof mark from System, applies, sees it live; changes Update to `fa-up-down` and back; builds a rotated + flipped icon in Foundry; imports an SVG and a PNG headshot, adjusts, applies one as an account icon; reverts each. Restart keeps them. Pasting the hostile suite's worst input previews as rejected and Apply refuses it. An off-list library URL is refused with the rebuild note; Material Symbols renders.
+
+**Exit gate:** `make test` exits 0; the Done flow works in `make build`; CI green on fedora, macos-core, windows-core.
+
+**Handoff:** Docs only until Andrew signs the open questions. Then Grok Build implements this phase as one Hard session (or split only if he asks). Do not start code here before that sign-off. Security Lock remains [F-HARDEN.md](F-HARDEN.md) Icons. F-3, F-7, and F-8 stay superseded. After Apply lands, Help covers Settings → Icons and the Wizard. The index Resume still names which phase may run; D-9 does not steal the Resume until Andrew pulls it forward.
 
 ## D-10: Module bars: toolbar and footer, Accounts Clone and search, Help bar
 
@@ -494,6 +597,11 @@ For the rework:
 - 2026-10-27 Native splash (replaces the CSS cover in Splash mark and the 2026-10-23 reveal wait; those entries stay as history): the start splash is a native window, not a webview and not CSS. `src-tauri/src/splash.rs` opens it in `setup` right after the saved rect is applied. Since t136 it is drawn inside the main window, not as a second window: the webview is moved into a `gtk::Overlay` in the same GTK window (`default_vbox`), a black drawing area sits over it, and the main window is shown at once. A separate splash window could not match the main window exactly (inner vs outer size, decorations, KWin placement). It is black at once and stays black for `BLACK_HOLD_MS` (400 ms); then the mark (`src-tauri/icons/source.png`, logo only, no version line) fades in over `FADE_MS` (400 ms). The page emits `pav-app-ready` after mount and the first paint (a 32 ms timer stands in when a hidden WebKit view skips animation frames); the shell then shows the main window and fades the cover out (widget opacity, 400 ms) and removes it. The fade-out waits for both ready and the envelope black hold + fade-in + `MIN_SHOW_MS` (2000 ms of fully shown mark), all constants in `splash.rs`. `on_page_load` no longer reveals. A missed signal shows the window after 5 s (Andrew, t135). 2026-10-27 (t138): the kit script load came before any icon was drawn (the kit is a loader that then fetches the bundle, which swaps `<i>` for `<svg>` in a later frame), so the cover faded to blank icon slots. The page waits (t139) for Font Awesome's documented `fontawesome-i2svg-complete` class on `<html>` (MutationObserver on its class, no polling; docs.fontawesome.com SVG Async Loading), then one frame, at most `KIT_WAIT_MS` (4 s), before `pav-app-ready`. `complete` covers the current batch only; icons added later (mail tree, sync reloads) swap after the splash. The page releases the FA kit right after mount, so the icon swap starts behind the splash. The first mail sync is started by the core sync supervisor at process start, not by the page; deferring it until after ready needs a core hook (not done). Size: `MARK_LOGICAL_PX` (128 logical px) times the monitor scale, bilinear from the 1024 px source; change that constant to resize. Linux uses GTK (already linked by Tauri). Since t140 Windows and macOS draw it too, with one timing driver (a worker thread sleeps the same envelope and posts each 16 ms fade step to the main thread). Windows: a layered child HWND (`WS_EX_LAYERED`, Windows 8+) over the WebView2 child, filled each frame with a premultiplied BGRA DIB (black plus the mark, decoded with `png` and scaled bilinearly) through `UpdateLayeredWindow`; the cover fade is the blend constant alpha, and the child follows the client rect on each frame. macOS: an opaque black `NSBox` and a centred `NSImageView` (mark at 128 points) added above the WKWebView in the content view with autoresizing; fades set `alphaValue`. New target deps (`png`, `windows-sys` 0.60, `objc2`, `objc2-foundation`, `objc2-app-kit`) were already in the lock via Tauri except `objc2-core-video` (one macOS-only lock entry the AppKit features pull in). Both were checked with `cargo check` for x86_64-pc-windows-msvc and aarch64-apple-darwin but not yet run on those systems. iOS and Android use their launch screens (storyboard / SplashScreen API, one logo on black); not wired yet. `#splash`, its scroll workaround and its JS are gone; Help keeps `.pav-mark-lockup`.
 
 - 2026-10-27 Vite `chunkSizeWarningLimit` raised from 600 to 2000. The UI ships inside the Tauri binary, so dynamic `import()` splitting does not buy a network win; the main chunk (~654 kB) and Tabulator (~238 kB) stay as they are. Raise again if a real size budget appears.
+- 2026-10-28 D-9 in progress. Settings → Accounts color: the swatch is a 1.75rem square text field (the native `type=color` well was the odd shape and the second dialog). Coloris is the only picker. Close is shown. Zoom is its own control, 100–300% by 25, default 200%, saved in `preferences.ui.colorPickerZoom`. Alpha stays off because an account color is `#rgb` or `#rrggbb`. The window was not opened. The canvas editor was not started.
+- 2026-10-28 D-9 in progress. "Could not save the profile" on launch and on later UI saves: the default Material URL has `@` in the query, and both the core and the page treated any `@` as credentials. `prefs.ui.set` returned `bad_args`. `@` is now credentials only in the authority. The window was not opened. The on-disk profile was not rewritten. The next build's first successful save also applies the one-time icons reset.
+- 2026-10-28 D-9 in progress. Color picker: Ctrl+wheel zooms the open picker (the plus and minus are gone). The swatch row is `--pav-picker-swatches` from the theme, then colors saved in `preferences.ui.colorSwatches`, 24 at most. Add and Remove edit the saved colors. Hover shows a CSS color name, or the theme role when the hex matches one. The window was not opened.
+- 2026-10-28 D-9 in progress. Color picker: one Ctrl+wheel notch is 5%. Add, Remove, and Close are icons on one row at the bottom. Add and Remove stay visible and disable when they do not apply. The count is gone. The window was not opened.
+- 2026-10-28 D-9 in progress. Settings → Icons: one tab per section, and a plain table (Default check, one icon size, name). A row opens the Wizard. The Wizard closes without asking when nothing was edited, and Ctrl+wheel zooms it (100–300% by 5%, default 100%). The window was not opened.
 
 ## Shell preview
 
@@ -525,3 +633,5 @@ The window is shown only after the saved rectangle is applied, so it does not fl
 - 2026-10-16 Review: theming is split in two. D-4 (variables plus the dark/light/system switch) moves early, right after G-4. D-5 (density, gradients, contrast audit) stays late.
 - 2026-10-24 Help got a vertical filter panel: a chevron left of the module title opens a full-height, left-edge strip of icon-only category chips (e27292b, UI only). The convention and the plan to lift it into `ui/src/common/` for Accounts and the other modules are in [UI-FILTER.md](UI-FILTER.md) "Vertical filter panel". Not a phase yet. The lift needs a Lock entry here before code.
 - 2026-10-27 Status reconciled against git: D-8 and D-10 complete, Q-2 next (PAVILLION_PLAN.md), D-5 and D-9 not started. The D-9 icon editor dirty-check bug (it compares with the shipped default, not the saved value) has no fix commit since it was written up, so it stays open.
+- 2026-10-28 D-9 expanded (docs only, Andrew): absorbs the UI work of F-3, F-7, F-8. Settings → Icons = libraries + registry tree; Wizard popup with four tabs (Icon Library, Icon Foundry, SVG, PNG); SVG stores the SVG, PNG stores a rendering; roof mark is a system icon. Kind Hard. Open questions D-Q6–D-Q17.
+- 2026-10-28 D-9 in progress. Andrew pulled it forward. Libraries, the sanitizer, the registry, Settings → Icons, the Wizard, the asset store, the Accounts caller, Nav Mail as the roof mark, and the Help page are in. A Material pick stores a ligature span. `make test`: 255 Unity, 2 Rust, 419 Vitest, exit 0. The phase stamp stays `0.69.0`. The window is not accepted. Still open: the SVG and PNG canvas editor (drag, mask, live preview). Material fill and weight wait on a style value that can hold quotes. Q-2 was not started. The agent does not commit.

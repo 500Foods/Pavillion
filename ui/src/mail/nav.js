@@ -2,20 +2,21 @@
    menus, and the toolbar. This module loads nodes, decorates them, and
    patches rows when the core reports a change. */
 
+import { iconClass } from "../common/icons/registry.js";
 import { createTreeController } from "../tree/tree.js";
 
-const ACCOUNT_ICON = "fa-sharp-duotone fa-solid fa-user";
-const FOLDER_ICON = "fa-sharp-duotone fa-solid fa-folder";
-const ERROR_ICON = "fa-sharp-duotone fa-solid fa-circle-exclamation";
+const ACCOUNT_ICON = iconClass("mail.role.account");
+const FOLDER_ICON = iconClass("mail.role.folder");
+const ERROR_ICON = iconClass("mail.role.error");
 const TIP_PERIOD_MS = 1000;
 
 const ROLE_ICONS = {
-  inbox: "fa-sharp-duotone fa-solid fa-inbox",
-  drafts: "fa-sharp-duotone fa-solid fa-file-pen",
-  sent: "fa-sharp-duotone fa-solid fa-paper-plane",
-  archive: "fa-sharp-duotone fa-solid fa-box-archive",
-  junk: "fa-sharp-duotone fa-solid fa-ban",
-  trash: "fa-sharp-duotone fa-solid fa-trash",
+  inbox: iconClass("mail.role.inbox"),
+  drafts: iconClass("mail.role.drafts"),
+  sent: iconClass("mail.role.sent"),
+  archive: iconClass("mail.role.archive"),
+  junk: iconClass("mail.role.junk"),
+  trash: iconClass("mail.role.trash"),
 };
 
 const DEFAULT_REGIONS = ["leading", "label", "status", "count", "hover"];

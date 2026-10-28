@@ -48,6 +48,8 @@
   --pav-surface-scrim: rgb(0 0 0 / 40%);
   --pav-swatch-1: #800000;
   --pav-swatch-2: #cc9999;
+  /* Color picker row. Space-separated hex. Saved colors are added after these, up to 24. */
+  --pav-picker-swatches: #800000 #cc9999 #22aa77 #e8e8e8 #e07070 #d4a24c #7dcea0 #ffffff;
   --pav-status-error: #e07070;
   --pav-status-warn: #d4a24c;
   --pav-status-ok: #7dcea0;
@@ -63,7 +65,7 @@
   --pav-log-debug: #8a8a8a;
   --pav-mark: none;
   --pav-icon-kit: "45801522ef";
-  --pav-icon-mail: "<i class='fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270'></i>";
+  --pav-icon-mail: "<img src='pav-system:mark' alt=''>";
   --pav-icon-contacts: "<i class='fa-sharp-duotone fa-solid fa-address-book'></i>";
   --pav-icon-calendars: "<i class='fa-sharp-duotone fa-solid fa-calendar-days'></i>";
   --pav-icon-tasks: "<i class='fa-sharp-duotone fa-solid fa-list-check'></i>";

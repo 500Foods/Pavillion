@@ -72,6 +72,7 @@ test("Tab stays inside the dialog and danger focuses Cancel", async () => {
 
 test("a link click uses confirm and does not build the old dialog", () => {
   const { root, dialogs } = setup();
+  // html-ok: static test fixture, not outside data.
   root.insertAdjacentHTML("beforeend", '<button type="button" id="isolation-test" hidden></button><div id="panel-mail"><div class="pane-detail"></div></div>');
   let handler = null;
   const stop = installIsolationTest({

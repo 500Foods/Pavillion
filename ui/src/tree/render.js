@@ -2,6 +2,8 @@
    row regions. Outside data (labels, counts) is set via textContent, never
    innerHTML. The renderer owns DOM only; it does not fetch nodes. */
 
+import { iconClass as registryIcon } from "../common/icons/registry.js";
+
 export const DEFAULT_REGIONS = ["leading", "label", "status", "count", "trailing"];
 
 const REGION_CLASSES = {
@@ -13,19 +15,19 @@ const REGION_CLASSES = {
 };
 
 const ICON_MAP = {
-  account: "fa-sharp-duotone fa-solid fa-user",
-  mailbox: "fa-sharp-duotone fa-solid fa-envelope",
-  folder: "fa-sharp-duotone fa-solid fa-folder",
-  calendar: "fa-sharp-duotone fa-solid fa-calendar-days",
-  addressbook: "fa-sharp-duotone fa-solid fa-address-book",
-  group: "fa-sharp-duotone fa-solid fa-users",
+  account: registryIcon("tree.account"),
+  mailbox: registryIcon("tree.mailbox"),
+  folder: registryIcon("tree.folder"),
+  calendar: registryIcon("tree.calendar"),
+  addressbook: registryIcon("tree.addressbook"),
+  group: registryIcon("tree.group"),
 };
 
 const STATE_ICONS = {
-  error: "fa-sharp-duotone fa-solid fa-circle-exclamation",
+  error: registryIcon("tree.error"),
 };
 
-const DISCLOSURE_ICON = "fa-sharp-duotone fa-solid fa-chevron-right";
+const DISCLOSURE_ICON = registryIcon("tree.disclosure");
 
 const SWATCH_MAP = {
   1: "tree-row-swatch tree-row-swatch-1",

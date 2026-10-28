@@ -164,9 +164,11 @@ test("a file theme paints its icons in place and the folder field stays blank", 
   let picked = null;
   try {
     await transport.call("prefs.ui.set", {
+      iconsResetD9: true,
+      iconLibraries: [],
       iconSource: "override",
       icons: {
-        mail: "fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270 fa-flip-horizontal",
+        "nav.mail": "<i class=\"fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270 fa-flip-horizontal\"></i>",
       },
     });
     await transport.call("themes.ensure", { files: [{ name: "Warm.theme", text: warm }] });
@@ -209,11 +211,12 @@ test("a file theme paints its icons in place and the folder field stays blank", 
     await settle();
     const icon = root.querySelector('[data-section="mail"] .icon');
     expect(icon.tagName).toBe("I");
-    expect(icon.className).toContain("fa-envelope");
+    expect(icon.className).toContain("fa-flip-horizontal");
     expect(root.dataset.theme).toBe("file");
     const saved = await transport.call("prefs.ui.get");
     expect(saved.themeChoice).toBe("file:Warm.theme");
     expect(saved.iconSource).toBe("override");
+    expect(saved.icons["nav.mail"]).toContain("fa-flip-horizontal");
     expect((await transport.call("prefs.get")).theme).toBe("dark");
 
     root.querySelector('input[value="dark"]').click();

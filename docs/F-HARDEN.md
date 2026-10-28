@@ -15,12 +15,12 @@ One phase is one session. Do not start the next one in the same conversation.
 | F-5 | Trim `config.c` with a helper layer | Medium | Complete |
 | F-2 | UI preferences as an opaque JSON blob | Medium | Complete |
 | F-4 | Message pane isolation, proven before mail | Medium | Complete |
-| F-3 | Icon library sources: typed https URLs on an allowlist, presets | Medium | Not started |
-| F-7 | Shared icon HTML sanitizer, the icon registry, overrides in the UI blob | Medium | Not started |
-| F-8 | Icon settings: the icon tree and the three-preview editor | Medium | Not started |
+| F-3 | Icon library sources: typed https URLs on an allowlist, presets | Medium | Superseded (D-9, 2026-10-28) |
+| F-7 | Shared icon HTML sanitizer, the icon registry, overrides in the UI blob | Medium | Superseded (D-9, 2026-10-28) |
+| F-8 | Icon settings: the icon tree and the three-preview editor | Medium | Superseded (D-9, 2026-10-28) |
 | F-6 | Decide where JMAP and sync live | Easy (decision) | Superseded (2026-10-16) |
 
-The table is in sequence order, not number order. F-5 runs before F-2 so the blob work lands on the new helpers. F-4 is index step 33. It follows G-8 and does not wait on the icon phases. F-3, F-7, and F-8 are milestone 6: no phase before F-3 adds a settings field that accepts icon HTML or a new script URL. The preview's existing kit field stays as it is until F-3 migrates it. Exception, Andrew on 2026-10-17: D-7 reads `--pav-icon-*` from a theme file before F-7 exists. A value may be a class string, one `<i class='...'>`, or an image filename. It does not add a script URL. F-7 still adds the shared sanitizer. F-8 still replaces this painting with the icon editor.
+The table is in sequence order, not number order. F-5 runs before F-2 so the blob work lands on the new helpers. F-4 is index step 33. It follows G-8 and does not wait on the icon phases. F-3, F-7, and F-8 were milestone 6; on 2026-10-28 their implementation folded into D-9 ([D-UI.md](D-UI.md)). The Icons Lock above still binds that work. No phase before D-9 adds a settings field that accepts free icon HTML or a new script URL outside the allowlist. The preview's existing kit field stays until D-9 migrates it. Exception, Andrew on 2026-10-17: D-7 reads `--pav-icon-*` from a theme file before the shared sanitizer exists. A value may be a class string, one `<i class='...'>`, or an image filename. It does not add a script URL. D-9 adds the sanitizer, registry, libraries list, and Wizard.
 
 Kind: **Easy** is one module and a test, or a static page. **Medium** crosses one boundary (the window, the filesystem, a thread, the FFI). **Hard** joins two build systems or two processes for the first time.
 
@@ -44,7 +44,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 - Families in use: Duotone, Sharp, and Thin. Mail keeps the roof mark (`ui/public/mark.png`).
 - The kit loader fetches `pro-plus.min.js` from `ka-p.fontawesome.com` with `fetch()` and runs it as an **inline** `<script>`. That is why `script-src` carries `'unsafe-inline'` in the release build. `make dev` never shows the problem, because the Vite page is not served with the Tauri CSP.
 - `'unsafe-inline'` is effective only because `dangerousDisableAssetCspModification` is `true`. If Tauri adds a hash or a nonce to `script-src`, browsers ignore `'unsafe-inline'` and the icons vanish in `make build` only. Keep the flag, and keep a comment beside it in the docs (JSON has no comments).
-- `font-src 'self' data: https://ka-p.fontawesome.com pav-theme:` covers the kit's v4 and v5 font-face shims and a theme file's local font. `kit-uploads.fontawesome.com` is not allowed. `blob:` stays out.
+- `font-src 'self' data: https://ka-p.fontawesome.com https://fonts.gstatic.com pav-theme:` covers the kit's v4 and v5 font-face shims, the Material Symbols font files, and a theme file's local font. `kit-uploads.fontawesome.com` is not allowed. `blob:` stays out.
 - The kit's domain list stays open. `make dev` is `http://localhost:1420` and the packaged window is `http://tauri.localhost`, which a domain-limited kit rejects and will not let you add. Loads count as pageviews on that subscription. Revisit if the app is widely used or the embed is misused.
 - **Pin the kit version.** In the Font Awesome kit settings, set the version to `7.3.1` rather than "latest 7.x", so icon names do not shift between builds. Record the pinned version here when it changes. A version bump is its own commit with a visual check of every icon in the shell.
 
@@ -57,12 +57,12 @@ default-src 'self';
 script-src 'self' 'unsafe-inline' https://kit.fontawesome.com https://ka-p.fontawesome.com;
 font-src 'self' data: https://ka-p.fontawesome.com https://fonts.gstatic.com pav-theme:;
 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-img-src 'self' pav-cid: data: pav-theme:;
+img-src 'self' pav-cid: data: pav-theme: pav-asset: pav-system:;
 frame-src 'self' pav-link:;
 connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhost:1420
 ```
 
-`ws://localhost:1420` is for the dev server only and is harmless in release. `fonts.googleapis.com` (stylesheet) and `fonts.gstatic.com` (font files) are there for the Material Symbols preset (F-3) and are not in `tauri.conf.json` until F-3. `pav-theme:` is on `img-src` and `font-src` as of D-6 (2026-10-17). The file today is this fence without the two Google font hosts. `blob:` stays out. Do not add `https:` to `img-src`, `frame-src`, or `navigate-to`. No other host is added to the main window's CSP except through the icon-library allowlist rule below. JMAP traffic is made by the C core with libcurl, not by the page, so `connect-src` never names a mail server.
+`ws://localhost:1420` is for the dev server only and is harmless in release. `fonts.googleapis.com` (stylesheet) and `fonts.gstatic.com` (font files) are the Material Symbols preset (D-9). `pav-theme:` is on `img-src` and `font-src` as of D-6 (2026-10-17). `pav-asset:` and `pav-system:` are on `img-src` as of D-9 (2026-10-28). `blob:` stays out. Do not add `https:` to `img-src`, `frame-src`, or `navigate-to`. No other host is added to the main window's CSP except through the icon-library allowlist rule below. JMAP traffic, icon-library metadata, and remote image bytes are fetched by the C core with libcurl, not by the page, so `connect-src` never names a mail server, `api.fontawesome.com`, or `fonts.google.com`.
 
 ### Outside HTML never enters the main DOM
 
@@ -70,33 +70,41 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 - `innerHTML`, `outerHTML`, `insertAdjacentHTML`, and `document.write` with any outside data are a review failure. A test greps `ui/src` for those names; each use carries a `// html-ok: <reason>` comment naming the static string it inserts.
 - Icon libraries are typed https URLs on an allowlist, never free HTML. Icon overrides are HTML snippets that always pass the shared icon sanitizer (`ui/src/common/iconsan.js`) before they reach the DOM. See "Icons" below. (This replaces the earlier rule that the kit field takes an id only and icons are class strings.)
 
-### Icons (Andrew, 2026-10-16; replaces the kit-id-only rule)
+### Icons (Andrew, 2026-10-16; blocklist revised 2026-10-28, D-Q7)
 
 **Icon library sources.**
 
 - Settings holds a list of icon libraries, `preferences.ui.iconLibraries`: `[{ "id", "name", "type": "script"|"stylesheet", "url", "enabled" }]`. Each entry is a URL, never HTML. The page builds the element itself (`document.createElement("script")` with `src`, or `<link rel="stylesheet">` with `href`); nothing from the entry is parsed as markup.
-- Rules, checked in the UI and again in the core when `prefs.ui.set` stores the list: `type` is `script` or `stylesheet`; the URL parses, is `https:`, has no credentials, and its host is on the **library host allowlist**. A failing entry is an error under the field, never a silent fallback.
-- The allowlist (`core/src/icon_hosts.c` and `ui/src/common/iconhosts.js`, one generated list, with a test that both match and that every host is in the CSP): scripts from `kit.fontawesome.com` (whose loader then pulls from `ka-p.fontawesome.com`); stylesheets from `fonts.googleapis.com` (fonts then from `fonts.gstatic.com`). A test parses `tauri.conf.json` and fails if an allowlisted host is missing from the matching CSP directive.
-- **The Tauri CSP is fixed at build time.** It is baked into the binary from `tauri.conf.json`. Adding a library from a new host means a change to this Lock, the allowlist, and the CSP, then a rebuild. A user cannot add a new host from Settings; the field explains that.
+- Rules, checked in the UI and again in the core when `prefs.ui.set` stores the list: `type` is `script` or `stylesheet`; the URL parses, is `https:`, has no credentials, and its host is on the **library host allowlist**. A failing entry is an error under the field, never a silent fallback. A blob with no `iconLibraries` key is still valid.
+- The allowlist is `ui/src/common/iconhosts.json`. `core/src/icon_hosts.c` and `ui/src/common/iconhosts.js` carry the same hosts. A test fails if they differ, and if an allowlisted host is missing from the matching CSP directive: scripts from `kit.fontawesome.com` (whose loader then pulls from `ka-p.fontawesome.com`, already on `script-src`, `connect-src`, and `font-src`); stylesheets from `fonts.googleapis.com` (fonts then from `fonts.gstatic.com`). `ka-p.fontawesome.com` and `fonts.gstatic.com` are not hosts a user may type.
+- **The Tauri CSP is fixed at build time.** It is baked into the binary from `tauri.conf.json`. Adding a library from a new host means a change to this Lock, the allowlist, and the CSP, then a rebuild. A user cannot add a new host from Settings; the field explains that. Iconify is not on the allowlist. An Iconify URL is refused with that note.
 - Presets: **Font Awesome kit** (`script`, `https://kit.fontawesome.com/45801522ef.js`, enabled, the default) and **Material Symbols** (`stylesheet`, `https://fonts.googleapis.com/css2?family=Material+Symbols+Sharp:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200`, disabled). The FA kit rules above (kit only, no vendoring, `'unsafe-inline'`) still hold; Material Symbols is Apache-2.0 and loaded from Google's hosts the same way, not vendored.
 - Load order: enabled libraries load in list order at startup; a change applies live (add the element, or remove it and reload the page for a removed script, which cannot be unloaded).
+- Search metadata is not bundled and is not loaded by the page. The core fetches it and stores rows in the profile database: Font Awesome from `https://api.fontawesome.com` (`release(version:"7.3.1").icons { id label }`), Material Symbols from `https://fonts.google.com/metadata/icons?key=material_symbols&incomplete=true` (the `)]}'` prefix is skipped). Those hosts are not added to the page CSP.
 
 **Per-icon HTML.**
 
-- Every icon in the UI is an HTML snippet so it can be layered or transformed: `fa-layers` stacks, `fa-stack`, `fa-rotate-*`, `fa-flip-*`, `data-fa-transform`, a Material ligature `<span class="material-symbols-sharp">inbox</span>`, or a small inline SVG.
-- Because the main window allows inline script, every snippet passes the shared sanitizer before it reaches the main DOM, every time it is rendered (defaults included, so one path exists): `sanitizeIconHtml(html) -> DocumentFragment | error`. It parses with `DOMParser` (`text/html`, the SVG subtree as parsed), walks the tree, and rebuilds a new fragment from allowed nodes only (never reinserts the parsed nodes or a string).
-- Allowed elements: `i`, `span`, `svg`, `path`, `g`, `circle`, `rect`, `title`. Anything else is dropped with its content (text inside `i`, `span`, and `title` is kept as text nodes).
-- Allowed attributes: `class`, `style` (filtered), `data-fa-*`, `aria-*`, `viewBox`, `d`, `fill`, `transform`. Geometry attributes on the shapes (`cx`, `cy`, `r`, `x`, `y`, `width`, `height`) are not on the list; shapes size through `viewBox`/`d`/`transform` or Andrew adds them to this Lock. No `on*`, no `href`, `xlink:href`, `src`, `srcset`, `id`, `style` with `url(`, `expression(`, `@import`, `\`, or `javascript:`; no attribute value containing a URL scheme.
-- `style` filter: declarations only from `color`, `--fa-*` custom properties, `font-size`, `opacity`, `transform`, `rotate`, `scale`, `vertical-align`, `font-variation-settings`; values matching `^[#a-zA-Z0-9 .,%()+-]{1,120}$`.
-- Limits: 8 KB per snippet, depth 6, 64 elements. Over a limit is an error.
-- The sanitizer has a hostile-input test suite (`ui/test/iconsan.test.js`): `<script>`, `<img onerror>`, `<svg onload>`, `<svg><script>`, `<a href=javascript:>`, `<use href>`, `<foreignObject>`, `<style>`, `style="background:url(...)"`, entity-encoded `javascript:`, `<math>` and `<template>` mutation tricks, `<iframe>`, unclosed and nested comments, a 100 KB input, and deep nesting. Each must produce only allowed nodes and attributes (a checker walks the output).
-- The registry caches the sanitized fragment keyed by the snippet text. A list does not reparse the same icon on every row. An override change drops that key.
+- Every icon in the UI is an HTML snippet: one Font Awesome `<i class="fa-…">`, a Material ligature `<span class="material-symbols-…">name</span>`, Foundry markup (`fa-layers`, `fa-stack`, transforms, any `fa-*` class the kit defines), or `<img src="pav-asset:ID">` / `<img src="pav-system:mark">`. The stored SVG or PNG bytes live in the asset table. The snippet does not inline the SVG and does not hotlink an `https:` URL.
+- Because the main window allows inline script, every snippet passes the shared sanitizer before it reaches the main DOM, every time it is rendered (defaults included): `sanitizeIconHtml(html) -> { ok, fragment, removed }`. It parses with `DOMParser`, walks the tree, and rebuilds a new fragment from allowed nodes only (never reinserts the parsed nodes or a string). `ok: false` means the snippet is refused. The preview shows the `removed` list and Accept stays disabled. A cleaned fragment is not a substitute for a refused snippet.
+- **Blocklist (D-Q7).** Elements that can run script or load a document are refused, with their content: `script`, `iframe`, `object`, `embed`, `foreignObject`, `applet`, `frame`, `frameset`, `link`, `meta`, `base`, `form`, `input`, `button`, `textarea`, `select`, `math`, `template`, `noscript`, `audio`, `video`, `canvas`. Anything else in the allow set below is kept, including gradients, filters, and SMIL (`animate`, `animateTransform`, `animateMotion`, `set`). An element outside both lists is refused.
+- Allowed elements: `i`, `span`, `div`, `img`, `svg`, `g`, `path`, `circle`, `rect`, `ellipse`, `line`, `polyline`, `polygon`, `defs`, `linearGradient`, `radialGradient`, `stop`, `clipPath`, `mask`, `pattern`, `symbol`, `marker`, `use`, `text`, `tspan`, `textPath`, `title`, `desc`, `style`, `filter`, and the `fe*` filter primitives. Text is kept in `i`, `span`, `div`, `title`, `desc`, `text`, `tspan`, `textPath`, and `style`.
+- Allowed attributes: `class`, `style` (filtered), `data-fa-*`, `aria-*`, `role`, `id` (a short token, so a gradient can be `url(#id)`), presentation and geometry attributes (`viewBox`, `d`, `fill`, `stroke`, `transform`, `cx`, `cy`, `r`, `x`, `y`, `x1`, `y1`, `x2`, `y2`, `width`, `height`, `rx`, `ry`, `points`, `offset`, `stop-color`, `stop-opacity`, `opacity`, gradient and filter attributes, SMIL timing attributes). No `on*`. `src` is allowed only on `img`, and only `pav-asset:` plus 64 hex digits or `pav-system:mark` (the painter loads `pav-asset://` and `pav-system://`). `href` and `xlink:href` are allowed only on `use` and only as a `#fragment`. No `srcset`. No attribute value that is a URL scheme, except the two icon schemes on `img`.
+- `style` filter: declarations from `color`, `background`, `background-color`, `fill`, `stroke`, `opacity`, `font-size`, `font-variation-settings`, `transform`, `rotate`, `scale`, `translate`, `vertical-align`, `animation`, `animation-duration`, `animation-timing-function`, and custom properties (`--fa-*` and other `--*`). Values match `^[#a-zA-Z0-9 .,%()+_-]{1,200}$`. `url(`, `expression(`, `@import`, `\`, and `javascript:` refuse the snippet. A `<style>` element's text uses the same refusal.
+- Limits: 8 KB per snippet, depth 8, 64 elements. Over a limit is an error. The asset behind an `<img>` is not part of the snippet.
+- The sanitizer has a hostile-input test suite (`ui/test/iconsan.test.js`): `<script>`, `<img onerror>`, `<svg onload>`, `<svg><script>`, `<a href=javascript:>`, `<use href="https://…">`, `<foreignObject>`, a `<style>` with `url(https:…)`, `style="background:url(...)"`, entity-encoded `javascript:`, `<math>` and `<template>` mutation tricks, `<iframe>`, unclosed and nested comments, a 100 KB input, and deep nesting. Each is `ok: false`. A gradient, an SMIL animate, a `pav-asset:` image, and `pav-system:mark` are `ok: true`.
+- The painter caches the sanitized fragment keyed by the snippet text. An override change drops that key.
 
 **Icon registry and overrides.**
 
-- `ui/src/icons/registry.js` lists every icon the UI draws: `{ key, section, label, default }`, where `key` is stable (`nav.mail`, `toolbar.mail.archive`, `list.flag`, `tab.kind.message`), `section` groups the settings tree (Nav buttons, Tabs, Mail toolbar, Mail list, Reader, Composer, Contacts, Calendars, Files, Activity, Settings, Tree), and `default` is HTML. Code renders icons only through `icon(key)`, never inline markup, and a test fails if a key used in `ui/src` is missing from the registry.
-- Only overrides persist: `preferences.ui.icons` is `{ key: html }`. A key not in the registry is kept but ignored. Reverting deletes the key. The old `preferences.ui.icons` (nav id to class string) migrates on load to `nav.<id>` HTML snippets.
+- `ui/src/common/icons/registry.js` lists every icon the UI draws: `{ key, section, label, default, smallChrome?, sizeHint? }`. `key` is stable (`nav.mail`, `mail.list.flag`, `tab.message`). `section` groups Settings → Icons. `default` is HTML. `smallChrome` asks the Wizard for the 16 px white/black chip. Code paints through `iconNode(key)` or a `data-icon-key` the registry owns. A test fails if a key used that way is missing. Account icons and profile photos are Wizard callers, not rows.
+- Only overrides persist: `preferences.ui.icons` is `{ key: html }`. A key not in the registry is kept but ignored. Reverting deletes the key. Precedence is override, then the theme file's `--pav-icon-*`, then the shipped default. The first load of this Icons code clears `preferences.ui.icons` once (`iconsResetD9`). Nav Mail's shipped default is `<img src="pav-system:mark" alt="">`.
 - An override that fails the sanitizer at render time falls back to the default and logs a warn once.
+- Recent picks are `preferences.ui.iconRecent` (newest first, deduped). The cap is `preferences.ui.iconRecentMax` (default 12, clamped 1–48).
+
+**Assets.**
+
+- Profile table `icon_asset` (migration `004_icons.sql`): `id` is the SHA-256 hex of the bytes, `mime`, `kind` (`svg`, `png-render`, `png-original`, `fetch`), `bytes`, `created`, `origin` (the PNG original a render was cropped from). Insert dedupes on `id`. No automatic GC. Settings → Icons lists assets and can delete one. A soft warning is recorded at 128 MB total. It does not block Accept.
+- Bitmap import is PNG only, at most 5 MB. The stored render is one 128×128 PNG. SVG import has the same 5 MB cap. Commands move bytes in chunks of at most 1 MB so a reply stays under the 2 MB JSON rule. `pav-asset:` and `pav-system:` are resolved in `pav_protocol`. `pav-system:mark` is the embedded roof mark (`ui/public/mark.png`).
 
 ### Message pane
 
@@ -207,7 +215,7 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 ## F-3: Icon library sources
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Superseded / absorbed into D-9 (2026-10-28). The work items below are history; [D-UI.md](D-UI.md) D-9 owns the implementation. The Icons Lock above is unchanged and binds D-9.
 
 **Goal:** Settings holds typed icon-library URLs on an allowlist that the CSP carries, with the FA kit and Material Symbols presets. No free HTML reaches the page from these settings.
 
@@ -231,7 +239,7 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 ## F-7: Icon HTML sanitizer, registry, and overrides
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Superseded / absorbed into D-9 (2026-10-28). The work items below are history; [D-UI.md](D-UI.md) D-9 owns the implementation. The Icons Lock above is unchanged and binds D-9.
 
 **Goal:** Every icon in the UI is drawn from the registry through one shared sanitizer, and overrides are stored as key-to-HTML in the UI blob.
 
@@ -281,7 +289,7 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 ## F-8: Icon settings: tree and editor
 
 **Kind:** Medium
-**Status:** Not started.
+**Status:** Superseded / absorbed into D-9 (2026-10-28). The work items below are history; [D-UI.md](D-UI.md) D-9 owns the implementation. The Icons Lock above is unchanged and binds D-9.
 
 **Goal:** Andrew can find any icon by UI section, edit its HTML, compare it with the saved and default versions, and apply, revert, or cancel.
 
@@ -323,3 +331,18 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com ws://localhos
 - 2026-10-16 F-4 complete. Andrew confirmed the dialog, an empty network panel, and no page load. The console block is the sandbox and the CSP, and it printed again when the srcdoc was written back. `make test` is 67 Unity tests and 30 Vitest tests. `PAVILLION_API_VERSION` stays 3. `lib.rs` is 199 lines. G-4 is next.
 - 2026-10-17 D-6 added `pav-theme:` to `img-src` and `font-src` only. `blob:` stays out. `https:` was not added to `img-src`. D-7 may put one `<i class>` from a theme file into the nav before F-7's sanitizer exists. F-7 and F-8 are unchanged.
 - 2026-10-22 Not a phase. The kit download is asynchronous. The loader fetches `pro-plus.min.js` and runs it by inserting an inline script. `asyncLoading.enabled` is in the kit config and that loader does not read it. Nothing in the page awaits the script. Inserting it during the first layout lined up with a multi-second stall before `mailbox.list` resumed. That stall was not traced into the kit. The script is inserted after the first paint. Andrew accepted the startup cover the same day. M-4 was not started.
+- 2026-10-28 F-3, F-7, F-8 superseded: their UI and implementation folded into the expanded D-9 in D-UI.md. The Icons Lock stays here and is not weakened.
+- 2026-10-28 D-9 sign-off: Icons Lock rewritten to the blocklist (gradients, filters, SMIL kept; script vectors refused). CSP gains the Google font hosts, `pav-asset:`, and `pav-system:`. Metadata for Font Awesome and Material Symbols is fetched by the core. Iconify is not allowlisted.
+- 2026-10-28 D-Q7 (pending Lock rewrite with D-9 sign-off): Andrew wants icon sanitizer **blocklist-first** (gradients, multicolor, animated SVG) and remote images fetch-and-store into assets — not hotlinked. Libraries remain host-allowlisted.
+- 2026-10-28 D-Q7a: SVG mode snippet is always `<img src="pav-asset:ID">` (system mark `pav-system:mark`); not inline `<svg>` by default.
+- 2026-10-28 D-Q7b: Coloris (@melloware/coloris, MIT); custom swatches; shared with Accounts color. Accounts also uses Icon Wizard for icon.
+- 2026-10-28 D-Q8: Icon/image assets in profile SQLite (hash ids, dedupe, keep PNG originals); no auto-GC — manual asset list + delete.
+- 2026-10-28 D-Q9: Icon bitmap import PNG-only, 5 MB/file; store 128×128 render; soft warn 128 MB/profile.
+- 2026-10-28 D-Q10: No bundled icon metadata. Library list in Settings; FA kit default; Material/Iconify/etc. added as links; fetch metadata into profile SQLite cache. FA searcher + generic searcher. Pro files still not vendored into the repo.
+- 2026-10-28 D-Q12: One icon value per key; no dual large/small. Wizard 16 px chip on white+black for small-chrome keys; Settings Icons list shows icons at intended size.
+- 2026-10-28 D-Q12a: Allow any kit `fa-*` class (incl. animation); sanitizer still strips script vectors.
+- 2026-10-28 D-Q13: Recent picks only (preferences.ui.iconRecent); cap is Settings → Icons option (default 12, preferences.ui.iconRecentMax); no favourites/stars.
+- 2026-10-28 D-Q14: One-shot clear of preferences.ui.icons on first new Icons load (reset all overrides).
+- 2026-10-28 D-Q15: No mixing images with FA layers; Foundry FA-only, SVG/PNG asset-only.
+- 2026-10-28 D-Q16: Default-only presets for v1; may revisit presets-per-library later.
+- 2026-10-28 D-Q17: Registry covers every existing ui/src paint; missing-key test; grow with modules; no speculative keys.

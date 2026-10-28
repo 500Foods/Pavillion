@@ -3,38 +3,41 @@ import { mount } from "./index.js";
 import { tauriHost, tauriTransport } from "./transport/tauri.js";
 import { clampUi } from "./prefs.js";
 import { installLogHooks } from "./log.js";
+import { defaultLibraries } from "./common/iconhosts.js";
+import { librariesFromKit, loadIconLibraries } from "./common/icons/libraries.js";
 
 const api = createApi(tauriTransport());
 const hostServices = tauriHost();
 hostServices.onTheme = (resolved) => {
   document.documentElement.dataset.pavTheme = resolved === "light" ? "light" : "dark";
 };
-/* The kit loader fetches its bundle and then runs that bundle on the main
-   thread. Insert the script after the first paint so that work is outside
-   the first layout. The shell does not wait on the load. */
-let kitQueued = null;
-let kitLive = false;
+/* Enabled libraries load after the first paint. The shell does not wait. */
+let librariesQueued = null;
+let librariesLive = false;
 
-function requestKit(kitHtml) {
-  if (kitLive) {
-    loadFontAwesomeKit(kitHtml);
+function requestLibraries(list) {
+  if (librariesLive) {
+    loadIconLibraries(list);
     return;
   }
-  kitQueued = kitHtml;
-  markKit("FA kit: held for first paint");
+  librariesQueued = list;
+  markKit("icon libraries: held for first paint");
 }
 
-function releaseKit() {
-  kitLive = true;
-  if (kitQueued === null) {
+function releaseLibraries() {
+  librariesLive = true;
+  if (librariesQueued === null) {
     return;
   }
-  const kitHtml = kitQueued;
-  kitQueued = null;
-  loadFontAwesomeKit(kitHtml);
+  const list = librariesQueued;
+  librariesQueued = null;
+  loadIconLibraries(list);
 }
 
-hostServices.loadKit = requestKit;
+hostServices.loadKit = (kit) => {
+  requestLibraries(librariesFromKit(kit, defaultLibraries()));
+};
+hostServices.loadLibraries = requestLibraries;
 installLogHooks(api);
 if (import.meta.env.DEV) {
   window.pav = api;
@@ -48,82 +51,20 @@ function markKit(message) {
   void Promise.resolve(log("ui", "debug", message)).catch(() => {});
 }
 
-function watchKit(script) {
-  script.addEventListener("load", () => {
-    markKit("FA kit: script loaded");
-  });
-  script.addEventListener("error", () => {
-    void Promise.resolve(log("ui", "error", "FA kit: script failed to load")).catch(() => {});
-  });
-}
-
-const FA_KIT_ID = "45801522ef";
-const FA_KIT_URL = `https://kit.fontawesome.com/${FA_KIT_ID}.js`;
-
-function isFontAwesomeLoaded() {
-  return !!document.querySelector('script[src*="kit.fontawesome.com"]');
-}
-
-export function loadFontAwesomeKit(kitHtml) {
-  const raw = String(kitHtml || "").trim();
-  const isHtml = raw.startsWith("<");
-  if (isHtml) {
-    const temp = document.createElement('div');
-    temp.innerHTML = kitHtml;
-    const script = temp.querySelector('script');
-    if (script) {
-      const newScript = document.createElement('script');
-      if (script.src) {
-        newScript.src = script.src;
-      } else if (script.textContent) {
-        newScript.textContent = script.textContent;
-      }
-      for (const attr of script.attributes) {
-        newScript.setAttribute(attr.name, attr.value);
-      }
-      watchKit(newScript);
-      document.head.appendChild(newScript);
-      markKit(script.src ? "FA kit: script requested" : "FA kit: inline script");
-    }
-    return;
-  }
-  const existing = document.querySelector("script[data-kit-id]");
-  if (existing && existing.dataset.kitId === raw) {
-    markKit("FA kit: already present");
-    return;
-  }
-  if (existing) {
-    existing.remove();
-  } else if (isFontAwesomeLoaded()) {
-    markKit("FA kit: already present");
-    return;
-  }
-  const script = document.createElement("script");
-  script.src = `https://kit.fontawesome.com/${raw}.js`;
-  script.setAttribute("data-auto-replace-svg", "svg");
-  script.setAttribute("data-kit-id", raw);
-  script.setAttribute("crossorigin", "anonymous");
-  watchKit(script);
-  document.head.appendChild(script);
-  markKit("FA kit: script requested");
-  return script;
-}
-
 export function reloadIcons() {
-  const kitInput = document.querySelector("#fa-kit-html");
-  if (kitInput) {
-    loadFontAwesomeKit(kitInput.value || FA_KIT_ID);
-  }
   window.location.reload();
 }
 
 async function initIcons() {
   try {
     const stored = clampUi(await api.prefs.ui.get());
-    requestKit(stored.fontawesome_kit || FA_KIT_ID);
+    const list = Array.isArray(stored.iconLibraries)
+      ? stored.iconLibraries
+      : librariesFromKit(stored.fontawesome_kit, defaultLibraries());
+    requestLibraries(list);
   } catch (err) {
-    requestKit(FA_KIT_ID);
-    log("ui", 0, `FA kit init failed: ${err instanceof Error ? err.message : String(err)}`);
+    requestLibraries(defaultLibraries());
+    log("ui", "error", `icon libraries failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
@@ -181,7 +122,7 @@ try {
   await initIcons();
   await mount(document.querySelector("#app"), api, { hostServices });
   await Promise.race([afterFirstPaint(), new Promise((resolve) => setTimeout(resolve, 32))]);
-  releaseKit();
+  releaseLibraries();
   await Promise.race([iconsSwapped(), new Promise((resolve) => setTimeout(resolve, KIT_WAIT_MS))]);
   appReady();
 } finally {

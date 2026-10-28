@@ -139,6 +139,34 @@ export function createApi(transport) {
         return call("log.trim", mb === undefined ? {} : { mb });
       },
     },
+    asset: {
+      put(body) {
+        return call("asset.put", body ?? {});
+      },
+      import(body) {
+        return call("asset.import", body ?? {});
+      },
+      fetch(body) {
+        return call("asset.fetch", body ?? {});
+      },
+      read(body) {
+        return call("asset.read", body ?? {});
+      },
+      list() {
+        return call("asset.list", {});
+      },
+      delete(body) {
+        return call("asset.delete", body ?? {});
+      },
+    },
+    iconlib: {
+      refresh(body) {
+        return call("iconlib.refresh", body ?? {});
+      },
+      search(body) {
+        return call("iconlib.search", body ?? {});
+      },
+    },
     on(name, fn) {
       return transport.on((eventName, payload) => {
         if (eventName === name) {

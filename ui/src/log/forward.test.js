@@ -25,6 +25,7 @@ describe("UI log forwarding", () => {
   it("logs stable names, never field values or text", async () => {
     const sent = [];
     const root = document.createElement("div");
+    // html-ok: static test fixture, not outside data.
     root.innerHTML = `<button data-heading="log">Logs</button>
       <button id="save-account">Save me@example.com</button>
       <input id="acct-email" value="me@example.com">

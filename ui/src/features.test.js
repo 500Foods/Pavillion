@@ -243,7 +243,9 @@ test("Settings has no checkbox, and Activity, Update, and Help start on", async 
   expect(root.querySelectorAll(".feature-grip")).toHaveLength(13);
   expect(root.querySelector('[data-rail-key="mail"] .feature-check-on').className).toContain("fa-square-check");
   expect(root.querySelector('[data-help-section="features"]').getAttribute("aria-label")).toBe("Help for Features");
-  expect(root.querySelector('[data-rail-key="mail"] .feature-icon .icon').className).toContain("fa-paper-plane-top");
+  const mailIcon = root.querySelector('[data-rail-key="mail"] .feature-icon .icon');
+  expect(mailIcon.tagName).toBe("IMG");
+  expect(mailIcon.getAttribute("src")).toContain("pav-system");
   expect(root.querySelector('[data-rail-key="tasks"]').classList.contains("is-off")).toBe(true);
   expect(root.querySelector('[data-rail-key="mail"]').classList.contains("is-off")).toBe(false);
   for (const name of ["activity", "update", "help"]) {

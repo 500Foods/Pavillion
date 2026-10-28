@@ -6,14 +6,15 @@
    A box is on when the stored capabilities (K-Q10) include it and the
    account syncs it.
    Files has no sync flag yet, so it shows the capability only. */
+import { iconClass } from "../common/icons/registry.js";
 import { formatInstant } from "../formats.js";
 import { accountSwatch } from "./account-icon.js";
 
 export const FEATURES = [
-  { key: "mail", section: "mail", title: "Mail", fallback: "fa-sharp-duotone fa-solid fa-paper-plane-top fa-rotate-270", cap: "mail", flag: "syncMail" },
-  { key: "contacts", section: "contacts", title: "Contacts", fallback: "fa-sharp-duotone fa-solid fa-address-book", cap: "contacts", flag: "syncContacts" },
-  { key: "calendars", section: "calendars", title: "Calendars", fallback: "fa-sharp-duotone fa-solid fa-calendar-days", cap: "calendars", flag: "syncCalendars" },
-  { key: "files", section: "files", title: "Files", fallback: "fa-sharp-duotone fa-solid fa-folder", cap: "files", flag: null },
+  { key: "mail", section: "mail", title: "Mail", fallback: iconClass("accounts.column.mail"), cap: "mail", flag: "syncMail" },
+  { key: "contacts", section: "contacts", title: "Contacts", fallback: iconClass("nav.contacts"), cap: "contacts", flag: "syncContacts" },
+  { key: "calendars", section: "calendars", title: "Calendars", fallback: iconClass("nav.calendars"), cap: "calendars", flag: "syncCalendars" },
+  { key: "files", section: "files", title: "Files", fallback: iconClass("nav.files"), cap: "files", flag: null },
 ];
 
 /* Protocol columns (K-Q11, header-row round): JMAP is on when the account
@@ -98,7 +99,7 @@ export function serverGroupHeader(value, count, documentRef = globalThis.documen
   toggle.className = "pav-group-toggle";
   toggle.setAttribute("aria-hidden", "true");
   const chevron = documentRef.createElement("i");
-  chevron.className = "icon fa-sharp-duotone fa-solid fa-chevron-down";
+  chevron.className = `icon ${iconClass("tree.group.chevron")}`;
   toggle.append(chevron);
   const span = documentRef.createElement("span");
   span.className = "pav-group-label";

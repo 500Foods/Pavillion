@@ -1,5 +1,7 @@
 import { createTable, INDICATOR_WIDTH } from "../common/table.js";
-import { accountSwatch, ICON_CHOICES, iconChoice, iconSnippet } from "./account-icon.js";
+import { iconClass } from "../common/icons/registry.js";
+import { storeSvgText } from "../common/icons/panel.js";
+import { accountSwatch } from "./account-icon.js";
 import { moduleFooter, moduleToolbar, mountBar, paintFooterNav } from "../common/module-bar.js";
 import { openColumnChooser } from "../common/column-chooser.js";
 import {
@@ -391,9 +393,9 @@ export function createAccountsView(api, root, options = {}) {
     toolbarEl = mountBar(root.querySelector("#accounts-toolbar"), moduleToolbar({
       title: "Accounts",
       actions: [
-        { id: "account-new", action: "add", icon: "fa-plus", text: "Add", label: "Add an account", onClick: newAccount },
-        { id: "account-clone", action: "clone", icon: "fa-clone", text: "Clone", label: "Clone the selected account", onClick: cloneSelected },
-        { id: "account-delete", action: "delete", icon: "fa-trash", text: "Delete", label: "Delete the selected account", onClick: () => void removeSelected() },
+        { id: "account-new", action: "add", icon: iconClass("accounts.add"), text: "Add", label: "Add an account", onClick: newAccount },
+        { id: "account-clone", action: "clone", icon: iconClass("accounts.clone"), text: "Clone", label: "Clone the selected account", onClick: cloneSelected },
+        { id: "account-delete", action: "delete", icon: iconClass("accounts.delete"), text: "Delete", label: "Delete the selected account", onClick: () => void removeSelected() },
       ],
       search: { id: "accounts-search", label: "Search accounts", placeholder: "Search accounts", onInput: applySearch },
     }, document));
@@ -402,7 +404,7 @@ export function createAccountsView(api, root, options = {}) {
       noun: "account",
       onRefresh: () => void refreshAndRefit(),
       onNav: navigate,
-      end: [{ action: "export", icon: "fa-file-export", text: "Export", label: "Export the account list as CSV", onClick: () => void exportCsv() }],
+      end: [{ action: "export", icon: iconClass("accounts.export"), text: "Export", label: "Export the account list as CSV", onClick: () => void exportCsv() }],
     }, document));
     paintNavState();
   }
@@ -459,25 +461,39 @@ export function createAccountsView(api, root, options = {}) {
       : null).catch(() => {});
   }
 
-  /* K-Q9: the interim icon chooser beside Color, drawn on the account color. */
+  /* K-Q9: the account icon is chosen in the Icon Wizard. The button shows the current swatch. */
   function paintIconChoices(formEl) {
-    const host = formEl.querySelector("#account-icon-choices");
+    const host = formEl.querySelector("#account-icon-choose");
     if (!host) {
       return;
     }
-    host.replaceChildren();
-    const current = iconChoice(formState.icon);
-    for (const name of ICON_CHOICES) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.dataset.icon = name;
-      button.setAttribute("role", "radio");
-      button.setAttribute("aria-checked", name === current ? "true" : "false");
-      button.setAttribute("aria-label", name);
-      button.dataset.pavTip = name;
-      button.append(accountSwatch({ icon: iconSnippet(name), color: formState.color }, document));
-      host.append(button);
+    host.replaceChildren(accountSwatch({ icon: formState.icon, color: formState.color }, document));
+  }
+
+  async function chooseAccountIcon() {
+    if (typeof options.openIconWizard !== "function") {
+      return;
     }
+    const result = await options.openIconWizard(root, {
+      title: "Account icon",
+      section: "Accounts",
+      current: formState.icon,
+      defaultHtml: '<i class="fa-solid fa-envelope"></i>',
+      maxBytes: 4096,
+      libraries: typeof options.iconLibraries === "function" ? options.iconLibraries() : [],
+      recent: typeof options.iconRecent === "function" ? options.iconRecent() : [],
+      swatches: typeof options.swatches === "function" ? options.swatches() : [],
+      confirm: options.iconConfirm,
+      search: (body) => api.iconlib.search(body),
+      storeSvg: (svg) => storeSvgText(api, svg),
+      storePng: options.storePng,
+      pickFile: options.pickFile,
+    });
+    if (!result || typeof result.html !== "string") {
+      return;
+    }
+    formState.icon = result.html === '<i class="fa-solid fa-envelope"></i>' ? "" : result.html;
+    paintForm();
   }
 
   function paintForm() {
@@ -509,6 +525,10 @@ export function createAccountsView(api, root, options = {}) {
     const colorInput = formEl.querySelector("#account-color-input");
     if (colorInput) {
       colorInput.value = formValue("color") || "#2a7";
+      const field = colorInput.parentElement;
+      if (field && field.classList.contains("clr-field")) {
+        field.style.color = colorInput.value;
+      }
     }
     const kindSelect = formEl.querySelector("#account-kind");
     if (kindSelect) {
@@ -915,14 +935,21 @@ export function createAccountsView(api, root, options = {}) {
       return;
     }
     formEl.addEventListener("click", (event) => {
-      const choice = event.target instanceof Element ? event.target.closest("button[data-icon]") : null;
+      const choice = event.target instanceof Element ? event.target.closest("#account-icon-choose") : null;
       if (!choice || !formEl.contains(choice)) {
         return;
       }
       event.preventDefault();
-      formState.icon = iconSnippet(choice.dataset.icon);
-      paintForm();
+      void chooseAccountIcon();
     });
+    const colorInput = formEl.querySelector("#account-color-input");
+    if (colorInput && !colorInput.dataset.coloris) {
+      colorInput.dataset.coloris = "1";
+      void import("../common/coloris.js").then(({ mountColoris }) => {
+        mountColoris(colorInput, typeof options.swatches === "function" ? options.swatches() : undefined);
+      });
+    }
+    formEl.addEventListener("submit", (event) => event.preventDefault());
     formEl.addEventListener("input", () => {
       updateFormState();
       paintForm();

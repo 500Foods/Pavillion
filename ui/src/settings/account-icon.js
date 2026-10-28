@@ -1,7 +1,7 @@
-/* K-Q9: the account icon is an HTML snippet of Font Awesome markup; "" is the
-   envelope. It is drawn through the shared icon sanitizer (iconFromHtml) on
-   the account color; anything the sanitizer refuses draws the envelope. */
-import { iconFromHtml } from "../theme-catalog.js";
+/* K-Q9: the account icon is an HTML snippet; "" is the envelope. It is drawn
+   through the shared icon sanitizer on the account color. A refused snippet
+   draws the envelope. */
+import { paintIcon } from "../common/iconsan.js";
 
 export const DEFAULT_ICON = "envelope";
 
@@ -38,8 +38,12 @@ export function iconChoice(snippet) {
 /* A swatch of the account color with the icon drawn on it. */
 export function accountSwatch(account, documentRef = globalThis.document) {
   const snippet = account && typeof account.icon === "string" ? account.icon : "";
-  let icon = snippet ? iconFromHtml(snippet, documentRef) : null;
-  if (!icon || icon.tagName !== "I") {
+  let icon = null;
+  if (snippet) {
+    const painted = paintIcon(snippet, documentRef);
+    icon = painted.ok ? painted.fragment.firstElementChild : null;
+  }
+  if (!icon) {
     icon = documentRef.createElement("i");
     icon.className = `fa-solid fa-${DEFAULT_ICON}`;
   }

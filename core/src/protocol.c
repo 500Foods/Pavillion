@@ -1,4 +1,5 @@
 #include "pavillion.h"
+#include "pav_icon.h"
 #include "themes.h"
 
 #include <jansson.h>
@@ -133,6 +134,33 @@ static int handle_pav_theme(json_t *root, PavBytes *out) {
     return rc;
 }
 
+static int handle_pav_asset(json_t *root, PavBytes *out) {
+    const char *url = json_string_value(json_object_get(root, "url"));
+    void *body = NULL;
+    size_t len = 0;
+    const char *type = NULL;
+    int rc;
+
+    if (pav_icon_read_asset(url, &body, &len, &type) != 0) {
+        return fill_status(out, 404, "not found");
+    }
+    rc = fill_bytes(out, 200, type, body, len);
+    free(body);
+    return rc;
+}
+
+static int handle_pav_system(json_t *root, PavBytes *out) {
+    const char *url = json_string_value(json_object_get(root, "url"));
+    const void *body = NULL;
+    size_t len = 0;
+    const char *type = NULL;
+
+    if (pav_icon_read_system(url, &body, &len, &type) != 0) {
+        return fill_status(out, 404, "not found");
+    }
+    return fill_bytes(out, 200, type, body, len);
+}
+
 static int handle_pav_link(json_t *root, PavBytes *out) {
     const char *url = json_string_value(json_object_get(root, "url"));
     char pane[65];
@@ -173,6 +201,10 @@ int pav_protocol(const char *req_json, PavBytes *out) {
         rc = handle_pav_link(root, out);
     } else if (scheme != NULL && strcmp(scheme, "pav-theme") == 0) {
         rc = handle_pav_theme(root, out);
+    } else if (scheme != NULL && strcmp(scheme, "pav-asset") == 0) {
+        rc = handle_pav_asset(root, out);
+    } else if (scheme != NULL && strcmp(scheme, "pav-system") == 0) {
+        rc = handle_pav_system(root, out);
     } else {
         rc = fill_status(out, 404, "not found");
     }

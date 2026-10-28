@@ -176,6 +176,78 @@ Result: `{activities:[activity]}`. Each activity is:
 
 Errors: `bad_args`.
 
+### asset.delete
+
+State: real (D-9)
+
+Deletes one stored icon asset. `id` is the SHA-256 hex of the bytes. A missing id is `not_found`. An `origin` on another row that names this id is left in place.
+
+Args: `{id}`.
+
+Result: `{deleted:true}`.
+
+Errors: `bad_args`, `not_found`, `internal`.
+
+### asset.fetch
+
+State: real (D-9)
+
+Downloads one https image and stores it. Any https host is accepted. The URL must not carry credentials. HTML is refused. The body must be a PNG or an SVG, at most 5 MB. Redirects stay on https. The stored kind is `fetch`. The same bytes store once.
+
+Args: `{url}`.
+
+Result: `{id, bytes, totalBytes, warn}`. `id` is 64 lowercase hex characters. `bytes` is the stored size. `warn` is true when the profile's icon assets total at least 128 MB.
+
+Errors: `bad_args`, `too_large`, `network`, `internal`.
+
+### asset.import
+
+State: real (D-9)
+
+Reads a PNG or SVG from an absolute path and stores it. The cap is 5 MB. `kind` is `svg`, `png-render`, or `png-original`, and it must match the file.
+
+Args: `{path, kind}`. `path` is absolute, under 4096 bytes, and a regular file.
+
+Result: `{id, bytes, totalBytes, warn}`.
+
+Errors: `bad_args`, `too_large`, `internal`.
+
+### asset.list
+
+State: real (D-9)
+
+Lists stored icon assets. The bytes themselves are not in the result.
+
+Args: `{}`.
+
+Result: `{assets:[{id, mime, kind, bytes, created, origin}], totalBytes, warn}`. `origin` is the id of a kept PNG original, or null. `created` is unix milliseconds. `warn` is true at 128 MB or more.
+
+Errors: `bad_args`, `internal`.
+
+### asset.put
+
+State: real (D-9)
+
+Stores one small PNG or SVG that is already in memory. After base64 decoding, the raw bytes are at most 1 MB. The same bytes store once. `origin`, when set, is the id of the PNG original a render was made from. A later put of the same bytes does not clear an origin already stored.
+
+Args: `{mime, kind, base64, origin?}`. `mime` is `image/png` or `image/svg+xml`. `kind` is `svg`, `png-render`, `png-original`, or `fetch`. `origin` is 64 lowercase hex characters, or omitted.
+
+Result: `{id, bytes, totalBytes, warn}`.
+
+Errors: `bad_args`, `too_large`, `internal`.
+
+### asset.read
+
+State: real (D-9)
+
+Returns one slice of a stored asset so a larger file can be reassembled. `len` is at most 1 MB of raw bytes, then base64.
+
+Args: `{id, offset, len}`. `offset` is 0-based. `len` is from 1 to 1048576.
+
+Result: `{mime, offset, base64}`. The base64 is the slice that starts at `offset`. An `offset` equal to the size returns an empty slice. An `offset` past the size is `bad_args`.
+
+Errors: `bad_args`, `not_found`, `internal`.
+
 ### addressbook.list
 
 State: planned (S-1)
@@ -363,6 +435,30 @@ Result: `{bytes}`, the number of bytes written.
 Logs one `INFO` line (`export`): `wrote <bytes> bytes to <file name>` (the name only, not the directory). Failures log `WARN` with the code.
 
 Errors: `bad_args`, `too_large`, `internal` (cannot write).
+
+### iconlib.refresh
+
+State: real (D-9)
+
+Fetches the search catalog for `fontawesome` or `material` and replaces that library's rows. Font Awesome is the public GraphQL catalog for release 7.3.1, names and labels only. Material Symbols is the fonts.google.com metadata document, with the `)]}'` prefix removed. Those hosts are not added to the page. The core does not log the body.
+
+Args: `{id}`.
+
+Result: `{id, count}`.
+
+Errors: `bad_args`, `too_large`, `network`, `internal`.
+
+### iconlib.search
+
+State: real (D-9)
+
+Searches one library's cached names. An empty or omitted query returns the first page, ordered by popularity, then name. `limit` defaults to 80 and is clamped to 200.
+
+Args: `{id, query?, limit?}`.
+
+Result: `{icons:[{name, label}]}`.
+
+Errors: `bad_args`, `internal`.
 
 ### files.delete
 
@@ -776,7 +872,7 @@ Errors: `bad_args`, `not_ready`, `internal`.
 
 State: real (G-2)
 
-Replaces `preferences.ui` with the argument object. This is not a merge. The object is at most 64 KB of compact JSON and must not contain `password`, `token`, `secret`, or `refresh_token`.
+Replaces `preferences.ui` with the argument object. This is not a merge. The object is at most 64 KB of compact JSON and must not contain `password`, `token`, `secret`, or `refresh_token`. When `iconLibraries` is present, each entry is an https script on `kit.fontawesome.com` or an https stylesheet on `fonts.googleapis.com`. An `@` in the query or fragment is not credentials (the Material preset uses font axes). Userinfo (`user:pass@host`) is refused. An off-list host is `bad_args` and the message says a new host needs a rebuild. A blob without `iconLibraries` is unchanged.
 
 Args: the new object.
 
