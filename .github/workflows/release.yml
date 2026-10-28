@@ -112,7 +112,6 @@ jobs:
             mingw-w64-ucrt-x86_64-gmime
             mingw-w64-ucrt-x86_64-rust
             mingw-w64-ucrt-x86_64-upx
-            mingw-w64-ucrt-x86_64-imagemagick
       - name: Build msi
         env:
           CMAKE_GENERATOR: MSYS Makefiles
