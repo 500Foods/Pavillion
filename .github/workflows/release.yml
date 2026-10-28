@@ -117,8 +117,9 @@ jobs:
           CMAKE_GENERATOR: MSYS Makefiles
           CFLAGS: -I/ucrt64/include
           LDFLAGS: -L/ucrt64/lib -lws2_32
-          # Same size flags as make mini (Makefile MINI_RUSTFLAGS).
-          RUSTFLAGS: -C force-unwind-tables=no -C link-arg=-Wl,--gc-sections -C link-arg=-Wl,--as-needed -C link-arg=-Wl,-O1
+          # Size flags like make mini, minus force-unwind-tables=no —
+          # Windows gnu targets require unwind tables (rustc aborts).
+          RUSTFLAGS: -C link-arg=-Wl,--gc-sections -C link-arg=-Wl,--as-needed -C link-arg=-Wl,-O1
         run: |
           printf '%s\n' "${{ inputs.build || '0' }}" > PAVILLION_BUILD
           make lib
