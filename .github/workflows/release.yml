@@ -144,7 +144,11 @@ jobs:
         with:
           msystem: UCRT64
           path-type: inherit
-          update: true
+          # cache defaults on; keep it explicit. Skip pacman -Syu so setup
+          # reuses the cached package set instead of spending ~1–1.5 min
+          # updating every run (setup-msys2 README: update default is false).
+          cache: true
+          update: false
           install: >-
             make
             mingw-w64-ucrt-x86_64-gcc
