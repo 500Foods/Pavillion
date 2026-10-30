@@ -123,15 +123,15 @@ The license is [MIT](LICENSE.md). Third-party notices (including LGPL runtimes i
 
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-28 22:27:59 UTC
+Last updated at 2026-10-30 04:21:07 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
 C                              267          21893           4479         422168
 C/C++ Header                   285           6302           6840         241246
-JavaScript                     135           2246            764          31856
-Markdown                        42           3181              2           7103
-CSS                              7            542             57           3763
+JavaScript                     136           2315            790          34186
+Markdown                        42           3187              2           7152
+CSS                              7            597             67           4164
 JSON                            15              0              0           2814
 Rust                             6            125            120           1727
 Bourne Shell                    13            108            208           1627
@@ -143,10 +143,10 @@ SQL                              5              1              0            147
 TOML                             2             11              8             63
 Text                             2              8              0             57
 -------------------------------------------------------------------------------
-SUM:                           835          34875          12744         715056
+SUM:                           836          35005          12780         717836
 -------------------------------------------------------------------------------
-49 Files were skipped (duplicate, binary, or without source code):
-  png: 18
+52 Files were skipped (duplicate, binary, or without source code):
+  png: 21
   eml: 9
   conf: 2
   gitignore: 2
