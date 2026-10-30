@@ -111,6 +111,10 @@ export function createApi(transport) {
       },
     },
     exports: {
+      /* D-9: read a dialog-picked text file (API.md). */
+      readText({ path }) {
+        return call("export.read_text", { path });
+      },
       /* D-10: write page-built text to a dialog-picked path (API.md). */
       writeText({ path, text }) {
         return call("export.write_text", { path, text });

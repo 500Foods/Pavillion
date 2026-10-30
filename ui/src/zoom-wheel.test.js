@@ -133,6 +133,11 @@ test("ctrl wheel steps the pane under the pointer and the switch flips direction
     expect(scale("navButtons").value).toBe("1.2");
     expect(scale("helpIndex").value).toBe("1.05");
     expect(scale("helpContent").value).toBe("0.95");
+    const filterPanel = document.querySelector("#help-filter-panel");
+    wheel(filterPanel);
+    expect(scale("filters")).toEqual({ value: "1.05", text: "105%" });
+    expect(filterPanel.style.getPropertyValue("--pav-filter-zoom")).toBe("1.05");
+    expect(scale("navButtons").value).toBe("1.2");
 
     direction.click();
     expect(direction.getAttribute("aria-checked")).toBe("true");
@@ -151,6 +156,7 @@ test("ctrl wheel steps the pane under the pointer and the switch flips direction
     expect(scale("log").value).toBe("0.05");
     expect(scale("helpIndex").value).toBe("1.05");
     expect(scale("helpContent").value).toBe("0.95");
+    expect(scale("filters").value).toBe("1.05");
     expect(scales.every((value) => value === 1)).toBe(true);
 
     await new Promise((resolve) => {
@@ -166,6 +172,7 @@ test("ctrl wheel steps the pane under the pointer and the switch flips direction
     expect(stored.zoom.log).toBe(0.05);
     expect(stored.zoom.helpIndex).toBe(1.05);
     expect(stored.zoom.helpContent).toBe(0.95);
+    expect(stored.zoom.filters).toBe(1.05);
   } finally {
     unmount();
     el.remove();

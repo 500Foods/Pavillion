@@ -159,6 +159,7 @@ test("Icons groups the registry, checks defaults, and searches by name", () => {
   expect(host.querySelector(".pav-icon-crumb-key").textContent).toBe("nav.mail");
   expect(host.querySelector(".pav-icon-crumb-format").textContent).toBe("PNG");
   expect(host.querySelector(".pav-icon-wizard.is-embedded")).not.toBeNull();
+  expect(host.querySelector(".pav-icon-close")).toBeNull();
   const search = host.querySelector("#icons-search");
   expect(search.placeholder).toBe("🔍 Search icons");
   expect(search.getAttribute("aria-label")).toBe("Search icons");
@@ -201,7 +202,7 @@ test("Accept stores only that key, a clean Cancel does not ask, and Revert all c
   const iconSearch = wizard.querySelector(".pav-module-search");
   iconSearch.value = "up";
   iconSearch.dispatchEvent(new Event("input"));
-  await flush();
+  await new Promise((resolve) => setTimeout(resolve, 600));
   wizard.querySelector(".pav-icon-hit").click();
   buttonNamed(wizard, "Accept").click();
   await flush();
@@ -223,6 +224,71 @@ test("Accept stores only that key, a clean Cancel does not ask, and Revert all c
   await flush();
   expect(asked).toBe(1);
   expect(ui.icons["nav.update"]).toBeUndefined();
+  expect(buttonNamed(host, "Revert all").querySelector("i").className).toContain("fa-rotate-left");
+  expect(buttonNamed(host, "Import").querySelector("i").className).toContain("fa-upload");
+  expect(buttonNamed(host, "Export").querySelector("i").className).toContain("fa-download");
+  for (const name of ["Import", "Export", "Revert all"]) {
+    expect(buttonNamed(host, name).classList.contains("pav-labeled-action")).toBe(true);
+  }
+  host.remove();
+});
+
+test("Import and Export move the saved icon changes", async () => {
+  const ui = {
+    icons: { "nav.contacts": '<i class="fa-solid fa-star"></i>' },
+    iconRecent: ['<i class="fa-solid fa-gear"></i>'],
+    iconRecentMax: 12,
+    iconLibraries: [],
+  };
+  const files = new Map();
+  const confirms = [];
+  const saves = [];
+  const host = document.createElement("div");
+  document.body.append(host);
+  mountIconsPanel(host, iconCtx(ui, {
+    saveNow() {
+      saves.push(structuredClone(ui.icons));
+      return Promise.resolve(true);
+    },
+    confirm: async (ask) => {
+      confirms.push(ask);
+      return true;
+    },
+    api: {
+      asset: { list: async () => { throw new Error("none"); } },
+      exports: {
+        async writeText({ path, text }) {
+          files.set(path, text);
+          return { bytes: text.length };
+        },
+        async readText({ path }) {
+          return { text: files.get(path) };
+        },
+      },
+    },
+    host: {
+      dialog: {
+        async save() {
+          return "/tmp/pavillion-icons.json";
+        },
+        async open() {
+          return "/tmp/pavillion-icons.json";
+        },
+      },
+    },
+  }));
+  buttonNamed(host, "Export").click();
+  await flush();
+  const text = files.get("/tmp/pavillion-icons.json");
+  expect(text).toContain('"kind": "pavillion.icons"');
+  expect(text).toContain("nav.contacts");
+  expect(text).not.toContain("fa-gear");
+  ui.icons = {};
+  buttonNamed(host, "Import").click();
+  await flush();
+  expect(confirms.at(-1).text).toBe("Replace saved icon changes with this file?");
+  expect(ui.icons["nav.contacts"]).toContain("fa-star");
+  expect(saves.at(-1)["nav.contacts"]).toContain("fa-star");
   host.remove();
 });
 

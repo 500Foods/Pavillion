@@ -1260,22 +1260,18 @@
   display: flex;
   min-height: 0;
   --pav-help-transition: 160ms;
-  /* D-10: --pav-bar-zoom is set on .button-bar (which includes .help-bar)
-     by applyZoom in shell.js; the filter panel lives in .help-content, so
-     it needs the same variable for icon and width sizing. */
-  --pav-bar-zoom: 1;
   /* Clip the filter panel so its left edge is never visible when hidden. */
   overflow: hidden;
 }
 
 /* Chevron width is rem. WebKit zoom on .help-bar scales that box (the padding
    around the icon) but not a rem svg, which is why the icon multiplies by
-   --pav-bar-zoom on its own. The panel is not inside that zoom, so its width
-   multiplies once more to keep the same padding at every toolbar scale. */
+   --pav-bar-zoom on its own. The filter strip is not inside that zoom. Its
+   width multiplies by Filters zoom, so it matches the chevron when the
+   two scales are equal. */
 .pav-root .help-bar,
 .pav-root .help-content {
   --pav-help-icon-box: calc(var(--pav-bar-icon-size) + var(--pav-bar-pad-y) * 2);
-  --pav-help-control-width: calc(var(--pav-help-icon-box) * var(--pav-bar-zoom));
 }
 
 .pav-root .help-bar .help-filter-chevron {
@@ -1308,6 +1304,8 @@
 }
 
 .pav-root .help-filter-panel {
+  --pav-filter-zoom: 1;
+  --pav-help-filter-width: calc(var(--pav-help-icon-box) * var(--pav-filter-zoom));
   flex: none;
   box-sizing: border-box;
   width: 0;
@@ -1322,8 +1320,8 @@
 }
 
 .pav-root .help-filter-panel[aria-hidden="false"] {
-  width: var(--pav-help-control-width);
-  border-right-width: calc(1px / var(--pav-bar-zoom));
+  width: var(--pav-help-filter-width);
+  border-right-width: calc(1px / var(--pav-filter-zoom));
   opacity: 1;
 }
 
@@ -1342,10 +1340,10 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.15rem;
-  padding: 0.2rem 0;
+  gap: calc(0.15rem * var(--pav-filter-zoom, 1));
+  padding: calc(0.2rem * var(--pav-filter-zoom, 1)) 0;
   width: 100%;
-  min-width: var(--pav-help-control-width);
+  min-width: var(--pav-help-filter-width);
 }
 
 .pav-root .help-filter-chip {
@@ -1358,10 +1356,18 @@
   border: 0;
   background: transparent;
   color: var(--pav-help-index-text);
-  padding: 0.35rem 0;
+  padding: calc(0.35rem * var(--pav-filter-zoom, 1)) 0;
   border-radius: 0.3rem;
-  font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+  font-size: calc(var(--pav-bar-icon-size) * var(--pav-filter-zoom, 1));
   cursor: pointer;
+}
+
+/* In-flow square at 1em so the glyph, which is out of the line, does not
+   cover the chip above or below. Same strut the nav buttons use. */
+.pav-root .help-filter-chip::after {
+  content: "";
+  width: 1em;
+  height: 1em;
 }
 
 .pav-root .help-filter-chip[aria-pressed="true"] {
@@ -2727,6 +2733,31 @@
   content: "";
   width: 1em;
   height: 1em;
+}
+
+/* A labeled bar button keeps the glyph in the line, beside the word.
+   Icon-only buttons stay on the slot above. */
+.pav-root .pav-module-toolbar > button.pav-labeled-action:has(> :is(.icon, svg, i)),
+.pav-root .pav-module-footer button.pav-labeled-action:has(> :is(.icon, svg, i)) {
+  font-size: var(--pav-bar-font-size);
+  border-left: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
+}
+
+.pav-root .pav-module-toolbar > button.pav-labeled-action:has(> :is(.icon, svg, i))::after,
+.pav-root .pav-module-footer button.pav-labeled-action:has(> :is(.icon, svg, i))::after {
+  content: none;
+}
+
+.pav-root .pav-module-toolbar > button.pav-labeled-action :is(.icon, svg, i),
+.pav-root .pav-module-footer button.pav-labeled-action :is(.icon, svg, i) {
+  position: static;
+  left: auto;
+  top: auto;
+  width: auto;
+  height: 1em;
+  translate: none;
+  font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+  line-height: 1;
 }
 /* D-10: a module fills its area; a split body meets both bars. */
 .pav-root :is([data-settings="accounts"], [data-settings="icons"], [data-settings="libraries"], [data-settings="assets"]) > .settings-body {

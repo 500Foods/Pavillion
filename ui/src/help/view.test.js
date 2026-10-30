@@ -130,6 +130,11 @@ test("D-10: the Help toolbar has the title, search, then Back to the opener", as
     await mount(el, createApi(mockTransport()));
     const bar = document.querySelector("#help-toolbar");
     expect(bar.querySelector(".pav-module-title").textContent).toBe("Help");
+    expect(document.querySelector("#help-search").placeholder).toBe("🔍 Search help");
+    expect(document.querySelector("#help-back").classList.contains("pav-labeled-action")).toBe(true);
+    for (const id of ["help-copy", "help-save", "help-print"]) {
+      expect(document.querySelector(`#${id}`).classList.contains("pav-labeled-action")).toBe(true);
+    }
     const order = [...bar.children].filter((c) => !c.hidden).map((c) => c.id || c.className);
     expect(order.indexOf("help-search")).toBeLessThan(order.indexOf("help-back"));
     document.querySelector('[data-section="settings"]').click();

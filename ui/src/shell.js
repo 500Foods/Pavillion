@@ -248,10 +248,10 @@ function applyZoom() {
   for (const element of mountRoot.querySelectorAll("#panel-mail .pane-list")) {
     element.style.zoom = "";
   }
-  /* The chevron and filter icons follow the toolbar, not the article. */
-  const helpZoom = ui.zoom.shell * ui.zoom.navButtons;
-  for (const helpContent of mountRoot.querySelectorAll(".help-content")) {
-    helpContent.style.setProperty("--pav-bar-zoom", String(helpZoom));
+  /* The filter strip is its own scale. The chevron stays on the toolbar. */
+  const filterZoom = ui.zoom.shell * ui.zoom.filters;
+  for (const panel of mountRoot.querySelectorAll(".help-filter-panel")) {
+    panel.style.setProperty("--pav-filter-zoom", String(filterZoom));
   }
   if (logView) {
     logView.setZoom(ui.zoom.log);
@@ -283,7 +283,11 @@ function zoomKeyAt(target) {
   if (!(target instanceof Element)) {
     return "";
   }
-  /* The Wizard, its result grid, and the color picker zoom themselves. */
+  /* The four Wizard toolbars are button bars. The rest of the Wizard, its
+     result grid, and the color picker zoom themselves. */
+  if (target.closest(".pav-icon-bar")) {
+    return "navButtons";
+  }
   if (target.closest(".pav-icon-wizard") || target.closest("#clr-picker")) {
     return "";
   }
@@ -291,7 +295,7 @@ function zoomKeyAt(target) {
     return "navButtons";
   }
   if (target.closest("#help-filter-panel")) {
-    return "navButtons";
+    return "filters";
   }
   if (target.closest(".nav-body") || target.closest("#month")) {
     return "navBody";
@@ -2135,6 +2139,7 @@ function iconPageCtx() {
   return {
     ui,
     api,
+    host,
     ...tableStore(),
     saveNow() {
       dirty = true;

@@ -80,6 +80,7 @@ $(LIB): core/CMakeLists.txt core/include/pavillion.h core/include/pav_config.h \
 	core/src/body.c core/include/pav_body.h \
 	core/src/migrations/003_headers.sql \
 	core/src/migrations/004_icons.sql \
+	core/src/migrations/005_icon_family.sql \
 	core/include/pav_icon.h core/src/icon_hosts.c core/src/icon_asset.c \
 	core/src/icon_mark.h core/embed_bytes.cmake ui/public/mark.png \
 	core/src/account_test.c \

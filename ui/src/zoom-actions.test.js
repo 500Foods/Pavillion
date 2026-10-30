@@ -138,6 +138,10 @@ test("Tables, Details, Settings, Color picker, and Icon Wizard each scale their 
 
     release(document.querySelector('[data-zoom="mailList"] input'), "1.4");
     expect(document.querySelector("#panel-mail .pane-list").style.zoom).toBe("");
+    expect(document.querySelector("#help-filter-panel").style.getPropertyValue("--pav-filter-zoom")).toBe("1");
+    release(document.querySelector('[data-zoom="filters"] input'), "1.6");
+    expect(document.querySelector("#help-filter-panel").style.getPropertyValue("--pav-filter-zoom")).toBe("1.6");
+    expect(document.querySelector(".help-bar").style.getPropertyValue("--pav-bar-zoom")).toBe("1");
 
     release(document.querySelector('[data-zoom="colorPickerZoom"] input'), "2.5");
     release(document.querySelector('[data-zoom="iconWizardZoom"] input'), "1.5");
@@ -149,6 +153,7 @@ test("Tables, Details, Settings, Color picker, and Icon Wizard each scale their 
     expect(stored.zoom.details).toBe(1.5);
     expect(stored.zoom.settings).toBe(1.3);
     expect(stored.zoom.mailList).toBe(1.4);
+    expect(stored.zoom.filters).toBe(1.6);
     expect(stored.zoom.tables).toBe(1);
     expect(stored.zoom.colorPickerZoom).toBeUndefined();
     expect(stored.colorPickerZoom).toBe(2.5);

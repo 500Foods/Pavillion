@@ -205,7 +205,7 @@
   width: auto;
   max-width: 100%;
   min-height: 0;
-  margin: 0 0 0 0.75rem;
+  margin: 0;
   overflow: hidden;
 }
 
@@ -223,9 +223,16 @@
   margin: 0 0 0.75rem;
 }
 
+.pav-root .pav-icon-crumb-bar {
+  align-items: center;
+}
+
 .pav-root .pav-icon-crumb-bar .pav-dialog-title {
+  display: flex;
   flex: 1;
+  align-items: center;
   margin: 0;
+  padding-left: var(--pav-bar-pad-x);
   font-size: var(--pav-bar-font-size);
   font-weight: 400;
 }
@@ -318,10 +325,12 @@
   flex-direction: column;
   align-items: center;
   align-self: stretch;
-  box-sizing: border-box;
+  box-sizing: content-box;
   gap: 0.55rem;
+  /* Side room matches the 0.65rem above and below. The 128 px icon stays 128 px. */
+  width: calc(128px + 1.3rem);
   min-height: 0;
-  padding: 0.65rem;
+  padding: 0.65rem 0;
   overflow: auto;
   border-right: calc(1px / var(--pav-wizard-zoom, 1)) solid var(--pav-border);
 }
@@ -375,7 +384,7 @@
 .pav-root .pav-icon-theme-label {
   align-self: stretch;
   box-sizing: border-box;
-  margin: 0 -0.65rem;
+  margin: 0;
   padding: 0.3rem 0.65rem;
   border-top: calc(1px / var(--pav-wizard-zoom, 1)) solid var(--pav-border);
   border-bottom: calc(1px / var(--pav-wizard-zoom, 1)) solid var(--pav-border);
@@ -440,24 +449,36 @@
   align-items: stretch;
   min-width: 0;
   overflow-x: auto;
+  scrollbar-width: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pav-root .pav-icon-preset-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.pav-root .pav-icon-bar button.pav-icon-preset-pin {
+  border-right: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
 }
 
 .pav-root .pav-module-toolbar > button.pav-icon-mode[aria-pressed="true"] {
   background: var(--pav-surface-button-active);
 }
 
-.pav-root .pav-icon-bar button:not(.help-jump):has(> :is(img, svg, i)) {
+.pav-root .pav-icon-bar button:not(.help-jump):not(.pav-dialog-ok):not(.pav-dialog-cancel):not(.pav-icon-close):not(.pav-icon-flag-clear):has(> :is(img, svg, i)) {
   position: relative;
   font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
 }
 
-.pav-root .pav-icon-bar button:not(.help-jump):has(> :is(img, svg, i))::after {
+.pav-root .pav-icon-bar button:not(.help-jump):not(.pav-dialog-ok):not(.pav-dialog-cancel):not(.pav-icon-close):not(.pav-icon-flag-clear):has(> :is(img, svg, i))::after {
   content: "";
   width: 1em;
   height: 1em;
 }
 
-.pav-root .pav-icon-bar button:not(.help-jump) :is(img, svg, i, .icon) {
+.pav-root .pav-icon-bar button:not(.help-jump):not(.pav-dialog-ok):not(.pav-dialog-cancel):not(.pav-icon-close):not(.pav-icon-flag-clear) :is(img, svg, i, .icon) {
   position: absolute;
   left: 50%;
   top: 50%;
@@ -565,14 +586,18 @@
 .pav-root .pav-icon-bar button.pav-dialog-ok,
 .pav-root .pav-icon-bar button.pav-dialog-cancel,
 .pav-root .pav-icon-bar button.pav-icon-close {
+  box-sizing: border-box;
+  justify-content: center;
+  width: calc(2.5rem * var(--pav-bar-zoom));
+  min-width: calc(2.5rem * var(--pav-bar-zoom));
+  height: auto;
+  padding: 0;
+  border-radius: 0;
   border-left: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
-  border-right: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
 }
 
 .pav-root .pav-icon-bar button.pav-icon-close {
-  width: auto;
-  height: auto;
-  border-radius: 0;
+  border-right: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
 }
 
 .pav-root .pav-icon-caret {
@@ -617,7 +642,7 @@
   flex: 1;
   flex-wrap: wrap;
   align-content: flex-start;
-  gap: 0.25rem;
+  gap: 0;
   width: 100%;
   min-height: 14rem;
   overflow: auto;
@@ -629,10 +654,12 @@
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
+  box-sizing: content-box;
+  margin: 10px;
   width: calc(var(--pav-icon-hit-size, 28px) * 2.6);
   height: auto;
   min-height: calc(var(--pav-icon-hit-size, 28px) + 1.35rem);
-  padding: 0.2rem 0.15rem 0.15rem;
+  padding: 20px;
   overflow: visible;
   border: 0;
   border-radius: var(--pav-dialog-button-radius);
@@ -653,9 +680,40 @@
   pointer-events: none;
 }
 
+.pav-root .pav-icon-toolsbar .pav-icon-toolset[data-toolset="fa"] > .pav-icon-field:first-child {
+  padding-left: var(--pav-bar-pad-x);
+}
+
+.pav-root .pav-icon-toolset[data-toolset="tone"] {
+  margin-left: var(--pav-bar-pad-x);
+}
+
 .pav-root .pav-icon-flags {
   display: inline-flex;
   flex: none;
+  align-items: center;
+  margin-left: -0.55rem;
+  border-right: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
+}
+
+.pav-root .pav-icon-flags > button.pav-icon-menu {
+  border-left: 0;
+  border-right: 0;
+}
+
+.pav-root .pav-icon-bar button.pav-icon-flag-clear {
+  box-sizing: border-box;
+  justify-content: center;
+  width: calc(1.25rem * var(--pav-bar-zoom));
+  min-width: calc(1.25rem * var(--pav-bar-zoom));
+  height: calc(1.25rem * var(--pav-bar-zoom));
+  padding: 0;
+  border: 0;
+  font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom) * 0.65);
+}
+
+.pav-root .pav-icon-bar button.pav-icon-flag-clear[hidden] {
+  display: none;
 }
 
 .pav-root .pav-icon-pop {
@@ -680,8 +738,8 @@
   height: 16rem;
   min-width: 160px;
   min-height: 120px;
-  max-width: 480px;
-  max-height: 640px;
+  max-width: 360px;
+  max-height: 880px;
   resize: both;
 }
 

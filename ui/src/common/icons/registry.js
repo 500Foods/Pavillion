@@ -127,6 +127,9 @@ export const REGISTRY = [
   row("settings.apply", "Settings", "Apply", `${SHARP} fa-check`),
   row("ui.check", "UI", "Check", `${SHARP} fa-check`),
   row("ui.cancel", "UI", "Cancel", `${SHARP} fa-xmark`),
+  row("ui.export", "UI", "Export", `${SHARP} fa-download`),
+  row("ui.import", "UI", "Import", `${SHARP} fa-upload`),
+  row("ui.revert", "UI", "Revert", `${SHARP} fa-rotate-left`),
   row("log.settings", "Logs", "Log settings", `${SHARP} fa-gear`, { smallChrome: true, sizeHint: 16 }),
 
   row("activity.mail", "Activity", "Mail", `${SHARP} fa-paper-plane-top fa-rotate-270`, { smallChrome: true, sizeHint: 16 }),

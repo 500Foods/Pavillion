@@ -34,13 +34,16 @@ test("widgets.css only references variables", () => {
   expect(css).toMatch(/var\(--pav-dialog-radius\)/);
   expect(css).toMatch(/var\(--pav-dialog-button-radius\)/);
   expect(css).toMatch(/\.pav-icon-hit \{[^}]*gap:\s*8px/);
+  expect(css).toMatch(/\.pav-icon-hit \{[^}]*margin:\s*10px/);
+  expect(css).toMatch(/\.pav-icon-hit \{[^}]*padding:\s*20px/);
+  expect(css).toMatch(/\.pav-icon-grid \{[^}]*gap:\s*0;/);
   expect(css).toMatch(/\.pav-icon-flag-menu \{[^}]*resize:\s*both/);
   expect(css).toMatch(/\.pav-icon-bar button\.help-jump \{[^}]*border-left:/);
   expect(css).toMatch(/\.pav-icon-bar button\.help-jump \{[^}]*padding:\s*0/);
   expect(css).toMatch(/\.pav-icon-bar button\.help-jump \{[^}]*box-sizing:\s*border-box/);
   expect(css).toMatch(/\.pav-icon-bar > \.pav-module-search \{[^}]*flex:\s*0 0 16rem/);
   expect(css).toMatch(/\.pav-icon-wizard \.button-bar \{[^}]*zoom:\s*calc\(var\(--pav-bar-zoom, 1\) \/ var\(--pav-wizard-zoom, 1\)\)/);
-  expect(css).toMatch(/\.pav-icon-wizard\.is-embedded \{[^}]*margin:\s*0 0 0 0\.75rem/);
+  expect(css).toMatch(/\.pav-icon-wizard\.is-embedded \{[^}]*margin:\s*0;/);
   expect(css).toMatch(/\.pav-icon-square \{[^}]*font-size:\s*96px/);
   const preview = css.match(/\.pav-icon-square > \*,[\s\S]*?\n\}/);
   expect(preview[0]).toContain("height: 1em");
@@ -62,6 +65,10 @@ test("theme.css only references variables", () => {
   expect(css).not.toMatch(/--pav-muted\b/);
   expect(css).toMatch(/var\(--pav-text\)/);
   expect(css).not.toMatch(/#icons-search \{[^}]*border-right:/);
+  expect(css).toMatch(/\.pav-module-toolbar > button\.pav-labeled-action:has\(> :is\(\.icon, svg, i\)\),/);
+  expect(css).toMatch(/\.pav-module-footer button\.pav-labeled-action:has\(> :is\(\.icon, svg, i\)\) \{\s*font-size: var\(--pav-bar-font-size\);\s*border-left:/);
+  expect(css).toMatch(/\.pav-module-footer button\.pav-labeled-action :is\(\.icon, svg, i\) \{\s*position: static;/);
+  expect(css).toMatch(/\.pav-module-footer button\.pav-labeled-action:has\(> :is\(\.icon, svg, i\)\)::after \{\s*content: none;/);
   expect(css).toMatch(/var\(--pav-surface-canvas\)/);
   expect(css).toMatch(/var\(--pav-status-error\)/);
   expect(css).toMatch(/var\(--pav-surface-scrim\)/);
@@ -72,6 +79,8 @@ test("theme.css only references variables", () => {
   expect(css).toMatch(/var\(--pav-help-code-bg\)/);
   expect(css).toMatch(/\.pav-color-host \.clr-picker \{[^}]*width: calc\(200px \* var\(--pav-color-zoom\)\)/);
   expect(css).toMatch(/\.nav-buttons button::after \{[^}]*height:\s*1em/);
+  expect(css).toMatch(/\.help-filter-chip::after \{\s*content: "";\s*width: 1em;\s*height: 1em;/);
+  expect(css).toMatch(/--pav-filter-zoom:\s*1/);
   const slot = css.match(/\.nav-buttons :is\(\.icon, svg, img\):not\(\.nav-mark\),[\s\S]*?\n\}/);
   expect(slot[0]).toContain("height: 1em");
   expect(slot[0]).not.toContain("font-size");

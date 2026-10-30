@@ -10,6 +10,7 @@ import {
   bakeSvg,
   faCatalog,
   faChoiceFromHtml,
+  faFamilyList,
   faIconPlace,
   faKitNames,
   foundryFromLibrary,
@@ -302,7 +303,7 @@ export function openIconWizard(parent, options = {}) {
       title.append(sep);
     }
     if (options.section) {
-      title.append(crumbPart("pav-icon-crumb-group", options.section, true));
+      title.append(crumbPart("pav-icon-crumb-group pav-icon-label", options.section, true));
       crumbSep();
     }
     title.append(crumbPart("pav-icon-crumb-name", options.title || "Icon", false));
@@ -329,7 +330,11 @@ export function openIconWizard(parent, options = {}) {
     barCrumb.setAttribute("aria-label", "Icon");
     const crumbSpacer = doc.createElement("div");
     crumbSpacer.className = "pav-module-spacer";
-    barCrumb.append(title, crumbSpacer, closeBtn);
+    if (embed) {
+      barCrumb.append(title, crumbSpacer);
+    } else {
+      barCrumb.append(title, crumbSpacer, closeBtn);
+    }
 
     const layout = doc.createElement("div");
     layout.className = "pav-icon-layout";
@@ -341,31 +346,29 @@ export function openIconWizard(parent, options = {}) {
     const themeLabel = doc.createElement("div");
     themeLabel.className = "pav-icon-theme-label";
     themeLabel.textContent = "Theme";
-    function themeGround(kind, caption) {
-      const wrap = doc.createElement("div");
-      wrap.className = `pav-icon-ground is-${kind}`;
+    function themeCaption(text) {
+      const cap = doc.createElement("div");
+      cap.className = "pav-icon-theme-label";
+      cap.textContent = text;
+      return cap;
+    }
+    function themeChip(kind) {
       const chip = doc.createElement("div");
       chip.className = `pav-icon-chip is-${kind}`;
       chip.setAttribute("aria-hidden", "true");
-      const cap = doc.createElement("div");
-      cap.className = "pav-icon-ground-label";
-      cap.textContent = caption;
-      wrap.append(chip, cap);
-      return { wrap, chip };
+      return chip;
     }
-    const darkGround = themeGround("dark", "Dark");
-    const lightGround = themeGround("light", "Light");
-    const chipDark = darkGround.chip;
-    const chipLight = lightGround.chip;
-    previewCol.append(square, themeLabel, darkGround.wrap, lightGround.wrap);
+    const chipDark = themeChip("dark");
+    const chipLight = themeChip("light");
+    previewCol.append(square, themeLabel, chipDark, themeCaption("Dark"), chipLight, themeCaption("Light"));
 
     const barPresets = doc.createElement("div");
     barPresets.className = "button-bar pav-module-toolbar pav-icon-bar pav-icon-presets";
     barPresets.setAttribute("role", "toolbar");
     barPresets.setAttribute("aria-label", "Icon presets");
+    const presetDefault = button(doc, "Default", "pav-icon-preset pav-icon-preset-pin");
     const presetScroll = doc.createElement("div");
     presetScroll.className = "pav-icon-preset-scroll";
-    presetScroll.append(button(doc, "Default", "pav-icon-preset"));
     for (const system of SYSTEM_ICONS) {
       const preset = button(doc, system.label, "pav-icon-preset");
       preset.dataset.system = system.id;
@@ -403,7 +406,7 @@ export function openIconWizard(parent, options = {}) {
     const cancelBtn = actionIcon("ui.cancel", "Cancel", "pav-dialog-cancel");
     const spacer = doc.createElement("div");
     spacer.className = "pav-module-spacer";
-    barPresets.append(presetScroll, spacer, acceptBtn, cancelBtn);
+    barPresets.append(presetDefault, presetScroll, spacer, acceptBtn, cancelBtn);
 
     const barSource = doc.createElement("div");
     barSource.className = "button-bar pav-module-toolbar pav-icon-bar";
@@ -449,6 +452,7 @@ export function openIconWizard(parent, options = {}) {
     let flagObserver = null;
     const menuObservers = [];
     let escapeClearsSearch = false;
+    let cancelSearch = () => {};
 
     function closePops() {
       for (const menu of dialog.querySelectorAll(".pav-icon-pop")) {
@@ -690,8 +694,8 @@ export function openIconWizard(parent, options = {}) {
         others.map((item) => ({ id: item.id, label: item.name || item.id })),
         (others[0] && others[0].id) || "",
       );
-      const catalog = faCatalog();
-      const family = selectOf(doc, catalog.families, "");
+      const familyRows = faFamilyList();
+      const family = selectOf(doc, familyRows, "");
       const style = doc.createElement("select");
       const materialFace = selectOf(doc, [
         { id: "sharp", label: "Sharp" },
@@ -702,7 +706,7 @@ export function openIconWizard(parent, options = {}) {
       const styleField = fieldLabel(doc, "Style", style);
       const materialField = fieldLabel(doc, "Material style", materialFace);
       function stylesFor(familyId) {
-        const row = catalog.families.find((item) => item.id === familyId);
+        const row = familyRows.find((item) => item.id === familyId);
         return row ? row.styles : [];
       }
       function refillStyles() {
@@ -722,8 +726,8 @@ export function openIconWizard(parent, options = {}) {
         style.value = keep ? previous : items[0].id;
         syncMenus();
       }
-      if (!catalog.families.some((item) => item.id === library.family) && catalog.families[0]) {
-        library.family = catalog.families[0].id;
+      if (!familyRows.some((item) => item.id === library.family) && familyRows[0]) {
+        library.family = familyRows[0].id;
       }
       family.value = library.family;
       refillStyles();
@@ -775,17 +779,22 @@ export function openIconWizard(parent, options = {}) {
         color.value = library.color;
       }
       void mountColoris(color, options.swatches);
-      const flagsBtn = button(doc, "Flags", "pav-icon-tool pav-icon-menu");
+      const flagsBtn = button(doc, "", "pav-icon-tool pav-icon-menu");
       flagsBtn.setAttribute("aria-haspopup", "true");
       flagsBtn.setAttribute("aria-expanded", "false");
       flagsBtn.setAttribute("aria-label", "Flags");
+      const flagsLabel = doc.createElement("span");
+      flagsLabel.className = "pav-icon-menu-label";
+      flagsLabel.textContent = "Flags";
       const flagsCaret = doc.createElement("span");
       flagsCaret.className = "pav-icon-caret";
       flagsCaret.setAttribute("aria-hidden", "true");
-      flagsBtn.append(flagsCaret);
+      flagsBtn.append(flagsLabel, flagsCaret);
+      const clearFlags = actionIcon("ui.cancel", "Clear flags", "pav-icon-flag-clear");
+      clearFlags.hidden = true;
       const flagsWrap = doc.createElement("div");
       flagsWrap.className = "pav-icon-flags";
-      flagsWrap.append(flagsBtn);
+      flagsWrap.append(flagsBtn, clearFlags);
       const flagMenu = doc.createElement("div");
       flagMenu.className = "pav-icon-pop pav-icon-flag-menu";
       flagMenu.hidden = true;
@@ -853,6 +862,9 @@ export function openIconWizard(parent, options = {}) {
       }
       function paintFlags() {
         const on = new Set(library.flags);
+        const count = library.flags.length;
+        flagsLabel.textContent = count > 0 ? `Flags (${count})` : "Flags";
+        clearFlags.hidden = count === 0;
         for (const choice of flagMenu.querySelectorAll(".pav-icon-flag")) {
           choice.setAttribute("aria-pressed", on.has(choice.dataset.flag) ? "true" : "false");
         }
@@ -927,12 +939,17 @@ export function openIconWizard(parent, options = {}) {
           let drawFamily = library.family;
           let drawStyle = library.style;
           if (library.libraryId === "fontawesome") {
-            const place = faIconPlace(library.family, library.style, row.name);
-            if (!place) {
-              continue;
+            if (row.family === "brands") {
+              drawFamily = "brands";
+              drawStyle = "";
+            } else {
+              const place = faIconPlace(library.family, library.style, row.name);
+              if (!place) {
+                continue;
+              }
+              drawFamily = place.family;
+              drawStyle = place.style;
             }
-            drawFamily = place.family;
-            drawStyle = place.style;
           }
           const label = row.label || row.name;
           const hit = button(doc, "", "pav-icon-hit");
@@ -1003,6 +1020,16 @@ export function openIconWizard(parent, options = {}) {
         library.system = "";
         refresh();
       };
+      clearFlags.addEventListener("click", (event) => {
+        event.stopPropagation();
+        event.preventDefault();
+        if (!library.flags.length) {
+          return;
+        }
+        library.flags = [];
+        paintFlags();
+        onField();
+      });
       family.addEventListener("change", () => {
         refillStyles();
       });
@@ -1011,13 +1038,41 @@ export function openIconWizard(parent, options = {}) {
         control.addEventListener("change", onField);
       }
       let searchGen = 0;
+      let searchTimer = 0;
+      let searchBusy = false;
+      let searchWait = false;
+      let searchClosed = false;
+      cancelSearch = () => {
+        searchClosed = true;
+        if (searchTimer) {
+          clearTimeout(searchTimer);
+          searchTimer = 0;
+        }
+        searchGen += 1;
+      };
+      function scheduleSearch(delay) {
+        if (searchClosed) {
+          return;
+        }
+        if (searchBusy) {
+          searchWait = true;
+          return;
+        }
+        if (searchTimer) {
+          clearTimeout(searchTimer);
+        }
+        searchTimer = setTimeout(() => {
+          searchTimer = 0;
+          void runSearch();
+        }, delay);
+      }
       search.addEventListener("input", () => {
-        runSearch();
+        scheduleSearch(500);
       });
       search.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
-          runSearch();
+          scheduleSearch(0);
         }
       });
       async function runSearch() {
@@ -1028,43 +1083,56 @@ export function openIconWizard(parent, options = {}) {
           note.textContent = "Turn on a library under Settings → Libraries.";
           return;
         }
-        const gen = ++searchGen;
-        syncLibrary();
-        note.textContent = "Searching.";
-        library.query = search.value;
-        let rows = [];
-        try {
-          const payload = await options.search({ id: library.libraryId, query: library.query, limit: 200 });
-          if (gen !== searchGen) {
-            return;
-          }
-          rows = Array.isArray(payload) ? payload : (payload && payload.icons) || [];
-        } catch (err) {
-          if (gen !== searchGen) {
-            return;
-          }
-          note.textContent = err instanceof Error ? err.message : "Search failed.";
+        if (searchBusy) {
+          searchWait = true;
           return;
         }
-        if (library.libraryId === "fontawesome") {
-          const have = new Set(rows.map((row) => row && row.name).filter(Boolean));
-          for (const name of faKitNames(library.query)) {
-            if (!have.has(name)) {
-              rows.push({ name, label: name });
-              have.add(name);
+        searchBusy = true;
+        const gen = ++searchGen;
+        try {
+          syncLibrary();
+          note.textContent = "Searching.";
+          library.query = search.value;
+          let rows = [];
+          try {
+            const payload = await options.search({ id: library.libraryId, query: library.query, limit: 200 });
+            if (gen !== searchGen) {
+              return;
+            }
+            rows = Array.isArray(payload) ? payload : (payload && payload.icons) || [];
+          } catch (err) {
+            if (gen !== searchGen) {
+              return;
+            }
+            note.textContent = err instanceof Error ? err.message : "Search failed.";
+            return;
+          }
+          if (library.libraryId === "fontawesome") {
+            const have = new Set(rows.map((row) => row && row.name).filter(Boolean));
+            for (const name of faKitNames(library.query)) {
+              if (!have.has(name)) {
+                rows.push({ name, label: name });
+                have.add(name);
+              }
             }
           }
+          resultsShelf = shelf;
+          if (!rows.length) {
+            resultRows = [];
+            grid.replaceChildren();
+            note.textContent = "No icons match.";
+            return;
+          }
+          resultRows = rows;
+          const shown = paintHits(rows);
+          note.textContent = shown ? "" : noHitNote();
+        } finally {
+          searchBusy = false;
+          if (!searchClosed && searchWait) {
+            searchWait = false;
+            scheduleSearch(500);
+          }
         }
-        resultsShelf = shelf;
-        if (!rows.length) {
-          resultRows = [];
-          grid.replaceChildren();
-          note.textContent = "No icons match.";
-          return;
-        }
-        resultRows = rows;
-        const shown = paintHits(rows);
-        note.textContent = shown ? "" : noHitNote();
       }
       let resultRemainder = 0;
       grid.addEventListener("wheel", (event) => {
@@ -1370,6 +1438,7 @@ export function openIconWizard(parent, options = {}) {
         return;
       }
       settled = true;
+      cancelSearch();
       liveWizards.delete(slot);
       if (flagObserver) {
         flagObserver.disconnect();
@@ -1404,7 +1473,18 @@ export function openIconWizard(parent, options = {}) {
     }
     barPresets.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target.closest("button") : null;
-      if (!target || !presetScroll.contains(target)) {
+      if (!target || target === acceptBtn || target === cancelBtn) {
+        return;
+      }
+      if (target.dataset.suppressClick === "true") {
+        delete target.dataset.suppressClick;
+        return;
+      }
+      if (target.classList.contains("pav-icon-preset-pin")) {
+        loadSnippet(defaultHtml);
+        return;
+      }
+      if (!presetScroll.contains(target)) {
         return;
       }
       if (target.dataset.system) {
@@ -1414,15 +1494,59 @@ export function openIconWizard(parent, options = {}) {
       }
       if (target.dataset.snippet) {
         loadSnippet(target.dataset.snippet);
-        return;
-      }
-      if (target.textContent === "Default") {
-        loadSnippet(defaultHtml);
       }
     });
+    let presetDrag = null;
+    presetScroll.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+      presetDrag = { x: event.clientX, left: presetScroll.scrollLeft, moved: false, pointer: event.pointerId };
+    });
+    presetScroll.addEventListener("pointermove", (event) => {
+      if (!presetDrag || event.pointerId !== presetDrag.pointer) {
+        return;
+      }
+      const dx = event.clientX - presetDrag.x;
+      if (Math.abs(dx) > 3) {
+        presetDrag.moved = true;
+      }
+      if (!presetDrag.moved) {
+        return;
+      }
+      presetScroll.scrollLeft = presetDrag.left - dx;
+    });
+    function endPresetDrag(event) {
+      if (!presetDrag || event.pointerId !== presetDrag.pointer) {
+        return;
+      }
+      if (presetDrag.moved && event.target instanceof Element) {
+        const dragged = event.target.closest("button");
+        if (dragged) {
+          dragged.dataset.suppressClick = "true";
+        }
+      }
+      presetDrag = null;
+    }
+    presetScroll.addEventListener("pointerup", endPresetDrag);
+    presetScroll.addEventListener("pointercancel", endPresetDrag);
+    presetScroll.addEventListener("wheel", (event) => {
+      if (event.ctrlKey) {
+        return;
+      }
+      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      if (!delta) {
+        return;
+      }
+      presetScroll.scrollLeft += delta;
+      event.preventDefault();
+      event.stopPropagation();
+    }, { passive: false });
     acceptBtn.addEventListener("click", accept);
     cancelBtn.addEventListener("click", () => requestClose());
-    closeBtn.addEventListener("click", () => requestClose());
+    if (!embed) {
+      closeBtn.addEventListener("click", () => requestClose());
+    }
     if (!embed) {
       dialog.addEventListener("cancel", (event) => {
         event.preventDefault();
@@ -1474,6 +1598,9 @@ export function openIconWizard(parent, options = {}) {
     });
     dialog.addEventListener("wheel", (event) => {
       if (!event.ctrlKey) {
+        return;
+      }
+      if (event.target instanceof Element && event.target.closest(".pav-icon-bar")) {
         return;
       }
       if (event.target instanceof Element && (event.target.closest("#clr-picker") || event.target.closest(".pav-icon-grid") || event.target.closest(".pav-icon-pop"))) {

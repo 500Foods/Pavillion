@@ -299,9 +299,11 @@ void test_icon_assets_and_catalog(void) {
     TEST_ASSERT_EQUAL_INT(
         0, pav_iconlib_ingest("fontawesome",
                               "{\"data\":{\"release\":{\"icons\":[{\"id\":\"house\",\"label\":\"House\"},"
-                              "{\"id\":\"star\",\"label\":\"Star\"}]}}}",
+                              "{\"id\":\"star\",\"label\":\"Star\"},"
+                              "{\"id\":\"facebook\",\"label\":\"Facebook\",\"membership\":{\"free\":[\"brands\"],"
+                              "\"pro\":[\"brands\"]}}]}}}",
                               &count, err, sizeof(err)));
-    TEST_ASSERT_EQUAL_INT(2, count);
+    TEST_ASSERT_EQUAL_INT(3, count);
     TEST_ASSERT_EQUAL_INT(
         0, pav_iconlib_ingest("material",
                               "{\"icons\":[{\"name\":\"home\",\"popularity\":9,\"tags\":[\"house\",\"building\"]},"
@@ -312,6 +314,11 @@ void test_icon_assets_and_catalog(void) {
     data = call_ok("iconlib.search", "{\"id\":\"fontawesome\",\"query\":\"house\"}");
     TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(json_object_get(data, "icons")));
     TEST_ASSERT_EQUAL_STRING("house", json_string_value(json_object_get(json_array_get(json_object_get(data, "icons"), 0), "name")));
+    TEST_ASSERT_EQUAL_STRING("", json_string_value(json_object_get(json_array_get(json_object_get(data, "icons"), 0), "family")));
+    json_decref(data);
+    data = call_ok("iconlib.search", "{\"id\":\"fontawesome\",\"query\":\"facebook\"}");
+    TEST_ASSERT_EQUAL_INT(1, (int)json_array_size(json_object_get(data, "icons")));
+    TEST_ASSERT_EQUAL_STRING("brands", json_string_value(json_object_get(json_array_get(json_object_get(data, "icons"), 0), "family")));
     json_decref(data);
     data = call_ok("iconlib.search", "{\"id\":\"fontawesome\",\"query\":\"%\"}");
     TEST_ASSERT_EQUAL_INT(0, (int)json_array_size(json_object_get(data, "icons")));

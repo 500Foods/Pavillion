@@ -21,13 +21,14 @@
 #define WARN_BYTES ((int64_t)128 * 1024 * 1024)
 #define META_ROW_MAX 20000
 #define ICON_NAME_MAX 80
+#define FAMILY_MAX 15
 #define LABEL_MAX 200
 #define KEYWORD_MAX 500
 #define QUERY_MAX 64
 
 static const char k_fa_url[] = "https://api.fontawesome.com";
 static const char k_fa_body[] =
-    "{\"query\":\"query { release(version:\\\"7.3.1\\\") { icons { id label } } }\"}";
+    "{\"query\":\"query { release(version:\\\"7.3.1\\\") { icons { id label membership { free pro } } } }\"}";
 static const char k_material_url[] =
     "https://fonts.google.com/metadata/icons?key=material_symbols&incomplete=true";
 
@@ -52,6 +53,7 @@ typedef struct MetaRow {
     char name[ICON_NAME_MAX + 1];
     char label[LABEL_MAX + 1];
     char keywords[KEYWORD_MAX + 1];
+    char family[FAMILY_MAX + 1];
     int popularity;
 } MetaRow;
 
@@ -1166,7 +1168,7 @@ static void keywords_from(json_t *icon, const char *label, char *out, size_t cap
 }
 
 static int push_row(MetaRow **rows, int *count, int *cap, const char *name, const char *label, const char *keywords,
-                    int popularity) {
+                    const char *family, int popularity) {
     MetaRow *row;
 
     if (!name_ok(name)) {
@@ -1193,6 +1195,7 @@ static int push_row(MetaRow **rows, int *count, int *cap, const char *name, cons
     copy_clipped(row->name, sizeof(row->name), name);
     copy_clipped(row->label, sizeof(row->label), label != NULL && label[0] != '\0' ? label : name);
     copy_clipped(row->keywords, sizeof(row->keywords), keywords != NULL && keywords[0] != '\0' ? keywords : row->label);
+    copy_clipped(row->family, sizeof(row->family), family != NULL ? family : "");
     row->popularity = popularity < 0 ? 0 : popularity;
     (*count)++;
     return 0;
@@ -1217,6 +1220,33 @@ static const char *json_after_prefix(const char *body) {
         }
     }
     return p;
+}
+
+/* A brand is a membership style string, not a familyStylesByLicense walk.
+   That field on the full catalog exceeds Font Awesome's complexity cap. */
+static int style_list_has_brands(json_t *list) {
+    size_t i;
+
+    if (!json_is_array(list)) {
+        return 0;
+    }
+    for (i = 0; i < json_array_size(list); i++) {
+        const char *style = json_string_value(json_array_get(list, i));
+        if (style != NULL && strcmp(style, "brands") == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int membership_is_brand(json_t *icon) {
+    json_t *membership = json_object_get(icon, "membership");
+
+    if (!json_is_object(membership)) {
+        return 0;
+    }
+    return style_list_has_brands(json_object_get(membership, "free"))
+        || style_list_has_brands(json_object_get(membership, "pro"));
 }
 
 static int rows_from_body(const char *library_id, const char *body, MetaRow **rows, int *count, char *err, size_t err_len) {
@@ -1253,6 +1283,7 @@ static int rows_from_body(const char *library_id, const char *body, MetaRow **ro
         const char *name;
         const char *label;
         char keywords[KEYWORD_MAX + 1];
+        const char *family = "";
         int popularity = 0;
         int pushed;
 
@@ -1263,6 +1294,9 @@ static int rows_from_body(const char *library_id, const char *body, MetaRow **ro
             name = json_string_value(json_object_get(icon, "id"));
             label = json_string_value(json_object_get(icon, "label"));
             copy_clipped(keywords, sizeof(keywords), label != NULL ? label : name);
+            if (membership_is_brand(icon)) {
+                family = "brands";
+            }
         } else {
             json_t *pop = json_object_get(icon, "popularity");
             name = json_string_value(json_object_get(icon, "name"));
@@ -1273,7 +1307,7 @@ static int rows_from_body(const char *library_id, const char *body, MetaRow **ro
                 popularity = v > 2000000000 ? 2000000000 : (int)v;
             }
         }
-        pushed = push_row(rows, count, &cap, name, label, keywords, popularity);
+        pushed = push_row(rows, count, &cap, name, label, keywords, family, popularity);
         if (pushed != 0) {
             free(*rows);
             *rows = NULL;
@@ -1308,12 +1342,13 @@ static int ingest_job(void *ctx, sqlite3 *db) {
     for (i = 0; i < job->count; i++) {
         const MetaRow *row = &job->rows[i];
         if (pav_db_prepare(db, "icon.meta.insert",
-                           "INSERT INTO icon_meta (library_id, name, label, keywords, popularity) "
-                           "VALUES (?1, ?2, ?3, ?4, ?5)",
+                           "INSERT INTO icon_meta (library_id, name, label, keywords, popularity, family) "
+                           "VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                            &stmt) != 0 ||
             pav_db_bind_text(stmt, 1, job->library_id) != 0 || pav_db_bind_text(stmt, 2, row->name) != 0 ||
             pav_db_bind_text(stmt, 3, row->label) != 0 || pav_db_bind_text(stmt, 4, row->keywords) != 0 ||
-            pav_db_bind_int(stmt, 5, row->popularity) != 0 || pav_db_step(stmt) != SQLITE_DONE) {
+            pav_db_bind_int(stmt, 5, row->popularity) != 0 || pav_db_bind_text(stmt, 6, row->family) != 0 ||
+            pav_db_step(stmt) != SQLITE_DONE) {
             return -1;
         }
     }
@@ -1524,7 +1559,7 @@ int pav_cmd_iconlib_search(json_t *args, json_t **data, PavError *err) {
     db = pav_db_read_handle(read);
     if (filtered) {
         if (pav_db_prepare(db, "icon.meta.search",
-                           "SELECT name, label FROM icon_meta WHERE library_id = ?1 AND "
+                           "SELECT name, label, family FROM icon_meta WHERE library_id = ?1 AND "
                            "(name LIKE ?2 ESCAPE '\\' OR label LIKE ?2 ESCAPE '\\' OR keywords LIKE ?2 ESCAPE '\\') "
                            "ORDER BY popularity DESC, name LIMIT ?3",
                            &stmt) != 0 ||
@@ -1535,7 +1570,7 @@ int pav_cmd_iconlib_search(json_t *args, json_t **data, PavError *err) {
             return -1;
         }
     } else if (pav_db_prepare(db, "icon.meta.page",
-                              "SELECT name, label FROM icon_meta WHERE library_id = ?1 "
+                              "SELECT name, label, family FROM icon_meta WHERE library_id = ?1 "
                               "ORDER BY popularity DESC, name LIMIT ?2",
                               &stmt) != 0 ||
                pav_db_bind_text(stmt, 1, id) != 0 || pav_db_bind_int(stmt, 2, (int)limit) != 0) {
@@ -1556,8 +1591,10 @@ int pav_cmd_iconlib_search(json_t *args, json_t **data, PavError *err) {
         json_t *row = json_object();
         const char *name = (const char *)sqlite3_column_text(stmt, 0);
         const char *label = (const char *)sqlite3_column_text(stmt, 1);
+        const char *family = (const char *)sqlite3_column_text(stmt, 2);
         if (row == NULL || json_object_set_new(row, "name", json_string(name != NULL ? name : "")) != 0 ||
             json_object_set_new(row, "label", json_string(label != NULL ? label : "")) != 0 ||
+            json_object_set_new(row, "family", json_string(family != NULL ? family : "")) != 0 ||
             json_array_append_new(icons, row) != 0) {
             json_decref(row);
             json_decref(obj);

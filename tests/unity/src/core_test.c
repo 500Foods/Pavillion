@@ -3730,6 +3730,19 @@ void test_export_write_text(void) {
     free(written);
     TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
     ASSERT_MODE(0600, st);
+    TEST_ASSERT_TRUE(snprintf(args, sizeof(args), "{\"path\":\"%s\"}", path) < (int)sizeof(args));
+    root = call_reply("export.read_text", args);
+    TEST_ASSERT_TRUE(json_is_true(json_object_get(root, "ok")));
+    TEST_ASSERT_EQUAL_STRING("Number,Name\n001,Caf\xc3\xa9\n",
+                             json_string_value(json_object_get(json_object_get(root, "data"), "text")));
+    json_decref(root);
+    TEST_ASSERT_TRUE(snprintf(args, sizeof(args), "{\"path\":\"%s/missing.json\"}", g_cfg_dir) < (int)sizeof(args));
+    root = call_reply("export.read_text", args);
+    assert_call_error(root, "bad_args", "does not exist");
+    json_decref(root);
+    root = call_reply("export.read_text", "{}");
+    assert_call_error(root, "bad_args", "requires");
+    json_decref(root);
 
     root = call_reply("export.write_text", "{\"path\":\"rel.csv\",\"text\":\"x\"}");
     assert_call_error(root, "bad_args", "absolute");
@@ -4515,7 +4528,7 @@ void test_activity_history_capped(void) {
     make_slot(g_cfg_dir, sizeof(g_cfg_dir));
     TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
     snprintf(path, sizeof(path), "%s/default.sqlite", g_cfg_dir);
-    TEST_ASSERT_EQUAL_INT(4, user_version(path));
+    TEST_ASSERT_EQUAL_INT(5, user_version(path));
     TEST_ASSERT_EQUAL_INT(PAV_STORE_TABLES, user_table_count(path));
 
     for (i = 0; i < 501; i++) {
@@ -4558,7 +4571,7 @@ void test_activity_history_capped(void) {
 
     pavillion_stop();
     TEST_ASSERT_EQUAL_INT(0, pavillion_start(g_cfg_dir, NULL, 0));
-    TEST_ASSERT_EQUAL_INT(4, user_version(path));
+    TEST_ASSERT_EQUAL_INT(5, user_version(path));
     rows = activity_rows(1);
     TEST_ASSERT_EQUAL_INT(501, (int)json_array_size(rows));
     TEST_ASSERT_NOT_NULL(find_act(rows, failed_text));
@@ -5252,8 +5265,9 @@ void test_migrate_fresh_to_v1(void) {
     make_slot(g_cfg_dir, sizeof(g_cfg_dir));
     snprintf(path, sizeof(path), "%s/mail.sqlite", g_cfg_dir);
     open_v1(path);
-    TEST_ASSERT_EQUAL_INT(4, user_version(path));
+    TEST_ASSERT_EQUAL_INT(5, user_version(path));
     TEST_ASSERT_EQUAL_INT(PAV_STORE_TABLES, user_table_count(path));
+    TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM pragma_table_info('icon_meta') WHERE name='family'"));
     TEST_ASSERT_TRUE(journal_is_wal(path));
     for (i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
         TEST_ASSERT_TRUE(table_exists(path, names[i]));
@@ -5293,11 +5307,11 @@ void test_migrate_is_idempotent(void) {
     g_test_store = store;
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_migrate(store, err, sizeof(err)), err);
-    TEST_ASSERT_EQUAL_INT(4, user_version(path));
+    TEST_ASSERT_EQUAL_INT(5, user_version(path));
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM activity WHERE id=7 AND title='kept'"));
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_migrate(store, err, sizeof(err)), err);
-    TEST_ASSERT_EQUAL_INT(4, user_version(path));
+    TEST_ASSERT_EQUAL_INT(5, user_version(path));
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM activity WHERE id=7 AND title='kept'"));
     TEST_ASSERT_EQUAL_INT(PAV_STORE_TABLES, user_table_count(path));
     close_test_store();
@@ -5320,7 +5334,7 @@ void test_newer_db_is_error(void) {
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT(-1, pav_store_migrate(store, err, sizeof(err)));
     TEST_ASSERT_NOT_NULL(strstr(err, "9"));
-    TEST_ASSERT_NOT_NULL(strstr(err, "4"));
+    TEST_ASSERT_NOT_NULL(strstr(err, "5"));
     TEST_ASSERT_NOT_NULL(strstr(err, "newer"));
     close_test_store();
 }
@@ -5396,7 +5410,7 @@ void test_migrate_v1_to_v2(void) {
     g_test_store = store;
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_migrate(store, err, sizeof(err)), err);
-    TEST_ASSERT_EQUAL_INT(4, user_version(path));
+    TEST_ASSERT_EQUAL_INT(5, user_version(path));
     TEST_ASSERT_TRUE(table_exists(path, "email"));
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM pragma_table_info('email') WHERE name='list_id'"));
     TEST_ASSERT_EQUAL_INT(
@@ -5409,7 +5423,7 @@ void test_migrate_v1_to_v2(void) {
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM kv WHERE key='keep' AND value='yes'"));
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, pav_store_migrate(store, err, sizeof(err)), err);
-    TEST_ASSERT_EQUAL_INT(4, user_version(path));
+    TEST_ASSERT_EQUAL_INT(5, user_version(path));
     TEST_ASSERT_EQUAL_INT(1, scalar_int(path, "SELECT count(*) FROM activity WHERE id=4 AND title='kept-v1'"));
     close_test_store();
 }

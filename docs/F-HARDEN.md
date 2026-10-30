@@ -89,7 +89,7 @@ connect-src ipc: http://ipc.localhost https://ka-p.fontawesome.com https://api.i
   - Lucide is not a separate row. It can come through Iconify once mapping exists. Font Awesome Free on jsDelivr is not a row. Pro stays the kit.
 - The FA kit rules above (kit only, no vendoring, `'unsafe-inline'`) still hold. Material Symbols and Remix Icon are Apache-2.0. Bootstrap Icons, Phosphor, Tabler Icons, and Iconify are MIT. None of those files are vendored. A webfont paints with an `<i class>` the sanitizer already allows (`bi`, `ph`, `ti`, `ri`). The Wizard does not emit those class systems yet.
 - Load order: enabled libraries load in list order at startup. A change to `id`, `type`, `url`, or `enabled` reloads the window, because a script cannot be unloaded. A name change does not reload. A style change reloads only when it changes the URL (Material, Phosphor).
-- Search metadata is not bundled and is not loaded by the page. The core fetches it and stores rows in the profile database: Font Awesome from `https://api.fontawesome.com` (`release(version:"7.3.1").icons { id label }`), Material Symbols from `https://fonts.google.com/metadata/icons?key=material_symbols&incomplete=true` (the `)]}'` prefix is skipped). Those hosts are not added to the page CSP.
+- Search metadata is not bundled and is not loaded by the page. The core fetches it and stores rows in the profile database: Font Awesome from `https://api.fontawesome.com` (`release(version:"7.3.1").icons { id label membership { free pro } }`), Material Symbols from `https://fonts.google.com/metadata/icons?key=material_symbols&incomplete=true` (the `)]}'` prefix is skipped). Those hosts are not added to the page CSP.
 
 **Per-icon HTML.**
 

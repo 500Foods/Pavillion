@@ -117,6 +117,7 @@ export function mockTransport() {
   let logHistory = [];
   let logCapMb = 10;
   const LOG_ROW_BYTES = 200;
+  const exportFiles = new Map();
 
   async function call(cmd, args) {
     const input = args ?? {};
@@ -490,7 +491,17 @@ export function mockTransport() {
       if (typeof input.path !== "string" || typeof input.text !== "string") {
         throw fail("bad_args", "export.write_text requires path and text");
       }
+      exportFiles.set(input.path, input.text);
       return { bytes: new TextEncoder().encode(input.text).length };
+    }
+    if (cmd === "export.read_text") {
+      if (typeof input.path !== "string" || input.path === "") {
+        throw fail("bad_args", "export.read_text requires path");
+      }
+      if (!exportFiles.has(input.path)) {
+        throw fail("bad_args", "file does not exist");
+      }
+      return { text: exportFiles.get(input.path) };
     }
     if (cmd === "log.export") {
       if (typeof input.path !== "string" || !isObject(input.filter)) {

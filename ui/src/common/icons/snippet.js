@@ -1,5 +1,6 @@
 /* Library, Foundry, and image outputs. The document stays text until Accept. */
 import { sanitizeIconHtml } from "../iconsan.js";
+import { REGISTRY } from "./registry.js";
 
 export const PNG_RENDER = 128;
 
@@ -60,6 +61,9 @@ const FA_FAMILY_ROWS = [
   ] },
   { id: "thumbprint", label: "Thumbprint", prefix: "fa-thumbprint", styles: [
     { id: "light", label: "Light", cls: "fa-light", prefixes: ["fatl"] },
+  ] },
+  { id: "graphite", label: "Graphite", prefix: "fa-graphite", styles: [
+    { id: "thin", label: "Thin", cls: "fa-thin", prefixes: ["fagt"] },
   ] },
   { id: "utility", label: "Utility", prefix: "fa-utility", styles: [
     { id: "semibold", label: "Semibold", cls: "fa-semibold", prefixes: ["fausb"] },
@@ -160,6 +164,17 @@ export function faCatalog(lookup) {
     return built;
   }
   return fallbackCatalog();
+}
+
+/* The menu lists every family the Pro+ kit can draw. Placement still uses
+   faCatalog, which keeps only the prefixes the kit has filled. */
+export function faFamilyList(lookup) {
+  const explicit = arguments.length > 0;
+  const fa = explicit ? lookup : globalThis.FontAwesome;
+  if (fa && typeof fa === "object") {
+    return FA_FAMILY_ROWS.map(copyFamily);
+  }
+  return fallbackCatalog().families;
 }
 
 function familyOf(catalog, familyId) {
@@ -498,10 +513,12 @@ export function librarySnippet(choice) {
     const color = COLOR_OK.test(pick.color || "") ? ` style="color: ${pick.color}"` : "";
     return `<span class="material-symbols-${face}"${color}>${name}</span>`;
   }
-  const catalog = faCatalog();
-  const family = familyOf(catalog, pick.family)
-    || familyOf(catalog, "sharp-duotone")
-    || catalog.families[0];
+  /* The class follows the chosen family, including Brands and Graphite, even
+     when the kit has not filled that prefix. Placement still uses faCatalog. */
+  const families = faFamilyList();
+  const family = families.find((item) => item.id === pick.family)
+    || families.find((item) => item.id === "sharp-duotone")
+    || families[0];
   const style = family.styles.find((item) => item.id === pick.style) || family.styles[0];
   const extras = [];
   const flags = allowedFlags(pick.flags);
@@ -706,4 +723,49 @@ export function dropOverride(icons, key) {
   const next = { ...(icons || {}) };
   delete next[key];
   return next;
+}
+
+const ICON_EXPORT_KIND = "pavillion.icons";
+
+/* Saved overrides only. A key equal to its shipped default is still included
+   when it is stored. Recent icons and the theme are not. */
+export function iconOverrideDocument(icons) {
+  const map = icons && typeof icons === "object" ? icons : {};
+  const out = {};
+  for (const entry of REGISTRY) {
+    const value = map[entry.key];
+    if (typeof value === "string" && value.trim() !== "") {
+      out[entry.key] = value;
+    }
+  }
+  return `${JSON.stringify({ kind: ICON_EXPORT_KIND, icons: out }, null, 2)}\n`;
+}
+
+/* Null when the file is not an icon export. An empty object clears overrides. */
+export function iconOverridesFromText(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(String(text || ""));
+  } catch {
+    return null;
+  }
+  if (!parsed || parsed.kind !== ICON_EXPORT_KIND || !parsed.icons || typeof parsed.icons !== "object" || Array.isArray(parsed.icons)) {
+    return null;
+  }
+  const known = new Set(REGISTRY.map((entry) => entry.key));
+  const out = {};
+  for (const [key, value] of Object.entries(parsed.icons)) {
+    if (!known.has(key) || typeof value !== "string") {
+      continue;
+    }
+    const trimmed = value.trim();
+    if (trimmed === "") {
+      continue;
+    }
+    const checked = sanitizeIconHtml(trimmed);
+    if (checked.ok) {
+      out[key] = trimmed;
+    }
+  }
+  return out;
 }

@@ -1,0 +1,1 @@
+ALTER TABLE icon_meta ADD COLUMN family TEXT NOT NULL DEFAULT '';

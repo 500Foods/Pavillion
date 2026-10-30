@@ -15,7 +15,7 @@ import {
 } from "../src/common/iconhosts.js";
 import { registryEntry } from "../src/common/icons/registry.js";
 import { createIconSearch } from "../src/common/icons/search.js";
-import { PNG_RENDER, faCatalog, faChoiceFromHtml, faIconKnown, faIconPlace, faKitNames, iconFormat, iconFormatLabel, paintRender } from "../src/common/icons/snippet.js";
+import { PNG_RENDER, faCatalog, faChoiceFromHtml, faFamilyList, faIconKnown, faIconPlace, faKitNames, iconFormat, iconFormatLabel, iconOverrideDocument, iconOverridesFromText, paintRender } from "../src/common/icons/snippet.js";
 import { applyIconWizardZoom, openIconWizard } from "../src/common/icons/wizard.js";
 
 const src = join(dirname(fileURLToPath(import.meta.url)), "../src");
@@ -37,6 +37,10 @@ function buttonNamed(root, text) {
   return [...root.querySelectorAll("button")].find((node) => node.textContent === text || node.getAttribute("aria-label") === text);
 }
 
+function waitSearch() {
+  return new Promise((resolve) => setTimeout(resolve, 600));
+}
+
 test("a host outside the shipped list is refused", () => {
   expect(libraryUrlError("script", "https://kit.fontawesome.com/45801522ef.js")).toBe("");
   expect(libraryUrlError("stylesheet", "https://fonts.googleapis.com/css2?family=Material+Symbols+Sharp")).toBe("");
@@ -54,6 +58,42 @@ test("a host outside the shipped list is refused", () => {
   const legacy = [{ id: "fontawesome", name: "Font Awesome", type: "script", url: "https://kit.fontawesome.com/45801522ef.js", enabled: true }];
   expect(mergeShippedLibraries(legacy).map((entry) => entry.id)).toEqual(["fontawesome", "material", "iconify", "bootstrap", "phosphor", "tabler", "remix"]);
   expect(mergeShippedLibraries([{ ...legacy[0], group: "fontawesome" }])).toHaveLength(1);
+});
+
+test("the family menu lists every Pro+ family when a kit object exists", () => {
+  expect(faFamilyList(null).map((item) => item.id)).toEqual(["classic", "sharp", "duotone", "sharp-duotone", "brands"]);
+  const loaded = faFamilyList({});
+  expect(loaded.map((item) => item.id)).toContain("graphite");
+  expect(loaded).toHaveLength(22);
+});
+
+test("an icon export is the saved overrides", () => {
+  const text = iconOverrideDocument({
+    "nav.contacts": '<i class="fa-solid fa-star"></i>',
+    "no.such": '<i class="fa-solid fa-star"></i>',
+    "nav.help": "   ",
+  });
+  const parsed = JSON.parse(text);
+  expect(parsed.kind).toBe("pavillion.icons");
+  expect(Object.keys(parsed.icons)).toEqual(["nav.contacts"]);
+  expect(text.endsWith("\n")).toBe(true);
+  expect(iconOverridesFromText(text)["nav.contacts"]).toContain("fa-star");
+  expect(iconOverridesFromText('{"kind":"other","icons":{}}')).toBeNull();
+  expect(iconOverridesFromText('{"kind":"pavillion.icons","icons":[]}')).toBeNull();
+  expect(iconOverridesFromText('{"kind":"pavillion.icons","icons":null}')).toBeNull();
+  expect(iconOverridesFromText("not json")).toBeNull();
+  const mixed = iconOverridesFromText(JSON.stringify({
+    kind: "pavillion.icons",
+    icons: {
+      "nav.contacts": '  <i class="fa-solid fa-star"></i>  ',
+      "missing.key": '<i class="fa-solid fa-star"></i>',
+      "nav.help": "<img src=x onerror=alert(1)>",
+      "nav.mail": 12,
+    },
+  }));
+  expect(Object.keys(mixed)).toEqual(["nav.contacts"]);
+  expect(mixed["nav.contacts"]).toBe('<i class="fa-solid fa-star"></i>');
+  expect(iconOverridesFromText('{"kind":"pavillion.icons","icons":{}}')).toEqual({});
 });
 
 test("a PNG render is 128 by 128", () => {
@@ -115,7 +155,7 @@ test("a Material library pick stores a ligature span", async () => {
   const search = dialog.querySelector(".pav-module-search");
   expect(search.placeholder).toBe("🔍 Search Material Symbols");
   search.dispatchEvent(new Event("input"));
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await waitSearch();
   const hit = dialog.querySelector('.pav-icon-hit[aria-label="Inbox"]');
   expect(hit.querySelector("span").textContent).toBe("inbox");
   hit.click();
@@ -129,6 +169,14 @@ test("the preview stack is the theme, then dark and light", async () => {
   expect(css).toMatch(/\.pav-icon-square\s*\{[^}]*width:\s*128px/);
   expect(css).toMatch(/\.pav-icon-chip\s*\{[^}]*width:\s*128px/);
   expect(css).toMatch(/\.pav-icon-preview-col\s*\{[^}]*border-right:/);
+  expect(css).toMatch(/\.pav-icon-preview-col\s*\{[^}]*width:\s*calc\(128px \+ 1\.3rem\)/);
+  expect(css).toMatch(/\.pav-icon-preview-col\s*\{[^}]*padding:\s*0\.65rem 0/);
+  const acceptEdge = css.match(/\.pav-icon-bar button\.pav-dialog-ok,[\s\S]*?\n\}/);
+  expect(acceptEdge[0]).toContain("border-left:");
+  expect(acceptEdge[0]).not.toContain("border-right");
+  expect(css).toMatch(/\.pav-icon-bar button\.pav-icon-close \{\s*border-right:/);
+  expect(css).toMatch(/\.pav-icon-flags \{[^}]*border-right:/);
+  expect(css).toMatch(/\.pav-icon-flags > button\.pav-icon-menu \{[^}]*border-right:\s*0/);
   expect(css).toMatch(/\.pav-icon-theme-label\s*\{[^}]*border-top:/);
   expect(css).toMatch(/\.pav-icon-theme-label\s*\{[^}]*border-bottom:/);
   expect(css).toMatch(/\.pav-icon-label\s*\{[^}]*color:\s*var\(--pav-accent\)/);
@@ -153,9 +201,8 @@ test("the preview stack is the theme, then dark and light", async () => {
   const light = dialog.querySelector(".pav-icon-chip.is-light");
   expect(square.classList.contains("is-dark")).toBe(false);
   expect(square.classList.contains("is-light")).toBe(false);
-  expect(dialog.querySelector(".pav-icon-theme-label").textContent).toBe("Theme");
-  expect(dialog.querySelector(".pav-icon-ground.is-dark .pav-icon-ground-label").textContent).toBe("Dark");
-  expect(dialog.querySelector(".pav-icon-ground.is-light .pav-icon-ground-label").textContent).toBe("Light");
+  expect([...dialog.querySelectorAll(".pav-icon-theme-label")].map((node) => node.textContent)).toEqual(["Theme", "Dark", "Light"]);
+  expect(dialog.querySelector(".pav-icon-ground")).toBeNull();
   expect(dark.tagName).toBe("DIV");
   expect(light.tagName).toBe("DIV");
   expect(square.querySelector("i").className).toContain("fa-star");
@@ -168,6 +215,9 @@ test("the preview stack is the theme, then dark and light", async () => {
   expect(bars[0].querySelector(".pav-icon-crumb")).not.toBeNull();
   expect(bars[0].querySelector(".pav-icon-close")).not.toBeNull();
   expect(bars[1].getAttribute("aria-label")).toBe("Icon presets");
+  expect(bars[1].firstElementChild.classList.contains("pav-icon-preset-pin")).toBe(true);
+  expect(bars[1].firstElementChild.textContent).toBe("Default");
+  expect(bars[1].querySelector(".pav-icon-preset-scroll").textContent).not.toContain("Default");
   expect(bars[2].getAttribute("aria-label")).toBe("Icon Format");
   expect(bars[2].querySelector(".pav-module-title").textContent).toBe("Icon Format");
   expect(bars[2].querySelector(".pav-icon-label")).not.toBeNull();
@@ -270,7 +320,7 @@ test("a Font Awesome search paints hits with the third toolbar", async () => {
   const search = dialog.querySelector(".pav-module-search");
   search.value = "clock";
   search.dispatchEvent(new Event("input"));
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await waitSearch();
   expect(seen).toEqual(["clock"]);
   const hits = [...dialog.querySelectorAll(".pav-icon-hit")];
   expect(hits.map((node) => node.getAttribute("aria-label"))).toEqual(["Clock", "Alarm Clock"]);
@@ -332,7 +382,7 @@ test("a kit that cannot draw an icon leaves that hit out", async () => {
     expect(dialog.querySelector(".pav-icon-crumb-key").textContent).toBe("nav.contacts");
     expect(dialog.querySelector(".pav-icon-crumb-format").textContent).toBe("Font Awesome");
     dialog.querySelector(".pav-module-search").dispatchEvent(new Event("input"));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitSearch();
     expect([...dialog.querySelectorAll(".pav-icon-hit-name")].map((node) => node.textContent)).toEqual(["Book"]);
     buttonNamed(dialog, "Cancel").click();
     await expect(pending).resolves.toBeNull();
@@ -398,7 +448,7 @@ test("a search shows an icon the kit draws in another family", async () => {
     const search = dialog.querySelector(".pav-module-search");
     search.value = "clock";
     search.dispatchEvent(new Event("input"));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitSearch();
     expect(seen[0]).toMatchObject({ id: "fontawesome", query: "clock", limit: 200 });
     const clock = dialog.querySelector('.pav-icon-hit[aria-label="Clock"]');
     expect(clock.querySelector("i").className).toBe("fa-solid fa-clock");
@@ -407,7 +457,7 @@ test("a search shows an icon the kit draws in another family", async () => {
     expect(dialog.querySelector(".pav-icon-square i").className).toBe("fa-solid fa-clock");
     search.value = "user";
     search.dispatchEvent(new Event("input"));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitSearch();
     const user = dialog.querySelector('.pav-icon-hit[aria-label="user"]');
     expect(user.querySelector("i").className).toBe("fa-solid fa-user");
     user.click();
@@ -461,7 +511,7 @@ test("a brand icon is drawn with fa-brands", async () => {
     const search = dialog.querySelector(".pav-module-search");
     search.value = "git";
     search.dispatchEvent(new Event("input"));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitSearch();
     const github = dialog.querySelector('.pav-icon-hit[aria-label="GitHub"]');
     const clock = dialog.querySelector('.pav-icon-hit[aria-label="Clock"]');
     expect(github.querySelector("i").className).toBe("fa-brands fa-github");
@@ -482,6 +532,89 @@ test("a brand icon is drawn with fa-brands", async () => {
     }
     parent.remove();
   }
+});
+
+test("a catalog row marked brands is drawn with fa-brands", async () => {
+  const fa = {
+    library: { definitions: { fasds: { star: { iconName: "star" } } } },
+    findIconDefinition() {
+      return { iconName: "loose" };
+    },
+  };
+  const previous = globalThis.FontAwesome;
+  globalThis.FontAwesome = fa;
+  const parent = document.createElement("div");
+  document.body.append(parent);
+  try {
+    const pending = openIconWizard(parent, {
+      title: "Star",
+      current: '<i class="fa-sharp-duotone fa-solid fa-star"></i>',
+      search: async () => ({
+        icons: [{ name: "facebook", label: "Facebook", family: "brands" }],
+      }),
+    });
+    const dialog = parent.querySelector("dialog");
+    const search = dialog.querySelector(".pav-module-search");
+    search.value = "facebook";
+    search.dispatchEvent(new Event("input"));
+    await waitSearch();
+    const hit = dialog.querySelector('.pav-icon-hit[aria-label="Facebook"]');
+    expect(hit.querySelector("i").className).toBe("fa-brands fa-facebook");
+    hit.click();
+    const family = [...dialog.querySelectorAll("label")].find((node) => node.firstChild && node.firstChild.textContent === "Family").querySelector("select");
+    expect(family.value).toBe("brands");
+    buttonNamed(dialog, "Cancel").click();
+    await expect(pending).resolves.toBeNull();
+  } finally {
+    if (previous === undefined) {
+      delete globalThis.FontAwesome;
+    } else {
+      globalThis.FontAwesome = previous;
+    }
+    parent.remove();
+  }
+});
+
+test("a search waits half a second and does not overlap", async () => {
+  const parent = document.createElement("div");
+  document.body.append(parent);
+  const seen = [];
+  let release = () => {};
+  const pending = openIconWizard(parent, {
+    title: "Book",
+    current: '<i class="fa-solid fa-star"></i>',
+    search: async (body) => {
+      seen.push(body.query);
+      if (body.query === "book") {
+        await new Promise((resolve) => {
+          release = resolve;
+        });
+      }
+      return { icons: [] };
+    },
+  });
+  const dialog = parent.querySelector("dialog");
+  const search = dialog.querySelector(".pav-module-search");
+  search.value = "bo";
+  search.dispatchEvent(new Event("input"));
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(seen).toEqual([]);
+  search.value = "book";
+  search.dispatchEvent(new Event("input"));
+  await waitSearch();
+  expect(seen).toEqual(["book"]);
+  search.value = "books";
+  search.dispatchEvent(new Event("input"));
+  await waitSearch();
+  expect(seen).toEqual(["book"]);
+  release();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(seen).toEqual(["book"]);
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  expect(seen).toEqual(["book", "books"]);
+  buttonNamed(dialog, "Cancel").click();
+  await expect(pending).resolves.toBeNull();
+  parent.remove();
 });
 
 test("family and style open the same list as flags", async () => {
@@ -607,11 +740,23 @@ test("a flag keeps the open icon", async () => {
   expect(icon.getAttribute("style") || "").toContain("#800000");
   expect(menu.querySelector('[data-flag="fa-lg"]').getAttribute("aria-pressed")).toBe("false");
   expect(menu.querySelector('[data-flag="fa-2x"]').getAttribute("aria-pressed")).toBe("true");
+  const flagsBtn = buttonNamed(dialog, "Flags");
+  expect(flagsBtn.querySelector(".pav-icon-menu-label").textContent).toBe("Flags (2)");
   menu.querySelector('[data-flag="fa-2x"]').click();
   expect(dialog.querySelector(".pav-icon-square i").className).toContain("fa-clock");
   expect(dialog.querySelector(".pav-icon-square i").className).toContain("fa-swap-opacity");
   expect(dialog.querySelector(".pav-icon-square i").className).not.toContain("fa-2x");
   expect(dialog.querySelector(".pav-icon-square i").className).not.toContain("fa-star");
+  expect(flagsBtn.querySelector(".pav-icon-menu-label").textContent).toBe("Flags (1)");
+  const clear = dialog.querySelector(".pav-icon-flag-clear");
+  expect(clear.hidden).toBe(false);
+  expect(clear.parentElement.classList.contains("pav-icon-flags")).toBe(true);
+  expect(flagsBtn.nextElementSibling).toBe(clear);
+  clear.click();
+  expect(flagsBtn.querySelector(".pav-icon-menu-label").textContent).toBe("Flags");
+  expect(dialog.querySelector(".pav-icon-flag-clear").hidden).toBe(true);
+  expect(dialog.querySelector(".pav-icon-square i").className).not.toContain("fa-swap-opacity");
+  expect(dialog.querySelector(".pav-icon-square i").className).not.toContain("fa-2x");
   buttonNamed(dialog, "Cancel").click();
   await expect(pending).resolves.toBeNull();
   expect(asked).toBe(1);
@@ -690,8 +835,8 @@ test("family and style follow the loaded kit and the fallback is not cached as o
     const pending = openIconWizard(parent, { title: "Star", current: '<i class="fa-solid fa-star"></i>' });
     const dialog = parent.querySelector("dialog");
     const family = [...dialog.querySelectorAll("label")].find((node) => node.firstChild && node.firstChild.textContent === "Family").querySelector("select");
-    expect([...family.options].map((option) => option.textContent)).toEqual(["Sharp Duotone", "Jelly"]);
-    expect(family.value).toBe("sharp-duotone");
+    expect([...family.options].map((option) => option.textContent)).toEqual(faFamilyList(kit).map((item) => item.label));
+    expect(family.value).toBe("classic");
     family.value = "jelly";
     family.dispatchEvent(new Event("change"));
     const style = [...dialog.querySelectorAll("label")].find((node) => node.firstChild && node.firstChild.textContent === "Style");
@@ -724,6 +869,9 @@ test("icon search refreshes an empty catalog once", async () => {
     iconlib: {
       async search(body) {
         calls.push(["search", body.id, body.query, body.limit]);
+        if (body.query === "facebook") {
+          return { icons: [{ name: "facebook", label: "Facebook", family: "" }] };
+        }
         if (body.query === "") {
           return { icons: [] };
         }
@@ -738,7 +886,7 @@ test("icon search refreshes an empty catalog once", async () => {
   const first = await search({ id: "fontawesome", query: "clock", limit: 80 });
   expect(first.icons[0].name).toBe("clock");
   expect(calls).toEqual([
-    ["search", "fontawesome", "", 1],
+    ["search", "fontawesome", "facebook", 5],
     ["refresh", "fontawesome"],
     ["search", "fontawesome", "clock", 80],
   ]);
@@ -751,6 +899,9 @@ test("icon search refreshes an empty catalog once", async () => {
     iconlib: {
       async search(body) {
         cached.push(body.query);
+        if (body.query === "facebook") {
+          return { icons: [{ name: "facebook", label: "Facebook", family: "brands" }] };
+        }
         return { icons: [{ name: "house", label: "House" }] };
       },
       async refresh() {
@@ -760,7 +911,7 @@ test("icon search refreshes an empty catalog once", async () => {
   });
   await ready({ id: "fontawesome", query: "house", limit: 80 });
   await ready({ id: "material", query: "home", limit: 80 });
-  expect(cached).toEqual(["", "house", "", "home"]);
+  expect(cached).toEqual(["facebook", "house", "", "home"]);
 
   const skipped = [];
   const generic = createIconSearch({
@@ -825,6 +976,9 @@ test("the wizard zooms on ctrl wheel and asks only after an edit", async () => {
   });
   const dialog = parent.querySelector("dialog");
   expect(dialog.style.getPropertyValue("--pav-wizard-zoom")).toBe("1");
+  dialog.querySelector(".pav-icon-crumb-bar").dispatchEvent(new WheelEvent("wheel", { deltaY: -120, ctrlKey: true, bubbles: true, cancelable: true }));
+  expect(dialog.style.getPropertyValue("--pav-wizard-zoom")).toBe("1");
+  expect(zooms).toEqual([]);
   dialog.dispatchEvent(new WheelEvent("wheel", { deltaY: -120, ctrlKey: true, bubbles: true, cancelable: true }));
   expect(dialog.style.getPropertyValue("--pav-wizard-zoom")).toBe("1.05");
   expect(zooms).toEqual([1.05]);

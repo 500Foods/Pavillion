@@ -58,6 +58,7 @@ export const DEFAULT_UI = {
     log: 1,
     helpIndex: 1,
     helpContent: 1,
+    filters: 1,
     tables: 1,
     details: 1,
     settings: 1,
@@ -91,6 +92,7 @@ export const ZOOM_KEYS = [
   "log",
   "helpIndex",
   "helpContent",
+  "filters",
   "tables",
   "details",
   "settings",
@@ -424,8 +426,8 @@ function flagBoxOf(raw) {
     return null;
   }
   return {
-    width: Math.min(480, Math.max(160, width)),
-    height: Math.min(640, Math.max(120, height)),
+    width: Math.min(360, Math.max(160, width)),
+    height: Math.min(880, Math.max(120, height)),
   };
 }
 
@@ -438,8 +440,12 @@ function zoomOf(raw) {
   if (src.details === undefined && src.accountsForm !== undefined) {
     src.details = src.accountsForm;
   }
+  if (src.filters === undefined && src.helpFilter !== undefined) {
+    src.filters = src.helpFilter;
+  }
   delete src.accountsTable;
   delete src.accountsForm;
+  delete src.helpFilter;
   const zoom = {};
   for (const key of ZOOM_KEYS) {
     zoom[key] = snapZoom(src[key] === undefined ? DEFAULT_UI.zoom[key] : src[key], key);

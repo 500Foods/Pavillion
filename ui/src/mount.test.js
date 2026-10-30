@@ -119,7 +119,7 @@ test("mount renders inside the element and unmount leaves the page", async () =>
     expect(shellZoom.min).toBe("0.5");
     expect(shellZoom.max).toBe("2");
     expect(shellZoom.step).toBe("0.05");
-    for (const key of ["navButtons", "navBody", "mailList", "mailDetail", "log", "helpIndex", "helpContent", "tables", "details", "settings"]) {
+    for (const key of ["navButtons", "navBody", "mailList", "mailDetail", "log", "helpIndex", "helpContent", "filters", "tables", "details", "settings"]) {
       const input = root.querySelector(`[data-zoom="${key}"] input`);
       expect(input.min).toBe("0.05");
       expect(input.max).toBe("5");
@@ -137,6 +137,7 @@ test("mount renders inside the element and unmount leaves the page", async () =>
     expect(resultZoom.max).toBe("3");
     expect(resultZoom.value).toBe("1");
     expect(resultZoom.closest("[data-zoom]").querySelector(".zoom-label").textContent).toBe("Icon results");
+    expect(root.querySelector('[data-zoom="filters"] .zoom-label').textContent).toBe("Filters");
     const topNav = root.querySelector(".nav > .nav-buttons");
     const bottomNav = root.querySelectorAll(".nav > .nav-buttons")[1];
     expect(topNav.matches(".nav > .nav-buttons:first-of-type")).toBe(true);

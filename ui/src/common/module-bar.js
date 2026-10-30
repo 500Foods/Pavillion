@@ -25,6 +25,9 @@ function iconButton(spec, documentRef) {
   }
   button.dataset.pavTip = spec.label;
   button.setAttribute("aria-label", spec.label);
+  if (spec.className) {
+    button.className = spec.className;
+  }
   if (spec.icon) {
     const icon = documentRef.createElement("i");
     icon.className = iconClassName(spec.icon);

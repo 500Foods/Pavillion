@@ -1,8 +1,8 @@
 /* Settings → Icons. The registry table, with the Wizard in the right pane.
    Overrides save on Accept. Cancel never writes the blob. */
 import { dropIconPaint } from "../iconsan.js";
-import { REGISTRY, iconNode, registryEntry, resolveIcon } from "./registry.js";
-import { dropOverride, iconFormat, iconFormatLabel, pushRecent, putOverride } from "./snippet.js";
+import { REGISTRY, iconClass, iconNode, registryEntry, resolveIcon } from "./registry.js";
+import { dropOverride, iconFormat, iconFormatLabel, iconOverrideDocument, iconOverridesFromText, pushRecent, putOverride } from "./snippet.js";
 import { openIconWizard, utf8Base64 } from "./wizard.js";
 import { ensureSplit, mountModuleTable } from "../../settings/split-table.js";
 
@@ -293,6 +293,94 @@ export function mountIconsPanel(root, ctx) {
     return defs;
   }
 
+  function toast(text) {
+    if (typeof ctx.toast === "function") {
+      ctx.toast(text);
+    }
+  }
+
+  async function exportIcons() {
+    const dialog = ctx.host && ctx.host.dialog;
+    const write = ctx.api && ctx.api.exports && ctx.api.exports.writeText;
+    if (!dialog || typeof dialog.save !== "function" || typeof write !== "function") {
+      toast("Export is not available.");
+      return;
+    }
+    let path;
+    try {
+      path = await dialog.save({
+        title: "Export icons",
+        defaultPath: "pavillion-icons.json",
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+    } catch {
+      toast("Export is not available.");
+      return;
+    }
+    if (path == null || path === "" || Array.isArray(path)) {
+      return;
+    }
+    try {
+      await write({ path: String(path), text: iconOverrideDocument(ui().icons) });
+    } catch {
+      toast("Could not export icons.");
+    }
+  }
+
+  async function importIcons() {
+    const dialog = ctx.host && ctx.host.dialog;
+    const read = ctx.api && ctx.api.exports && ctx.api.exports.readText;
+    if (!dialog || typeof dialog.open !== "function" || typeof read !== "function") {
+      toast("Import is not available.");
+      return;
+    }
+    let path;
+    try {
+      path = await dialog.open({
+        title: "Import icons",
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+    } catch {
+      toast("Import is not available.");
+      return;
+    }
+    if (path == null || path === "" || Array.isArray(path)) {
+      return;
+    }
+    let payload;
+    try {
+      payload = await read({ path: String(path) });
+    } catch {
+      toast("Could not import icons.");
+      return;
+    }
+    const next = iconOverridesFromText(payload && payload.text);
+    if (next == null) {
+      toast("That file is not an icon export.");
+      return;
+    }
+    const ask = typeof ctx.confirm === "function" ? ctx.confirm : () => Promise.resolve(true);
+    const ok = await ask({
+      title: "Import icons?",
+      text: "Replace saved icon changes with this file?",
+      okLabel: "Import",
+    });
+    if (!ok) {
+      return;
+    }
+    if (editor && typeof editor.abandon === "function") {
+      editor.abandon();
+    }
+    ui().icons = next;
+    dropIconPaint();
+    await ctx.saveNow();
+    if (typeof ctx.repaint === "function") {
+      ctx.repaint();
+    }
+    paintRows();
+    mountEditor(entryOf(selectedId));
+  }
+
   async function revertAll() {
     const ask = typeof ctx.confirm === "function" ? ctx.confirm : () => Promise.resolve(true);
     const ok = await ask({
@@ -349,14 +437,38 @@ export function mountIconsPanel(root, ctx) {
     onSelect: (id) => {
       void choose(id);
     },
-    footerEnd: [{
-      action: "revert",
-      text: "Revert all",
-      label: "Revert all saved icons",
-      onClick: () => {
-        void revertAll();
+    footerEnd: [
+      {
+        action: "import",
+        icon: iconClass("ui.import"),
+        text: "Import",
+        label: "Import",
+        className: "pav-labeled-action",
+        onClick: () => {
+          void importIcons();
+        },
       },
-    }],
+      {
+        action: "export",
+        icon: iconClass("ui.export"),
+        text: "Export",
+        label: "Export",
+        className: "pav-labeled-action",
+        onClick: () => {
+          void exportIcons();
+        },
+      },
+      {
+        action: "revert",
+        icon: iconClass("ui.revert"),
+        text: "Revert all",
+        label: "Revert all",
+        className: "pav-labeled-action",
+        onClick: () => {
+          void revertAll();
+        },
+      },
+    ],
     tableHidden: ctx.tableHidden,
     saveTableHidden: ctx.saveTableHidden,
     tableWidths: ctx.tableWidths,

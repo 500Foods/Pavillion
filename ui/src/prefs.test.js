@@ -128,6 +128,10 @@ test("log zoom snaps and the activity view defaults to log", () => {
   expect(blank.zoom.log).toBe(1);
   expect(blank.zoom.helpIndex).toBe(1);
   expect(blank.zoom.helpContent).toBe(1);
+  expect(blank.zoom.filters).toBe(1);
+  expect(clampUi({ zoom: { helpFilter: 1.4 } }).zoom.filters).toBe(1.4);
+  expect(clampUi({ zoom: { helpFilter: 1.4 } }).zoom.helpFilter).toBeUndefined();
+  expect(clampUi({ zoom: { filters: 1.2, helpFilter: 1.8 } }).zoom.filters).toBe(1.2);
   expect(blank.help).toEqual({ split: 0.25, min: 0.15, max: 0.6 });
   expect(clampUi({ help: { split: 0.9, min: 0.15, max: 0.6 } }).help.split).toBe(0.6);
   expect(blank.zoom.wheel).toBe("away");
@@ -266,7 +270,7 @@ test("the color picker zoom starts at 200% and steps by 5%", () => {
   expect(clampUi({ iconResultZoom: "nope" }).iconResultZoom).toBe(1);
   expect(clampUi({}).iconFlagBox).toBeUndefined();
   expect(clampUi({ iconFlagBox: { width: 10, height: 10 } }).iconFlagBox).toEqual({ width: 160, height: 120 });
-  expect(clampUi({ iconFlagBox: { width: 900, height: 900 } }).iconFlagBox).toEqual({ width: 480, height: 640 });
+  expect(clampUi({ iconFlagBox: { width: 900, height: 900 } }).iconFlagBox).toEqual({ width: 360, height: 880 });
   expect(clampUi({ iconFlagBox: { width: 200.4, height: 300.6 } }).iconFlagBox).toEqual({ width: 200, height: 301 });
   expect(clampUi({ iconFlagBox: { width: 220 } }).iconFlagBox).toBeUndefined();
   expect(clampUi({ iconFlagBox: "nope" }).iconFlagBox).toBeUndefined();

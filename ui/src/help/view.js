@@ -37,10 +37,11 @@ export function filterHelp(pages, query) {
    by the shared module bar: title Help, search right, Back right of search.
    A chevron toggle to the left of the title opens a filter panel that slides
    in from the left and takes the full height of the help index. The chevron
-   has a 1px vertical separator to its right (matching the search border),
-   and the index shifts right by the panel width when the panel is open so the
-   panel's right border aligns with the chevron separator. The panel fades in
-   and out along with the slide.
+   has a 1px vertical separator to its right (matching the search border).
+   The chevron stays on Button bars zoom. The panel uses Filters zoom.
+   The index shifts right by the panel width when the panel is open. The
+   panel's right border meets the chevron separator when those two scales
+   match. The panel fades in and out along with the slide.
 
    The filter panel, index, split-resize, and article live in .help-content,
    a flex row inside #panel-help. Below it is #help-toolbar-bottom, a
@@ -55,8 +56,8 @@ export function createHelpView(root, pages = helpPages, options = {}) {
   if (toolbarHost && !toolbarHost.querySelector("#help-search")) {
     mountBar(toolbarHost, moduleToolbar({
       title: "Help",
-      search: { id: "help-search", label: "Search help", placeholder: "Search help" },
-      after: [{ id: "help-back", action: "back", icon: iconClass("help.back"), text: "Back", label: "Back", onClick: () => typeof options.onBack === "function" && options.onBack() }],
+      search: { id: "help-search", label: "Search help", placeholder: "🔍 Search help" },
+      after: [{ id: "help-back", action: "back", icon: iconClass("help.back"), text: "Back", label: "Back", className: "pav-labeled-action", onClick: () => typeof options.onBack === "function" && options.onBack() }],
     }, doc));
   }
   const footerHost = root.querySelector("#help-toolbar-bottom");
@@ -65,9 +66,9 @@ export function createHelpView(root, pages = helpPages, options = {}) {
       label: "Help actions",
       onRefresh: () => { if (typeof options.onRefresh === "function") options.onRefresh(); },
       end: [
-        { id: "help-copy", action: "copy", icon: iconClass("help.copy"), text: "Copy", label: "Copy topic", onClick: () => {} },
-        { id: "help-save", action: "save", icon: iconClass("help.save"), text: "Save", label: "Save topic", onClick: () => {} },
-        { id: "help-print", action: "print", icon: iconClass("help.print"), text: "Print", label: "Print topic", onClick: () => {} },
+        { id: "help-copy", action: "copy", icon: iconClass("help.copy"), text: "Copy", label: "Copy topic", className: "pav-labeled-action", onClick: () => {} },
+        { id: "help-save", action: "save", icon: iconClass("help.save"), text: "Save", label: "Save topic", className: "pav-labeled-action", onClick: () => {} },
+        { id: "help-print", action: "print", icon: iconClass("help.print"), text: "Print", label: "Print topic", className: "pav-labeled-action", onClick: () => {} },
       ],
     }, doc));
   }

@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #define PAV_CMD_WORKER 1u
 /* Network-bound (H Lock): slow-command WARN only past PAV_SLOW_NET_COMMAND_MS. */
@@ -46,6 +47,7 @@ typedef struct EventItem {
 } EventItem;
 
 static int cmd_log_client(json_t *args, json_t **data, PavError *err);
+static int cmd_export_read_text(json_t *args, json_t **data, PavError *err);
 static int cmd_export_write_text(json_t *args, json_t **data, PavError *err);
 static int cmd_log_export(json_t *args, json_t **data, PavError *err);
 static int cmd_log_tail(json_t *args, json_t **data, PavError *err);
@@ -89,6 +91,7 @@ static const PavCommand k_commands[] = {
     {"debug.secret_smoke", pav_cmd_secret_smoke, 0},
     {"debug.seed_messages", pav_cmd_seed_messages, 0},
 #endif
+    {"export.read_text", cmd_export_read_text, 0},
     {"export.write_text", cmd_export_write_text, 0},
     {"iconlib.refresh", pav_cmd_iconlib_refresh, PAV_CMD_WORKER | PAV_CMD_NET},
     {"iconlib.search", pav_cmd_iconlib_search, 0},
@@ -887,6 +890,79 @@ static int out_path_check(const char *path, PavError *err) {
 }
 
 #define EXPORT_TEXT_MAX (8u * 1024u * 1024u)
+#define EXPORT_READ_MAX (1u * 1024u * 1024u)
+
+/* D-9: read a dialog-picked text file (icon import). The text is not logged. */
+static int cmd_export_read_text(json_t *args, json_t **data, PavError *err) {
+    const char *key;
+    json_t *value;
+    const char *path = NULL;
+    const char *name;
+    struct stat st;
+    FILE *fp;
+    char *buf = NULL;
+    size_t n = 0;
+    char note[512];
+
+    json_object_foreach(args, key, value) {
+        if (strcmp(key, "path") == 0) {
+            if (!json_is_string(value)) {
+                return bad(err, "path must be a string");
+            }
+            path = json_string_value(value);
+        } else {
+            snprintf(note, sizeof(note), "unknown argument %s", key);
+            return bad(err, note);
+        }
+    }
+    if (path == NULL) {
+        return bad(err, "export.read_text requires path");
+    }
+    if (out_path_check(path, err) != 0) {
+        return -1;
+    }
+    if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) {
+        return bad(err, "file does not exist");
+    }
+    if (st.st_size < 0 || (unsigned long long)st.st_size > EXPORT_READ_MAX) {
+        pav_error_set(err, "too_large", "export is too large", 0);
+        return -1;
+    }
+    fp = fopen(path, "rb");
+    if (fp == NULL) {
+        return bad(err, "file does not exist");
+    }
+    buf = malloc((size_t)st.st_size + 1u);
+    if (buf == NULL) {
+        fclose(fp);
+        pav_error_set(err, "internal", "out of memory", 0);
+        return -1;
+    }
+    if (st.st_size > 0) {
+        n = fread(buf, 1, (size_t)st.st_size, fp);
+    }
+    fclose(fp);
+    if (n != (size_t)st.st_size) {
+        free(buf);
+        pav_error_set(err, "internal", "cannot read the file", 0);
+        return -1;
+    }
+    buf[n] = '\0';
+    if (strlen(buf) != n) {
+        free(buf);
+        return bad(err, "text must not contain NUL");
+    }
+    name = strrchr(path, '/');
+    name = name != NULL ? name + 1 : path;
+    pav_log("export", PAV_INFO, 2, "read %zu bytes from %s", n, name);
+    *data = json_pack("{s:s}", "text", buf);
+    free(buf);
+    if (*data == NULL) {
+        pav_error_set(err, "internal", "out of memory", 0);
+        return -1;
+    }
+    return 0;
+}
 
 /* D-10: write page-built export text (Accounts CSV) to a dialog-picked path. */
 static int cmd_export_write_text(json_t *args, json_t **data, PavError *err) {

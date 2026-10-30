@@ -212,6 +212,10 @@ export const shellMarkup = `<div class="shell">
                 <input type="range" min="0.05" max="5" step="0.05" value="1" />
                 <span class="zoom-value">100%</span>
               </label>
+              <label class="zoom" data-zoom="filters"><span class="zoom-label">Filters</span>
+                <input type="range" min="0.05" max="5" step="0.05" value="1" />
+                <span class="zoom-value">100%</span>
+              </label>
               <label class="zoom" data-zoom="tables"><span class="zoom-label">Tables</span>
                 <input type="range" min="0.05" max="5" step="0.05" value="1" />
                 <span class="zoom-value">100%</span>

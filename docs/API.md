@@ -17,7 +17,7 @@ Commands are `noun.verb` in lowercase with dots (`mailbox.list`). Events are `no
 {"ok": false, "error": {"code": "bad_args", "message": "unknown command no.such", "retryable": false}}
 ```
 
-An "absolute path" argument (`caFile`, `log.export` and `export.write_text` `path`, the themes folder) is one that starts with `/`; on Windows (2026-10-20, G-6 CI) it may also be a drive path (`C:\x` or `C:/x`) or a UNC path (`\\server\share`), and both `/` and `\` separate folders. Before this, Windows drive paths were refused as `bad_args`.
+An "absolute path" argument (`caFile`, `log.export`, `export.read_text` and `export.write_text` `path`, the themes folder) is one that starts with `/`; on Windows (2026-10-20, G-6 CI) it may also be a drive path (`C:\x` or `C:/x`) or a UNC path (`\\server\share`), and both `/` and `\` separate folders. Before this, Windows drive paths were refused as `bad_args`.
 
 `retryable` is true only for `network` and for some `server` errors. A full command queue is `internal` and returns at once.
 
@@ -422,6 +422,20 @@ State: planned (T-4)
 
 `{event, scope:"this"|"following"|"all", occurrenceStart?}`.
 
+### export.read_text
+
+State: real (D-9, 2026-10-29)
+
+Reads a text file the user picked in the host open dialog (`host.dialog.open`). The page never reads files itself. Icon import uses this for `{ kind: "pavillion.icons", icons }`.
+
+Args: `{path}`. `path` follows the `export.write_text` rules, and the path must name an existing regular file.
+
+Result: `{text}`. The file is at most 1 MiB. An embedded NUL is refused. The core does not log the text.
+
+Logs one `INFO` line (`export`): `read <bytes> bytes from <file name>` (the name only, not the directory).
+
+Errors: `bad_args`, `too_large`, `internal` (cannot read).
+
 ### export.write_text
 
 State: real (D-10, 2026-10-20)
@@ -440,7 +454,7 @@ Errors: `bad_args`, `too_large`, `internal` (cannot write).
 
 State: real (D-9)
 
-Fetches the search catalog for `fontawesome` or `material` and replaces that library's rows. Font Awesome is the public GraphQL catalog for release 7.3.1, names and labels only. Material Symbols is the fonts.google.com metadata document, with the `)]}'` prefix removed. Those hosts are not added to the page. The core does not log the body.
+Fetches the search catalog for `fontawesome` or `material` and replaces that library's rows. Font Awesome is the public GraphQL catalog for release 7.3.1: `icons { id label membership { free pro } }`. A row is stored with family `brands` when `membership.free` or `membership.pro` contains the style string `brands`. Other rows store an empty family. Material Symbols is the fonts.google.com metadata document, with the `)]}'` prefix removed, and its family is empty. Those hosts are not added to the page. The core does not log the body.
 
 Args: `{id}`.
 
@@ -456,7 +470,7 @@ Searches one library's cached names. An empty or omitted query returns the first
 
 Args: `{id, query?, limit?}`.
 
-Result: `{icons:[{name, label}]}`.
+Result: `{icons:[{name, label, family}]}`. `family` is a string, `brands` or empty. Adding it does not bump `PAVILLION_API_VERSION`.
 
 Errors: `bad_args`, `internal`.
 
