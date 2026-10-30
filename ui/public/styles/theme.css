@@ -4,6 +4,7 @@
      --pav-bar-zoom and padding stays in rem on every bar alike. */
   --pav-bar-icon-size: 1.15rem;
   --pav-bar-font-size: 0.875rem;
+  --pav-bar-zoom: 1;
   --pav-bar-pad-y: 0.55rem;
   --pav-bar-pad-x: 0.9rem;
   --pav-tab-close-icon-size: 0.7rem;
@@ -78,15 +79,26 @@
 }
 
 .pav-root .nav-buttons button {
+  position: relative;
   flex: 1;
   display: grid;
   place-items: center;
+  min-height: 0;
   padding: var(--pav-bar-pad-y) 0;
   border: 0;
   background: transparent;
+  font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* In-flow square at 1em so the button keeps today's footprint. The glyph
+   itself is positioned over it and can draw outside. */
+.pav-root .nav-buttons button::after {
+  content: "";
+  width: 1em;
+  height: 1em;
 }
 
 .pav-root .nav-buttons button.is-dragging {
@@ -107,13 +119,41 @@
   background: var(--pav-surface-button-active);
 }
 
-.pav-root .nav-buttons .icon,
-.pav-root .nav-buttons svg {
-  width: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
-  height: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
-  font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+/* Slot font-size is 1em. fa-2x and the other size classes set font-size on
+   the glyph, and height: 1em follows that. width: auto keeps a wide viewBox
+   at the same cap height as the icons beside it. translate centers without
+   replacing rotate, flip, or spin, which use transform. Out of flow, so a
+   larger glyph does not change the bar. */
+.pav-root .nav-buttons :is(.icon, svg, img):not(.nav-mark),
+.pav-root .help-jump :is(.icon, svg, i),
+.pav-root .tab-icon :is(i, svg, img),
+.pav-root .pav-module-toolbar > button:not(.help-jump) :is(.icon, svg, i),
+.pav-root .pav-module-footer :is(.icon, svg, i),
+.pav-root .log-gear :is(.icon, svg, i),
+.pav-root .help-filter-chevron :is(.icon, svg),
+.pav-root .help-filter-chip :is(.icon, svg),
+.pav-root .feature-icon :is(.icon, svg),
+.pav-root .feature-grip :is(.icon, svg),
+.pav-root .feature-check :is(.icon, svg),
+.pav-root .pav-table .pav-icon-cell :is(.icon, svg, img) {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  height: 1em;
+  width: auto;
+  translate: -50% -50%;
   line-height: 1;
-  object-fit: contain;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.pav-root .nav-buttons :is(.icon, svg, img).fa-fw:not(.nav-mark),
+.pav-root .help-jump :is(.icon, svg, i).fa-fw,
+.pav-root .tab-icon :is(i, svg, img).fa-fw,
+.pav-root .pav-module-toolbar > button:not(.help-jump) :is(.icon, svg, i).fa-fw,
+.pav-root .pav-module-footer :is(.icon, svg, i).fa-fw,
+.pav-root .pav-table .pav-icon-cell :is(.icon, svg, img).fa-fw {
+  width: 1.25em;
 }
 
 .pav-root .nav-buttons button:hover .icon,
@@ -175,17 +215,14 @@
 }
 
 .pav-root .tab-icon {
+  position: relative;
   display: inline-flex;
   flex: none;
   align-items: center;
-  line-height: 1;
-}
-
-.pav-root .tab-icon :is(i, svg, img) {
   width: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
   height: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
   font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
-  object-fit: contain;
+  line-height: 1;
 }
 
 .pav-root .tab-title {
@@ -540,21 +577,14 @@
 }
 
 .pav-root .feature-grip {
+  position: relative;
   width: 1rem;
   height: 1rem;
   flex: none;
   display: grid;
   place-items: center;
-  color: var(--pav-text-muted);
-}
-
-.pav-root .feature-grip .icon,
-.pav-root .feature-grip svg {
-  width: 0.85rem;
-  height: 0.85rem;
   font-size: 0.85rem;
-  pointer-events: none;
-  -webkit-user-drag: none;
+  color: var(--pav-text-muted);
 }
 
 .pav-root .feature-side {
@@ -569,19 +599,14 @@
 }
 
 .pav-root .feature-icon {
+  position: relative;
   width: 1.15rem;
   height: 1.15rem;
   flex: none;
   display: grid;
   place-items: center;
-  color: var(--pav-text);
-}
-
-.pav-root .feature-icon .icon,
-.pav-root .feature-icon svg {
-  width: 1rem;
-  height: 1rem;
   font-size: 1rem;
+  color: var(--pav-text);
 }
 
 .pav-root .feature-row.is-off .feature-label,
@@ -597,6 +622,7 @@
   flex: none;
   display: grid;
   place-items: center;
+  font-size: 1rem;
 }
 
 .pav-root .feature-check input {
@@ -607,13 +633,7 @@
   cursor: pointer;
 }
 
-.pav-root .feature-check .icon,
-.pav-root .feature-check svg {
-  width: 1rem;
-  height: 1rem;
-  font-size: 1rem;
-  pointer-events: none;
-}
+
 
 .pav-root .feature-check-off {
   color: var(--pav-text-muted);
@@ -853,6 +873,7 @@
 }
 
 .pav-root .help-jump {
+  position: relative;
   display: grid;
   place-items: center;
   width: calc(2.5rem * var(--pav-bar-zoom));
@@ -861,12 +882,6 @@
   background: transparent;
   color: var(--pav-text);
   padding: 0;
-}
-
-.pav-root .help-jump .icon,
-.pav-root .help-jump svg {
-  width: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
-  height: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
   font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
 }
 
@@ -1148,7 +1163,6 @@
 }
 
 .pav-root .button-bar {
-  --pav-bar-zoom: 1;
   font-size: var(--pav-bar-font-size);
   display: flex;
   flex: none;
@@ -1229,17 +1243,15 @@
 }
 
 .pav-root .log-gear {
+  position: relative;
   display: grid;
   place-items: center;
   width: calc(2.5rem * var(--pav-bar-zoom));
   padding: 0.55rem 0;
+  font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
 }
 
-.pav-root .log-gear .icon,
-.pav-root .log-gear svg {
-  width: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
-  height: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
-  font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+.pav-root .log-gear :is(.icon, svg, i) {
   color: var(--pav-text);
 }
 
@@ -1267,6 +1279,7 @@
 }
 
 .pav-root .help-bar .help-filter-chevron {
+  position: relative;
   box-sizing: border-box;
   flex: none;
   justify-content: center;
@@ -1274,16 +1287,12 @@
   margin-right: 0;
   padding-left: 0;
   padding-right: 0;
+  font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
 }
 
 .pav-root .help-filter-chevron :is(.icon, svg) {
-  width: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
-  height: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
-  font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
   color: var(--pav-text);
   transition: transform var(--pav-help-transition) ease;
-  pointer-events: none;
-  -webkit-user-drag: none;
 }
 
 .pav-root .help-filter-chevron[aria-pressed="true"] :is(.icon, svg) {
@@ -1340,6 +1349,7 @@
 }
 
 .pav-root .help-filter-chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1350,14 +1360,8 @@
   color: var(--pav-help-index-text);
   padding: 0.35rem 0;
   border-radius: 0.3rem;
-  cursor: pointer;
-}
-
-.pav-root .help-filter-chip :is(.icon, svg) {
-  width: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
-  height: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
   font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
-  flex: none;
+  cursor: pointer;
 }
 
 .pav-root .help-filter-chip[aria-pressed="true"] {
@@ -1681,9 +1685,8 @@
   color: var(--pav-text);
 }
 
-.pav-root .nav-buttons button.is-busy .icon,
-.pav-root .nav-buttons button.is-busy svg {
-  animation: spin 0.8s linear infinite;
+.pav-root .nav-buttons button.is-busy :is(.icon, svg):not(.nav-mark) {
+  animation: pav-slot-spin 0.8s linear infinite;
 }
 
 .pav-root #update.is-busy .icon,
@@ -1691,9 +1694,9 @@
   animation: none;
 }
 
-@keyframes spin {
+@keyframes pav-slot-spin {
   to {
-    transform: rotate(360deg);
+    rotate: 360deg;
   }
 }
 
@@ -1732,7 +1735,6 @@
 
 .pav-root #update .icon,
 .pav-root #update svg {
-  position: relative;
   z-index: 1;
 }
 
@@ -2714,14 +2716,17 @@
   font-size: var(--pav-bar-font-size);
   line-height: 1.2;
 }
-.pav-root .pav-module-toolbar > button:not(.help-jump) .icon,
-.pav-root .pav-module-toolbar > button:not(.help-jump) svg,
-.pav-root .pav-module-footer .icon,
-.pav-root .pav-module-footer svg {
-  width: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
-  height: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+.pav-root .pav-module-toolbar > button:not(.help-jump):has(> :is(.icon, svg, i)),
+.pav-root .pav-module-footer button:has(> :is(.icon, svg, i)) {
+  position: relative;
   font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
-  flex: none;
+}
+
+.pav-root .pav-module-toolbar > button:not(.help-jump):has(> :is(.icon, svg, i))::after,
+.pav-root .pav-module-footer button:has(> :is(.icon, svg, i))::after {
+  content: "";
+  width: 1em;
+  height: 1em;
 }
 /* D-10: a module fills its area; a split body meets both bars. */
 .pav-root :is([data-settings="accounts"], [data-settings="icons"], [data-settings="libraries"], [data-settings="assets"]) > .settings-body {
@@ -2747,12 +2752,12 @@
   text-align: center;
 }
 
-.pav-root .pav-table .pav-icon-cell :is(.icon, svg, img) {
+.pav-root .pav-table .pav-icon-cell {
+  position: relative;
+  display: inline-flex;
   width: 1.25rem;
   height: 1.25rem;
   font-size: 1.25rem;
-  pointer-events: none;
-  -webkit-user-drag: none;
 }
 
 /* D-UI module footer: Refresh spins once per click (module-bar.js). */

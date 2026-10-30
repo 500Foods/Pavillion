@@ -76,6 +76,7 @@ export function createMailList(api, pane, options = {}) {
   count.textContent = "Select a folder.";
 
   let table = null;
+  let listScale = { width: 1, font: 1 };
   let tableAddress = "";
   let generation = 0;
   let mailboxId = "";
@@ -215,6 +216,9 @@ export function createMailList(api, pane, options = {}) {
           }
         },
       });
+      if (typeof table.setScale === "function") {
+        table.setScale(listScale.width, listScale.font);
+      }
     } else {
       table.setData(rows);
     }
@@ -338,6 +342,12 @@ export function createMailList(api, pane, options = {}) {
 
   return {
     open,
+    setZoom(widthScale, fontScale) {
+      listScale = { width: widthScale, font: fontScale };
+      if (table && typeof table.setScale === "function") {
+        table.setScale(widthScale, fontScale);
+      }
+    },
     stop() {
       generation += 1;
       mailboxId = "";

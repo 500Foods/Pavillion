@@ -212,12 +212,28 @@ export const shellMarkup = `<div class="shell">
                 <input type="range" min="0.05" max="5" step="0.05" value="1" />
                 <span class="zoom-value">100%</span>
               </label>
-              <label class="zoom" data-zoom="accountsTable"><span class="zoom-label">Accounts table</span>
+              <label class="zoom" data-zoom="tables"><span class="zoom-label">Tables</span>
                 <input type="range" min="0.05" max="5" step="0.05" value="1" />
                 <span class="zoom-value">100%</span>
               </label>
-              <label class="zoom" data-zoom="accountsForm"><span class="zoom-label">Accounts form</span>
+              <label class="zoom" data-zoom="details"><span class="zoom-label">Details</span>
                 <input type="range" min="0.05" max="5" step="0.05" value="1" />
+                <span class="zoom-value">100%</span>
+              </label>
+              <label class="zoom" data-zoom="settings"><span class="zoom-label">Settings</span>
+                <input type="range" min="0.05" max="5" step="0.05" value="1" />
+                <span class="zoom-value">100%</span>
+              </label>
+              <label class="zoom" data-zoom="colorPickerZoom"><span class="zoom-label">Color picker</span>
+                <input type="range" min="1" max="3" step="0.05" value="2" />
+                <span class="zoom-value">200%</span>
+              </label>
+              <label class="zoom" data-zoom="iconWizardZoom"><span class="zoom-label">Icon Wizard</span>
+                <input type="range" min="1" max="3" step="0.05" value="1" />
+                <span class="zoom-value">100%</span>
+              </label>
+              <label class="zoom" data-zoom="iconResultZoom"><span class="zoom-label">Icon results</span>
+                <input type="range" min="1" max="3" step="0.05" value="1" />
                 <span class="zoom-value">100%</span>
               </label>
               <div class="zoom zoom-wheel">
@@ -226,7 +242,7 @@ export const shellMarkup = `<div class="shell">
                 <span class="zoom-value" aria-hidden="true"></span>
               </div>
             </div>
-            <p class="muted">Shell multiplies every row below. Button bars covers the navigation, the main tabs, the log bars, the Help search bar, and the bars on other settings pages. Each row is its own key on the profile. Hold Ctrl and roll the wheel over a button bar, the nav, the calendar, a mail pane, the log, the Help index, or the Help page to change that row by 5%. The wheel leaves Shell alone. Away zooms in unless the switch says toward.</p>
+            <p class="muted">Shell multiplies every row below except Color picker, Icon Wizard, and Icon results. Those three run from 100% to 300% and follow that control wherever it opens. Tables is the list on the left of Accounts, Icons, Libraries, and Assets. Details is the form on the right of Accounts, Libraries, and Assets. The Icons editor uses Icon Wizard. Icon results is the search grid inside that editor. Settings is the body of the other settings pages, including this one. Button bars covers the navigation, the main tabs, the log bars, the Help search bar, and the bars on settings pages. Hold Ctrl and roll the wheel over a button bar, the nav, the calendar, a mail pane, a table, a form, a settings page, the log, the Help index, or the Help page to change that row by 5%. The wheel leaves Shell alone. Away zooms in unless the switch says toward.</p>
             <p class="muted" id="profile-name"></p>
             </div>
           </div>

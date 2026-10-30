@@ -119,11 +119,24 @@ test("mount renders inside the element and unmount leaves the page", async () =>
     expect(shellZoom.min).toBe("0.5");
     expect(shellZoom.max).toBe("2");
     expect(shellZoom.step).toBe("0.05");
-    for (const key of ["navButtons", "navBody", "mailList", "mailDetail", "log", "helpIndex", "helpContent"]) {
+    for (const key of ["navButtons", "navBody", "mailList", "mailDetail", "log", "helpIndex", "helpContent", "tables", "details", "settings"]) {
       const input = root.querySelector(`[data-zoom="${key}"] input`);
       expect(input.min).toBe("0.05");
       expect(input.max).toBe("5");
     }
+    const pickerZoom = root.querySelector('[data-zoom="colorPickerZoom"] input');
+    const wizardZoom = root.querySelector('[data-zoom="iconWizardZoom"] input');
+    const resultZoom = root.querySelector('[data-zoom="iconResultZoom"] input');
+    expect(pickerZoom.min).toBe("1");
+    expect(pickerZoom.max).toBe("3");
+    expect(pickerZoom.value).toBe("2");
+    expect(wizardZoom.min).toBe("1");
+    expect(wizardZoom.max).toBe("3");
+    expect(wizardZoom.value).toBe("1");
+    expect(resultZoom.min).toBe("1");
+    expect(resultZoom.max).toBe("3");
+    expect(resultZoom.value).toBe("1");
+    expect(resultZoom.closest("[data-zoom]").querySelector(".zoom-label").textContent).toBe("Icon results");
     const topNav = root.querySelector(".nav > .nav-buttons");
     const bottomNav = root.querySelectorAll(".nav > .nav-buttons")[1];
     expect(topNav.matches(".nav > .nav-buttons:first-of-type")).toBe(true);

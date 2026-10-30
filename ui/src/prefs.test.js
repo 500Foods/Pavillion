@@ -260,11 +260,34 @@ test("the color picker zoom starts at 200% and steps by 5%", () => {
   expect(clampUi({}).iconWizardZoom).toBe(1);
   expect(clampUi({ iconWizardZoom: 1.33 }).iconWizardZoom).toBe(1.35);
   expect(clampUi({ iconWizardZoom: 9 }).iconWizardZoom).toBe(3);
+  expect(clampUi({}).iconResultZoom).toBe(1);
+  expect(clampUi({ iconResultZoom: 1.33 }).iconResultZoom).toBe(1.35);
+  expect(clampUi({ iconResultZoom: 9 }).iconResultZoom).toBe(3);
+  expect(clampUi({ iconResultZoom: "nope" }).iconResultZoom).toBe(1);
+  expect(clampUi({}).iconFlagBox).toBeUndefined();
+  expect(clampUi({ iconFlagBox: { width: 10, height: 10 } }).iconFlagBox).toEqual({ width: 160, height: 120 });
+  expect(clampUi({ iconFlagBox: { width: 900, height: 900 } }).iconFlagBox).toEqual({ width: 480, height: 640 });
+  expect(clampUi({ iconFlagBox: { width: 200.4, height: 300.6 } }).iconFlagBox).toEqual({ width: 200, height: 301 });
+  expect(clampUi({ iconFlagBox: { width: 220 } }).iconFlagBox).toBeUndefined();
+  expect(clampUi({ iconFlagBox: "nope" }).iconFlagBox).toBeUndefined();
 });
 
-test("K-Q14: Accounts table and form zoom keys default to 1 and clamp like panes", () => {
+test("tables, details, and settings default to 1, and a saved Accounts zoom moves once", () => {
   const z = clampUi({}).zoom;
-  expect(z.accountsTable).toBe(1);
-  expect(z.accountsForm).toBe(1);
-  expect(clampUi({ zoom: { accountsTable: 9, accountsForm: 0.01 } }).zoom).toMatchObject({ accountsTable: 5, accountsForm: 0.05 });
+  expect(z.tables).toBe(1);
+  expect(z.details).toBe(1);
+  expect(z.settings).toBe(1);
+  expect(z.accountsTable).toBeUndefined();
+  const moved = clampUi({ zoom: { accountsTable: 9, accountsForm: 0.01, wheel: "toward", custom: 2 } }).zoom;
+  expect(moved.tables).toBe(5);
+  expect(moved.details).toBe(0.05);
+  expect(moved.settings).toBe(1);
+  expect(moved.wheel).toBe("toward");
+  expect(moved.custom).toBe(2);
+  expect(moved.accountsTable).toBeUndefined();
+  expect(moved.accountsForm).toBeUndefined();
+  const kept = clampUi({ zoom: { tables: 1.2, details: 0.8, accountsTable: 1.8, accountsForm: 0.4 } }).zoom;
+  expect(kept.tables).toBe(1.2);
+  expect(kept.details).toBe(0.8);
+  expect(kept.accountsTable).toBeUndefined();
 });

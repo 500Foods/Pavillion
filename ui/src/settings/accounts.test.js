@@ -1251,14 +1251,16 @@ test("K-Q14: the Accounts split ratio is restored from preferences", async () =>
   });
 });
 
-test("K-Q14: Accounts table and form take their own zoom rows", async () => {
+test("a saved Accounts zoom moves onto Tables and Details", async () => {
   await withStoredUi({ zoom: { accountsTable: 1.5, accountsForm: 0.75 } }, async () => {
     await vi.waitFor(() => {
       expect(document.querySelector("#accounts-tree").style.zoom).toBe("");
       expect(document.querySelector(".accounts-form-pane").style.zoom).toBe("0.75");
     });
-    expect(document.querySelector('[data-zoom="accountsTable"]')).not.toBeNull();
-    expect(document.querySelector('[data-zoom="accountsForm"]')).not.toBeNull();
+    expect(document.querySelector('[data-zoom="tables"] input').value).toBe("1.5");
+    expect(document.querySelector('[data-zoom="details"] input').value).toBe("0.75");
+    expect(document.querySelector("#icons-form").style.zoom).toBe("");
+    expect(document.querySelector('[data-zoom="accountsTable"]')).toBeNull();
   });
 });
 

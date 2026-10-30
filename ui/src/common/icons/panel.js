@@ -2,7 +2,7 @@
    Overrides save on Accept. Cancel never writes the blob. */
 import { dropIconPaint } from "../iconsan.js";
 import { REGISTRY, iconNode, registryEntry, resolveIcon } from "./registry.js";
-import { dropOverride, pushRecent, putOverride } from "./snippet.js";
+import { dropOverride, iconFormat, iconFormatLabel, pushRecent, putOverride } from "./snippet.js";
 import { openIconWizard, utf8Base64 } from "./wizard.js";
 import { ensureSplit, mountModuleTable } from "../../settings/split-table.js";
 
@@ -10,10 +10,11 @@ const CHOOSER = [
   { field: "fallback", title: "Default" },
   { field: "glyph", title: "Icon", locked: true },
   { field: "name", title: "Name", locked: true },
+  { field: "format", title: "Icon Format" },
   { field: "key", title: "Key" },
 ];
 
-const WIDTH_FIELDS = ["fallback", "glyph"];
+const WIDTH_FIELDS = ["fallback", "glyph", "format"];
 
 export async function storeSvgText(api, svg) {
   return api.asset.put({ mime: "image/svg+xml", kind: "svg", base64: utf8Base64(svg) });
@@ -59,6 +60,7 @@ export function mountIconsPanel(root, ctx) {
         name: entry.label,
         set: entry.section,
         fallback: resolved.source !== "override",
+        format: iconFormatLabel(iconFormat(resolved.html)),
       };
     });
   }
@@ -125,6 +127,14 @@ export function mountIconsPanel(root, ctx) {
       libraries: ui().iconLibraries || [],
       zoom: typeof ctx.wizardZoom === "function" ? ctx.wizardZoom() : undefined,
       onZoom: ctx.onWizardZoom,
+      resultZoom: typeof ctx.resultZoom === "function" ? ctx.resultZoom() : undefined,
+      onResultZoom: ctx.onResultZoom,
+      flagBox: typeof ctx.flagBox === "function" ? ctx.flagBox() : ctx.flagBox,
+      onFlagBox: ctx.onFlagBox,
+      showHelp: ctx.showHelp,
+      onHelp: ctx.onHelp,
+      icons: ui().icons,
+      helpThemeHtml: themeHtml({ cssVar: "--pav-icon-help" }),
       toward: ctx.toward,
       maxBytes: 8192,
       search: ctx.search,
@@ -250,6 +260,19 @@ export function mountIconsPanel(root, ctx) {
         },
       },
       {
+        title: "Icon Format",
+        field: "format",
+        width: saved.format || 160,
+        minWidth: 96,
+        resizable: true,
+        formatter: (cell) => {
+          const span = documentRef.createElement("span");
+          span.className = "pav-icon-format";
+          span.textContent = cell.getValue();
+          return span;
+        },
+      },
+      {
         title: "Key",
         field: "key",
         minWidth: 80,
@@ -306,6 +329,7 @@ export function mountIconsPanel(root, ctx) {
     noun: "icon",
     searchId: "icons-search",
     searchLabel: "Search icons",
+    searchPlaceholder: "🔍 Search icons",
     empty: "No icons.",
     chooserLabel: "Icon columns",
     chooser: CHOOSER,
@@ -316,7 +340,10 @@ export function mountIconsPanel(root, ctx) {
     getRows: rows,
     match(row, needle) {
       const q = needle.toLowerCase();
-      return row.name.toLowerCase().includes(q) || row.key.toLowerCase().includes(q) || row.set.toLowerCase().includes(q);
+      return row.name.toLowerCase().includes(q)
+        || row.key.toLowerCase().includes(q)
+        || row.set.toLowerCase().includes(q)
+        || String(row.format || "").toLowerCase().includes(q);
     },
     getSelected: () => selectedId,
     onSelect: (id) => {
@@ -349,5 +376,13 @@ export function mountIconsPanel(root, ctx) {
     }
   }
 
-  return { paintRows, registryEntry };
+  return {
+    paintRows,
+    registryEntry,
+    setZoom(width, font) {
+      if (view && typeof view.setZoom === "function") {
+        view.setZoom(width, font);
+      }
+    },
+  };
 }

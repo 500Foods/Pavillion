@@ -266,3 +266,19 @@ test("the mail list shows the folder columns as text and reloads for that accoun
   keys.destroy();
   root.remove();
 });
+
+test("mail list zoom scales the table and leaves the pane alone", async () => {
+  const pane = document.createElement("div");
+  pane.className = "pane pane-list";
+  document.body.append(pane);
+  const list = createMailList(fakeApi([first]), pane);
+  const before = made.length;
+  list.setZoom(1.8, 1.5);
+  await list.open("mbx:foods/a1:in");
+  await vi.waitFor(() => expect(made.length).toBe(before + 1));
+  list.setZoom(1.8, 1.5);
+  expect(pane.style.zoom).toBe("");
+  expect(pane.querySelector(".mail-list-table").style.fontSize).toBe("150%");
+  list.stop();
+  pane.remove();
+});

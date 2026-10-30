@@ -192,10 +192,27 @@
   zoom: var(--pav-wizard-zoom, 1);
 }
 
+/* The editor zooms around these bars. Cancel that, then use Button bars zoom,
+   so the search field and the help icon line up with the module toolbar. */
+.pav-root .pav-icon-wizard .button-bar {
+  zoom: calc(var(--pav-bar-zoom, 1) / var(--pav-wizard-zoom, 1));
+}
+
 .pav-root .pav-icon-wizard.is-embedded {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
   width: auto;
   max-width: 100%;
-  margin: 0.75rem;
+  min-height: 0;
+  margin: 0 0 0 0.75rem;
+  overflow: hidden;
+}
+
+.pav-root .settings-form-pane:has(> .pav-icon-wizard) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .pav-root .pav-icon-wizard-head {
@@ -206,8 +223,43 @@
   margin: 0 0 0.75rem;
 }
 
-.pav-root .pav-icon-wizard-head .pav-dialog-title {
+.pav-root .pav-icon-crumb-bar .pav-dialog-title {
+  flex: 1;
   margin: 0;
+  font-size: var(--pav-bar-font-size);
+  font-weight: 400;
+}
+
+.pav-root .pav-icon-crumb {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.95rem;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.pav-root .pav-icon-crumb-group {
+  flex: none;
+  font-weight: 700;
+}
+
+.pav-root .pav-icon-crumb-sep,
+.pav-root .pav-icon-crumb-key {
+  flex: none;
+  color: var(--pav-text-muted);
+}
+
+.pav-root .pav-icon-crumb-key {
+  font-family: var(--pav-font-mono);
+}
+
+.pav-root .pav-icon-crumb-name,
+.pav-root .pav-icon-crumb-format {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pav-root .pav-icon-close {
@@ -235,85 +287,498 @@
 
 .pav-root .pav-icon-layout {
   display: flex;
-  gap: 0.75rem;
-  align-items: flex-start;
+  flex-direction: row;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.pav-root .pav-icon-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pav-root .pav-icon-bars {
+  flex: none;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pav-root .pav-icon-wizard.is-embedded .pav-icon-layout {
+  flex: 1;
+  min-height: 0;
 }
 
 .pav-root .pav-icon-preview-col {
   display: flex;
+  flex: none;
   flex-direction: column;
-  gap: 0.35rem;
+  align-items: center;
+  align-self: stretch;
+  box-sizing: border-box;
+  gap: 0.55rem;
+  min-height: 0;
+  padding: 0.65rem;
+  overflow: auto;
+  border-right: calc(1px / var(--pav-wizard-zoom, 1)) solid var(--pav-border);
 }
 
-.pav-root .pav-icon-square {
-  width: 5.5rem;
-  height: 5.5rem;
+.pav-root .pav-icon-square,
+.pav-root .pav-icon-chip {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--pav-dialog-control);
+  box-sizing: border-box;
+  padding: 0;
   border: var(--pav-dialog-border-width) solid var(--pav-dialog-border);
   border-radius: var(--pav-dialog-button-radius);
-  overflow: hidden;
+  overflow: visible;
 }
 
-.pav-root .pav-icon-square .icon,
-.pav-root .pav-icon-square img,
-.pav-root .pav-icon-square svg {
-  width: 3rem;
-  height: 3rem;
-}
-
-.pav-root .pav-icon-chips {
-  display: flex;
-  gap: 0.35rem;
-}
-
-.pav-root .pav-icon-chip {
-  width: 16px;
-  height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
+/* Print ink and paper stay dark and light in both themes. */
+.pav-root .pav-icon-chip.is-dark {
+  background: var(--pav-log-print);
+  color: var(--pav-log-print-paper);
 }
 
 .pav-root .pav-icon-chip.is-light {
-  background: white;
-  color: black;
+  background: var(--pav-log-print-paper);
+  color: var(--pav-log-print);
 }
 
-.pav-root .pav-icon-chip.is-dark {
-  background: black;
-  color: white;
+.pav-root .pav-icon-square {
+  width: 128px;
+  height: 128px;
+  font-size: 96px;
+  background: var(--pav-surface-canvas);
+  color: var(--pav-text);
 }
 
-.pav-root .pav-icon-main {
-  flex: 1;
-  min-width: 0;
+.pav-root .pav-icon-square > *,
+.pav-root .pav-icon-chip > * {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  height: 1em;
+  width: auto;
+  translate: -50% -50%;
+  line-height: 1;
+  pointer-events: none;
+  -webkit-user-drag: none;
+  z-index: 1;
+}
+
+.pav-root .pav-icon-theme-label {
+  align-self: stretch;
+  box-sizing: border-box;
+  margin: 0 -0.65rem;
+  padding: 0.3rem 0.65rem;
+  border-top: calc(1px / var(--pav-wizard-zoom, 1)) solid var(--pav-border);
+  border-bottom: calc(1px / var(--pav-wizard-zoom, 1)) solid var(--pav-border);
+  font-size: var(--pav-bar-font-size);
+  font-weight: 700;
+  text-align: center;
+}
+
+.pav-root .pav-icon-ground {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.pav-root .pav-icon-ground-label {
+  font-size: var(--pav-bar-font-size);
+  text-align: center;
+}
+
+.pav-root .pav-icon-chip {
+  flex: none;
+  width: 128px;
+  height: 128px;
+  font-size: 96px;
+}
+
+.pav-root .pav-icon-square > *.fa-fw,
+.pav-root .pav-icon-chip > *.fa-fw,
+.pav-root .pav-icon-hit :is(img, svg, i, span, .icon).fa-fw:not(.pav-icon-hit-name) {
+  width: 1.25em;
 }
 
 .pav-root .pav-icon-bar {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.pav-root .pav-icon-bar > .pav-module-title {
+  flex: none;
+}
+
+.pav-root .pav-icon-label {
+  flex: none;
+  font-weight: 700;
+  color: var(--pav-accent);
+}
+
+.pav-root .pav-icon-toolsbar > .pav-icon-toolset {
+  flex: none;
+  min-width: max-content;
+}
+
+.pav-root .pav-icon-presets {
+  overflow-x: hidden;
+}
+
+.pav-root .pav-icon-preset-scroll {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-bottom: 0.35rem;
+  flex: 1 1 auto;
+  align-items: stretch;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.pav-root .pav-module-toolbar > button.pav-icon-mode[aria-pressed="true"] {
+  background: var(--pav-surface-button-active);
+}
+
+.pav-root .pav-icon-bar button:not(.help-jump):has(> :is(img, svg, i)) {
+  position: relative;
+  font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+}
+
+.pav-root .pav-icon-bar button:not(.help-jump):has(> :is(img, svg, i))::after {
+  content: "";
+  width: 1em;
+  height: 1em;
+}
+
+.pav-root .pav-icon-bar button:not(.help-jump) :is(img, svg, i, .icon) {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  height: 1em;
+  width: auto;
+  translate: -50% -50%;
+  pointer-events: none;
+  -webkit-user-drag: none;
 }
 
 .pav-root .pav-icon-work {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  align-items: center;
-  max-height: 22rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+  min-height: 0;
   overflow: auto;
+}
+
+.pav-root .pav-dialog.pav-icon-wizard .pav-icon-work {
+  max-height: 22rem;
+}
+
+.pav-root .pav-icon-wizard.is-embedded .pav-icon-work {
+  flex: 1;
+  max-height: none;
+  overflow: hidden;
+}
+
+.pav-root .pav-icon-wizard.is-embedded .pav-icon-grid,
+.pav-root .pav-icon-wizard.is-embedded .pav-icon-editor,
+.pav-root .pav-icon-wizard.is-embedded .pav-icon-foundry {
+  min-height: 0;
+}
+
+.pav-root .pav-icon-page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.65rem;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pav-root .pav-icon-row,
+.pav-root .pav-icon-tools,
+.pav-root .pav-icon-toolset {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.35rem 0.55rem;
+  min-width: 0;
+}
+
+.pav-root .pav-icon-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.pav-root .pav-icon-field select,
+.pav-root .pav-icon-field input[type="text"],
+.pav-root .pav-icon-field input[type="number"],
+.pav-root .pav-icon-tool {
+  font: inherit;
+  color: inherit;
+  background: var(--pav-surface-button);
+  border: 1px solid var(--pav-border);
+  border-radius: var(--pav-dialog-button-radius);
+  padding: 0.25rem 0.45rem;
+}
+
+.pav-root .pav-icon-field input[type="text"] {
+  width: 7rem;
+  box-sizing: border-box;
+}
+
+.pav-root .pav-icon-field .clr-field {
+  width: auto;
+}
+
+.pav-root .pav-icon-bar button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.4rem;
+  border: 0;
+  background: transparent;
+  padding: var(--pav-bar-pad-y) var(--pav-bar-pad-x);
+  font-size: var(--pav-bar-font-size);
+  line-height: 1.2;
+  color: inherit;
+}
+
+.pav-root .pav-icon-bar button.pav-icon-menu {
+  flex: none;
+  gap: 0.45rem;
+  width: max-content;
+  white-space: nowrap;
+  border-left: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
+  border-right: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
+}
+
+.pav-root .pav-icon-bar button.pav-dialog-ok,
+.pav-root .pav-icon-bar button.pav-dialog-cancel,
+.pav-root .pav-icon-bar button.pav-icon-close {
+  border-left: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
+  border-right: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
+}
+
+.pav-root .pav-icon-bar button.pav-icon-close {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+}
+
+.pav-root .pav-icon-caret {
+  width: 0;
+  height: 0;
+  border-left: 0.28em solid transparent;
+  border-right: 0.28em solid transparent;
+  border-top: 0.35em solid currentColor;
+}
+
+.pav-root .pav-icon-bar > .pav-module-search {
+  flex: 0 0 16rem;
+  width: 16rem;
+  min-width: 16rem;
+}
+
+.pav-root .pav-module-toolbar > button.help-jump,
+.pav-root .pav-icon-bar button.help-jump {
+  box-sizing: border-box;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: calc(2.5rem * var(--pav-bar-zoom));
+  min-width: calc(2.5rem * var(--pav-bar-zoom));
+  padding: 0;
+  border: 0;
+  border-left: calc(1px / var(--pav-bar-zoom)) solid var(--pav-border);
+  font-size: calc(var(--pav-bar-icon-size) * var(--pav-bar-zoom));
+}
+
+.pav-root .pav-icon-bar button[aria-pressed="true"] {
+  background: var(--pav-surface-button-active);
+}
+
+.pav-root .pav-icon-bar button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .pav-root .pav-icon-grid {
   display: flex;
+  flex: 1;
   flex-wrap: wrap;
+  align-content: flex-start;
   gap: 0.25rem;
   width: 100%;
+  min-height: 14rem;
+  overflow: auto;
+}
+
+.pav-root .pav-icon-hit {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: calc(var(--pav-icon-hit-size, 28px) * 2.6);
+  height: auto;
+  min-height: calc(var(--pav-icon-hit-size, 28px) + 1.35rem);
+  padding: 0.2rem 0.15rem 0.15rem;
+  overflow: visible;
+  border: 0;
+  border-radius: var(--pav-dialog-button-radius);
+  background: transparent;
+  color: inherit;
+  font-size: var(--pav-icon-hit-size, 28px);
+  cursor: pointer;
+}
+
+.pav-root .pav-icon-hit-name {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.7rem;
+  line-height: 1.15;
+  text-align: center;
+  pointer-events: none;
+}
+
+.pav-root .pav-icon-flags {
+  display: inline-flex;
+  flex: none;
+}
+
+.pav-root .pav-icon-pop {
+  position: fixed;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0.2rem 0;
+  overflow: auto;
+  user-select: none;
+  color: var(--pav-text);
+  background: var(--pav-surface-canvas);
+  border: var(--pav-dialog-border-width) solid var(--pav-border);
+  border-radius: var(--pav-dialog-button-radius);
+  box-shadow: var(--pav-dialog-shadow);
+}
+
+.pav-root .pav-icon-flag-menu {
+  width: 14rem;
+  height: 16rem;
+  min-width: 160px;
+  min-height: 120px;
+  max-width: 480px;
+  max-height: 640px;
+  resize: both;
+}
+
+.pav-root .pav-icon-choice-menu {
+  width: max-content;
+  min-width: 9rem;
+  height: auto;
+  max-height: 20rem;
+}
+
+.pav-root .pav-icon-flag-menu[hidden] {
+  display: none;
+}
+
+.pav-root .pav-icon-flag-section + .pav-icon-flag-section {
+  margin-top: 0.15rem;
+  padding-top: 0.15rem;
+  border-top: 1px solid var(--pav-border);
+}
+
+.pav-root .pav-icon-flag-heading {
+  padding: 0.35rem 0.75rem 0.15rem;
+  color: var(--pav-text-muted);
+  font-size: 0.75rem;
+}
+
+.pav-root .pav-icon-flag {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.28rem 0.75rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.pav-root .pav-icon-flag-check {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.pav-root .pav-icon-flag:hover,
+.pav-root .pav-icon-flag:focus-visible {
+  background: var(--pav-surface-button-active);
+}
+
+.pav-root .pav-icon-flag[aria-pressed="true"] .pav-icon-flag-check::after {
+  content: "";
+  width: 0.22rem;
+  height: 0.45rem;
+  margin-top: -0.1rem;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.pav-root .pav-icon-hit:hover,
+.pav-root .pav-icon-hit[aria-pressed="true"] {
+  background: var(--pav-surface-button-active);
+}
+
+.pav-root .pav-icon-hit :is(img, svg, i, span, .icon):not(.pav-icon-hit-name) {
+  height: 1em;
+  width: auto;
+  line-height: 1;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.pav-root .pav-icon-editor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 14rem;
+}
+
+.pav-root .pav-icon-foundry {
+  flex: 1;
+  width: 100%;
+  min-height: 14rem;
+  box-sizing: border-box;
+  font: inherit;
+  color: inherit;
+  background: var(--pav-surface-button);
+  border: 1px solid var(--pav-border);
+  border-radius: var(--pav-dialog-button-radius);
+  padding: 0.45rem;
 }
 
 .pav-root .pav-icon-key,
@@ -321,8 +786,4 @@
   margin: 0.25rem 0 0;
   color: var(--pav-text-muted);
   font-size: 0.85rem;
-}
-
-.pav-root .pav-icon-mode[aria-pressed="true"] {
-  outline: 1px solid var(--pav-accent);
 }

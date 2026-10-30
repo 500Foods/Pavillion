@@ -140,6 +140,7 @@ export function mountModuleTable(root, spec) {
   let toolbarEl = null;
   let footerEl = null;
   let restoringOrder = false;
+  let tableScale = { width: 1, font: 1 };
   const rowId = spec.rowId || "id";
 
   function hiddenColumns() {
@@ -336,6 +337,9 @@ export function mountModuleTable(root, spec) {
         onColumnMoved,
         onWidths: () => sizePane(currentColumns()),
       });
+      if (typeof table.setScale === "function") {
+        table.setScale(tableScale.width, tableScale.font);
+      }
       if (query.trim() !== "") {
         table.setFilter((row) => spec.match(row, query.trim()));
       }
@@ -363,7 +367,7 @@ export function mountModuleTable(root, spec) {
     search: {
       id: spec.searchId,
       label: spec.searchLabel,
-      placeholder: spec.searchLabel,
+      placeholder: spec.searchPlaceholder || spec.searchLabel,
       onInput: applySearch,
     },
   }, doc));
@@ -381,5 +385,15 @@ export function mountModuleTable(root, spec) {
     end: spec.footerEnd || [],
   }, doc));
   paint();
-  return { paint, reselect, navigate };
+  return {
+    paint,
+    reselect,
+    navigate,
+    setZoom(widthScale, fontScale) {
+      tableScale = { width: widthScale, font: fontScale };
+      if (table && typeof table.setScale === "function") {
+        table.setScale(widthScale, fontScale);
+      }
+    },
+  };
 }

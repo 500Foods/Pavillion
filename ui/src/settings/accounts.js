@@ -484,7 +484,6 @@ export function createAccountsView(api, root, options = {}) {
       recent: typeof options.iconRecent === "function" ? options.iconRecent() : [],
       swatches: typeof options.swatches === "function" ? options.swatches() : [],
       confirm: options.iconConfirm,
-      search: (body) => api.iconlib.search(body),
       storeSvg: (svg) => storeSvgText(api, svg),
       storePng: options.storePng,
       pickFile: options.pickFile,

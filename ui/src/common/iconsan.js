@@ -462,6 +462,9 @@ function rewriteSrc(node) {
       node.setAttribute("src", `pav-asset://${src.slice("pav-asset:".length)}`);
     } else if (src === SYSTEM_SRC) {
       node.setAttribute("src", "pav-system://mark");
+      /* The 1024 mark turns its rim into dots at tab size. These copies are already resolved. */
+      node.setAttribute("srcset", "/mark-64.png 64w, /mark-128.png 128w, /mark-256.png 256w");
+      node.setAttribute("sizes", "3rem");
     }
   }
   for (const child of node.children || []) {

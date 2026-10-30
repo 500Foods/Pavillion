@@ -10,7 +10,7 @@ Andrew paused the Tabulator work on 2026-10-20. This section is the current stat
 - **(d) partly settled:** the Mail message list (N-3, `ui/src/mail/list.js`) now builds on the shared `createTable` from `ui/src/common/table.js`, with the virtual renderer and the `.pav-table` theme variables. Contacts and the log are still undecided.
 - **New guard:** `createTable` asks Tabulator `getRow` only for ids in the rows it was given (`rowPresent`, 497eb59), so a miss no longer logs a Tabulator warning.
 - **(a) and (b):** no commit since 2026-10-20 changes table measurement or the header/footer row CSS, so the code does not show a fix. They stay open until Andrew confirms them fixed in the real window.
-- **(c):** unchanged in code. Zoom is still per pane key. Survival across a restart is still unconfirmed.
+- **(c):** decided 2026-10-28. Tables and Details are the shared keys. The mail list uses `setScale` on `mailList`. Survival across a restart is still unconfirmed in the real window.
 
 **Works (seen in Andrew's real window unless noted):**
 - **Grouping:** rows grouped by host (`(no server)` for an empty or bad URL). The whole group header toggles, with a chevron; groups start open and the open state is not saved.
@@ -20,7 +20,7 @@ Andrew paused the Tabulator work on 2026-10-20. This section is the current stat
 - **Row indicator:** a caret on the current row. The `setRowState(id, "editing")` hook exists, but nothing calls it yet.
 - **Column chooser:** opened from the row indicator header (the three dots; 2026-10-27 the Accounts toolbar Columns button was removed), with Name locked. One Reset restores both the shown columns and the original widths.
 - **Column resizing:** user resizing works (Andrew confirmed it). Widths are saved at 100% zoom in `preferences.ui.tables.<id>.widths` and hidden columns in `.hidden`.
-- **Zoom:** Accounts table and Accounts form zoom rows. The table zooms in place by font size and scaled column widths, never CSS zoom. The form uses CSS zoom.
+- **Zoom:** Tables and Details are shared rows (2026-10-28). Accounts, Icons, Libraries, and Assets scale the table in place. Accounts, Libraries, and Assets forms use CSS zoom. The Icons editor uses the Icon Wizard zoom. The mail list uses `setScale` on Mail list. The list pane does not get CSS zoom.
 - **Dividers:** full-height divider lines: cell borders plus a background line on the rows area.
 - **Striping:** zebra striping, with hover and selected rows on top.
 - **Theme variables:** every table colour and size is a `--pav-table-*` variable, in all four theme files.
@@ -30,10 +30,9 @@ Andrew paused the Tabulator work on 2026-10-20. This section is the current stat
 - **(b) Vertical alignment:** the vertical alignment of the header and footer rows is still not right.
 - **(c) Remembering zoom and widths:**
   - Widths are saved per table (`preferences.ui.tables.<id>.widths`).
-  - The zoom is saved, but per pane key in `preferences.ui.zoom` (`accountsTable`, `accountsForm`), not per table.
-  - Whether the zoom should live under `preferences.ui.tables.<id>` instead is undecided.
-  - It is also unconfirmed in the real window that both the zoom and the widths survive a restart.
-- **(d) Other tables:** how these conventions generalize to other tables (the Mail list, contacts, the log) is undecided. Andrew will think about it. Until then, nothing outside Accounts uses the shared table.
+  - The zoom is shared. `preferences.ui.zoom.tables` is the left-hand table on Accounts, Icons, Libraries, and Assets. `preferences.ui.zoom.details` is the form on Accounts, Libraries, and Assets. The mail list keeps `mailList`. A saved `accountsTable` is copied to `tables` once, and `accountsForm` to `details`.
+  - It is still unconfirmed in the real window that the zoom and the widths survive a restart.
+- **(d) Other tables:** the mail list, Icons, Libraries, and Assets use `createTable`. Contacts is still undecided. The log stays CodeMirror. Empty homes are not tables yet.
 
 **Lessons learned:**
 - **Imports:** import the core plus named modules through `ui/src/common/tabulator-lib.js` (FormatModule, SortModule, GroupRowsModule, ColumnCalcsModule, SelectRowModule, FilterModule, FrozenColumnsModule, ResizeColumnsModule, Export/Download). Never import TabulatorFull. Register a module only when a column or option needs it.
@@ -248,14 +247,25 @@ This replaces the CSS-zoom parts of the previous section.
   - the base widths are the coded widths, or the saved ones, at 100%;
   - Name absorbs the difference. Only when the fixed columns no longer fit at a high zoom can the rows area scroll horizontally (`overflow-x: auto` again);
   - zoom never changes the pane: its minimum is computed from base widths at 100% and does not move with zoom.
-  - **Two scales:** the shell zoom already reaches the font through the root `rem`, but px widths do not follow it. So Accounts passes width scale = Shell × Accounts table and font scale = Accounts table.
+  - **Two scales:** the shell zoom already reaches the font through the root `rem`, but px widths do not follow it. Width scale = Shell × the table zoom. Font scale = the table zoom. From 2026-10-28 that table zoom is Tables for the settings splits and Mail list for the message list. See Shared zooms.
   - **Saved widths:** saved and reported widths are base widths (px ÷ scale).
-  - **The form:** Accounts form keeps CSS `zoom`, because there is no table in it.
+  - **The form:** a form with no table keeps CSS `zoom`. From 2026-10-28 that key is Details, and it covers the Accounts, Libraries, and Assets forms. The Icons editor is the Icon Wizard zoom.
 - **Full width.** With measurements consistent again, `fitColumns` fills the holder: header, group headers, rows and the calc row all end at the right edge.
 - **Footer count.** Accounts shows the account count as a plain number under `#`. Name has no calc. The footer no longer has `overflow: hidden`. The calc row stays on one line with `nowrap`, and its height is the content height, so nothing is cut off.
 - **Alignment.** Cells and calc cells of `#` and the checkbox columns are centred, using the classes `pav-col-center` and `pav-col-check` with `justify-content: center`. Header titles are left-aligned. Header cells, calc cells and cells centre their content vertically (`align-items: center`). The header uses one line height.
 - **Sort arrow pinned right.** In every header the title takes the remaining width (`flex: 1`, ellipsis only when truly needed), and the arrow sits at the right edge (`margin-left: auto`, `flex: none`). It never overlaps the title. The fitted-titles pass still widens a column whose title would clip at its default width.
 - **Resize handles.** Tabulator inserts each `.tabulator-col-resize-handle` as a sibling after its header cell or row cell, not inside it. The old CSS positioned the handles `absolute; right: 0`, which stacked every handle at the far right of the header, so nothing could be dragged. The handle is now what Tabulator expects: `position: relative; display: inline-block; width: 6px; margin: 0 -3px; z-index: 11; vertical-align: middle` (`3px` and no right margin for the last one), with the `col-resize` cursor. `ResizeColumnsModule` is exported by `tabulator-lib.js` and registered when any column sets `resizable: true`.
+
+## Shared zooms (2026-10-28, Andrew; Lock)
+
+This extends Zoom in place. A table still uses `setScale` and never CSS `zoom`.
+
+- **Tables** (`preferences.ui.zoom.tables`, 5%–500%). Width scale = Shell × Tables. Font scale = Tables. The Accounts, Icons, Libraries, and Assets tables. The pane minimum stays at the 100% widths.
+- **Details** (`preferences.ui.zoom.details`, 5%–500%, CSS `zoom`, multiplied by Shell). The Accounts form, the Libraries form, and the Assets form. The Icons right pane is not in this zoom.
+- **Mail list** keeps `mailList` and uses the same `setScale` pair (width = Shell × Mail list, font = Mail list). The list pane does not get CSS `zoom`. Mail detail stays CSS `zoom`.
+- **Settings** (`preferences.ui.zoom.settings`) is CSS `zoom` on the body of the settings pages that are not those splits, multiplied by Shell. Button bars stay on Button bars.
+- **Color picker** and **Icon Wizard** are `preferences.ui.colorPickerZoom` and `preferences.ui.iconWizardZoom`, beside `zoom`. 100%–300% by 5%. Shell does not multiply them. One value follows that control everywhere.
+- A profile that still has `accountsTable` or `accountsForm` copies that value into `tables` or `details` when the new key is missing, then drops the old key.
 
 ## Download options without the Download module (2026-10-27, Lock)
 

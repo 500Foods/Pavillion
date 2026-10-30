@@ -117,7 +117,7 @@ async function flush() {
 }
 
 function buttonNamed(root, text) {
-  return [...root.querySelectorAll("button")].find((node) => node.textContent === text);
+  return [...root.querySelectorAll("button")].find((node) => node.textContent === text || node.getAttribute("aria-label") === text);
 }
 
 function iconCtx(ui, extra = {}) {
@@ -151,8 +151,21 @@ test("Icons groups the registry, checks defaults, and searches by name", () => {
   expect(host.querySelector('[data-group="Mail list"]')).not.toBeNull();
   expect(host.querySelector('[data-row-id="nav.mail"] .pav-icon-default').dataset.default).toBe("1");
   expect(host.querySelector('[data-row-id="nav.update"] .pav-icon-default').dataset.default).toBeUndefined();
+  expect(host.querySelector('[data-row-id="nav.mail"] .pav-icon-format').textContent).toBe("PNG");
+  expect(host.querySelector('[data-row-id="nav.update"] .pav-icon-format').textContent).toBe("Font Awesome");
+  expect(host.querySelector('.pav-icon-wizard .pav-icon-mode[aria-pressed="true"]').textContent).toBe("PNG");
+  expect(host.querySelector(".pav-icon-crumb-group").textContent).toBe("Nav");
+  expect(host.querySelector(".pav-icon-crumb-name").textContent).toBe("Mail");
+  expect(host.querySelector(".pav-icon-crumb-key").textContent).toBe("nav.mail");
+  expect(host.querySelector(".pav-icon-crumb-format").textContent).toBe("PNG");
   expect(host.querySelector(".pav-icon-wizard.is-embedded")).not.toBeNull();
   const search = host.querySelector("#icons-search");
+  expect(search.placeholder).toBe("🔍 Search icons");
+  expect(search.getAttribute("aria-label")).toBe("Search icons");
+  search.value = "PNG";
+  search.dispatchEvent(new Event("input", { bubbles: true }));
+  expect(host.querySelector('[data-row-id="nav.mail"]')).not.toBeNull();
+  expect(host.querySelector('[data-row-id="nav.update"]')).toBeNull();
   search.value = "flag";
   search.dispatchEvent(new Event("input", { bubbles: true }));
   expect(host.querySelector('[data-row-id="nav.mail"]')).toBeNull();
@@ -185,8 +198,9 @@ test("Accept stores only that key, a clean Cancel does not ask, and Revert all c
   }));
   host.querySelector('[data-row-id="nav.update"]').click();
   let wizard = host.querySelector(".pav-icon-wizard");
-  wizard.querySelector(".pav-icon-search").value = "up";
-  buttonNamed(wizard, "Search").click();
+  const iconSearch = wizard.querySelector(".pav-module-search");
+  iconSearch.value = "up";
+  iconSearch.dispatchEvent(new Event("input"));
   await flush();
   wizard.querySelector(".pav-icon-hit").click();
   buttonNamed(wizard, "Accept").click();
@@ -223,13 +237,19 @@ test("switching icons asks once after an edit", async () => {
       return false;
     },
   }));
+  host.querySelector('[data-row-id="nav.update"]').click();
+  await flush();
+  expect(host.querySelector('.pav-icon-wizard .pav-icon-mode[aria-pressed="true"]').textContent).toBe("Font Awesome");
   const family = [...host.querySelectorAll("label")].find((node) => node.firstChild && node.firstChild.textContent === "Family").querySelector("select");
   family.value = family.options[1].value;
   family.dispatchEvent(new Event("change", { bubbles: true }));
   host.querySelector('[data-row-id="nav.contacts"]').click();
   await flush();
   expect(asked).toBe(1);
-  expect(host.querySelector(".pav-icon-wizard .pav-dialog-title").textContent).toBe("Mail — Nav");
+  expect(host.querySelector(".pav-icon-crumb-group").textContent).toBe("Nav");
+  expect(host.querySelector(".pav-icon-crumb-name").textContent).toBe("Update");
+  expect(host.querySelector(".pav-icon-crumb-key").textContent).toBe("nav.update");
+  expect(host.querySelector(".pav-icon-crumb-format").textContent).toBe("Font Awesome");
   host.remove();
 });
 
@@ -370,7 +390,8 @@ test("the column chooser names columns, and every data column resizes and can mo
   const icons = iconsHost.querySelector("#icons-tree").pavTableOptions;
   expect(icons.movable).toBe(true);
   expect(icons.columns.every((column) => column.resizable === true)).toBe(true);
-  expect(icons.columns.map((column) => column.field)).toEqual(["fallback", "glyph", "name", "key"]);
+  expect(icons.columns.map((column) => column.field)).toEqual(["fallback", "glyph", "name", "format", "key"]);
+  expect(icons.columns.find((column) => column.field === "format").width).toBe(160);
   expect(icons.columns.find((column) => column.field === "glyph").width).toBe(80);
   const iconAnchor = document.createElement("button");
   iconsHost.append(iconAnchor);
@@ -378,6 +399,7 @@ test("the column chooser names columns, and every data column resizes and can mo
   const iconBox = document.querySelector(".pav-column-chooser");
   expect(iconBox.textContent).toContain("Default");
   expect(iconBox.textContent).toContain("Icon");
+  expect(iconBox.textContent).toContain("Icon Format");
   expect(iconBox.textContent).toContain("Key");
   expect(iconBox.textContent).not.toContain("undefined");
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));

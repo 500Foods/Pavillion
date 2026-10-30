@@ -489,5 +489,10 @@ export function mountLibrariesPanel(root, ctx) {
       view.paint();
       paintForm();
     },
+    setZoom(width, font) {
+      if (view && typeof view.setZoom === "function") {
+        view.setZoom(width, font);
+      }
+    },
   };
 }

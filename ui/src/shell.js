@@ -30,8 +30,9 @@ import { readAssetBytes, storeRenderedPng } from "./common/icons/bytes.js";
 import { mountIconsPanel, storeSvgText } from "./common/icons/panel.js";
 import { mountLibrariesPanel } from "./settings/libraries.js";
 import { mountAssetsPanel } from "./settings/assets.js";
-import { openIconWizard } from "./common/icons/wizard.js";
-import { bindColorPicker } from "./common/coloris.js";
+import { createIconSearch } from "./common/icons/search.js";
+import { applyIconResultZoom, applyIconWizardZoom, openIconWizard } from "./common/icons/wizard.js";
+import { bindColorPicker, colorZoomOf } from "./common/coloris.js";
 import { DEFAULT_UI, FEATURE_KEYS, RAIL_KEYS, chordsOf, clampUi, railOf, snapZoom } from "./prefs.js";
 import {
   THEME_TEMPLATES,
@@ -59,15 +60,16 @@ function log(subsystem, level, message) {
 
 let ui = clampUi({});
 
-/* shell is the master scale on the root; each pane multiplies on top of it. */
+/* shell is the master scale on the root; each pane multiplies on top of it.
+   Tables and the mail list use setScale. Color picker, Icon Wizard, and Icon results do not. */
+const SPLIT_SETTINGS = new Set(["accounts", "icons", "libraries", "assets"]);
 const zoomPanes = {
   navButtons: ".button-bar",
   navBody: ".nav-body",
-  mailList: "#panel-mail .pane-list",
   mailDetail: "#panel-mail .pane-detail",
   helpIndex: "#help-index",
   helpContent: "#help-article",
-  accountsForm: ".accounts-form-pane",
+  details: ".accounts-form-pane, #libraries-form, #assets-form",
 };
 
 function zoomClamp(key, value) {
@@ -78,19 +80,38 @@ function zoomLabel(scale) {
   return `${Math.round(scale * 100)}%`;
 }
 
+function zoomReading(key) {
+  if (key === "colorPickerZoom") {
+    return ui.colorPickerZoom;
+  }
+  if (key === "iconWizardZoom") {
+    return ui.iconWizardZoom;
+  }
+  if (key === "iconResultZoom") {
+    return ui.iconResultZoom;
+  }
+  if (key in ui.zoom) {
+    return ui.zoom[key];
+  }
+  return null;
+}
+
 function paintZoomSliders() {
+  if (!mountRoot) {
+    return;
+  }
   for (const label of mountRoot.querySelectorAll("[data-zoom]")) {
-    const key = label.dataset.zoom;
-    if (!(key in ui.zoom)) {
+    const value = zoomReading(label.dataset.zoom);
+    if (value === null) {
       continue;
     }
     const input = label.querySelector("input");
     const reading = label.querySelector(".zoom-value");
     if (input) {
-      input.value = String(ui.zoom[key]);
+      input.value = String(value);
     }
     if (reading) {
-      reading.textContent = zoomLabel(ui.zoom[key]);
+      reading.textContent = zoomLabel(value);
     }
   }
   paintWheelSwitch();
@@ -147,29 +168,87 @@ function showFont(select, value) {
   select.value = value;
 }
 
+/* WebKit zoom scales a label and leaves a rem-sized svg at its unzoomed size. */
+function paintCssZoom(element, scale) {
+  element.style.zoom = String(scale);
+  for (const svg of element.querySelectorAll("svg")) {
+    svg.style.width = `${1.15 * scale}em`;
+    svg.style.height = `${1.15 * scale}em`;
+  }
+}
+
+function settingsZoomElements() {
+  const out = [];
+  for (const body of mountRoot.querySelectorAll(".settings-body")) {
+    const page = body.closest("[data-settings]");
+    const id = page ? page.dataset.settings : "";
+    if (SPLIT_SETTINGS.has(id)) {
+      body.style.zoom = "";
+      continue;
+    }
+    out.push(body);
+  }
+  for (const el of mountRoot.querySelectorAll("[data-settings='theme'] > :not(.button-bar)")) {
+    out.push(el);
+  }
+  return out;
+}
+
+function scaleTables() {
+  const width = ui.zoom.shell * ui.zoom.tables;
+  const font = ui.zoom.tables;
+  if (accountsView && typeof accountsView.setZoom === "function") {
+    accountsView.setZoom(width, font);
+  }
+  for (const panel of [iconsPanel, librariesPanel, assetsPanel]) {
+    if (panel && typeof panel.setZoom === "function") {
+      panel.setZoom(width, font);
+    }
+  }
+}
+
+function scaleMailList() {
+  if (mailList && typeof mailList.setZoom === "function") {
+    mailList.setZoom(ui.zoom.shell * ui.zoom.mailList, ui.zoom.mailList);
+  }
+}
+
 function applyZoom() {
+  if (!mountRoot) {
+    return;
+  }
   if (host && typeof host.setRootFontSize === "function") {
     host.setRootFontSize(ui.zoom.shell);
   }
+  /* A bar built later, including the Icon Wizard, inherits this scale. */
+  mountRoot.style.setProperty("--pav-bar-zoom", String(ui.zoom.shell * ui.zoom.navButtons));
   for (const [key, selector] of Object.entries(zoomPanes)) {
+    const scale = ui.zoom.shell * ui.zoom[key];
     for (const element of mountRoot.querySelectorAll(selector)) {
-      const scale = ui.zoom.shell * ui.zoom[key];
-      element.style.zoom = String(scale);
-      /* WebKit zoom scales the label and a px border, and it leaves a
-         rem-sized svg at its unzoomed size. The variable grows the icon
-         with the label, and divides the bar rules back to 1px. */
       if (key === "navButtons") {
+        /* Wizard bars cancel the Wizard zoom in CSS and use this same scale,
+           so the search field matches the other toolbars. */
+        if (element.closest(".pav-icon-wizard")) {
+          element.style.removeProperty("zoom");
+          element.style.setProperty("--pav-bar-zoom", String(scale));
+          continue;
+        }
+        element.style.zoom = String(scale);
+        /* The variable grows the icon with the label and divides bar rules back to 1px. */
         element.style.setProperty("--pav-bar-zoom", String(scale));
         continue;
       }
-      for (const svg of element.querySelectorAll("svg")) {
-        svg.style.width = `${1.15 * scale}em`;
-        svg.style.height = `${1.15 * scale}em`;
-      }
+      paintCssZoom(element, scale);
     }
   }
-  /* Propagate the toolbar zoom variable to .help-content so the chevron and
-     filter panel icons scale at the toolbar rate, not the index/content rate. */
+  const settingsScale = ui.zoom.shell * ui.zoom.settings;
+  for (const element of settingsZoomElements()) {
+    paintCssZoom(element, settingsScale);
+  }
+  for (const element of mountRoot.querySelectorAll("#panel-mail .pane-list")) {
+    element.style.zoom = "";
+  }
+  /* The chevron and filter icons follow the toolbar, not the article. */
   const helpZoom = ui.zoom.shell * ui.zoom.navButtons;
   for (const helpContent of mountRoot.querySelectorAll(".help-content")) {
     helpContent.style.setProperty("--pav-bar-zoom", String(helpZoom));
@@ -177,10 +256,8 @@ function applyZoom() {
   if (logView) {
     logView.setZoom(ui.zoom.log);
   }
-  if (accountsView && typeof accountsView.setZoom === "function") {
-    /* K-Q14: in place, by font and widths; never CSS zoom on a table. */
-    accountsView.setZoom(ui.zoom.shell * ui.zoom.accountsTable, ui.zoom.accountsTable);
-  }
+  scaleTables();
+  scaleMailList();
 }
 
 /* A mouse notch is about 100px. Smaller pixel deltas add up until then, so a trackpad flick is not one step per event.
@@ -206,7 +283,7 @@ function zoomKeyAt(target) {
   if (!(target instanceof Element)) {
     return "";
   }
-  /* The Wizard and the color picker zoom themselves. */
+  /* The Wizard, its result grid, and the color picker zoom themselves. */
   if (target.closest(".pav-icon-wizard") || target.closest("#clr-picker")) {
     return "";
   }
@@ -234,11 +311,21 @@ function zoomKeyAt(target) {
   if (target.closest("#help-article")) {
     return "helpContent";
   }
-  if (target.closest("#accounts-tree")) {
-    return "accountsTable";
+  if (target.closest("#accounts-tree, #icons-tree, #libraries-tree, #assets-tree, .accounts-tree-pane, .settings-tree-pane")) {
+    return "tables";
   }
-  if (target.closest(".accounts-form-pane")) {
-    return "accountsForm";
+  if (target.closest(".accounts-form-pane, #libraries-form, #assets-form")) {
+    return "details";
+  }
+  if (target.closest("#icons-form")) {
+    return "";
+  }
+  const page = target.closest("[data-settings]");
+  if (page && SPLIT_SETTINGS.has(page.dataset.settings)) {
+    return "";
+  }
+  if (target.closest(".settings-body") || (page && page.dataset.settings === "theme")) {
+    return "settings";
   }
   return "";
 }
@@ -334,6 +421,26 @@ function applyIcons() {
     });
     if (node) {
       el.replaceWith(node);
+    }
+  }
+  /* Settings help marks follow the nav Help button, including a saved override. */
+  const helpTheme = fileDecl("--pav-icon-help");
+  for (const jump of mountRoot.querySelectorAll(".help-jump")) {
+    const mark = iconNode("nav.help", {
+      icons: ui.icons,
+      themeHtml: helpTheme,
+      documentRef: document,
+      log: (key) => log("ui", "warn", `icon ${key} failed the sanitizer`),
+    });
+    if (!mark) {
+      continue;
+    }
+    mark.draggable = false;
+    const current = jump.querySelector(".icon, svg, i");
+    if (current) {
+      current.replaceWith(mark);
+    } else {
+      jump.append(mark);
     }
   }
   applyThemeKit();
@@ -881,6 +988,10 @@ async function loadPrefs() {
   ui.colorSwatches = stored.colorSwatches;
   ui.colorPickerZoom = stored.colorPickerZoom;
   ui.iconWizardZoom = stored.iconWizardZoom;
+  ui.iconResultZoom = stored.iconResultZoom;
+  if (stored.iconFlagBox) {
+    ui.iconFlagBox = stored.iconFlagBox;
+  }
   bindColorPicker({
     zoom: ui.colorPickerZoom,
     swatches: ui.colorSwatches,
@@ -889,6 +1000,7 @@ async function loadPrefs() {
       ui.colorPickerZoom = next;
       dirty = true;
       scheduleUiSave();
+      paintZoomSliders();
     },
     onSwatches(next) {
       ui.colorSwatches = next;
@@ -955,6 +1067,10 @@ function placeRailButtons() {
     return;
   }
   for (const jump of mountRoot.querySelectorAll(".help-jump")) {
+    if (jump.dataset.wizardHelp) {
+      jump.hidden = !(featureVisible("help") && jump.dataset.shelfOn === "true");
+      continue;
+    }
     jump.hidden = !featureVisible("help");
   }
   for (const key of ui.rail.top) {
@@ -1373,6 +1489,15 @@ function homeIconLabel(section) {
   return icon.dataset.iconDefinition || "";
 }
 
+function openFontAwesomeHelp() {
+  if (!featureVisible("help") || !helpView) {
+    return;
+  }
+  helpView.open("settings", "fontawesome");
+  showNav("help");
+  openHome("help");
+}
+
 function onHelpJump(event) {
   const button = event.target instanceof Element ? event.target.closest("[data-help-page]") : null;
   if (!button || !mountRoot || !mountRoot.contains(button) || !featureVisible("help") || !helpView) {
@@ -1724,10 +1849,35 @@ function bindSettings() {
   }
   for (const label of mountRoot.querySelectorAll("[data-zoom]")) {
     const key = label.dataset.zoom;
+    const input = label.querySelector("input");
+    if (!input) {
+      continue;
+    }
+    if (key === "colorPickerZoom" || key === "iconWizardZoom" || key === "iconResultZoom") {
+      const showOwn = () => {
+        const next = colorZoomOf(input.value);
+        if (key === "colorPickerZoom") {
+          ui.colorPickerZoom = next;
+          bindColorPicker({ zoom: next });
+        } else if (key === "iconWizardZoom") {
+          ui.iconWizardZoom = next;
+          applyIconWizardZoom(next);
+        } else {
+          ui.iconResultZoom = next;
+          applyIconResultZoom(next);
+        }
+        paintZoomSliders();
+      };
+      input.addEventListener("input", showOwn);
+      input.addEventListener("change", () => {
+        showOwn();
+        persistLayout();
+      });
+      continue;
+    }
     if (!(key in ui.zoom)) {
       continue;
     }
-    const input = label.querySelector("input");
     const value = label.querySelector(".zoom-value");
     const show = () => {
       ui.zoom[key] = zoomClamp(key, input.value);
@@ -1972,6 +2122,15 @@ function tableStore() {
   };
 }
 
+let iconSearch = null;
+
+function searchIcons(body) {
+  if (!iconSearch) {
+    iconSearch = createIconSearch(api);
+  }
+  return iconSearch(body);
+}
+
 function iconPageCtx() {
   return {
     ui,
@@ -1999,7 +2158,7 @@ function iconPageCtx() {
       return entry && entry.cssVar ? fileDecl(entry.cssVar) : "";
     },
     search(body) {
-      return api.iconlib.search(body);
+      return searchIcons(body);
     },
     reload() {
       if (host && typeof host.reload === "function") {
@@ -2014,7 +2173,23 @@ function iconPageCtx() {
       ui.iconWizardZoom = next;
       dirty = true;
       scheduleUiSave();
+      paintZoomSliders();
     },
+    resultZoom: () => ui.iconResultZoom,
+    onResultZoom(next) {
+      ui.iconResultZoom = next;
+      dirty = true;
+      scheduleUiSave();
+      paintZoomSliders();
+    },
+    flagBox: () => ui.iconFlagBox,
+    onFlagBox(next) {
+      ui.iconFlagBox = next;
+      dirty = true;
+      scheduleUiSave();
+    },
+    showHelp: featureVisible("help"),
+    onHelp: openFontAwesomeHelp,
     toward: () => ui.zoom.wheel === "toward",
   };
 }
@@ -2024,6 +2199,7 @@ function ensureIconsPanel() {
     return;
   }
   iconsPanel = mountIconsPanel(mountRoot, iconPageCtx());
+  scaleTables();
 }
 
 function ensureLibrariesPanel() {
@@ -2031,6 +2207,7 @@ function ensureLibrariesPanel() {
     return;
   }
   librariesPanel = mountLibrariesPanel(mountRoot, iconPageCtx());
+  scaleTables();
 }
 
 function ensureAssetsPanel() {
@@ -2038,6 +2215,7 @@ function ensureAssetsPanel() {
     return;
   }
   assetsPanel = mountAssetsPanel(mountRoot, iconPageCtx());
+  scaleTables();
 }
 
 async function pickIconFile(kind) {
@@ -2065,26 +2243,79 @@ async function pickIconFile(kind) {
 }
 
 function wizardForCaller(parent, opts) {
+  const caller = { ...(opts || {}) };
+  if (typeof caller.search !== "function") {
+    caller.search = searchIcons;
+  }
+  if (caller.resultZoom === undefined) {
+    caller.resultZoom = ui.iconResultZoom;
+  }
+  if (typeof caller.onResultZoom !== "function") {
+    caller.onResultZoom = (next) => {
+      ui.iconResultZoom = next;
+      dirty = true;
+      scheduleUiSave();
+      paintZoomSliders();
+    };
+  }
+  if (caller.flagBox === undefined) {
+    caller.flagBox = ui.iconFlagBox;
+  }
+  if (typeof caller.onFlagBox !== "function") {
+    caller.onFlagBox = (next) => {
+      ui.iconFlagBox = next;
+      dirty = true;
+      scheduleUiSave();
+    };
+  }
+  if (caller.showHelp === undefined) {
+    caller.showHelp = featureVisible("help");
+  }
+  if (typeof caller.onHelp !== "function") {
+    caller.onHelp = openFontAwesomeHelp;
+  }
+  if (caller.icons === undefined) {
+    caller.icons = ui.icons;
+  }
+  if (caller.helpThemeHtml === undefined) {
+    caller.helpThemeHtml = fileDecl("--pav-icon-help");
+  }
   if (host && typeof host.openIconWizard === "function") {
-    return host.openIconWizard(parent, opts);
+    return host.openIconWizard(parent, caller);
   }
   return openIconWizard(parent, {
-    ...opts,
+    ...caller,
     swatches: ui.colorSwatches,
     zoom: ui.iconWizardZoom,
     onZoom(next) {
       ui.iconWizardZoom = next;
       dirty = true;
       scheduleUiSave();
+      paintZoomSliders();
+    },
+    resultZoom: ui.iconResultZoom,
+    onResultZoom(next) {
+      ui.iconResultZoom = next;
+      dirty = true;
+      scheduleUiSave();
+      paintZoomSliders();
+    },
+    flagBox: ui.iconFlagBox,
+    onFlagBox(next) {
+      ui.iconFlagBox = next;
+      dirty = true;
+      scheduleUiSave();
     },
     toward: () => ui.zoom.wheel === "toward",
-    libraries: opts && Array.isArray(opts.libraries) && opts.libraries.length ? opts.libraries : ui.iconLibraries,
-    recent: opts && Array.isArray(opts.recent) && opts.recent.length ? opts.recent : ui.iconRecent,
-    search: (opts && opts.search) || ((body) => api.iconlib.search(body)),
-    confirm: (opts && opts.confirm) || ((dialogOpts) => (widgets ? widgets.dialogs.confirm(dialogOpts) : Promise.resolve(false))),
-    pickFile: (opts && opts.pickFile) || pickIconFile,
-    storePng: (opts && opts.storePng) || ((bytes, transform) => storeRenderedPng(api, bytes, transform)),
-    storeSvg: (opts && opts.storeSvg) || ((svg) => storeSvgText(api, svg)),
+    icons: ui.icons,
+    helpThemeHtml: fileDecl("--pav-icon-help"),
+    libraries: Array.isArray(caller.libraries) && caller.libraries.length ? caller.libraries : ui.iconLibraries,
+    recent: Array.isArray(caller.recent) && caller.recent.length ? caller.recent : ui.iconRecent,
+    search: caller.search,
+    confirm: caller.confirm || ((dialogOpts) => (widgets ? widgets.dialogs.confirm(dialogOpts) : Promise.resolve(false))),
+    pickFile: caller.pickFile || pickIconFile,
+    storePng: caller.storePng || ((bytes, transform) => storeRenderedPng(api, bytes, transform)),
+    storeSvg: caller.storeSvg || ((svg) => storeSvgText(api, svg)),
   });
 }
 
@@ -2952,7 +3183,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
     pickFile: pickIconFile,
     storePng: (bytes, transform) => storeRenderedPng(api, bytes, transform),
   });
-  accountsView.setZoom(ui.zoom.shell * ui.zoom.accountsTable, ui.zoom.accountsTable);
+  scaleTables();
   logSettings = createLogSettings(api, mountRoot, {
     timeZone: () => logTimeZone,
     onError(text) {
@@ -3035,6 +3266,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
         return { role, swatch };
       },
     });
+    scaleMailList();
   }
   await openInitialTabs();
   const mailPane = mountRoot && mountRoot.querySelector('[data-nav="mail"]');

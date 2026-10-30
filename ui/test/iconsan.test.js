@@ -87,7 +87,10 @@ test("the painter caches a snippet and loads icon schemes", () => {
   expect(again.fragment.querySelector("img").getAttribute("src")).toBe(`pav-asset://${ASSET_ID}`);
   expect(first.fragment).not.toBe(again.fragment);
   const mark = paintIcon(`<img src="pav-system:mark" alt="">`);
-  expect(mark.fragment.querySelector("img").getAttribute("src")).toBe("pav-system://mark");
+  const markImg = mark.fragment.querySelector("img");
+  expect(markImg.getAttribute("src")).toBe("pav-system://mark");
+  expect(markImg.getAttribute("srcset")).toBe("/mark-64.png 64w, /mark-128.png 128w, /mark-256.png 256w");
+  expect(markImg.getAttribute("sizes")).toBe("3rem");
   dropIconPaint(`<img src="${ASSET_SRC}" alt="">`);
 });
 

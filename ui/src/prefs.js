@@ -58,8 +58,9 @@ export const DEFAULT_UI = {
     log: 1,
     helpIndex: 1,
     helpContent: 1,
-    accountsTable: 1,
-    accountsForm: 1,
+    tables: 1,
+    details: 1,
+    settings: 1,
     wheel: "away",
   },
   activity: { view: "log", history: false },
@@ -90,8 +91,9 @@ export const ZOOM_KEYS = [
   "log",
   "helpIndex",
   "helpContent",
-  "accountsTable",
-  "accountsForm",
+  "tables",
+  "details",
+  "settings",
 ];
 const KNOWN = new Set([
   "nav",
@@ -125,6 +127,8 @@ const KNOWN = new Set([
   "colorSwatches",
   "colorPickerZoom",
   "iconWizardZoom",
+  "iconResultZoom",
+  "iconFlagBox",
 ]);
 
 function isObject(value) {
@@ -409,18 +413,48 @@ function swatchesOf(raw) {
   return swatchList(raw);
 }
 
+/* Flags menu size. Missing or invalid stays omitted so the CSS size is used. */
+function flagBoxOf(raw) {
+  if (!isObject(raw)) {
+    return null;
+  }
+  const width = Math.round(Number(raw.width));
+  const height = Math.round(Number(raw.height));
+  if (!Number.isFinite(width) || !Number.isFinite(height)) {
+    return null;
+  }
+  return {
+    width: Math.min(480, Math.max(160, width)),
+    height: Math.min(640, Math.max(120, height)),
+  };
+}
+
+/* A saved Accounts table/form zoom moves once onto the shared keys. */
+function zoomOf(raw) {
+  const src = isObject(raw) ? { ...raw } : {};
+  if (src.tables === undefined && src.accountsTable !== undefined) {
+    src.tables = src.accountsTable;
+  }
+  if (src.details === undefined && src.accountsForm !== undefined) {
+    src.details = src.accountsForm;
+  }
+  delete src.accountsTable;
+  delete src.accountsForm;
+  const zoom = {};
+  for (const key of ZOOM_KEYS) {
+    zoom[key] = snapZoom(src[key] === undefined ? DEFAULT_UI.zoom[key] : src[key], key);
+  }
+  /* Which roll increases a pane. Not a scale, so it stays out of ZOOM_KEYS. */
+  zoom.wheel = src.wheel === "toward" ? "toward" : "away";
+  copyUnknown(zoom, src, [...ZOOM_KEYS, "wheel"]);
+  return zoom;
+}
+
 /* Fills defaults and clamps. Unknown keys are kept. */
 export function clampUi(raw) {
   const src = isObject(raw) ? raw : {};
   const rail = railOf(src.rail);
-  const zoomSrc = isObject(src.zoom) ? src.zoom : {};
-  const zoom = {};
-  for (const key of ZOOM_KEYS) {
-    zoom[key] = snapZoom(zoomSrc[key] === undefined ? DEFAULT_UI.zoom[key] : zoomSrc[key], key);
-  }
-  /* Which roll increases a pane. Not a scale, so it stays out of ZOOM_KEYS. */
-  zoom.wheel = zoomSrc.wheel === "toward" ? "toward" : "away";
-  copyUnknown(zoom, zoomSrc, [...ZOOM_KEYS, "wheel"]);
+  const zoom = zoomOf(src.zoom);
   const out = {
     nav: panePx(src.nav, DEFAULT_UI.nav),
     trees: treesOf(src.trees),
@@ -441,6 +475,9 @@ export function clampUi(raw) {
     iconWizardZoom: src.iconWizardZoom === undefined || src.iconWizardZoom === null || src.iconWizardZoom === ""
       ? 1
       : colorZoomOf(src.iconWizardZoom),
+    iconResultZoom: src.iconResultZoom === undefined || src.iconResultZoom === null || src.iconResultZoom === "" || !Number.isFinite(Number(src.iconResultZoom))
+      ? 1
+      : colorZoomOf(src.iconResultZoom),
     fontawesome_kit: typeof src.fontawesome_kit === "string" ? src.fontawesome_kit : DEFAULT_UI.fontawesome_kit,
     fonts: fontsOf(src.fonts),
     activity: activityOf(src.activity),
@@ -454,6 +491,10 @@ export function clampUi(raw) {
   const libraries = librariesOf(src.iconLibraries);
   if (libraries) {
     out.iconLibraries = libraries;
+  }
+  const flagBox = flagBoxOf(src.iconFlagBox);
+  if (flagBox) {
+    out.iconFlagBox = flagBox;
   }
   if (src.iconsResetD9 === true) {
     out.iconsResetD9 = true;

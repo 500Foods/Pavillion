@@ -273,5 +273,13 @@ export function mountAssetsPanel(root, ctx) {
     saveTableOrder: ctx.saveTableOrder,
   });
 
-  return { refresh, paintForm };
+  return {
+    refresh,
+    paintForm,
+    setZoom(width, font) {
+      if (view && typeof view.setZoom === "function") {
+        view.setZoom(width, font);
+      }
+    },
+  };
 }

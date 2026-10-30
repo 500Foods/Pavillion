@@ -1,22 +1,29 @@
 /* Icon Wizard. Its own dialog. Foundry text is never inserted as HTML. */
 import { colorZoomOf, mountColoris, pickerZoomAfter } from "../coloris.js";
 import { paintIcon, removedText, sanitizeIconHtml } from "../iconsan.js";
-import { SYSTEM_ICONS } from "./registry.js";
+import { SYSTEM_ICONS, iconNode } from "./registry.js";
 import {
-  FA_FAMILIES,
-  FA_SIZES,
-  FA_STYLES,
+  FA_FLAG_GROUPS,
   PNG_RENDER,
   addClassAt,
   assetSnippet,
   bakeSvg,
+  faCatalog,
+  faChoiceFromHtml,
+  faIconPlace,
+  faKitNames,
   foundryFromLibrary,
-  guessMode,
+  iconFormat,
+  iconFormatLabel,
   librarySnippet,
   needsFoundry,
   paintRender,
   wrapRange,
 } from "./snippet.js";
+
+function searchPlaceholder(text) {
+  return `🔍 ${text}`;
+}
 
 const MODE_LABELS = {
   library: "Icon Library",
@@ -24,6 +31,31 @@ const MODE_LABELS = {
   svg: "SVG",
   png: "PNG",
 };
+
+const HIT_BASE = 28;
+
+function hitSize(scale) {
+  return `${Math.round(HIT_BASE * scale)}px`;
+}
+
+function resultZoomOf(raw) {
+  if (raw === undefined || raw === null || raw === "" || !Number.isFinite(Number(raw))) {
+    return 1;
+  }
+  return colorZoomOf(raw);
+}
+
+function flagBoxPx(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const width = Math.round(Number(raw.width));
+  const height = Math.round(Number(raw.height));
+  if (!Number.isFinite(width) || !Number.isFinite(height)) {
+    return null;
+  }
+  return { width, height };
+}
 
 function show(dialog) {
   if (typeof dialog.showModal === "function") {
@@ -48,8 +80,10 @@ function button(doc, label, className) {
 function fieldLabel(doc, text, control) {
   const label = doc.createElement("label");
   label.className = "pav-icon-field";
-  label.append(doc.createTextNode(text));
-  label.append(control);
+  const caption = doc.createElement("span");
+  caption.className = "pav-icon-label";
+  caption.textContent = text;
+  label.append(caption, control);
   return label;
 }
 
@@ -137,6 +171,30 @@ export function utf8Base64(text) {
   return btoa(bin);
 }
 
+const liveWizards = new Set();
+
+/* The Zooms row and a wheel over an open Wizard share this value. */
+export function applyIconWizardZoom(scale) {
+  const next = colorZoomOf(scale);
+  for (const slot of liveWizards) {
+    slot.zoom = next;
+    if (slot.dialog) {
+      slot.dialog.style.setProperty("--pav-wizard-zoom", String(next));
+    }
+  }
+}
+
+/* The search grid has its own zoom. Shell does not multiply it. */
+export function applyIconResultZoom(scale) {
+  const next = resultZoomOf(scale);
+  for (const slot of liveWizards) {
+    slot.resultZoom = next;
+    if (slot.grid) {
+      slot.grid.style.setProperty("--pav-icon-hit-size", hitSize(next));
+    }
+  }
+}
+
 export function openIconWizard(parent, options = {}) {
   if (!(parent instanceof Element)) {
     return Promise.resolve(null);
@@ -146,12 +204,24 @@ export function openIconWizard(parent, options = {}) {
     ? options.modes
     : ["library", "foundry", "svg", "png"]
   ).filter((mode) => MODE_LABELS[mode]);
+  const shelves = [
+    { id: "fa", label: iconFormatLabel("fa"), mode: "library" },
+    { id: "other", label: iconFormatLabel("other"), mode: "library" },
+    { id: "png", label: iconFormatLabel("png"), mode: "png" },
+    { id: "svg", label: iconFormatLabel("svg"), mode: "svg" },
+    { id: "custom", label: iconFormatLabel("custom"), mode: "foundry" },
+  ].filter((item) => modes.includes(item.mode));
+  function shelfFor(html, kind) {
+    return iconFormat(html, kind);
+  }
   const maxBytes = Number.isInteger(options.maxBytes) ? options.maxBytes : 8192;
   const current = typeof options.current === "string" ? options.current : "";
   const defaultHtml = typeof options.defaultHtml === "string" ? options.defaultHtml : "";
-  let mode = modes.includes(guessMode(current, options.assetKind))
-    ? guessMode(current, options.assetKind)
-    : modes[0];
+  let shelf = shelfFor(current, options.assetKind);
+  if (!shelves.some((item) => item.id === shelf)) {
+    shelf = shelves.length ? shelves[0].id : "fa";
+  }
+  let mode = (shelves.find((item) => item.id === shelf) || { mode: "library" }).mode;
 
   const library = {
     libraryId: "",
@@ -166,19 +236,42 @@ export function openIconWizard(parent, options = {}) {
     materialStyle: "sharp",
     system: "",
     query: "",
+    flags: [],
   };
+  if (shelf === "fa") {
+    const opened = faChoiceFromHtml(current);
+    if (opened) {
+      library.name = opened.name;
+      library.family = opened.family;
+      if (opened.style) {
+        library.style = opened.style;
+      }
+      if (opened.color) {
+        library.color = opened.color;
+      }
+      library.flags = opened.flags;
+    }
+  }
   const image = {
     svg: { tx: 0, ty: 0, scale: 1, rotate: 0, flipH: false, flipV: false, crop: true, background: "none", source: "" },
     png: { tx: 0, ty: 0, scale: 1, rotate: 0, flipH: false, flipV: false, crop: true, background: "none", source: "" },
   };
+  let pngBytes = null;
   let svgHtml = mode === "svg" ? current : "";
   let pngHtml = mode === "png" ? current : "";
   let foundryText = current;
+  let pinned = shelf === "fa" || shelf === "other" ? current : "";
   let settled = false;
   let edited = false;
-  let wizardZoom = options.zoom === undefined || options.zoom === null || options.zoom === ""
-    ? 1
-    : colorZoomOf(options.zoom);
+  const slot = {
+    zoom: options.zoom === undefined || options.zoom === null || options.zoom === ""
+      ? 1
+      : colorZoomOf(options.zoom),
+    resultZoom: resultZoomOf(options.resultZoom),
+    dialog: null,
+    grid: null,
+  };
+  liveWizards.add(slot);
   let wheelRemainder = 0;
   const embed = options.embed === true;
   const control = {
@@ -191,13 +284,35 @@ export function openIconWizard(parent, options = {}) {
   const pending = new Promise((resolve) => {
     const dialog = doc.createElement(embed ? "div" : "dialog");
     dialog.className = embed ? "pav-icon-wizard is-embedded" : "pav-dialog pav-icon-wizard";
-    dialog.style.setProperty("--pav-wizard-zoom", String(wizardZoom));
-    const head = doc.createElement("div");
-    head.className = "pav-icon-wizard-head";
+    slot.dialog = dialog;
+    dialog.style.setProperty("--pav-wizard-zoom", String(slot.zoom));
     const title = doc.createElement("h2");
-    title.className = "pav-dialog-title";
-    const section = options.section ? ` — ${options.section}` : "";
-    title.textContent = `${options.title || "Icon"}${section}`;
+    title.className = "pav-dialog-title pav-icon-crumb";
+    function crumbPart(className, text, strong) {
+      const el = doc.createElement(strong ? "strong" : "span");
+      el.className = className;
+      el.textContent = text;
+      return el;
+    }
+    function crumbSep() {
+      const sep = doc.createElement("span");
+      sep.className = "pav-icon-crumb-sep";
+      sep.setAttribute("aria-hidden", "true");
+      sep.textContent = ">";
+      title.append(sep);
+    }
+    if (options.section) {
+      title.append(crumbPart("pav-icon-crumb-group", options.section, true));
+      crumbSep();
+    }
+    title.append(crumbPart("pav-icon-crumb-name", options.title || "Icon", false));
+    if (options.key) {
+      crumbSep();
+      title.append(crumbPart("pav-icon-crumb-key", options.key, false));
+    }
+    crumbSep();
+    const formatCrumb = crumbPart("pav-icon-crumb-format", iconFormatLabel(shelf), false);
+    title.append(formatCrumb);
     const closeBtn = doc.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "pav-icon-close";
@@ -208,14 +323,13 @@ export function openIconWizard(parent, options = {}) {
     closeIcon.setAttribute("aria-hidden", "true");
     closeIcon.draggable = false;
     closeBtn.append(closeIcon);
-    head.append(title, closeBtn);
-    dialog.append(head);
-    if (options.key) {
-      const key = doc.createElement("p");
-      key.className = "pav-icon-key";
-      key.textContent = options.key;
-      dialog.append(key);
-    }
+    const barCrumb = doc.createElement("div");
+    barCrumb.className = "button-bar pav-module-toolbar pav-icon-bar pav-icon-crumb-bar";
+    barCrumb.setAttribute("role", "toolbar");
+    barCrumb.setAttribute("aria-label", "Icon");
+    const crumbSpacer = doc.createElement("div");
+    crumbSpacer.className = "pav-module-spacer";
+    barCrumb.append(title, crumbSpacer, closeBtn);
 
     const layout = doc.createElement("div");
     layout.className = "pav-icon-layout";
@@ -224,45 +338,38 @@ export function openIconWizard(parent, options = {}) {
     const square = doc.createElement("div");
     square.className = "pav-icon-square";
     square.setAttribute("aria-hidden", "true");
-    previewCol.append(square);
-    let chipLight = null;
-    let chipDark = null;
-    if (options.smallChrome) {
-      const chips = doc.createElement("div");
-      chips.className = "pav-icon-chips";
-      chipLight = doc.createElement("div");
-      chipLight.className = "pav-icon-chip is-light";
-      chipDark = doc.createElement("div");
-      chipDark.className = "pav-icon-chip is-dark";
-      chips.append(chipLight, chipDark);
-      previewCol.append(chips);
+    const themeLabel = doc.createElement("div");
+    themeLabel.className = "pav-icon-theme-label";
+    themeLabel.textContent = "Theme";
+    function themeGround(kind, caption) {
+      const wrap = doc.createElement("div");
+      wrap.className = `pav-icon-ground is-${kind}`;
+      const chip = doc.createElement("div");
+      chip.className = `pav-icon-chip is-${kind}`;
+      chip.setAttribute("aria-hidden", "true");
+      const cap = doc.createElement("div");
+      cap.className = "pav-icon-ground-label";
+      cap.textContent = caption;
+      wrap.append(chip, cap);
+      return { wrap, chip };
     }
+    const darkGround = themeGround("dark", "Dark");
+    const lightGround = themeGround("light", "Light");
+    const chipDark = darkGround.chip;
+    const chipLight = lightGround.chip;
+    previewCol.append(square, themeLabel, darkGround.wrap, lightGround.wrap);
 
-    const main = doc.createElement("div");
-    main.className = "pav-icon-main";
-    const bar1 = doc.createElement("div");
-    bar1.className = "button-bar pav-icon-bar";
-    bar1.setAttribute("role", "toolbar");
-    const modeButtons = new Map();
-    for (const name of modes) {
-      const tab = button(doc, MODE_LABELS[name], "pav-icon-mode");
-      tab.dataset.mode = name;
-      tab.setAttribute("aria-pressed", name === mode ? "true" : "false");
-      modeButtons.set(name, tab);
-      bar1.append(tab);
-    }
-    const acceptBtn = button(doc, "Accept", "pav-dialog-ok");
-    const cancelBtn = button(doc, "Cancel", "pav-dialog-cancel");
-    bar1.append(acceptBtn, cancelBtn);
-
-    const bar2 = doc.createElement("div");
-    bar2.className = "button-bar pav-icon-bar pav-icon-presets";
-    bar2.setAttribute("role", "toolbar");
-    bar2.append(button(doc, "Default", "pav-icon-preset"));
+    const barPresets = doc.createElement("div");
+    barPresets.className = "button-bar pav-module-toolbar pav-icon-bar pav-icon-presets";
+    barPresets.setAttribute("role", "toolbar");
+    barPresets.setAttribute("aria-label", "Icon presets");
+    const presetScroll = doc.createElement("div");
+    presetScroll.className = "pav-icon-preset-scroll";
+    presetScroll.append(button(doc, "Default", "pav-icon-preset"));
     for (const system of SYSTEM_ICONS) {
-      const shelf = button(doc, system.label, "pav-icon-preset");
-      shelf.dataset.system = system.id;
-      bar2.append(shelf);
+      const preset = button(doc, system.label, "pav-icon-preset");
+      preset.dataset.system = system.id;
+      presetScroll.append(preset);
     }
     for (const recent of options.recent || []) {
       if (typeof recent !== "string" || recent === "") {
@@ -277,24 +384,191 @@ export function openIconWizard(parent, options = {}) {
       } else {
         chip.textContent = "Recent";
       }
-      bar2.append(chip);
+      presetScroll.append(chip);
+    }
+    function actionIcon(key, label, className) {
+      const el = doc.createElement("button");
+      el.type = "button";
+      el.className = className;
+      el.setAttribute("aria-label", label);
+      el.setAttribute("data-pav-tip", label);
+      const icon = iconNode(key, { icons: options.icons, documentRef: doc });
+      if (icon) {
+        icon.draggable = false;
+        el.append(icon);
+      }
+      return el;
+    }
+    const acceptBtn = actionIcon("ui.check", "Accept", "pav-dialog-ok");
+    const cancelBtn = actionIcon("ui.cancel", "Cancel", "pav-dialog-cancel");
+    const spacer = doc.createElement("div");
+    spacer.className = "pav-module-spacer";
+    barPresets.append(presetScroll, spacer, acceptBtn, cancelBtn);
+
+    const barSource = doc.createElement("div");
+    barSource.className = "button-bar pav-module-toolbar pav-icon-bar";
+    barSource.setAttribute("role", "toolbar");
+    barSource.setAttribute("aria-label", "Icon Format");
+    const formatTitle = doc.createElement("span");
+    formatTitle.className = "pav-module-title pav-icon-label";
+    formatTitle.textContent = "Icon Format";
+    barSource.append(formatTitle);
+    const shelfButtons = new Map();
+    for (const item of shelves) {
+      const tab = button(doc, item.label, "pav-icon-mode");
+      tab.dataset.shelf = item.id;
+      tab.setAttribute("aria-pressed", item.id === shelf ? "true" : "false");
+      shelfButtons.set(item.id, tab);
+      barSource.append(tab);
     }
 
+    const barTools = doc.createElement("div");
+    barTools.className = "button-bar pav-module-toolbar pav-icon-bar pav-icon-toolsbar";
+    barTools.setAttribute("role", "toolbar");
+    barTools.setAttribute("aria-label", "Icon tools");
+
+    const bars = doc.createElement("div");
+    bars.className = "pav-icon-bars";
+    bars.append(barCrumb, barPresets, barSource, barTools);
+    const main = doc.createElement("div");
+    main.className = "pav-icon-main";
     const work = doc.createElement("div");
     work.className = "pav-icon-work";
     const note = doc.createElement("p");
     note.className = "pav-icon-note";
-    main.append(bar1, bar2, work, note);
+    main.append(bars, work, note);
     layout.append(previewCol, main);
     dialog.append(layout);
     parent.append(dialog);
 
     let foundry = null;
     const pages = {};
+    let grid = null;
+    let syncLibrary = () => {};
+    let syncSearchChrome = () => {};
+    let flagObserver = null;
+    const menuObservers = [];
+    let escapeClearsSearch = false;
+
+    function closePops() {
+      for (const menu of dialog.querySelectorAll(".pav-icon-pop")) {
+        menu.hidden = true;
+      }
+      for (const trigger of dialog.querySelectorAll("button.pav-icon-menu")) {
+        trigger.setAttribute("aria-expanded", "false");
+      }
+    }
+
+    function placePop(trigger, menu) {
+      const rect = trigger.getBoundingClientRect();
+      const z = slot.zoom || 1;
+      menu.hidden = false;
+      menu.style.left = `${rect.left / z}px`;
+      menu.style.top = `${rect.bottom / z}px`;
+      trigger.setAttribute("aria-expanded", "true");
+    }
+
+    function openPop(trigger, menu) {
+      const wasClosed = menu.hidden;
+      closePops();
+      if (wasClosed) {
+        placePop(trigger, menu);
+      }
+    }
+
+    /* The select stays in the label so tests and refillStyles keep .value.
+       The button is what you see. A label click on that button must not open
+       the native list. */
+    function attachMenu(select, caption) {
+      select.hidden = true;
+      select.tabIndex = -1;
+      select.setAttribute("aria-hidden", "true");
+      const trigger = doc.createElement("button");
+      trigger.type = "button";
+      trigger.className = "pav-icon-menu";
+      trigger.setAttribute("aria-haspopup", "listbox");
+      trigger.setAttribute("aria-expanded", "false");
+      const name = doc.createElement("span");
+      name.className = "pav-icon-menu-label";
+      const caret = doc.createElement("span");
+      caret.className = "pav-icon-caret";
+      caret.setAttribute("aria-hidden", "true");
+      trigger.append(name, caret);
+      select.after(trigger);
+      const menu = doc.createElement("div");
+      menu.className = "pav-icon-pop pav-icon-choice-menu";
+      menu.hidden = true;
+      menu.setAttribute("role", "listbox");
+      menu.setAttribute("aria-label", caption);
+      dialog.append(menu);
+      function paint() {
+        const picked = [...select.options].find((option) => option.value === select.value) || select.options[0] || null;
+        const text = picked && picked.textContent ? picked.textContent : "";
+        name.textContent = text;
+        trigger.setAttribute("aria-label", text ? `${caption}: ${text}` : caption);
+        for (const row of menu.querySelectorAll(".pav-icon-flag")) {
+          const on = row.dataset.value === select.value && select.value !== "";
+          row.setAttribute("aria-pressed", on ? "true" : "false");
+          row.setAttribute("aria-selected", on ? "true" : "false");
+        }
+      }
+      function rebuild() {
+        menu.replaceChildren();
+        for (const option of select.options) {
+          if (!option.textContent) {
+            continue;
+          }
+          const row = doc.createElement("button");
+          row.type = "button";
+          row.className = "pav-icon-flag";
+          row.dataset.value = option.value;
+          row.setAttribute("role", "option");
+          const mark = doc.createElement("span");
+          mark.className = "pav-icon-flag-check";
+          mark.setAttribute("aria-hidden", "true");
+          const label = doc.createElement("span");
+          label.className = "pav-icon-flag-label";
+          label.textContent = option.textContent;
+          row.append(mark, label);
+          menu.append(row);
+        }
+        paint();
+      }
+      const observer = new MutationObserver(() => rebuild());
+      observer.observe(select, { childList: true });
+      menuObservers.push(() => observer.disconnect());
+      rebuild();
+      select.addEventListener("change", paint);
+      trigger.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openPop(trigger, menu);
+      });
+      menu.addEventListener("click", (event) => {
+        const row = event.target instanceof Element ? event.target.closest(".pav-icon-flag") : null;
+        if (!row) {
+          return;
+        }
+        event.stopPropagation();
+        if (select.value !== row.dataset.value) {
+          select.value = row.dataset.value;
+          select.dispatchEvent(new Event("input", { bubbles: true }));
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        closePops();
+      });
+      return rebuild;
+    }
 
     function activeHtml() {
       if (mode === "library") {
-        return needsFoundry(library) ? "" : librarySnippet(library);
+        if (pinned) {
+          return pinned;
+        }
+        if (!Array.isArray(library.flags) && needsFoundry(library)) {
+          return "";
+        }
+        return librarySnippet(library);
       }
       if (mode === "foundry") {
         return foundry ? foundry.value() : foundryText;
@@ -310,9 +584,11 @@ export function openIconWizard(parent, options = {}) {
         return;
       }
       square.replaceChildren();
+      chipDark.replaceChildren();
+      chipLight.replaceChildren();
       const painted = paintIcon(html || "", doc);
       if (!html) {
-        note.textContent = needsFoundry(library) && mode === "library" ? "Open in Foundry" : "";
+        note.textContent = needsFoundry(library) && mode === "library" ? "Open in Custom" : "";
         acceptBtn.disabled = true;
         return;
       }
@@ -326,22 +602,51 @@ export function openIconWizard(parent, options = {}) {
       const node = painted.fragment.firstElementChild;
       if (node) {
         square.append(node);
-        if (chipLight) {
-          chipLight.replaceChildren(node.cloneNode(true));
-          chipDark.replaceChildren(node.cloneNode(true));
-        }
+        chipDark.append(node.cloneNode(true));
+        chipLight.append(node.cloneNode(true));
       }
     }
 
-    function showPage(name) {
-      mode = name;
-      for (const [key, tab] of modeButtons) {
-        tab.setAttribute("aria-pressed", key === name ? "true" : "false");
+    function toolsetOn(which) {
+      if (which === "tone") {
+        return shelf === "fa" || shelf === "other";
+      }
+      return which === shelf;
+    }
+
+    function showShelf(id) {
+      const item = shelves.find((entry) => entry.id === id);
+      if (!item) {
+        return;
+      }
+      const previous = shelf;
+      shelf = item.id;
+      closePops();
+      mode = item.mode;
+      formatCrumb.textContent = item.label;
+      for (const [key, tab] of shelfButtons) {
+        tab.setAttribute("aria-pressed", key === shelf ? "true" : "false");
+      }
+      for (const group of barTools.querySelectorAll(".pav-icon-toolset")) {
+        group.hidden = !toolsetOn(group.dataset.toolset);
       }
       for (const [key, page] of Object.entries(pages)) {
-        page.hidden = key !== name;
+        const on = key === "library"
+          ? shelf === "fa" || shelf === "other"
+          : key === "foundry"
+            ? shelf === "custom"
+            : key === shelf;
+        page.hidden = !on;
       }
-      if (name !== "foundry") {
+      if ((previous === "fa" || previous === "other") && previous !== shelf && grid) {
+        grid.replaceChildren();
+        if (note.textContent === "No icons match.") {
+          note.textContent = "";
+        }
+      }
+      syncLibrary();
+      syncSearchChrome();
+      if (mode !== "foundry") {
         paintSquare(activeHtml(), true);
       }
     }
@@ -352,27 +657,42 @@ export function openIconWizard(parent, options = {}) {
       if (foundry) {
         foundry.set(html);
       }
-      const next = guessMode(html, options.assetKind);
+      const next = shelfFor(html, options.assetKind);
       if (next === "svg") {
         svgHtml = html;
+        pinned = "";
       } else if (next === "png") {
         pngHtml = html;
-      } else if (html.includes("pav-system:mark")) {
-        library.system = "mark";
+        pinned = "";
+      } else {
+        pinned = html;
+        library.system = String(html).includes("pav-system:mark") ? "mark" : "";
       }
-      if (modes.includes(next)) {
-        showPage(next);
+      if (shelves.some((item) => item.id === next)) {
+        showShelf(next);
       }
       paintSquare(html, true);
     }
 
     function libraryPage() {
+      const menuSync = [];
+      function syncMenus() {
+        for (const rebuild of menuSync) {
+          rebuild();
+        }
+      }
       const page = doc.createElement("div");
+      page.className = "pav-icon-page";
       const libs = (options.libraries || []).filter((item) => item && item.enabled);
-      library.libraryId = (libs[0] && libs[0].id) || "fontawesome";
-      const libSelect = selectOf(doc, libs.map((item) => ({ id: item.id, label: item.name || item.id })), library.libraryId);
-      const family = selectOf(doc, FA_FAMILIES, library.family);
-      const style = selectOf(doc, FA_STYLES, library.style);
+      const others = libs.filter((item) => item.id !== "fontawesome");
+      const libSelect = selectOf(
+        doc,
+        others.map((item) => ({ id: item.id, label: item.name || item.id })),
+        (others[0] && others[0].id) || "",
+      );
+      const catalog = faCatalog();
+      const family = selectOf(doc, catalog.families, "");
+      const style = doc.createElement("select");
       const materialFace = selectOf(doc, [
         { id: "sharp", label: "Sharp" },
         { id: "outlined", label: "Outlined" },
@@ -381,50 +701,319 @@ export function openIconWizard(parent, options = {}) {
       const familyField = fieldLabel(doc, "Family", family);
       const styleField = fieldLabel(doc, "Style", style);
       const materialField = fieldLabel(doc, "Material style", materialFace);
+      function stylesFor(familyId) {
+        const row = catalog.families.find((item) => item.id === familyId);
+        return row ? row.styles : [];
+      }
+      function refillStyles() {
+        const styles = stylesFor(family.value);
+        const hide = styles.length === 0;
+        styleField.hidden = hide;
+        const previous = style.value || library.style;
+        style.replaceChildren();
+        const items = hide ? [{ id: "", label: "" }] : styles;
+        for (const item of items) {
+          const option = doc.createElement("option");
+          option.value = item.id;
+          option.textContent = item.label;
+          style.append(option);
+        }
+        const keep = items.some((item) => item.id === previous);
+        style.value = keep ? previous : items[0].id;
+        syncMenus();
+      }
+      if (!catalog.families.some((item) => item.id === library.family) && catalog.families[0]) {
+        library.family = catalog.families[0].id;
+      }
+      family.value = library.family;
+      refillStyles();
+      library.style = style.value;
       const search = doc.createElement("input");
       search.type = "search";
-      search.className = "pav-icon-search";
-      search.setAttribute("aria-label", "Search icons");
-      const grid = doc.createElement("div");
+      search.className = "pav-module-search";
+      search.placeholder = searchPlaceholder("Search Font Awesome");
+      search.setAttribute("aria-label", "Search Font Awesome");
+      search.spellcheck = false;
+      search.autocomplete = "off";
+      const searchSpacer = doc.createElement("span");
+      searchSpacer.className = "pav-module-spacer";
+      const helpBtn = doc.createElement("button");
+      helpBtn.type = "button";
+      helpBtn.className = "help-jump";
+      helpBtn.dataset.helpPage = "settings";
+      helpBtn.dataset.helpSection = "fontawesome";
+      helpBtn.dataset.wizardHelp = "true";
+      helpBtn.dataset.shelfOn = "true";
+      helpBtn.setAttribute("aria-label", "Help for Font Awesome");
+      const helpIcon = iconNode("nav.help", {
+        icons: options.icons,
+        themeHtml: typeof options.helpThemeHtml === "string" ? options.helpThemeHtml : "",
+        documentRef: doc,
+      });
+      if (helpIcon) {
+        helpIcon.draggable = false;
+        helpBtn.append(helpIcon);
+      }
+      helpBtn.addEventListener("click", (event) => {
+        if (typeof options.onHelp !== "function") {
+          return;
+        }
+        event.stopPropagation();
+        options.onHelp();
+      });
+      grid = doc.createElement("div");
       grid.className = "pav-icon-grid";
+      slot.grid = grid;
+      grid.style.setProperty("--pav-icon-hit-size", hitSize(slot.resultZoom));
+      let resultsShelf = "";
+      let resultRows = [];
       const color = doc.createElement("input");
       color.type = "text";
       color.placeholder = "#800000";
       color.setAttribute("aria-label", "Color");
+      if (library.color) {
+        color.value = library.color;
+      }
       void mountColoris(color, options.swatches);
-      const size = selectOf(doc, FA_SIZES.filter(Boolean).concat([""]).map((id) => ({ id, label: id || "Size" })), "");
-      const rotate = selectOf(doc, [0, 90, 180, 270].map((n) => ({ id: String(n), label: n ? `Rotate ${n}` : "Rotate" })), "0");
-      const flip = selectOf(doc, [
-        { id: "", label: "Flip" },
-        { id: "h", label: "Flip horizontal" },
-        { id: "v", label: "Flip vertical" },
-      ], "");
-      const fixed = doc.createElement("input");
-      fixed.type = "checkbox";
-      const foundryBtn = button(doc, "Open in Foundry", "pav-icon-tool");
+      const flagsBtn = button(doc, "Flags", "pav-icon-tool pav-icon-menu");
+      flagsBtn.setAttribute("aria-haspopup", "true");
+      flagsBtn.setAttribute("aria-expanded", "false");
+      flagsBtn.setAttribute("aria-label", "Flags");
+      const flagsCaret = doc.createElement("span");
+      flagsCaret.className = "pav-icon-caret";
+      flagsCaret.setAttribute("aria-hidden", "true");
+      flagsBtn.append(flagsCaret);
+      const flagsWrap = doc.createElement("div");
+      flagsWrap.className = "pav-icon-flags";
+      flagsWrap.append(flagsBtn);
+      const flagMenu = doc.createElement("div");
+      flagMenu.className = "pav-icon-pop pav-icon-flag-menu";
+      flagMenu.hidden = true;
+      for (const group of FA_FLAG_GROUPS) {
+        const section = doc.createElement("div");
+        section.className = "pav-icon-flag-section";
+        section.setAttribute("role", "group");
+        section.setAttribute("aria-label", group.label);
+        const heading = doc.createElement("div");
+        heading.className = "pav-icon-flag-heading";
+        heading.setAttribute("aria-hidden", "true");
+        heading.textContent = group.label;
+        section.append(heading);
+        for (const item of group.items) {
+          const choice = button(doc, "", "pav-icon-flag");
+          choice.dataset.flag = item.id;
+          choice.dataset.exclusive = group.exclusive ? "true" : "false";
+          choice.setAttribute("aria-pressed", "false");
+          const mark = doc.createElement("span");
+          mark.className = "pav-icon-flag-check";
+          mark.setAttribute("aria-hidden", "true");
+          const name = doc.createElement("span");
+          name.className = "pav-icon-flag-label";
+          name.textContent = item.label;
+          choice.append(mark, name);
+          section.append(choice);
+        }
+        flagMenu.append(section);
+      }
+      dialog.append(flagMenu);
+      const openedBox = flagBoxPx(options.flagBox);
+      if (openedBox) {
+        flagMenu.style.width = `${openedBox.width}px`;
+        flagMenu.style.height = `${openedBox.height}px`;
+      }
+      let flagBoxWidth = 0;
+      let flagBoxHeight = 0;
+      let flagBoxSeen = false;
+      if (typeof ResizeObserver === "function") {
+        flagObserver = new ResizeObserver(() => {
+          if (flagMenu.hidden) {
+            return;
+          }
+          const width = Math.round(flagMenu.offsetWidth);
+          const height = Math.round(flagMenu.offsetHeight);
+          if (width < 160 || height < 120) {
+            return;
+          }
+          if (!flagBoxSeen) {
+            flagBoxSeen = true;
+            flagBoxWidth = width;
+            flagBoxHeight = height;
+            return;
+          }
+          if (width === flagBoxWidth && height === flagBoxHeight) {
+            return;
+          }
+          flagBoxWidth = width;
+          flagBoxHeight = height;
+          if (typeof options.onFlagBox === "function") {
+            options.onFlagBox({ width, height });
+          }
+        });
+        flagObserver.observe(flagMenu);
+      }
+      function paintFlags() {
+        const on = new Set(library.flags);
+        for (const choice of flagMenu.querySelectorAll(".pav-icon-flag")) {
+          choice.setAttribute("aria-pressed", on.has(choice.dataset.flag) ? "true" : "false");
+        }
+      }
+      flagsBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openPop(flagsBtn, flagMenu);
+      });
+      flagMenu.addEventListener("click", (event) => {
+        const choice = event.target instanceof Element ? event.target.closest(".pav-icon-flag") : null;
+        if (!choice) {
+          return;
+        }
+        event.stopPropagation();
+        const cls = choice.dataset.flag;
+        const flags = new Set(library.flags);
+        if (flags.has(cls)) {
+          flags.delete(cls);
+        } else {
+          if (choice.dataset.exclusive === "true") {
+            for (const other of choice.parentElement.querySelectorAll(".pav-icon-flag")) {
+              flags.delete(other.dataset.flag);
+            }
+          }
+          flags.add(cls);
+        }
+        library.flags = FA_FLAG_GROUPS.flatMap((group) => group.items.map((item) => item.id)).filter((id) => flags.has(id));
+        paintFlags();
+        onField();
+      });
+      paintFlags();
+      const foundryBtn = button(doc, "Open in Custom", "pav-icon-tool");
       foundryBtn.hidden = true;
-      const refresh = () => {
-        edited = true;
-        library.libraryId = libSelect.value;
+      function markHits() {
+        for (const hit of grid.querySelectorAll(".pav-icon-hit")) {
+          const on = hit.dataset.name === library.name && !library.system && resultsShelf === shelf;
+          hit.setAttribute("aria-pressed", on ? "true" : "false");
+        }
+      }
+      function noHitNote() {
+        const fa = globalThis.FontAwesome;
+        if (library.libraryId === "fontawesome" && fa && typeof fa.findIconDefinition === "function" && faCatalog().source === "kit") {
+          return "No icons in the loaded kit match.";
+        }
+        return "No icons in this family and style match.";
+      }
+      function chooseHit(row, hit) {
+        const placeFamily = hit.dataset.family || "";
+        const placeStyle = hit.dataset.style || "";
+        if (placeFamily && placeFamily !== family.value) {
+          family.value = placeFamily;
+          refillStyles();
+        }
+        if (placeStyle && [...style.options].some((opt) => opt.value === placeStyle)) {
+          style.value = placeStyle;
+        }
+        syncMenus();
+        library.system = "";
+        library.name = row.name;
+        refresh();
+      }
+      function paintHits(rows) {
+        grid.replaceChildren();
+        let shown = 0;
+        for (const row of rows) {
+          if (shown >= 80) {
+            break;
+          }
+          if (!row || typeof row.name !== "string" || row.name === "") {
+            continue;
+          }
+          let drawFamily = library.family;
+          let drawStyle = library.style;
+          if (library.libraryId === "fontawesome") {
+            const place = faIconPlace(library.family, library.style, row.name);
+            if (!place) {
+              continue;
+            }
+            drawFamily = place.family;
+            drawStyle = place.style;
+          }
+          const label = row.label || row.name;
+          const hit = button(doc, "", "pav-icon-hit");
+          hit.dataset.name = row.name;
+          if (library.libraryId === "fontawesome") {
+            hit.dataset.family = drawFamily;
+            hit.dataset.style = drawStyle;
+          }
+          hit.setAttribute("aria-label", label);
+          hit.setAttribute("data-pav-tip", label);
+          const snippet = librarySnippet({
+            ...library,
+            family: drawFamily,
+            style: drawStyle,
+            system: "",
+            name: row.name,
+          });
+          const painted = paintIcon(snippet, doc);
+          if (painted.ok && painted.fragment.firstElementChild) {
+            hit.append(painted.fragment.firstElementChild);
+          }
+          const caption = doc.createElement("span");
+          caption.className = "pav-icon-hit-name";
+          caption.textContent = label;
+          hit.append(caption);
+          hit.addEventListener("click", () => chooseHit(row, hit));
+          hit.addEventListener("dblclick", () => {
+            chooseHit(row, hit);
+            accept();
+          });
+          grid.append(hit);
+          shown += 1;
+        }
+        markHits();
+        return shown;
+      }
+      syncLibrary = () => {
+        if (shelf === "fa") {
+          library.libraryId = "fontawesome";
+        } else if (shelf === "other") {
+          library.libraryId = libSelect.value;
+        }
         library.family = family.value;
         library.style = style.value;
         library.materialStyle = materialFace.value;
         library.color = color.value.trim();
-        library.size = size.value;
-        library.rotate = Number(rotate.value) || 0;
-        library.flip = flip.value;
-        library.fixed = fixed.checked;
-        const material = library.libraryId === "material";
-        familyField.hidden = material;
-        styleField.hidden = material;
-        materialField.hidden = !material;
-        foundryBtn.hidden = material || !needsFoundry(library);
+        materialField.hidden = !(shelf === "other" && library.libraryId === "material");
+        foundryBtn.hidden = shelf !== "fa" || !needsFoundry(library);
+        if (resultsShelf === shelf && resultRows.length) {
+          const shown = paintHits(resultRows);
+          if (!shown) {
+            note.textContent = noHitNote();
+          } else if (note.textContent === "No icons in this family and style match." || note.textContent === "No icons in the loaded kit match.") {
+            note.textContent = "";
+          }
+        } else {
+          markHits();
+        }
+        syncSearchChrome();
+      };
+      const refresh = () => {
+        edited = true;
+        pinned = "";
+        syncLibrary();
         paintSquare(activeHtml(), true);
       };
-      for (const control of [libSelect, family, style, materialFace, color, size, rotate, flip, fixed]) {
-        control.addEventListener("input", refresh);
-        control.addEventListener("change", refresh);
+      const onField = () => {
+        library.system = "";
+        refresh();
+      };
+      family.addEventListener("change", () => {
+        refillStyles();
+      });
+      for (const control of [libSelect, family, style, materialFace, color]) {
+        control.addEventListener("input", onField);
+        control.addEventListener("change", onField);
       }
+      let searchGen = 0;
+      search.addEventListener("input", () => {
+        runSearch();
+      });
       search.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
@@ -435,34 +1024,72 @@ export function openIconWizard(parent, options = {}) {
         if (typeof options.search !== "function") {
           return;
         }
+        if (shelf === "other" && !libSelect.value) {
+          note.textContent = "Turn on a library under Settings → Libraries.";
+          return;
+        }
+        const gen = ++searchGen;
+        syncLibrary();
+        note.textContent = "Searching.";
         library.query = search.value;
         let rows = [];
         try {
-          const payload = await options.search({ id: library.libraryId, query: library.query, limit: 80 });
+          const payload = await options.search({ id: library.libraryId, query: library.query, limit: 200 });
+          if (gen !== searchGen) {
+            return;
+          }
           rows = Array.isArray(payload) ? payload : (payload && payload.icons) || [];
         } catch (err) {
+          if (gen !== searchGen) {
+            return;
+          }
           note.textContent = err instanceof Error ? err.message : "Search failed.";
           return;
         }
-        grid.replaceChildren();
-        for (const row of rows || []) {
-          const hit = button(doc, row.label || row.name, "pav-icon-hit");
-          hit.addEventListener("click", () => {
-            library.system = "";
-            library.name = row.name;
-            refresh();
-          });
-          hit.addEventListener("dblclick", () => {
-            library.system = "";
-            library.name = row.name;
-            refresh();
-            accept();
-          });
-          grid.append(hit);
+        if (library.libraryId === "fontawesome") {
+          const have = new Set(rows.map((row) => row && row.name).filter(Boolean));
+          for (const name of faKitNames(library.query)) {
+            if (!have.has(name)) {
+              rows.push({ name, label: name });
+              have.add(name);
+            }
+          }
         }
+        resultsShelf = shelf;
+        if (!rows.length) {
+          resultRows = [];
+          grid.replaceChildren();
+          note.textContent = "No icons match.";
+          return;
+        }
+        resultRows = rows;
+        const shown = paintHits(rows);
+        note.textContent = shown ? "" : noHitNote();
       }
-      const searchBtn = button(doc, "Search", "pav-icon-tool");
-      searchBtn.addEventListener("click", () => runSearch());
+      let resultRemainder = 0;
+      grid.addEventListener("wheel", (event) => {
+        if (!event.ctrlKey) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        const steps = notchesFrom(event, () => resultRemainder, (value) => {
+          resultRemainder = value;
+        });
+        if (!steps) {
+          return;
+        }
+        const toward = typeof options.toward === "function" && options.toward();
+        const next = pickerZoomAfter(slot.resultZoom, steps, toward);
+        if (next === slot.resultZoom) {
+          return;
+        }
+        slot.resultZoom = next;
+        grid.style.setProperty("--pav-icon-hit-size", hitSize(next));
+        if (typeof options.onResultZoom === "function") {
+          options.onResultZoom(next);
+        }
+      }, { passive: false });
       foundryBtn.addEventListener("click", () => {
         edited = true;
         const nested = foundryFromLibrary(library);
@@ -470,32 +1097,45 @@ export function openIconWizard(parent, options = {}) {
         if (foundry) {
           foundry.set(nested);
         }
-        showPage("foundry");
+        showShelf("custom");
         paintSquare(nested, true);
       });
-      materialField.hidden = library.libraryId !== "material";
-      page.append(
-        fieldLabel(doc, "Library", libSelect),
-        familyField,
-        styleField,
-        materialField,
-        search,
-        searchBtn,
-        grid,
-        fieldLabel(doc, "Color", color),
-        fieldLabel(doc, "Size", size),
-        fieldLabel(doc, "Rotate", rotate),
-        fieldLabel(doc, "Flip", flip),
-        fieldLabel(doc, "Fixed width", fixed),
-        foundryBtn,
-      );
+      function addToolset(id, ...nodes) {
+        const group = doc.createElement("div");
+        group.className = "pav-icon-toolset";
+        group.dataset.toolset = id;
+        group.append(...nodes);
+        barTools.append(group);
+      }
+      const libraryField = fieldLabel(doc, "Library", libSelect);
+      menuSync.push(attachMenu(family, "Family"), attachMenu(style, "Style"), attachMenu(libSelect, "Library"), attachMenu(materialFace, "Material style"));
+      addToolset("fa", familyField, styleField, flagsWrap, foundryBtn);
+      addToolset("other", libraryField, materialField);
+      addToolset("tone", fieldLabel(doc, "Color", color));
+      barTools.append(searchSpacer, search, helpBtn);
+      syncSearchChrome = () => {
+        const libraryOn = shelf === "fa" || shelf === "other";
+        searchSpacer.hidden = !libraryOn;
+        search.hidden = !libraryOn;
+        const picked = libSelect.options[libSelect.selectedIndex];
+        const prompt = shelf === "fa"
+          ? "Search Font Awesome"
+          : (picked && picked.textContent ? `Search ${picked.textContent}` : "Search icons");
+        search.placeholder = searchPlaceholder(prompt);
+        search.setAttribute("aria-label", prompt);
+        helpBtn.dataset.shelfOn = libraryOn ? "true" : "false";
+        helpBtn.hidden = !libraryOn || options.showHelp === false;
+      };
+      page.append(grid);
       return page;
     }
 
     function foundryPage() {
       const page = doc.createElement("div");
+      page.className = "pav-icon-page";
       const tools = doc.createElement("div");
-      tools.className = "pav-icon-tools";
+      tools.className = "pav-icon-toolset";
+      tools.dataset.toolset = "custom";
       const host = doc.createElement("div");
       host.className = "pav-icon-editor";
       const preview = button(doc, "Preview", "pav-icon-tool");
@@ -518,7 +1158,8 @@ export function openIconWizard(parent, options = {}) {
         tools.append(tool);
       }
       tools.append(preview);
-      page.append(tools, host);
+      barTools.append(tools);
+      page.append(host);
       mountFoundry(host, foundryText, (value) => {
         edited = true;
         foundryText = value;
@@ -540,7 +1181,12 @@ export function openIconWizard(parent, options = {}) {
 
     function imagePage(kind) {
       const page = doc.createElement("div");
-      const pick = button(doc, kind === "svg" ? "Pick SVG" : "Pick PNG", "pav-icon-tool");
+      page.className = "pav-icon-page";
+      const tools = doc.createElement("div");
+      tools.className = "pav-icon-toolset";
+      tools.dataset.toolset = kind;
+      const load = button(doc, "Load", "pav-icon-tool");
+      const save = button(doc, "Save", "pav-icon-tool");
       const scale = doc.createElement("input");
       scale.type = "range";
       scale.min = "0.2";
@@ -554,7 +1200,6 @@ export function openIconWizard(parent, options = {}) {
       const flipH = button(doc, "Flip H", "pav-icon-tool");
       const flipV = button(doc, "Flip V", "pav-icon-tool");
       const turn = button(doc, "Rotate 90", "pav-icon-tool");
-      const apply = button(doc, "Apply view", "pav-icon-tool");
       const transform = image[kind];
       function read() {
         edited = true;
@@ -576,12 +1221,21 @@ export function openIconWizard(parent, options = {}) {
       });
       scale.addEventListener("input", read);
       rotate.addEventListener("input", read);
-      pick.addEventListener("click", () => importImage(kind));
-      apply.addEventListener("click", () => {
+      load.addEventListener("click", () => importImage(kind));
+      save.addEventListener("click", () => {
         read();
-        rebake(kind);
+        if (kind === "svg") {
+          rebake("svg");
+          return;
+        }
+        if (!pngBytes && typeof options.renderPng !== "function") {
+          note.textContent = "Load a PNG.";
+          return;
+        }
+        void storePng(pngBytes);
       });
-      page.append(pick, fieldLabel(doc, "Scale", scale), fieldLabel(doc, "Rotate", rotate), flipH, flipV, turn, apply);
+      tools.append(load, save, fieldLabel(doc, "Scale", scale), fieldLabel(doc, "Rotate", rotate), flipH, flipV, turn);
+      barTools.append(tools);
       return page;
     }
 
@@ -612,8 +1266,11 @@ export function openIconWizard(parent, options = {}) {
         rebake("svg");
         return;
       }
+      if (bytes) {
+        pngBytes = bytes;
+      }
       if (!bytes && typeof options.renderPng !== "function") {
-        note.textContent = "Pick a PNG.";
+        note.textContent = "Load a PNG.";
         return;
       }
       await storePng(bytes);
@@ -668,22 +1325,30 @@ export function openIconWizard(parent, options = {}) {
       finish({ html });
     }
 
-    function wizardNotches(event) {
+    function notchesFrom(event, read, write) {
       const delta = event.deltaY;
       if (!Number.isFinite(delta) || delta === 0) {
         return 0;
       }
       if (event.deltaMode !== 0 || Math.abs(delta) >= 100) {
-        wheelRemainder = 0;
+        write(0);
         return delta > 0 ? 1 : -1;
       }
-      wheelRemainder += delta;
-      if (Math.abs(wheelRemainder) < 100) {
+      let remainder = read() + delta;
+      if (Math.abs(remainder) < 100) {
+        write(remainder);
         return 0;
       }
-      const steps = wheelRemainder > 0 ? 1 : -1;
-      wheelRemainder -= steps * 100;
+      const steps = remainder > 0 ? 1 : -1;
+      remainder -= steps * 100;
+      write(remainder);
       return steps;
+    }
+
+    function wizardNotches(event) {
+      return notchesFrom(event, () => wheelRemainder, (value) => {
+        wheelRemainder = value;
+      });
     }
 
     async function requestClose() {
@@ -705,6 +1370,13 @@ export function openIconWizard(parent, options = {}) {
         return;
       }
       settled = true;
+      liveWizards.delete(slot);
+      if (flagObserver) {
+        flagObserver.disconnect();
+      }
+      for (const disconnect of menuObservers) {
+        disconnect();
+      }
       dialog.remove();
       resolve(value);
     }
@@ -727,12 +1399,12 @@ export function openIconWizard(parent, options = {}) {
     for (const page of Object.values(pages)) {
       work.append(page);
     }
-    for (const [name, tab] of modeButtons) {
-      tab.addEventListener("click", () => showPage(name));
+    for (const [name, tab] of shelfButtons) {
+      tab.addEventListener("click", () => showShelf(name));
     }
-    bar2.addEventListener("click", (event) => {
+    barPresets.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target.closest("button") : null;
-      if (!target || !bar2.contains(target)) {
+      if (!target || !presetScroll.contains(target)) {
         return;
       }
       if (target.dataset.system) {
@@ -754,6 +1426,10 @@ export function openIconWizard(parent, options = {}) {
     if (!embed) {
       dialog.addEventListener("cancel", (event) => {
         event.preventDefault();
+        if (escapeClearsSearch) {
+          escapeClearsSearch = false;
+          return;
+        }
         requestClose();
       });
       dialog.addEventListener("click", (event) => {
@@ -765,11 +1441,42 @@ export function openIconWizard(parent, options = {}) {
         }
       });
     }
+    dialog.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      const field = event.target instanceof Element ? event.target.closest(".pav-module-search") : null;
+      if (field && field.value !== "") {
+        event.preventDefault();
+        event.stopPropagation();
+        escapeClearsSearch = true;
+        field.value = "";
+        field.dispatchEvent(new Event("input"));
+        return;
+      }
+      const open = [...dialog.querySelectorAll(".pav-icon-pop")].some((menu) => !menu.hidden);
+      if (!open) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      closePops();
+    }, true);
+    dialog.addEventListener("click", (event) => {
+      const open = [...dialog.querySelectorAll(".pav-icon-pop")].some((menu) => !menu.hidden);
+      if (!open) {
+        return;
+      }
+      if (event.target instanceof Element && (event.target.closest(".pav-icon-pop") || event.target.closest("button.pav-icon-menu"))) {
+        return;
+      }
+      closePops();
+    });
     dialog.addEventListener("wheel", (event) => {
       if (!event.ctrlKey) {
         return;
       }
-      if (event.target instanceof Element && event.target.closest("#clr-picker")) {
+      if (event.target instanceof Element && (event.target.closest("#clr-picker") || event.target.closest(".pav-icon-grid") || event.target.closest(".pav-icon-pop"))) {
         return;
       }
       event.preventDefault();
@@ -778,20 +1485,18 @@ export function openIconWizard(parent, options = {}) {
         return;
       }
       const toward = typeof options.toward === "function" && options.toward();
-      const next = pickerZoomAfter(wizardZoom, steps, toward);
-      if (next === wizardZoom) {
+      const next = pickerZoomAfter(slot.zoom, steps, toward);
+      if (next === slot.zoom) {
         return;
       }
-      wizardZoom = next;
-      dialog.style.setProperty("--pav-wizard-zoom", String(wizardZoom));
+      slot.zoom = next;
+      dialog.style.setProperty("--pav-wizard-zoom", String(slot.zoom));
       if (typeof options.onZoom === "function") {
-        options.onZoom(wizardZoom);
+        options.onZoom(slot.zoom);
       }
     }, { capture: true, passive: false });
-    showPage(mode);
-    if (mode !== "foundry") {
-      paintSquare(current || activeHtml(), true);
-    }
+    showShelf(shelf);
+    paintSquare(current || activeHtml(), true);
     if (!embed) {
       show(dialog);
     }
