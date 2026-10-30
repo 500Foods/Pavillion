@@ -772,18 +772,40 @@ test("select can leave the scroll alone, and a saved scroll is restored once", a
   const holder = document.createElement("div");
   holder.className = "tabulator-tableholder";
   el.append(holder);
+  const jumped = [];
+  t.rowManager = {
+    renderer: {
+      scrollTop: 0,
+      scrollRows(top) {
+        this.scrollTop = top;
+        jumped.push(top);
+      },
+    },
+  };
   handle.select("c", { reveal: false });
   t.handlers.tableBuilt();
   expect(holder.scrollTop).toBe(40);
   expect(holder.scrollLeft).toBe(8);
+  expect(jumped).toEqual([40]);
   expect(t.selected).toEqual(["c"]);
   expect(t.calls.filter((call) => call[0] === "scrollToRow")).toEqual([]);
   t.handlers.renderComplete();
   expect(holder.scrollTop).toBe(40);
+  /* A redraw's own scroll event is not the user, and it must not replace the save. */
+  holder.scrollTop = 5;
+  holder.scrollLeft = 1;
+  holder.dispatchEvent(new Event("scroll"));
+  expect(scrolls).toEqual([]);
+  t.handlers.renderComplete();
+  expect(holder.scrollTop).toBe(40);
+  expect(holder.scrollLeft).toBe(8);
+  holder.dispatchEvent(new WheelEvent("wheel", { bubbles: true }));
   holder.scrollTop = 12;
   holder.scrollLeft = 3;
   holder.dispatchEvent(new Event("scroll"));
   expect(scrolls).toContainEqual({ top: 12, left: 3 });
+  t.handlers.renderComplete();
+  expect(holder.scrollTop).toBe(12);
   handle.select("a");
   expect(t.calls).toContainEqual(["scrollToRow", "a"]);
   handle.destroy();
@@ -811,20 +833,37 @@ test("a table built with no box redraws once it is shown", async () => {
     await vi.waitFor(() => expect(made.length).toBe(before + 1));
     const t = made[before];
     const redraws = [];
-    t.redraw = (force) => redraws.push(force);
     const holder = document.createElement("div");
     holder.className = "tabulator-tableholder";
     el.append(holder);
+    /* Tabulator's redraw sets the holder to the top, including after the
+       render that would otherwise restore the saved position. */
+    t.redraw = (force) => {
+      redraws.push(force);
+      holder.scrollTop = 0;
+      holder.scrollLeft = 0;
+      if (t.handlers.renderComplete) {
+        t.handlers.renderComplete();
+      }
+      holder.scrollTop = 0;
+      holder.scrollLeft = 0;
+    };
     handle.select("b", { reveal: false });
     t.handlers.tableBuilt();
     expect(redraws).toEqual([]);
-    expect(holder.scrollTop).toBe(40);
+    expect(holder.scrollTop).toBe(0);
     Object.defineProperty(el, "offsetWidth", { configurable: true, value: 300 });
     Object.defineProperty(el, "offsetHeight", { configurable: true, value: 120 });
     notify();
     expect(redraws).toEqual([true]);
     expect(holder.scrollTop).toBe(40);
+    expect(holder.scrollLeft).toBe(8);
     expect(t.selected).toEqual(["b"]);
+    holder.scrollTop = 0;
+    holder.scrollLeft = 0;
+    t.handlers.renderComplete();
+    expect(holder.scrollTop).toBe(40);
+    expect(holder.scrollLeft).toBe(8);
     notify();
     expect(redraws).toEqual([true]);
     handle.destroy();

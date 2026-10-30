@@ -5,10 +5,11 @@
    groupHeader, groupOrder, footerElement, select, onRender, download, filter,
    indicator, onIndicatorHeader, fitTitles, onColumnResized, onWidths, movable,
    onColumnMoved, scroll, onScroll}).
-   scroll is {top, left} in pixels on the row holder, applied once when the
-   table is built. onScroll reports later movement of that holder.
-   select(id) scrolls that row into view. select(id, {reveal:false}) leaves
-   the scroll where it is, which is how a restored position stays put.
+   scroll is {top, left} in pixels on the row holder. A full redraw puts that
+   holder back at the top, so the saved position is written again until the
+   user wheels over the rows, presses the rows, or moves the selection.
+   onScroll reports that later movement. select(id) scrolls that row into
+   view. select(id, {reveal:false}) leaves the scroll where it is.
    The table fills el (height 100%, layout fitColumns, virtual rows).
    ResizeTable redraws it when the pane or a split changes size. A column
    with widthGrow shares the spare width and is not given a fixed width
@@ -282,12 +283,13 @@ export function createTable(el, options) {
      measure may shrink it. Later measures only widen. */
   const fitted = new Set();
   const base = {};
-  /* A saved scroll is applied once per build. While it is pending, holder
-     scroll events are ignored so the initial 0 does not replace it.
+  /* A saved scroll is applied when the table is built. While it is pending,
+     holder scroll events are ignored so the initial 0 does not replace it.
      pendingReveal is a select() that arrived before the table was built.
-     openingScroll is kept for the redraw that runs when a hidden pane is
-     shown: the hidden build can give up on the position before the holder
-     can scroll. */
+     openingScroll is kept for every full redraw: renderTable sets the holder
+     to the top, and the virtual renderer can snap a bare scrollTop back into
+     the rows it has already drawn. restoring stays on until the user moves
+     the list, so a later redraw does not store that 0. */
   const openingScroll = cleanScroll(options.scroll);
   let scrollPending = openingScroll;
   let scrollTries = 0;
@@ -295,6 +297,9 @@ export function createTable(el, options) {
   let pendingReveal = false;
   let showObserver = null;
   let showRedrawn = false;
+  let restoring = scrollPinned(openingScroll);
+  let restoreRaf = 0;
+  let restoreFrames = 0;
   for (const column of options.columns || []) {
     if (column.field && Number.isFinite(column.width) && !(Number(column.widthGrow) > 0)) {
       base[column.field] = column.width;
@@ -360,18 +365,146 @@ export function createTable(el, options) {
     return el.offsetWidth > 0 || el.offsetHeight > 0;
   }
 
+  function stopRestore() {
+    restoring = false;
+    scrollPending = null;
+    pendingReveal = false;
+    if (restoreRaf !== 0 && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(restoreRaf);
+    }
+    restoreRaf = 0;
+  }
+
+  /* A zero max means the virtual rows have not padded the holder yet, so
+     the raw value is used and a later pass clamps it. ready is false until
+     the holder can actually scroll on an axis we need. */
+  function scrollTarget() {
+    const holder = holderEl();
+    if (!holder || !openingScroll) {
+      return null;
+    }
+    const maxTop = Math.max(0, holder.scrollHeight - holder.clientHeight);
+    const maxLeft = Math.max(0, holder.scrollWidth - holder.clientWidth);
+    return {
+      top: maxTop > 0 ? Math.min(openingScroll.top, maxTop) : openingScroll.top,
+      left: maxLeft > 0 ? Math.min(openingScroll.left, maxLeft) : openingScroll.left,
+      ready: (openingScroll.top <= 0 || maxTop > 0) && (openingScroll.left <= 0 || maxLeft > 0),
+    };
+  }
+
+  function atTarget() {
+    const holder = holderEl();
+    const target = scrollTarget();
+    if (!holder || !target || !target.ready) {
+      return false;
+    }
+    return holder.scrollTop === target.top && holder.scrollLeft === target.left;
+  }
+
+  /* Setting scrollTop alone leaves the virtual window on the rows it has
+     already drawn. The next redraw(false) then snaps the holder back into
+     that window. scrollRows moves the window to this offset first. */
+  function jumpVirtual(top) {
+    const renderer = table && table.rowManager && table.rowManager.renderer;
+    if (!renderer || typeof renderer.scrollRows !== "function" || renderer.scrollTop === top) {
+      return;
+    }
+    renderer.scrollRows(top, top < (renderer.scrollTop || 0));
+  }
+
+  function applyOpeningScroll() {
+    if (!restoring || !openingScroll || !hasBox()) {
+      return;
+    }
+    const holder = holderEl();
+    const target = scrollTarget();
+    if (!holder || !target) {
+      return;
+    }
+    if (holder.scrollTop !== target.top || holder.scrollLeft !== target.left) {
+      writeScroll(target);
+    }
+    if (holder.scrollTop === target.top) {
+      jumpVirtual(holder.scrollTop);
+    }
+  }
+
+  function armRestore() {
+    if (!restoring || destroyed || restoreRaf !== 0 || restoreFrames >= 90) {
+      return;
+    }
+    if (typeof requestAnimationFrame !== "function") {
+      return;
+    }
+    restoreRaf = requestAnimationFrame(() => {
+      restoreRaf = 0;
+      if (!restoring || destroyed) {
+        return;
+      }
+      restoreFrames += 1;
+      watchScroll();
+      applyOpeningScroll();
+      if (!atTarget()) {
+        armRestore();
+      }
+    });
+  }
+
+  function pumpRestore() {
+    if (!restoring || destroyed) {
+      return;
+    }
+    watchScroll();
+    watchUserMove();
+    applyOpeningScroll();
+    if (!atTarget()) {
+      armRestore();
+    }
+  }
+
   function onHolderScroll() {
-    if (applyingScroll || scrollPending || !hasBox() || typeof options.onScroll !== "function") {
+    if (applyingScroll || !hasBox()) {
       return;
     }
     const holder = holderEl();
     if (!holder) {
       return;
     }
-    const pos = cleanScroll({ top: holder.scrollTop, left: holder.scrollLeft });
-    if (pos) {
-      options.onScroll(pos);
+    if (restoring) {
+      if (!atTarget()) {
+        armRestore();
+      }
+      return;
     }
+    if (scrollPending || typeof options.onScroll !== "function") {
+      return;
+    }
+    const pos = cleanScroll({ top: holder.scrollTop, left: holder.scrollLeft });
+    if (!pos) {
+      return;
+    }
+    options.onScroll(pos);
+  }
+
+  /* A wheel or a press on the rows is the user moving the list. A scroll
+     event by itself is also how a redraw returns the holder to the top. */
+  function watchUserMove() {
+    if (el.dataset.pavUserScroll === "1") {
+      return;
+    }
+    el.dataset.pavUserScroll = "1";
+    el.addEventListener("wheel", (event) => {
+      const holder = holderEl();
+      if (holder && event.target instanceof Node && holder.contains(event.target)) {
+        stopRestore();
+      }
+    }, { passive: true });
+    el.addEventListener("pointerdown", (event) => {
+      const holder = holderEl();
+      if (holder && event.target instanceof Node && holder.contains(event.target)) {
+        stopRestore();
+      }
+    });
   }
 
   function watchScroll() {
@@ -390,9 +523,10 @@ export function createTable(el, options) {
   }
 
   /* tableBuilt, then one renderComplete if the value did not stick. A short
-     list clamps the offset; after two tries the user's own scroll is saved. */
+     list clamps the offset; after two tries the user's own scroll is saved.
+     A hidden pane has no box yet, so those tries wait until it is shown. */
   function settleScroll() {
-    if (destroyed) {
+    if (destroyed || !hasBox()) {
       return;
     }
     watchScroll();
@@ -428,7 +562,10 @@ export function createTable(el, options) {
       showObserver.disconnect();
       showObserver = null;
     }
-    if (scrollPinned(openingScroll)) {
+    /* redraw resets the holder to the top, and the layout pass after it
+       does too. Put the saved position back once both have finished. */
+    const restore = scrollPinned(openingScroll);
+    if (restore) {
       scrollPending = openingScroll;
       scrollTries = 0;
       pendingReveal = false;
@@ -438,7 +575,14 @@ export function createTable(el, options) {
     }
     markSelected();
     relayout();
-    settleScroll();
+    if (restore) {
+      scrollPending = openingScroll;
+      scrollTries = 0;
+      pendingReveal = false;
+      pumpRestore();
+    } else {
+      settleScroll();
+    }
   }
 
   function armShowRedraw() {
@@ -899,13 +1043,19 @@ export function createTable(el, options) {
       rendered();
       settleScroll();
       armShowRedraw();
+      if (restoring && hasBox()) {
+        pumpRestore();
+      }
     });
     table.on("dataSorted", () => queueMicrotask(rendered));
-    /* Redraws (a hidden pane shown, zoom), resizes and visibility changes.
-       The saved scroll is applied once. A later renderComplete does not
-       put it back after the user has moved the list. */
+    /* A full redraw puts the holder back at the top. Write the saved
+       position again until the user moves the list. */
     table.on("renderComplete", () => {
       relayout();
+      if (restoring) {
+        pumpRestore();
+        return;
+      }
       if (scrollPending) {
         settleScroll();
       } else {
@@ -1026,6 +1176,9 @@ export function createTable(el, options) {
       if (built) {
         table.redraw(true);
         relayout();
+        if (restoring) {
+          pumpRestore();
+        }
       }
     },
     /* TABULATOR.md Refresh refits: after any pending data load, redraw(true),
@@ -1040,6 +1193,9 @@ export function createTable(el, options) {
         applyScale();
         relayout();
         markSelected();
+        if (restoring) {
+          pumpRestore();
+        }
       });
     },
     /* After a zoom change or a pane shown: redraw and re-measure. */
@@ -1047,6 +1203,9 @@ export function createTable(el, options) {
       if (built) {
         table.redraw(true);
         relayout();
+        if (restoring) {
+          pumpRestore();
+        }
       }
     },
     /* Vertical scrollbar width of the rows area (pane minimum). */
@@ -1145,22 +1304,22 @@ export function createTable(el, options) {
       }
     },
     /* Single selection, set only here. The default scrolls the row into
-       view. reveal:false leaves a restored pixel scroll alone. A pending
-       non-zero scroll wins over that scroll-into-view. */
+       view and ends the saved-scroll restore. reveal:false leaves a restored
+       pixel scroll alone. */
     select(id, opts) {
       const previous = current;
       current = id;
       const reveal = !opts || opts.reveal !== false;
       reformat(previous);
       reformat(id);
+      if (reveal) {
+        stopRestore();
+      }
       if (!built) {
         pendingReveal = reveal;
         return;
       }
       markSelected();
-      if (scrollPending && scrollPinned(scrollPending)) {
-        return;
-      }
       if (reveal) {
         revealRow(id);
       }
@@ -1169,6 +1328,7 @@ export function createTable(el, options) {
        sets the position for the rows just loaded. */
     setScroll(pos) {
       const clean = cleanScroll(pos) || { top: 0, left: 0 };
+      stopRestore();
       pendingReveal = false;
       scrollTries = 0;
       if (!built) {
@@ -1213,8 +1373,19 @@ export function createTable(el, options) {
       }
       return false;
     },
+    /* Rows that fit in the holder. Page Up and Page Down move by this many. */
+    pageCount() {
+      const holder = holderEl();
+      const row = el.querySelector(".tabulator-row:not(.tabulator-group)");
+      const height = row ? row.getBoundingClientRect().height : 0;
+      if (!holder || height <= 0 || holder.clientHeight <= 0) {
+        return 1;
+      }
+      return Math.max(1, Math.floor(holder.clientHeight / height));
+    },
     destroy() {
       destroyed = true;
+      stopRestore();
       if (showObserver) {
         showObserver.disconnect();
         showObserver = null;

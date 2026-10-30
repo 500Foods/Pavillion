@@ -127,6 +127,7 @@ vi.mock("../common/table.js", async (importOriginal) => {
         mark();
       },
       ids: () => [...order(rowsNow).values()].flat().map((r) => r.id),
+      pageCount: () => 2,
       download(name) {
         handle.downloads.push(name);
         return true;
@@ -979,6 +980,14 @@ test("the footer counts checked features, and the navigator and arrows move the 
     tree.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
     expect(selected()).toBe("gamma");
     tree.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    expect(selected()).toBe("beta");
+    tree.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+    expect(selected()).toBe("alpha");
+    tree.dispatchEvent(new KeyboardEvent("keydown", { key: "PageDown", bubbles: true }));
+    expect(selected()).toBe("beta");
+    tree.dispatchEvent(new KeyboardEvent("keydown", { key: "PageUp", bubbles: true }));
+    expect(selected()).toBe("alpha");
+    tree.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
     expect(selected()).toBe("beta");
     nav("first").click();
     expect(formName()).toBe("Alpha");

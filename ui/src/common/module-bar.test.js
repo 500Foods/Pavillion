@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { expect, test, vi } from "vitest";
-import { moduleFooter, moduleToolbar, mountBar, navState, navTarget, paintFooterNav } from "./module-bar.js";
+import { moduleFooter, moduleToolbar, mountBar, navState, navTarget, paintFooterNav, tableNavAction } from "./module-bar.js";
 
 test("the toolbar puts title, actions, spacer, search, then after-buttons", () => {
   const onInput = vi.fn();
@@ -63,6 +63,17 @@ test("navState and navTarget", () => {
   expect(navState(["a", "b"], "b")).toEqual({ first: true, prev: true, next: false, last: false });
   expect(navTarget(["a", "b"], "a", "next")).toBe("b");
   expect(navTarget([], null, "first")).toBeNull();
+  expect(navTarget(["a", "b", "c", "d"], "a", "pageNext", 2)).toBe("c");
+  expect(navTarget(["a", "b", "c", "d"], "d", "pagePrev", 3)).toBe("a");
+  expect(navTarget(["a", "b", "c"], "b", "pageNext", 10)).toBe("c");
+  expect(tableNavAction({ key: "ArrowUp" })).toBe("prev");
+  expect(tableNavAction({ key: "ArrowDown" })).toBe("next");
+  expect(tableNavAction({ key: "PageUp" })).toBe("pagePrev");
+  expect(tableNavAction({ key: "PageDown" })).toBe("pageNext");
+  expect(tableNavAction({ key: "Home" })).toBe("first");
+  expect(tableNavAction({ key: "End" })).toBe("last");
+  expect(tableNavAction({ key: "Home", shiftKey: true })).toBe("");
+  expect(tableNavAction({ key: "Enter" })).toBe("");
 });
 
 test("Refresh spins once per click, restarts mid-spin, and stops on animationend", () => {

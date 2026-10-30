@@ -2,7 +2,7 @@ import { createTable, INDICATOR_WIDTH } from "../common/table.js";
 import { iconClass } from "../common/icons/registry.js";
 import { storeSvgText } from "../common/icons/panel.js";
 import { accountSwatch } from "./account-icon.js";
-import { moduleFooter, moduleToolbar, mountBar, paintFooterNav } from "../common/module-bar.js";
+import { moduleFooter, moduleToolbar, mountBar, paintFooterNav, tableNavAction } from "../common/module-bar.js";
 import { openColumnChooser } from "../common/column-chooser.js";
 import { cleanOrder, orderColumns } from "./split-table.js";
 import {
@@ -477,11 +477,11 @@ export function createAccountsView(api, root, options = {}) {
     paintNavState();
   }
 
-  function navigate(action) {
+  function navigate(action, page = 1) {
     if (!table) {
       return;
     }
-    const id = navTarget(table.ids(), selectedId, action);
+    const id = navTarget(table.ids(), selectedId, action, page);
     if (id !== null && id !== selectedId) {
       selectAccount(id);
     }
@@ -491,10 +491,15 @@ export function createAccountsView(api, root, options = {}) {
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLButtonElement) {
       return;
     }
-    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-      event.preventDefault();
-      navigate(event.key === "ArrowUp" ? "prev" : "next");
+    const action = tableNavAction(event);
+    if (action === "") {
+      return;
     }
+    event.preventDefault();
+    const page = action === "pagePrev" || action === "pageNext"
+      ? (typeof table.pageCount === "function" ? table.pageCount() : 1)
+      : 1;
+    navigate(action, page);
   }
 
   /* K-Q12: CSV of the visible columns plus server and email; never secrets. */

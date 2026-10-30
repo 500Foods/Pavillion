@@ -405,6 +405,8 @@ test("opening a folder again selects that folder's message and scroll", async ()
   const holder = document.createElement("div");
   holder.className = "tabulator-tableholder";
   table.el.append(holder);
+  Object.defineProperty(table.el, "offsetWidth", { configurable: true, value: 400 });
+  Object.defineProperty(table.el, "offsetHeight", { configurable: true, value: 300 });
   table.handlers.tableBuilt();
   expect(table.picked).toBe("b");
   expect(holder.scrollTop).toBe(20);
@@ -417,4 +419,53 @@ test("opening a folder again selects that folder's message and scroll", async ()
   expect(place.selected).toBe("b");
   list.stop();
   pane.remove();
+});
+
+test("page, home, and end move the selected message", async () => {
+  const root = document.createElement("div");
+  const pane = document.createElement("div");
+  root.append(pane);
+  document.body.append(root);
+  const keys = createKeys(root);
+  const messages = [
+    { id: "a", from: "A", subject: "A" },
+    { id: "b", from: "B", subject: "B" },
+    { id: "c", from: "C", subject: "C" },
+    { id: "d", from: "D", subject: "D" },
+  ];
+  const list = createMailList(fakeApi([{ accountId: "foods", total: 4, messages }]), pane, {
+    keys,
+    mailboxOf() {
+      return { role: "inbox" };
+    },
+  });
+  const before = made.length;
+  await list.open("mbx:foods/a1:in");
+  await vi.waitFor(() => expect(made.length).toBe(before + 1));
+  const table = made[before];
+  const host = pane.querySelector(".mail-list-table");
+  const row = document.createElement("div");
+  row.className = "tabulator-row";
+  row.getBoundingClientRect = () => ({ height: 20, width: 10, top: 0, left: 0, bottom: 20, right: 10, x: 0, y: 0 });
+  const holder = document.createElement("div");
+  holder.className = "tabulator-tableholder";
+  Object.defineProperty(holder, "clientHeight", { value: 50 });
+  host.append(row, holder);
+  table.handlers.tableBuilt();
+  host.tabIndex = 0;
+  host.focus();
+  const press = (key) => {
+    document.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+  };
+  press("End");
+  expect(table.picked).toBe("d");
+  press("Home");
+  expect(table.picked).toBe("a");
+  press("PageDown");
+  expect(table.picked).toBe("c");
+  press("PageUp");
+  expect(table.picked).toBe("a");
+  list.stop();
+  keys.destroy();
+  root.remove();
 });

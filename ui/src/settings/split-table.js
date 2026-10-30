@@ -4,7 +4,7 @@ import { clampWidth } from "../common/column-widths.js";
 import { createTable, INDICATOR_WIDTH } from "../common/table.js";
 import { iconClass } from "../common/icons/registry.js";
 import { openColumnChooser } from "../common/column-chooser.js";
-import { moduleFooter, moduleToolbar, mountBar, navTarget, paintFooterNav } from "../common/module-bar.js";
+import { moduleFooter, moduleToolbar, mountBar, navTarget, paintFooterNav, tableNavAction } from "../common/module-bar.js";
 
 export function cleanHidden(hidden, chooser) {
   const allowed = new Set((chooser || []).filter((column) => !column.locked).map((column) => column.field));
@@ -346,11 +346,11 @@ export function mountModuleTable(root, spec) {
     return Boolean(pos && (pos.top > 0 || pos.left > 0));
   }
 
-  function navigate(action) {
+  function navigate(action, page = 1) {
     if (!table) {
       return;
     }
-    const id = navTarget(table.ids(), spec.getSelected(), action);
+    const id = navTarget(table.ids(), spec.getSelected(), action, page);
     if (id !== null && id !== spec.getSelected()) {
       spec.onSelect(id);
     }
@@ -361,10 +361,15 @@ export function mountModuleTable(root, spec) {
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target instanceof HTMLButtonElement) {
       return;
     }
-    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-      event.preventDefault();
-      navigate(event.key === "ArrowUp" ? "prev" : "next");
+    const action = tableNavAction(event);
+    if (action === "") {
+      return;
     }
+    event.preventDefault();
+    const page = (action === "pagePrev" || action === "pageNext") && typeof table.pageCount === "function"
+      ? table.pageCount()
+      : 1;
+    navigate(action, page);
   }
 
   function paint() {

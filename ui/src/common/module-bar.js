@@ -191,12 +191,14 @@ export function mountBar(host, bar) {
   return host;
 }
 
-/* Where First, Previous, Next, Last go from currentId in ids. */
-export function navTarget(ids, currentId, action) {
+/* Where First, Previous, Next, Last, and a page step go from currentId.
+   page is how many rows Page Up and Page Down move. */
+export function navTarget(ids, currentId, action, page = 1) {
   if (ids.length === 0) {
     return null;
   }
   const index = ids.indexOf(currentId);
+  const step = Number.isInteger(page) && page > 0 ? page : 1;
   if (action === "first") {
     return ids[0];
   }
@@ -204,7 +206,7 @@ export function navTarget(ids, currentId, action) {
     return ids[ids.length - 1];
   }
   if (index < 0) {
-    return action === "prev" ? ids[ids.length - 1] : ids[0];
+    return action === "prev" || action === "pagePrev" ? ids[ids.length - 1] : ids[0];
   }
   if (action === "prev") {
     return ids[Math.max(0, index - 1)];
@@ -212,5 +214,37 @@ export function navTarget(ids, currentId, action) {
   if (action === "next") {
     return ids[Math.min(ids.length - 1, index + 1)];
   }
+  if (action === "pagePrev") {
+    return ids[Math.max(0, index - step)];
+  }
+  if (action === "pageNext") {
+    return ids[Math.min(ids.length - 1, index + step)];
+  }
   return currentId;
+}
+
+/* List keys. Empty when the key is not one of these, or a modifier is held. */
+export function tableNavAction(event) {
+  if (!event || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+    return "";
+  }
+  if (event.key === "ArrowUp") {
+    return "prev";
+  }
+  if (event.key === "ArrowDown") {
+    return "next";
+  }
+  if (event.key === "PageUp") {
+    return "pagePrev";
+  }
+  if (event.key === "PageDown") {
+    return "pageNext";
+  }
+  if (event.key === "Home") {
+    return "first";
+  }
+  if (event.key === "End") {
+    return "last";
+  }
+  return "";
 }

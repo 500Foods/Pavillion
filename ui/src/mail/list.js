@@ -382,23 +382,32 @@ export function createMailList(api, pane, options = {}) {
     return table.ids().filter((id) => typeof id === "string" && id !== "");
   }
 
-  function move(delta) {
+  function moveTo(index) {
     const rows = ids();
     if (rows.length === 0) {
       return;
     }
-    let index = rows.indexOf(selected);
-    if (index < 0) {
-      index = delta < 0 ? rows.length : -1;
-    }
-    const next = index + delta;
-    if (next < 0 || next >= rows.length) {
+    const next = Math.max(0, Math.min(rows.length - 1, index));
+    if (rows[next] === selected) {
       return;
     }
     selected = rows[next];
     table.select(selected);
     savePlace({ selected });
     host.focus();
+  }
+
+  function move(delta) {
+    const rows = ids();
+    if (rows.length === 0) {
+      return;
+    }
+    const index = rows.indexOf(selected);
+    if (index < 0) {
+      moveTo(delta < 0 ? rows.length - 1 : 0);
+      return;
+    }
+    moveTo(index + delta);
   }
 
   /* N-4 opens the message. Enter stays in the list. */
@@ -483,8 +492,13 @@ export function createMailList(api, pane, options = {}) {
     });
   }
   if (keys && typeof keys.register === "function") {
+    const page = () => (table && typeof table.pageCount === "function" ? table.pageCount() : 1);
     stops.push(keys.register({ id: "list.next", scope: "list", chords: [["j"]], run: () => move(1) }));
     stops.push(keys.register({ id: "list.prev", scope: "list", chords: [["k"]], run: () => move(-1) }));
+    stops.push(keys.register({ id: "list.pageNext", scope: "list", chords: [["PageDown"]], run: () => move(page()) }));
+    stops.push(keys.register({ id: "list.pagePrev", scope: "list", chords: [["PageUp"]], run: () => move(-page()) }));
+    stops.push(keys.register({ id: "list.home", scope: "list", chords: [["Home"]], run: () => moveTo(0) }));
+    stops.push(keys.register({ id: "list.end", scope: "list", chords: [["End"]], run: () => moveTo(1e6) }));
     stops.push(keys.register({ id: "list.open", scope: "list", chords: [["Enter"]], run: () => choose() }));
   }
 
