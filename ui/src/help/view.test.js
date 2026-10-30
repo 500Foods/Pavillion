@@ -19,7 +19,7 @@ test("help search keeps a title hit whole and a text hit narrow", () => {
   expect(mail.sectionIds).toEqual(helpPages.find((page) => page.id === "mail").sections.map((section) => section.id));
   const zoom = filterHelp(helpPages, "toward");
   expect(zoom.map((hit) => hit.page.id)).toEqual(["settings"]);
-  expect(zoom[0].sectionIds).toEqual(["zoom"]);
+  expect(zoom[0].sectionIds).toEqual(["zoom", "icons", "accounts"]);
   expect(filterHelp(helpPages, "no-such-token")).toEqual([]);
   const schema = filterHelp(helpPages, "pavillion-index");
   expect(schema.map((hit) => hit.page.id)).toEqual(["developer"]);

@@ -68,8 +68,9 @@ test("the shell uses the menu, tooltip, toast, and link dialog", async () => {
 
   transport.emit("link.clicked", { paneId: "isolation", n: 0 });
   expect(root.querySelector("#link-confirm")).toBeNull();
-  expect(root.querySelector(".pav-dialog-title").textContent).toBe("This link wants to open:");
-  expect(root.querySelector(".pav-dialog-text").textContent).toBe("https://example.com/pavillion-isolation-test");
-  root.querySelector(".pav-dialog-ok").click();
+  const link = root.querySelector("dialog.pav-dialog");
+  expect(link.querySelector(".pav-dialog-title").textContent).toBe("This link wants to open:");
+  expect(link.querySelector(".pav-dialog-text").textContent).toBe("https://example.com/pavillion-isolation-test");
+  link.querySelector(".pav-dialog-ok").click();
   expect(root.querySelector("dialog")).toBeNull();
 });

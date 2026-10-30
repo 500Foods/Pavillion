@@ -401,10 +401,11 @@ test("removing an account deletes it from the tree", async () => {
     expect(document.querySelector("#account-delete").disabled).toBe(false);
     document.querySelector("#account-delete").click();
     await vi.waitFor(() => {
-      expect(document.querySelector(".pav-dialog-ok")).not.toBeNull();
+      expect(document.querySelector("dialog.pav-dialog .pav-dialog-ok")).not.toBeNull();
     });
-    expect(document.querySelector(".pav-dialog-title").textContent).toBe("Delete Test Account?");
-    document.querySelector(".pav-dialog-ok").click();
+    const dialog = document.querySelector("dialog.pav-dialog");
+    expect(dialog.querySelector(".pav-dialog-title").textContent).toBe("Delete Test Account?");
+    dialog.querySelector(".pav-dialog-ok").click();
 
     await vi.waitFor(() => {
       expect(document.querySelector("#accounts-tree").textContent).toContain("No accounts yet.");

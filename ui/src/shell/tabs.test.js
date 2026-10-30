@@ -598,10 +598,18 @@ test("workspace shortcuts switch and close, and a text field ignores them", asyn
   root.querySelector("#open-test-tab").click();
   const testTab = root.querySelector('[data-tab-id="help:test:1"]');
   const field = root.querySelector("#theme-folder");
+  const settings = root.querySelector("#panel-settings");
+  const theme = field.closest("[data-settings]");
+  /* jsdom will not move focus into a hidden pane, so the shortcut would still see the tab. */
+  settings.hidden = false;
+  theme.hidden = false;
   field.focus();
+  expect(document.activeElement).toBe(field);
   const blocked = key(field, "w", { ctrlKey: true });
   expect(blocked.defaultPrevented).toBe(false);
   expect(testTab.isConnected).toBe(true);
+  settings.hidden = true;
+  theme.hidden = true;
 
   testTab.focus();
   const closed = key(testTab, "w", { ctrlKey: true });
