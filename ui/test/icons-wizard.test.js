@@ -7,15 +7,18 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 import {
   defaultLibraries,
+  importedLibraries,
+  libraryUrl,
   libraryUrlError,
   librariesError,
   MATERIAL_URL,
   mergeShippedLibraries,
   phosphorUrl,
+  singleFontAwesome,
 } from "../src/common/iconhosts.js";
 import { registryEntry } from "../src/common/icons/registry.js";
 import { createIconSearch } from "../src/common/icons/search.js";
-import { PNG_RENDER, faCatalog, faChoiceFromHtml, faFamilyList, faIconKnown, faIconPlace, faKitNames, iconFormat, iconFormatLabel, iconOverrideDocument, iconOverridesFromText, paintRender } from "../src/common/icons/snippet.js";
+import { PNG_RENDER, faCatalog, faChoiceFromHtml, faFamilyList, faIconKnown, faIconPlace, faKitNames, iconFormat, iconFormatLabel, iconOverrideDocument, iconOverridesFromText, iconPackFromText, paintRender } from "../src/common/icons/snippet.js";
 import { applyIconWizardZoom, openIconWizard } from "../src/common/icons/wizard.js";
 
 const src = join(dirname(fileURLToPath(import.meta.url)), "../src");
@@ -55,6 +58,26 @@ test("a host outside the shipped list is refused", () => {
   expect(libraryUrlError("script", "http://kit.fontawesome.com/a.js")).toMatch(/https/);
   expect(librariesError([{ ...defaultLibraries()[0], group: "nope" }])).toMatch(/group/);
   expect(librariesError([{ ...defaultLibraries()[0], style: "nope" }])).toMatch(/style/);
+  const withIconify = defaultLibraries().map((entry) => (
+    entry.id === "iconify" ? { ...entry, enabled: true } : entry
+  ));
+  expect(librariesError(withIconify)).toBe("");
+  const secondKit = {
+    ...defaultLibraries()[0],
+    id: "font-awesome-2",
+    url: libraryUrl("fontawesome", "classic-solid", "abc"),
+    style: "classic-solid",
+    enabled: true,
+  };
+  const twoKits = [...defaultLibraries(), secondKit];
+  expect(librariesError(twoKits)).toMatch(/only one Font Awesome/);
+  const firstKept = singleFontAwesome(twoKits);
+  expect(firstKept.find((entry) => entry.id === "fontawesome").enabled).toBe(true);
+  expect(firstKept.find((entry) => entry.id === "font-awesome-2").enabled).toBe(false);
+  const savedKept = singleFontAwesome(twoKits, "font-awesome-2");
+  expect(savedKept.find((entry) => entry.id === "fontawesome").enabled).toBe(false);
+  expect(savedKept.find((entry) => entry.id === "font-awesome-2").enabled).toBe(true);
+  expect(importedLibraries(twoKits).find((entry) => entry.enabled && entry.group === "fontawesome").id).toBe("fontawesome");
   const legacy = [{ id: "fontawesome", name: "Font Awesome", type: "script", url: "https://kit.fontawesome.com/45801522ef.js", enabled: true }];
   expect(mergeShippedLibraries(legacy).map((entry) => entry.id)).toEqual(["fontawesome", "material", "iconify", "bootstrap", "phosphor", "tabler", "remix"]);
   expect(mergeShippedLibraries([{ ...legacy[0], group: "fontawesome" }])).toHaveLength(1);
@@ -94,7 +117,53 @@ test("an icon export is the saved overrides", () => {
   expect(Object.keys(mixed)).toEqual(["nav.contacts"]);
   expect(mixed["nav.contacts"]).toBe('<i class="fa-solid fa-star"></i>');
   expect(iconOverridesFromText('{"kind":"pavillion.icons","icons":{}}')).toEqual({});
+  const shared = defaultLibraries().map((entry) => (
+    entry.id === "iconify" ? { ...entry, enabled: true } : entry
+  ));
+  const withLibraries = iconOverrideDocument({
+    "nav.contacts": '<i class="fa-solid fa-star"></i>',
+  }, shared);
+  const packed = iconPackFromText(withLibraries);
+  expect(packed.libraries.find((entry) => entry.id === "iconify").enabled).toBe(true);
+  expect(packed.libraries.find((entry) => entry.id === "fontawesome").enabled).toBe(true);
+  expect(packed.icons["nav.contacts"]).toContain("fa-star");
+  const older = iconPackFromText(iconOverrideDocument({
+    "nav.contacts": '<i class="fa-solid fa-star"></i>',
+  }));
+  expect(older.libraries).toBeNull();
+  const two = iconPackFromText(JSON.stringify({
+    kind: "pavillion.icons",
+    icons: {},
+    libraries: twoFontAwesome(),
+  }));
+  expect(two.error).toBe("");
+  expect(two.libraries.filter((entry) => entry.enabled && entry.group === "fontawesome")).toHaveLength(1);
+  expect(two.libraries.find((entry) => entry.id === "fontawesome").enabled).toBe(true);
+  const refused = iconPackFromText(JSON.stringify({
+    kind: "pavillion.icons",
+    icons: { "nav.contacts": '<i class="fa-solid fa-star"></i>' },
+    libraries: [{ id: "extra", name: "Extra", type: "script", url: "https://evil.example/a.js", enabled: true }],
+  }));
+  expect(refused.error).toMatch(/not shipped/);
+  expect(iconOverridesFromText(JSON.stringify({
+    kind: "pavillion.icons",
+    icons: { "nav.contacts": '<i class="fa-solid fa-star"></i>' },
+    libraries: [{ id: "extra", name: "Extra", type: "script", url: "https://evil.example/a.js", enabled: true }],
+  }))).toBeNull();
 });
+
+function twoFontAwesome() {
+  const first = defaultLibraries()[0];
+  return [
+    first,
+    {
+      ...first,
+      id: "font-awesome-2",
+      url: libraryUrl("fontawesome", "classic-solid", "abc"),
+      style: "classic-solid",
+    },
+  ];
+}
 
 test("a PNG render is 128 by 128", () => {
   const canvas = { width: 0, height: 0 };

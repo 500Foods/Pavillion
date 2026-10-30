@@ -276,6 +276,21 @@ void test_icon_assets_and_catalog(void) {
                    "\"url\":\"https://kit.fontawesome.com/45801522ef.js\",\"enabled\":true}]}");
     TEST_ASSERT_TRUE(json_is_array(json_object_get(data, "iconLibraries")));
     json_decref(data);
+    call_fail("prefs.ui.set",
+              "{\"iconLibraries\":["
+              "{\"id\":\"fontawesome\",\"name\":\"Font Awesome\",\"type\":\"script\","
+              "\"url\":\"https://kit.fontawesome.com/45801522ef.js\",\"enabled\":true},"
+              "{\"id\":\"font-awesome-2\",\"name\":\"Other kit\",\"type\":\"script\","
+              "\"url\":\"https://kit.fontawesome.com/abc.js\",\"enabled\":true}]}",
+              "bad_args", "only one Font Awesome");
+    data = call_ok("prefs.ui.set",
+                   "{\"iconLibraries\":["
+                   "{\"id\":\"fontawesome\",\"name\":\"Font Awesome\",\"type\":\"script\","
+                   "\"url\":\"https://kit.fontawesome.com/45801522ef.js\",\"enabled\":true},"
+                   "{\"id\":\"iconify\",\"name\":\"Iconify\",\"type\":\"script\","
+                   "\"url\":\"https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js\",\"enabled\":true}]}");
+    TEST_ASSERT_TRUE(json_is_array(json_object_get(data, "iconLibraries")));
+    json_decref(data);
     data = call_ok("prefs.ui.set",
                    "{\"iconLibraries\":[{\"id\":\"material\",\"name\":\"Material Symbols\",\"type\":\"stylesheet\","
                    "\"url\":\"https://fonts.googleapis.com/css2?family=Material+Symbols+Sharp:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200\","

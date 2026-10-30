@@ -24,7 +24,8 @@ import { createMailList } from "./mail/list.js";
 import { createMailNav } from "./mail/nav.js";
 import { renderRow } from "./tree/render.js";
 import { defaultLibraries, mergeShippedLibraries } from "./common/iconhosts.js";
-import { iconNode, navEntries } from "./common/icons/registry.js";
+import { iconNode, navEntries, setAppliedIcons } from "./common/icons/registry.js";
+import { refreshTableMenuIcons } from "./common/table.js";
 import { librariesFromKit } from "./common/icons/libraries.js";
 import { readAssetBytes, storeRenderedPng } from "./common/icons/bytes.js";
 import { mountIconsPanel, storeSvgText } from "./common/icons/panel.js";
@@ -407,9 +408,11 @@ function fileDecl(name) {
 /* Override wins, then a file theme's --pav-icon-*, then the shipped default.
    Replace the node: WebKit's SVG className is read-only after Font Awesome swaps <i>. */
 function applyIcons() {
+  setAppliedIcons(ui.icons);
   if (!mountRoot) {
     return;
   }
+  refreshTableMenuIcons(mountRoot);
   const file = activeFile();
   for (const entry of navEntries()) {
     const rail = entry.key.slice("nav.".length);
@@ -2225,6 +2228,11 @@ function iconPageCtx() {
     reload() {
       if (host && typeof host.reload === "function") {
         host.reload();
+      }
+    },
+    onLibraries() {
+      if (librariesPanel) {
+        librariesPanel.paint();
       }
     },
     pickFile: pickIconFile,

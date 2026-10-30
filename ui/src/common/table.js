@@ -8,7 +8,8 @@
    scroll is {top, left} in pixels on the row holder. A full redraw puts that
    holder back at the top, so the saved position is written again until the
    user wheels over the rows, presses the rows, or moves the selection.
-   onScroll reports that later movement. select(id) scrolls that row into
+   setData keeps the position the list was already at, including that redraw.
+   onScroll reports later movement. select(id) scrolls that row into
    view. select(id, {reveal:false}) leaves the scroll where it is.
    The table fills el (height 100%, layout fitColumns, virtual rows).
    ResizeTable redraws it when the pane or a split changes size. A column
@@ -26,7 +27,7 @@
    The look is .pav-table on --pav-* variables in theme.css; no Tabulator
    stylesheet is loaded. Formatters, headers and the footer are DOM built
    with textContent. */
-import { iconClass } from "./icons/registry.js";
+import { appliedIcons, iconClass, iconNode } from "./icons/registry.js";
 import { cleanScroll } from "./table-place.js";
 
 let loading = null;
@@ -105,11 +106,49 @@ function faIcon(name, documentRef) {
   return icon;
 }
 
+/* Columns (table.menu). A saved override replaces the shipped ellipsis.
+   The class stays on the node after Font Awesome swaps <i> for <svg>. */
+function menuIcon(documentRef) {
+  const node = iconNode("table.menu", { icons: appliedIcons(), documentRef });
+  if (!node) {
+    return faIcon(iconClass("table.menu"), documentRef);
+  }
+  try {
+    node.classList.add("pav-table-menu-icon");
+  } catch {
+    const prev = node.getAttribute("class") || "";
+    if (!prev.split(/\s+/).includes("pav-table-menu-icon")) {
+      node.setAttribute("class", `${prev} pav-table-menu-icon`.trim());
+    }
+  }
+  try {
+    node.draggable = false;
+  } catch {
+    node.setAttribute("draggable", "false");
+  }
+  return node;
+}
+
+/* Tables already on screen keep the header they built. Replacing the node
+   picks up an override accepted while they were open. */
+export function refreshTableMenuIcons(root) {
+  if (!root || typeof root.querySelectorAll !== "function") {
+    return;
+  }
+  const nodes = [...root.querySelectorAll(".pav-table-menu-icon, [data-icon-key='table.menu']")];
+  for (const current of nodes) {
+    const next = menuIcon(current.ownerDocument || root);
+    if (next && current.parentNode) {
+      current.replaceWith(next);
+    }
+  }
+}
+
 /* stateOf(id) returns "current", "editing" or null. onHeader(button), when
-   given, makes the header dots a button that opens the column chooser
+   given, makes the header icon a button that opens the column chooser
    (TABULATOR.md Row indicator column). */
 function indicatorHeader(onHeader, documentRef) {
-  const icon = faIcon(iconClass("table.menu"), documentRef);
+  const icon = menuIcon(documentRef);
   if (typeof onHeader !== "function") {
     return icon;
   }
@@ -290,7 +329,7 @@ export function createTable(el, options) {
      to the top, and the virtual renderer can snap a bare scrollTop back into
      the rows it has already drawn. restoring stays on until the user moves
      the list, so a later redraw does not store that 0. */
-  const openingScroll = cleanScroll(options.scroll);
+  let openingScroll = cleanScroll(options.scroll);
   let scrollPending = openingScroll;
   let scrollTries = 0;
   let applyingScroll = false;
@@ -298,6 +337,9 @@ export function createTable(el, options) {
   let showObserver = null;
   let showRedrawn = false;
   let restoring = scrollPinned(openingScroll);
+  /* Bumped when a restore starts or the user (or setScroll) ends one, so a
+     setData that finishes later does not pull the list back. */
+  let scrollEpoch = 0;
   let restoreRaf = 0;
   let restoreFrames = 0;
   for (const column of options.columns || []) {
@@ -367,12 +409,44 @@ export function createTable(el, options) {
 
   function stopRestore() {
     restoring = false;
+    scrollEpoch += 1;
     scrollPending = null;
     pendingReveal = false;
     if (restoreRaf !== 0 && typeof cancelAnimationFrame === "function") {
       cancelAnimationFrame(restoreRaf);
     }
     restoreRaf = 0;
+  }
+
+  /* The position to keep across a row reload. A restore still in progress
+     uses the position it is writing, not a holder that a redraw just zeroed. */
+  function captureScroll() {
+    if (restoring && openingScroll) {
+      return openingScroll;
+    }
+    const holder = holderEl();
+    if (!holder) {
+      return null;
+    }
+    return cleanScroll({ top: holder.scrollTop, left: holder.scrollLeft });
+  }
+
+  /* Keep this offset through the redraw that replaceData is about to do.
+     Returns the epoch, or 0 when there is nothing to keep. */
+  function holdScroll(pos) {
+    const clean = cleanScroll(pos);
+    if (!scrollPinned(clean)) {
+      return 0;
+    }
+    openingScroll = clean;
+    restoring = true;
+    restoreFrames = 0;
+    scrollPending = null;
+    pendingReveal = false;
+    scrollEpoch += 1;
+    const epoch = scrollEpoch;
+    pumpRestore();
+    return epoch;
   }
 
   /* A zero max means the virtual rows have not padded the holder yet, so
@@ -1159,10 +1233,15 @@ export function createTable(el, options) {
     setData(next) {
       data = next;
       if (built) {
+        const keep = captureScroll();
+        const epoch = holdScroll(keep);
         applyGroupOrder();
         pending = table.replaceData(next).then(() => {
           markSelected();
           rendered();
+          if (epoch !== 0 && epoch === scrollEpoch) {
+            pumpRestore();
+          }
         });
       }
       return pending;

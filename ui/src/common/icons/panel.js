@@ -2,7 +2,8 @@
    Overrides save on Accept. Cancel never writes the blob. */
 import { dropIconPaint } from "../iconsan.js";
 import { REGISTRY, iconClass, iconNode, registryEntry, resolveIcon } from "./registry.js";
-import { dropOverride, iconFormat, iconFormatLabel, iconOverrideDocument, iconOverridesFromText, pushRecent, putOverride } from "./snippet.js";
+import { libraryLoadSignature } from "../iconhosts.js";
+import { dropOverride, iconFormat, iconFormatLabel, iconOverrideDocument, iconPackFromText, pushRecent, putOverride } from "./snippet.js";
 import { openIconWizard, utf8Base64 } from "./wizard.js";
 import { growWeights } from "../column-widths.js";
 import { ensureSplit, mountModuleTable } from "../../settings/split-table.js";
@@ -330,7 +331,8 @@ export function mountIconsPanel(root, ctx) {
       return;
     }
     try {
-      await write({ path: String(path), text: iconOverrideDocument(ui().icons) });
+      const libraries = Array.isArray(ui().iconLibraries) ? ui().iconLibraries : [];
+      await write({ path: String(path), text: iconOverrideDocument(ui().icons, libraries) });
     } catch {
       toast("Could not export icons.");
     }
@@ -363,15 +365,22 @@ export function mountIconsPanel(root, ctx) {
       toast("Could not import icons.");
       return;
     }
-    const next = iconOverridesFromText(payload && payload.text);
-    if (next == null) {
+    const pack = iconPackFromText(payload && payload.text);
+    if (pack == null) {
       toast("That file is not an icon export.");
       return;
     }
+    if (pack.error) {
+      toast(pack.error);
+      return;
+    }
     const ask = typeof ctx.confirm === "function" ? ctx.confirm : () => Promise.resolve(true);
+    const withLibraries = pack.libraries !== null;
     const ok = await ask({
       title: "Import icons?",
-      text: "Replace saved icon changes with this file?",
+      text: withLibraries
+        ? "Replace saved icon changes and the libraries with this file?"
+        : "Replace saved icon changes with this file?",
       okLabel: "Import",
     });
     if (!ok) {
@@ -380,9 +389,27 @@ export function mountIconsPanel(root, ctx) {
     if (editor && typeof editor.abandon === "function") {
       editor.abandon();
     }
-    ui().icons = next;
+    const previousIcons = ui().icons;
+    const previousLibraries = ui().iconLibraries;
+    ui().icons = pack.icons;
+    if (withLibraries) {
+      ui().iconLibraries = pack.libraries;
+    }
     dropIconPaint();
-    await ctx.saveNow();
+    const saved = await ctx.saveNow();
+    if (saved === false) {
+      ui().icons = previousIcons;
+      ui().iconLibraries = previousLibraries;
+      return;
+    }
+    const reloadLibraries = withLibraries
+      && libraryLoadSignature(previousLibraries) !== libraryLoadSignature(pack.libraries);
+    if (withLibraries && typeof ctx.onLibraries === "function") {
+      ctx.onLibraries();
+    }
+    if (reloadLibraries && typeof ctx.reload === "function") {
+      ctx.reload();
+    }
     if (typeof ctx.repaint === "function") {
       ctx.repaint();
     }

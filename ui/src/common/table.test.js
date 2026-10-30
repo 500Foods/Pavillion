@@ -81,7 +81,8 @@ vi.mock("tabulator-tables", () => {
   };
 });
 
-import { createTable, indicatorColumn, INDICATOR_FIELD, INDICATOR_WIDTH, modulesFor, sortIcon, tabulatorOptions } from "./table.js";
+import { appliedIcons, setAppliedIcons } from "./icons/registry.js";
+import { createTable, indicatorColumn, INDICATOR_FIELD, INDICATOR_WIDTH, modulesFor, refreshTableMenuIcons, sortIcon, tabulatorOptions } from "./table.js";
 import { accountColumns } from "../settings/accounts-table.js";
 
 test("a plain table registers the shared modules, fills its element, and loads data once", async () => {
@@ -184,7 +185,10 @@ test("indicatorColumn: narrow, frozen, unsortable, not exported, no calc; icons 
   const col = indicatorColumn((id) => states[id] || null);
   expect(col).toMatchObject({ field: INDICATOR_FIELD, width: INDICATOR_WIDTH, frozen: true, headerSort: false, resizable: false, download: false });
   expect(col.bottomCalc).toBeUndefined();
-  expect(col.titleFormatter().className).toBe("fa-sharp-duotone fa-solid fa-ellipsis-vertical");
+  const headerIcon = col.titleFormatter();
+  expect(headerIcon.className).toContain("fa-sharp-duotone fa-solid fa-ellipsis-vertical");
+  expect(headerIcon.dataset.iconKey).toBe("table.menu");
+  expect(headerIcon.dataset.iconSource).toBe("shipped");
   const cell = (id) => ({ getRow: () => ({ getData: () => ({ id }) }) });
   expect(col.formatter(cell("a")).className).toContain("fa-caret-right");
   expect(col.formatter(cell("b")).className).toContain("fa-pen");
@@ -428,6 +432,35 @@ test("D-UI Tooltips: header cells get the shared tooltip from the title, no nati
     expect(c.getElement().hasAttribute("title")).toBe(false);
   }
   handle.destroy();
+});
+
+test("the Columns override paints the indicator header and a later apply replaces it", () => {
+  try {
+    setAppliedIcons({ "table.menu": '<i class="fa-sharp-duotone fa-solid fa-ellipsis-vertical fa-lg"></i>' });
+    const col = indicatorColumn(() => null, "id", document, () => {});
+    const button = col.titleFormatter();
+    const icon = button.querySelector(".pav-table-menu-icon");
+    expect(icon.className).toContain("fa-ellipsis-vertical");
+    expect(icon.className).toContain("fa-lg");
+    expect(icon.dataset.iconKey).toBe("table.menu");
+    expect(icon.dataset.iconSource).toBe("override");
+    expect(icon.draggable).toBe(false);
+    document.body.append(button);
+    setAppliedIcons({ "table.menu": '<svg viewBox="0 0 10 10"><rect width="10" height="10"></rect></svg>' });
+    refreshTableMenuIcons(document);
+    const next = button.querySelector(".pav-table-menu-icon");
+    expect(next.localName).toBe("svg");
+    expect(next.querySelector("rect")).not.toBeNull();
+    expect(next.classList.contains("fa-lg")).toBe(false);
+    button.remove();
+    setAppliedIcons({ "table.menu": "<img src=x onerror=alert(1)>" });
+    const fallback = indicatorColumn(() => null).titleFormatter();
+    expect(fallback.className).toContain("fa-ellipsis-vertical");
+    expect(fallback.dataset.iconSource).toBe("shipped");
+  } finally {
+    setAppliedIcons({});
+  }
+  expect(appliedIcons()).toEqual({});
 });
 
 test("indicatorColumn: onHeader turns the dots into a Choose columns button", () => {
@@ -808,6 +841,63 @@ test("select can leave the scroll alone, and a saved scroll is restored once", a
   expect(holder.scrollTop).toBe(12);
   handle.select("a");
   expect(t.calls).toContainEqual(["scrollToRow", "a"]);
+  handle.destroy();
+});
+
+test("setData keeps the scroll the user left, and a later move is not pulled back", async () => {
+  const el = document.createElement("div");
+  Object.defineProperty(el, "offsetWidth", { configurable: true, value: 300 });
+  Object.defineProperty(el, "offsetHeight", { configurable: true, value: 200 });
+  const scrolls = [];
+  const before = made.length;
+  const handle = createTable(el, {
+    columns: [{ field: "n", headerSort: false }],
+    data: [{ id: "a" }, { id: "b" }],
+    select: true,
+    onScroll: (pos) => scrolls.push(pos),
+  });
+  await vi.waitFor(() => expect(made.length).toBe(before + 1));
+  const t = made[before];
+  const holder = document.createElement("div");
+  holder.className = "tabulator-tableholder";
+  el.append(holder);
+  t.rowManager = {
+    renderer: {
+      scrollTop: 0,
+      scrollRows(top) {
+        this.scrollTop = top;
+      },
+    },
+  };
+  t.handlers.tableBuilt();
+  holder.scrollTop = 80;
+  holder.scrollLeft = 4;
+  holder.dispatchEvent(new WheelEvent("wheel", { bubbles: true }));
+  holder.dispatchEvent(new Event("scroll"));
+  expect(scrolls).toContainEqual({ top: 80, left: 4 });
+  t.replaceData = (data) => {
+    t.options.data = data;
+    holder.scrollTop = 0;
+    holder.scrollLeft = 0;
+    t.handlers.renderComplete();
+    holder.scrollTop = 0;
+    holder.scrollLeft = 0;
+    return Promise.resolve();
+  };
+  await handle.setData([{ id: "a" }, { id: "b", n: 1 }]);
+  expect(holder.scrollTop).toBe(80);
+  expect(holder.scrollLeft).toBe(4);
+  expect(scrolls.filter((pos) => pos.top === 0)).toEqual([]);
+  holder.scrollTop = 0;
+  holder.scrollLeft = 0;
+  t.handlers.renderComplete();
+  expect(holder.scrollTop).toBe(80);
+  holder.dispatchEvent(new WheelEvent("wheel", { bubbles: true }));
+  holder.scrollTop = 16;
+  holder.scrollLeft = 0;
+  holder.dispatchEvent(new Event("scroll"));
+  await handle.setData([{ id: "a" }]);
+  expect(holder.scrollTop).toBe(16);
   handle.destroy();
 });
 

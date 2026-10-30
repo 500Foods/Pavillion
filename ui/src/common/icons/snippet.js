@@ -1,4 +1,5 @@
 /* Library, Foundry, and image outputs. The document stays text until Accept. */
+import { importedLibraries, libraryRecord, singleFontAwesome } from "../iconhosts.js";
 import { sanitizeIconHtml } from "../iconsan.js";
 import { REGISTRY } from "./registry.js";
 
@@ -727,34 +728,10 @@ export function dropOverride(icons, key) {
 
 const ICON_EXPORT_KIND = "pavillion.icons";
 
-/* Saved overrides only. A key equal to its shipped default is still included
-   when it is stored. Recent icons and the theme are not. */
-export function iconOverrideDocument(icons) {
-  const map = icons && typeof icons === "object" ? icons : {};
-  const out = {};
-  for (const entry of REGISTRY) {
-    const value = map[entry.key];
-    if (typeof value === "string" && value.trim() !== "") {
-      out[entry.key] = value;
-    }
-  }
-  return `${JSON.stringify({ kind: ICON_EXPORT_KIND, icons: out }, null, 2)}\n`;
-}
-
-/* Null when the file is not an icon export. An empty object clears overrides. */
-export function iconOverridesFromText(text) {
-  let parsed;
-  try {
-    parsed = JSON.parse(String(text || ""));
-  } catch {
-    return null;
-  }
-  if (!parsed || parsed.kind !== ICON_EXPORT_KIND || !parsed.icons || typeof parsed.icons !== "object" || Array.isArray(parsed.icons)) {
-    return null;
-  }
+function iconMapFrom(raw) {
   const known = new Set(REGISTRY.map((entry) => entry.key));
   const out = {};
-  for (const [key, value] of Object.entries(parsed.icons)) {
+  for (const [key, value] of Object.entries(raw || {})) {
     if (!known.has(key) || typeof value !== "string") {
       continue;
     }
@@ -768,4 +745,57 @@ export function iconOverridesFromText(text) {
     }
   }
   return out;
+}
+
+/* Saved overrides, and the libraries table when one is passed. A key equal
+   to its shipped default is still included when it is stored. Recent icons
+   and the theme are not. One Font Awesome row is left on. */
+export function iconOverrideDocument(icons, libraries) {
+  const map = icons && typeof icons === "object" ? icons : {};
+  const out = {};
+  for (const entry of REGISTRY) {
+    const value = map[entry.key];
+    if (typeof value === "string" && value.trim() !== "") {
+      out[entry.key] = value;
+    }
+  }
+  const body = { kind: ICON_EXPORT_KIND, icons: out };
+  if (Array.isArray(libraries)) {
+    body.libraries = singleFontAwesome(libraries).map((entry) => libraryRecord(entry));
+  }
+  return `${JSON.stringify(body, null, 2)}\n`;
+}
+
+/* Null when the text is not an icon export. error is set when the icons
+   are readable but the libraries table is not. libraries is null when the
+   file has no libraries key, so an older export leaves the table alone. */
+export function iconPackFromText(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(String(text || ""));
+  } catch {
+    return null;
+  }
+  if (!parsed || parsed.kind !== ICON_EXPORT_KIND || !parsed.icons || typeof parsed.icons !== "object" || Array.isArray(parsed.icons)) {
+    return null;
+  }
+  const icons = iconMapFrom(parsed.icons);
+  if (!Object.prototype.hasOwnProperty.call(parsed, "libraries")) {
+    return { icons, libraries: null, error: "" };
+  }
+  const libraries = importedLibraries(parsed.libraries);
+  if (typeof libraries === "string") {
+    return { icons: null, libraries: null, error: libraries };
+  }
+  return { icons, libraries, error: "" };
+}
+
+/* Null when the file is not an icon export. An empty object clears overrides.
+   A libraries table that does not pass is the same as a file of the wrong kind. */
+export function iconOverridesFromText(text) {
+  const pack = iconPackFromText(text);
+  if (!pack || pack.error) {
+    return null;
+  }
+  return pack.icons;
 }

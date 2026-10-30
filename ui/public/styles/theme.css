@@ -2850,6 +2850,13 @@
 .pav-root .pav-table .pav-table-indicator-button[aria-expanded="true"] {
   color: var(--pav-table-indicator);
 }
+.pav-root .pav-table .pav-table-menu-icon {
+  height: 1em;
+  width: auto;
+  max-width: 1.25em;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
 
 /* Column chooser opens with a short fade and slide (TABULATOR.md). */
 .pav-root .pav-column-chooser {

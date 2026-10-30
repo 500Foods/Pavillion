@@ -6,11 +6,13 @@ import {
   catalogById,
   fontAwesomeKitId,
   librariesError,
+  libraryLoadSignature,
   libraryGroupId,
   libraryGroupLabel,
   libraryStyleId,
   libraryStyleLabel,
   libraryUrl,
+  singleFontAwesome,
 } from "../common/iconhosts.js";
 import { growWeights } from "../common/column-widths.js";
 import { ensureSplit, mountModuleTable } from "./split-table.js";
@@ -43,7 +45,7 @@ function libraryId(name, list) {
 }
 
 function loadSignature(list) {
-  return JSON.stringify((list || []).map((entry) => [entry.id, entry.type, entry.url, entry.enabled === true]));
+  return libraryLoadSignature(list);
 }
 
 export function mountLibrariesPanel(root, ctx) {
@@ -101,7 +103,7 @@ export function mountLibrariesPanel(root, ctx) {
   error.className = "pav-icon-note";
   const note = doc.createElement("p");
   note.className = "muted";
-  note.textContent = "Save reloads the window when the address or the on/off switch changes. A Font Awesome style keeps the same address. Pavillion loads only the families it ships. Another family is added to the app.";
+  note.textContent = "Save reloads the window when the address or the on/off switch changes. Only one Font Awesome library can be on. Turning another kit on turns the rest off. Another family, such as Iconify, can stay on with it. A Font Awesome style keeps the same address. Pavillion loads only the families it ships. Another family is added to the app.";
 
   function field(text, control) {
     const label = doc.createElement("label");
@@ -288,7 +290,7 @@ export function mountLibrariesPanel(root, ctx) {
         enabled,
       };
     }
-    await commit(next);
+    await commit(singleFontAwesome(next, selectedId));
   }
 
   async function removeSelected() {

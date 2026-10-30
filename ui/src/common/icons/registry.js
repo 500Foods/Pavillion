@@ -157,6 +157,18 @@ export const REGISTRY = [
 
 const BY_KEY = new Map(REGISTRY.map((entry) => [entry.key, entry]));
 
+/* The override map the page is painting. The shell publishes it. Callers
+   that paint outside Settings read it so a saved icon survives a reload. */
+let applied = {};
+
+export function setAppliedIcons(icons) {
+  applied = icons && typeof icons === "object" ? icons : {};
+}
+
+export function appliedIcons() {
+  return applied;
+}
+
 export function registryEntry(key) {
   return BY_KEY.get(key) || null;
 }

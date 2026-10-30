@@ -288,11 +288,12 @@ test("Import and Export move the saved icon changes", async () => {
   const text = files.get("/tmp/pavillion-icons.json");
   expect(text).toContain('"kind": "pavillion.icons"');
   expect(text).toContain("nav.contacts");
+  expect(text).toContain('"libraries"');
   expect(text).not.toContain("fa-gear");
   ui.icons = {};
   buttonNamed(host, "Import").click();
   await flush();
-  expect(confirms.at(-1).text).toBe("Replace saved icon changes with this file?");
+  expect(confirms.at(-1).text).toBe("Replace saved icon changes and the libraries with this file?");
   expect(ui.icons["nav.contacts"]).toContain("fa-star");
   expect(saves.at(-1)["nav.contacts"]).toContain("fa-star");
   host.remove();
@@ -383,6 +384,73 @@ test("a library name or Font Awesome style does not reload, and a new kit does",
   expect(added.style).toBe("classic-solid");
   expect(added.enabled).toBe(true);
   expect(added.id).not.toBe("fontawesome");
+  expect(ui.iconLibraries.find((entry) => entry.id === "fontawesome").enabled).toBe(false);
+  host.remove();
+});
+
+test("import applies the libraries and reloads when one turns on", async () => {
+  const shared = defaultLibraries().map((entry) => (
+    entry.id === "iconify" ? { ...entry, enabled: true } : entry
+  ));
+  const ui = {
+    icons: { "nav.contacts": '<i class="fa-solid fa-star"></i>' },
+    iconRecent: [],
+    iconRecentMax: 12,
+    iconLibraries: shared,
+  };
+  const files = new Map();
+  let reloads = 0;
+  const host = document.createElement("div");
+  document.body.append(host);
+  mountIconsPanel(host, iconCtx(ui, {
+    reload() {
+      reloads += 1;
+    },
+    api: {
+      asset: { list: async () => { throw new Error("none"); } },
+      exports: {
+        async writeText({ path, text }) {
+          files.set(path, text);
+          return { bytes: text.length };
+        },
+        async readText({ path }) {
+          return { text: files.get(path) };
+        },
+      },
+    },
+    host: {
+      dialog: {
+        async save() {
+          return "/tmp/pavillion-icons.json";
+        },
+        async open() {
+          return "/tmp/pavillion-icons.json";
+        },
+      },
+    },
+  }));
+  buttonNamed(host, "Export").click();
+  await flush();
+  ui.iconLibraries = defaultLibraries();
+  ui.icons = {};
+  buttonNamed(host, "Import").click();
+  await flush();
+  expect(ui.iconLibraries.find((entry) => entry.id === "iconify").enabled).toBe(true);
+  expect(ui.iconLibraries.find((entry) => entry.id === "fontawesome").enabled).toBe(true);
+  expect(ui.iconLibraries.find((entry) => entry.id === "material").enabled).toBe(false);
+  expect(ui.icons["nav.contacts"]).toContain("fa-star");
+  expect(reloads).toBe(1);
+  const older = JSON.stringify({
+    kind: "pavillion.icons",
+    icons: { "nav.help": '<i class="fa-solid fa-book"></i>' },
+  });
+  files.set("/tmp/pavillion-icons.json", older);
+  const before = ui.iconLibraries.map((entry) => entry.enabled);
+  buttonNamed(host, "Import").click();
+  await flush();
+  expect(ui.icons["nav.help"]).toContain("fa-book");
+  expect(ui.iconLibraries.map((entry) => entry.enabled)).toEqual(before);
+  expect(reloads).toBe(1);
   host.remove();
 });
 

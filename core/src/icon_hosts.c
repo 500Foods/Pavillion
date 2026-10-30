@@ -104,6 +104,7 @@ int pav_icon_libraries_check(const json_t *ui, char *err, size_t err_len) {
     json_t *entry;
     size_t i;
     size_t n;
+    size_t fa_on = 0;
 
     if (!json_is_object(ui)) {
         return 0;
@@ -170,6 +171,13 @@ int pav_icon_libraries_check(const json_t *ui, char *err, size_t err_len) {
         if (!host_listed(host, allowed)) {
             cfg_err(err, err_len, "that host is not shipped (%s)", host);
             return -1;
+        }
+        if (json_is_true(json_object_get(entry, "enabled")) && strcmp(host, "kit.fontawesome.com") == 0) {
+            fa_on += 1;
+            if (fa_on > 1) {
+                cfg_err(err, err_len, "only one Font Awesome library can be on");
+                return -1;
+            }
         }
     }
     return 0;

@@ -313,7 +313,65 @@ export function libraryUrlError(type, url) {
   return "";
 }
 
-export function librariesError(list) {
+/* What the window actually loads. A name or style that leaves the URL alone
+   does not reload. */
+export function libraryLoadSignature(list) {
+  return JSON.stringify((list || []).map((entry) => [
+    entry && entry.id,
+    entry && entry.type,
+    entry && entry.url,
+    entry && entry.enabled === true,
+  ]));
+}
+
+export function isFontAwesomeLibrary(entry) {
+  return libraryGroupId(entry) === "fontawesome";
+}
+
+/* The fields a library row stores. Extra keys are dropped. */
+export function libraryRecord(entry) {
+  return {
+    id: entry && entry.id,
+    name: entry && entry.name,
+    type: entry && entry.type === "stylesheet" ? "stylesheet" : "script",
+    url: entry && entry.url,
+    enabled: entry && entry.enabled === true,
+    ...libraryExtras(entry),
+  };
+}
+
+/* At most one Font Awesome row stays on. preferId wins when that row is
+   Font Awesome and already on. Otherwise the first enabled Font Awesome
+   row stays on. Other families are left as they are. */
+export function singleFontAwesome(list, preferId) {
+  if (!Array.isArray(list)) {
+    return list;
+  }
+  const faOn = [];
+  list.forEach((entry, index) => {
+    if (entry && entry.enabled === true && isFontAwesomeLibrary(entry)) {
+      faOn.push(index);
+    }
+  });
+  if (faOn.length <= 1) {
+    return list;
+  }
+  let keep = faOn[0];
+  if (typeof preferId === "string") {
+    const preferred = faOn.find((index) => list[index] && list[index].id === preferId);
+    if (preferred !== undefined) {
+      keep = preferred;
+    }
+  }
+  return list.map((entry, index) => {
+    if (!faOn.includes(index) || index === keep) {
+      return entry;
+    }
+    return { ...entry, enabled: false };
+  });
+}
+
+function librariesProblem(list, oneFontAwesome) {
   if (!Array.isArray(list)) {
     return "icon libraries must be a list";
   }
@@ -321,6 +379,7 @@ export function librariesError(list) {
     return "at most 16 icon libraries";
   }
   const seen = new Set();
+  let faOn = 0;
   for (const entry of list) {
     if (!entry || typeof entry !== "object") {
       return "an icon library must be an object";
@@ -353,8 +412,31 @@ export function librariesError(list) {
     } else if (typeof entry.style === "string" && entry.style !== "" && !/^[a-z0-9-]{1,32}$/.test(entry.style)) {
       return "an icon library style must be a short name";
     }
+    if (oneFontAwesome && entry.enabled === true && isFontAwesomeLibrary(entry)) {
+      faOn += 1;
+      if (faOn > 1) {
+        return "only one Font Awesome library can be on";
+      }
+    }
   }
   return "";
+}
+
+export function librariesError(list) {
+  return librariesProblem(list, true);
+}
+
+/* A libraries array from an icon file. An error string when the rows are
+   not a libraries table. Two enabled Font Awesome rows become one: the
+   first stays on. */
+export function importedLibraries(raw) {
+  const problem = librariesProblem(raw, false);
+  if (problem) {
+    return problem;
+  }
+  const next = singleFontAwesome(raw.map((entry) => libraryRecord(entry)));
+  const again = librariesError(next);
+  return again || next;
 }
 
 /* Reduce a saved kit id, or a raw script tag the preview accepted, to the FA URL.
