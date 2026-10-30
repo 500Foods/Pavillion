@@ -41,6 +41,9 @@ vi.mock("tabulator-tables", () => {
     getRows() {
       return (this.options.data || []).map((row) => ({ getIndex: () => row.id }));
     }
+    getColumns() {
+      return this.liveColumns || [];
+    }
     scrollToRow() {
       return Promise.resolve();
     }
@@ -58,6 +61,7 @@ vi.mock("tabulator-tables", () => {
     ExportModule: mod("export"),
     DownloadModule: mod("download"),
     ResizeColumnsModule: mod("resizeColumns"),
+    MoveColumnsModule: mod("moveColumns"),
     FilterModule: mod("filter"),
     FrozenColumnsModule: mod("frozenColumns"),
     TabulatorFull: "full",
@@ -176,6 +180,19 @@ test("the mail list shows the folder columns as text and reloads for that accoun
     "hasAttachment",
   ]);
   expect(column(table, "from").title).toBe("From");
+  expect(column(table, "swatch")).toMatchObject({ width: 10, minWidth: 10, resizable: false });
+  expect(column(table, "from")).toMatchObject({ widthGrow: 2, minWidth: 96 });
+  expect(column(table, "subject")).toMatchObject({ widthGrow: 3, minWidth: 120 });
+  expect(column(table, "preview")).toMatchObject({ widthGrow: 2, minWidth: 80 });
+  expect(column(table, "from").width).toBeUndefined();
+  expect(column(table, "subject").width).toBeUndefined();
+  expect(column(table, "preview").width).toBeUndefined();
+  expect(column(table, "receivedAt")).toMatchObject({ width: 108, minWidth: 72 });
+  expect(column(table, "flags")).toMatchObject({ width: 84, minWidth: 72 });
+  expect(column(table, "hasAttachment")).toMatchObject({ width: 36, minWidth: 36 });
+  expect(table.options.layout).toBe("fitColumns");
+  expect(table.options.movableColumns).toBe(true);
+  expect(table.options.columnDefaults.resizable).toBe("header");
   expect(table.options.columns.every((item) => item.headerSort === false)).toBe(true);
   expect(table.options.data).toEqual(first.messages);
   expect(pane.querySelector(".mail-list-count").textContent).toBe("2 of 5");
@@ -279,6 +296,125 @@ test("mail list zoom scales the table and leaves the pane alone", async () => {
   list.setZoom(1.8, 1.5);
   expect(pane.style.zoom).toBe("");
   expect(pane.querySelector(".mail-list-table").style.fontSize).toBe("150%");
+  list.stop();
+  pane.remove();
+});
+
+function sizedColumn(field, width, grow) {
+  return {
+    getField: () => field,
+    getWidth: () => width,
+    isVisible: () => true,
+    getElement: () => null,
+    getDefinition: () => (grow ? { field, widthGrow: grow } : { field, width }),
+  };
+}
+
+test("saved From, Subject, and preview widths come back as grow weights", async () => {
+  const pane = document.createElement("div");
+  document.body.append(pane);
+  const saved = [];
+  let stored = { from: 200, subject: 300, preview: 100, receivedAt: 140 };
+  const list = createMailList(fakeApi([first]), pane, {
+    tableWidths: () => stored,
+    saveTableWidths(id, widths) {
+      saved.push([id, widths]);
+      stored = widths;
+    },
+    mailboxOf(id) {
+      return id.endsWith(":out") ? { role: "sent" } : { role: "inbox" };
+    },
+  });
+  const before = made.length;
+  await list.open("mbx:foods/a1:in");
+  await vi.waitFor(() => expect(made.length).toBe(before + 1));
+  const table = made[before];
+  expect(column(table, "from").widthGrow).toBe(200);
+  expect(column(table, "subject").widthGrow).toBe(300);
+  expect(column(table, "preview").widthGrow).toBe(100);
+  expect(column(table, "from").width).toBeUndefined();
+  expect(column(table, "receivedAt")).toMatchObject({ width: 140, minWidth: 72 });
+  table.liveColumns = [
+    sizedColumn("from", 180, 200),
+    sizedColumn("subject", 340, 300),
+    sizedColumn("preview", 90, 100),
+  ];
+  table.handlers.tableBuilt();
+  table.handlers.columnResized(sizedColumn("subject", 340, 300));
+  expect(saved.at(-1)).toEqual(["mail", { receivedAt: 140, from: 180, subject: 340, preview: 90 }]);
+
+  table.handlers.columnResized(sizedColumn("receivedAt", 150, 0));
+  expect(saved.at(-1)).toEqual(["mail", { from: 180, subject: 340, preview: 90, receivedAt: 150 }]);
+
+  await list.open("mbx:foods/a1:out");
+  await vi.waitFor(() => expect(made.length).toBe(before + 2));
+  expect(column(made[before + 1], "to").widthGrow).toBe(180);
+  expect(column(made[before + 1], "to").width).toBeUndefined();
+  made[before + 1].liveColumns = [
+    sizedColumn("to", 160, 180),
+    sizedColumn("subject", 300, 340),
+    sizedColumn("preview", 110, 90),
+  ];
+  made[before + 1].handlers.tableBuilt();
+  made[before + 1].handlers.columnResized(sizedColumn("to", 160, 180));
+  expect(saved.at(-1)).toEqual(["mail", { receivedAt: 150, from: 160, subject: 300, preview: 110 }]);
+  list.stop();
+  pane.remove();
+});
+
+test("a partial grow width keeps the coded From, Subject, and preview weights", async () => {
+  const pane = document.createElement("div");
+  document.body.append(pane);
+  const list = createMailList(fakeApi([first]), pane, {
+    tableWidths: () => ({ subject: 300, from: 5000 }),
+  });
+  const before = made.length;
+  await list.open("mbx:foods/a1:in");
+  await vi.waitFor(() => expect(made.length).toBe(before + 1));
+  const table = made.at(-1);
+  expect(column(table, "from").widthGrow).toBe(2);
+  expect(column(table, "subject").widthGrow).toBe(3);
+  expect(column(table, "preview").widthGrow).toBe(2);
+  list.stop();
+  pane.remove();
+});
+
+test("opening a folder again selects that folder's message and scroll", async () => {
+  const pane = document.createElement("div");
+  document.body.append(pane);
+  let place = { mailbox: "mbx:foods/a1:in", selected: "b", top: 20, left: 4 };
+  const other = {
+    accountId: "foods",
+    total: 1,
+    messages: [{ id: "b", from: "Bea", subject: "Other" }],
+  };
+  const list = createMailList(fakeApi([first, other]), pane, {
+    tablePlace: () => place,
+    saveTablePlace(_id, next) {
+      place = next;
+    },
+    mailboxOf() {
+      return { role: "inbox" };
+    },
+  });
+  const before = made.length;
+  await list.open("mbx:foods/a1:in");
+  await vi.waitFor(() => expect(made.length).toBe(before + 1));
+  const table = made[before];
+  expect(table.options.scroll).toBeUndefined();
+  const holder = document.createElement("div");
+  holder.className = "tabulator-tableholder";
+  table.el.append(holder);
+  table.handlers.tableBuilt();
+  expect(table.picked).toBe("b");
+  expect(holder.scrollTop).toBe(20);
+  expect(holder.scrollLeft).toBe(4);
+
+  await list.open("mbx:foods/a1:else");
+  expect(table.picked).toBeNull();
+  expect(holder.scrollTop).toBe(0);
+  expect(place.mailbox).toBe("mbx:foods/a1:in");
+  expect(place.selected).toBe("b");
   list.stop();
   pane.remove();
 });

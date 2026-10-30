@@ -106,7 +106,7 @@ vi.mock("../common/table.js", async (importOriginal) => {
       setColumnWidth(field, width) {
         handle.widthCalls.push([field, width]);
       },
-      widths: () => ({}),
+      widths: () => handle.liveWidths || {},
       refits: 0,
       refit() {
         handle.refits += 1;
@@ -136,6 +136,7 @@ vi.mock("../common/table.js", async (importOriginal) => {
       },
     };
     fakeTables.push(handle);
+    globalThis.__lastTableHandle = handle;
     return handle;
   },
   };
@@ -1220,14 +1221,17 @@ test("resize round: a resized column saves its width, Reset clears widths and re
     globalThis.__lastTableOptions.onColumnResized("jmap", 131);
     globalThis.__lastTableOptions.onColumnResized("name", 400);
     await vi.waitFor(() => expect(saved()?.tables?.accounts?.widths).toEqual({ jmap: 131 }), { timeout: 3000 });
+    globalThis.__lastTableHandle.liveWidths = { jmap: 180, imap: 96 };
+    globalThis.__lastTableOptions.onColumnResized("name", 400);
+    await vi.waitFor(() => expect(saved()?.tables?.accounts?.widths).toEqual({ jmap: 180, imap: 96 }), { timeout: 3000 });
     expect(globalThis.__lastTableOptions.fitTitles).toEqual(["jmap", "imap", "smtp", "mail", "contacts", "calendars", "files"]);
     clickIndicatorHeader();
     const box = document.querySelector('.pav-column-chooser [data-field="smtp"]');
     box.checked = false;
     box.dispatchEvent(new Event("change"));
-    await vi.waitFor(() => expect(saved()?.tables?.accounts).toEqual({ widths: { jmap: 131 }, hidden: ["smtp"] }), { timeout: 3000 });
+    await vi.waitFor(() => expect(saved()?.tables?.accounts).toEqual({ selected: "saved-one", widths: { jmap: 180, imap: 96 }, hidden: ["smtp"] }), { timeout: 3000 });
     document.querySelector(".pav-column-chooser [data-reset]").click();
-    await vi.waitFor(() => expect(saved()?.tables?.accounts).toEqual({ widths: {}, hidden: [] }), { timeout: 3000 });
+    await vi.waitFor(() => expect(saved()?.tables?.accounts).toEqual({ selected: "saved-one", widths: {}, hidden: [], order: [] }), { timeout: 3000 });
   });
 });
 
@@ -1249,6 +1253,18 @@ async function withStoredUi(stored, body) {
 test("K-Q14: the Accounts split ratio is restored from preferences", async () => {
   await withStoredUi({ accounts: { split: 0.62, min: 0.15, max: 0.6 } }, async () => {
     await vi.waitFor(() => expect(document.querySelector(".accounts-tree-pane").style.flexBasis).toBe("62%"));
+  });
+});
+
+test("Icons, Libraries, and Assets split ratios are restored from preferences", async () => {
+  await withStoredUi({
+    iconPane: { split: 0.62 },
+    libraryPane: { split: 0.5 },
+    assetPane: { split: 0.25 },
+  }, async () => {
+    await vi.waitFor(() => expect(document.querySelector("#icons-tree-pane").style.flexBasis).toBe("62%"));
+    expect(document.querySelector("#libraries-tree-pane").style.flexBasis).toBe("50%");
+    expect(document.querySelector("#assets-tree-pane").style.flexBasis).toBe("25%");
   });
 });
 

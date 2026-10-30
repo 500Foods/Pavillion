@@ -4,6 +4,7 @@ import { storeSvgText } from "../common/icons/panel.js";
 import { accountSwatch } from "./account-icon.js";
 import { moduleFooter, moduleToolbar, mountBar, paintFooterNav } from "../common/module-bar.js";
 import { openColumnChooser } from "../common/column-chooser.js";
+import { cleanOrder, orderColumns } from "./split-table.js";
 import {
   accountColumns,
   accountMatches,
@@ -154,6 +155,9 @@ export function createAccountsView(api, root, options = {}) {
       return;
     }
     selectedId = id;
+    if (typeof options.saveTableSelected === "function") {
+      options.saveTableSelected("accounts", id);
+    }
     syncFormState(selected);
     detectResult = { text: "", error: "" };
     urlNote = "";
@@ -189,7 +193,11 @@ export function createAccountsView(api, root, options = {}) {
       return;
     }
     const rows = accountRows(accounts, timeZone());
+    let created = false;
+    let openingScroll = null;
     if (!table) {
+      created = true;
+      openingScroll = savedScroll();
       treeEl.replaceChildren();
       const columns = currentColumns();
       sizePane(columns);
@@ -212,6 +220,13 @@ export function createAccountsView(api, root, options = {}) {
         fitTitles: fitTitleFields(savedWidths()),
         onWidths: () => sizePane(currentColumns()),
         onColumnResized,
+        onColumnMoved,
+        scroll: openingScroll,
+        onScroll(pos) {
+          if (typeof options.saveTableScroll === "function") {
+            options.saveTableScroll("accounts", pos);
+          }
+        },
       });
       table.setScale(tableScale.width, tableScale.font);
       if (query !== "") {
@@ -224,8 +239,16 @@ export function createAccountsView(api, root, options = {}) {
     } else {
       table.setData(rows);
     }
-    table.select(selectedId);
+    table.select(selectedId, { reveal: created ? !pinnedScroll(openingScroll) : false });
     paintNavState();
+  }
+
+  function savedScroll() {
+    return typeof options.tableScroll === "function" ? options.tableScroll("accounts") : null;
+  }
+
+  function pinnedScroll(pos) {
+    return Boolean(pos && (pos.top > 0 || pos.left > 0));
   }
 
   /* D-10: the module footer navigator, Export, and Clone follow the shown
@@ -238,9 +261,15 @@ export function createAccountsView(api, root, options = {}) {
   /* K-Q14 zoom in place: width scale = Shell x Accounts table, font scale =
      Accounts table (the root rem already carries Shell). */
   let tableScale = { width: 1, font: 1 };
+  let restoringOrder = false;
 
   function savedWidths() {
     return cleanWidths(typeof options.tableWidths === "function" ? options.tableWidths("accounts") : {});
+  }
+
+  function savedOrder() {
+    const raw = typeof options.tableOrder === "function" ? options.tableOrder("accounts") : [];
+    return cleanOrder(raw, CHOOSER_COLUMNS.map((column) => column.field));
   }
 
   /* K-Q12: the pane minimum from the columns, with live widths (fitted or
@@ -259,12 +288,40 @@ export function createAccountsView(api, root, options = {}) {
   }
 
   function currentColumns() {
-    return accountColumns(document, hiddenColumns(), savedWidths());
+    return orderColumns(accountColumns(document, hiddenColumns(), savedWidths()), savedOrder());
+  }
+
+  function onColumnMoved(order) {
+    if (restoringOrder || typeof options.saveTableOrder !== "function") {
+      return;
+    }
+    options.saveTableOrder("accounts", cleanOrder(order, CHOOSER_COLUMNS.map((column) => column.field)));
   }
 
   function onColumnResized(field, width) {
-    if (WIDTH_FIELDS.includes(field) && typeof options.saveTableWidths === "function") {
-      options.saveTableWidths("accounts", cleanWidths({ ...savedWidths(), [field]: width }));
+    if (typeof options.saveTableWidths === "function") {
+      const next = { ...savedWidths() };
+      let write = false;
+      if (WIDTH_FIELDS.includes(field)) {
+        const kept = cleanWidths({ [field]: width })[field];
+        if (kept !== undefined) {
+          next[field] = kept;
+          write = true;
+        }
+      } else if (table && typeof table.widths === "function") {
+        /* Dragging Name moves the fixed column beside it. That column does
+           not get its own columnResized, so save the live fixed widths. */
+        const live = cleanWidths(table.widths());
+        for (const name of WIDTH_FIELDS) {
+          if (live[name] !== undefined && next[name] !== live[name]) {
+            next[name] = live[name];
+            write = true;
+          }
+        }
+      }
+      if (write) {
+        options.saveTableWidths("accounts", next);
+      }
     }
     sizePane(currentColumns());
   }
@@ -278,9 +335,20 @@ export function createAccountsView(api, root, options = {}) {
       onChange(hidden, field) {
         const next = cleanHidden(hidden);
         if (field === null) {
-          /* Reset (TABULATOR.md): every column shown and the coded widths back. */
+          /* Reset (TABULATOR.md): every column shown, the coded widths back, and the shipped order. */
           if (typeof options.saveTableWidths === "function") {
             options.saveTableWidths("accounts", {});
+          }
+          if (typeof options.saveTableOrder === "function") {
+            options.saveTableOrder("accounts", []);
+          }
+          if (table && typeof table.setColumnOrder === "function") {
+            restoringOrder = true;
+            try {
+              table.setColumnOrder(accountColumns(document).map((column) => column.field));
+            } finally {
+              restoringOrder = false;
+            }
           }
           if (table) {
             for (const column of accountColumns(document)) {
@@ -665,6 +733,14 @@ export function createAccountsView(api, root, options = {}) {
       if (selectedId && !accounts.find((a) => a.id === selectedId)) {
         clearForm();
       }
+      if (!selectedId && typeof options.tableSelected === "function") {
+        const savedId = options.tableSelected("accounts");
+        const match = accounts.find((a) => a.id === savedId);
+        if (match) {
+          selectedId = match.id;
+          syncFormState(match);
+        }
+      }
       paintTree();
       paintHeader();
       paintForm();
@@ -672,7 +748,7 @@ export function createAccountsView(api, root, options = {}) {
         selectedId = accounts[0].id;
         syncFormState(accounts[0]);
         if (table) {
-          table.select(selectedId);
+          table.select(selectedId, { reveal: !pinnedScroll(savedScroll()) });
         }
         paintHeader();
         paintForm();

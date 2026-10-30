@@ -94,6 +94,12 @@ vi.mock("../common/table.js", async (importOriginal) => {
       ids: () => grouped(rowsNow).flatMap((entry) => entry[1].map((row) => row[rowKey])),
       setColumnVisible() {},
       setColumnWidth() {},
+      widths() {
+        return el.pavWidths || {};
+      },
+      setGrowWeights(weights) {
+        el.pavGrowWeights = weights;
+      },
       destroy() {
         el.replaceChildren();
       },
@@ -492,4 +498,97 @@ test("the column chooser names columns, and every data column resizes and can mo
   host.remove();
   iconsHost.remove();
   assetsHost.remove();
+});
+
+test("Icons and Libraries remember how the spare columns share the width", () => {
+  const saved = [];
+  let stored = { glyph: 80, name: 420, key: 180 };
+  const ui = { icons: {}, iconRecent: [], iconRecentMax: 12, iconLibraries: defaultLibraries() };
+  const host = document.createElement("div");
+  host.className = "pav-root";
+  document.body.append(host);
+  mountIconsPanel(host, iconCtx(ui, {
+    tableWidths: () => stored,
+    saveTableWidths(id, widths) {
+      saved.push([id, widths]);
+      stored = widths;
+    },
+  }));
+  const tree = host.querySelector("#icons-tree");
+  const icons = tree.pavTableOptions;
+  expect(icons.columns.find((column) => column.field === "name")).toMatchObject({ widthGrow: 420, minWidth: 120 });
+  expect(icons.columns.find((column) => column.field === "name").width).toBeUndefined();
+  expect(icons.columns.find((column) => column.field === "name").lockWidth).toBeUndefined();
+  expect(icons.columns.find((column) => column.field === "key").widthGrow).toBe(180);
+  expect(icons.columns.find((column) => column.field === "glyph")).toMatchObject({ width: 80, lockWidth: true });
+  tree.pavWidths = { name: 300, key: 240, glyph: 80 };
+  icons.onColumnResized("name", 300);
+  expect(saved.at(-1)).toEqual(["icons", { glyph: 80, name: 300, key: 240 }]);
+  tree.pavWidths = { name: 300, glyph: 100 };
+  icons.onColumnResized("name", 300);
+  expect(saved.at(-1)).toEqual(["icons", { glyph: 100, name: 300, key: 240 }]);
+  icons.onColumnResized("fallback", 90);
+  expect(saved.at(-1)).toEqual(["icons", { glyph: 100, name: 300, key: 240, fallback: 90 }]);
+  const anchor = document.createElement("button");
+  host.append(anchor);
+  icons.onIndicatorHeader(anchor);
+  document.querySelector(".pav-column-chooser [data-reset]").click();
+  expect(saved.at(-1)).toEqual(["icons", {}]);
+  expect(tree.pavGrowWeights).toEqual({ name: 1, key: 1 });
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+  const partial = document.createElement("div");
+  partial.className = "pav-root";
+  document.body.append(partial);
+  mountIconsPanel(partial, iconCtx(ui, { tableWidths: () => ({ name: 420 }) }));
+  const partialColumns = partial.querySelector("#icons-tree").pavTableOptions.columns;
+  expect(partialColumns.find((column) => column.field === "name").widthGrow).toBe(1);
+  expect(partialColumns.find((column) => column.field === "key").widthGrow).toBe(1);
+
+  const librariesHost = document.createElement("div");
+  librariesHost.className = "pav-root";
+  document.body.append(librariesHost);
+  mountLibrariesPanel(librariesHost, iconCtx(ui, { tableWidths: () => ({ name: 500, url: 220, on: 70 }) }));
+  const libraries = librariesHost.querySelector("#libraries-tree").pavTableOptions.columns;
+  expect(libraries.find((column) => column.field === "name").widthGrow).toBe(500);
+  expect(libraries.find((column) => column.field === "url").widthGrow).toBe(220);
+  expect(libraries.find((column) => column.field === "name").width).toBeUndefined();
+  expect(libraries.find((column) => column.field === "on")).toMatchObject({ width: 70, lockWidth: true });
+
+  host.remove();
+  partial.remove();
+  librariesHost.remove();
+});
+
+test("dragging the asset id saves the fixed column beside it", async () => {
+  const saved = [];
+  const ui = { icons: {}, iconRecent: [], iconRecentMax: 12, iconLibraries: [] };
+  const host = document.createElement("div");
+  host.className = "pav-root";
+  document.body.append(host);
+  const panel = mountAssetsPanel(host, iconCtx(ui, {
+    api: { asset: { list: async () => ({ assets: [{ id: "a1", kind: "svg", bytes: 12 }], warn: false }) } },
+    saveTableWidths: (id, widths) => saved.push([id, widths]),
+  }));
+  await panel.refresh();
+  const tree = host.querySelector("#assets-tree");
+  expect(tree.pavTableOptions.columns.find((column) => column.field === "id").widthGrow).toBe(1);
+  tree.pavWidths = { kindLabel: 140, bytes: 96, id: 500 };
+  tree.pavTableOptions.onColumnResized("id", 500);
+  expect(saved.at(-1)).toEqual(["assets", { kindLabel: 140, bytes: 96 }]);
+  host.remove();
+});
+
+test("Icons opens the saved icon and passes the saved scroll", () => {
+  const ui = { icons: {}, iconRecent: [], iconRecentMax: 12, iconLibraries: [] };
+  const host = document.createElement("div");
+  host.className = "pav-root";
+  document.body.append(host);
+  mountIconsPanel(host, iconCtx(ui, {
+    tableSelected: () => "nav.update",
+    tableScroll: () => ({ top: 48, left: 6 }),
+  }));
+  expect(host.querySelector(".pav-icon-crumb-key").textContent).toBe("nav.update");
+  expect(host.querySelector("#icons-tree").pavTableOptions.scroll).toEqual({ top: 48, left: 6 });
+  host.remove();
 });

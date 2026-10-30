@@ -1,5 +1,6 @@
 /* Accounts-style settings table: search, column chooser, groups, footer navigator.
    The caller owns the rows and the editor on the right. */
+import { clampWidth } from "../common/column-widths.js";
 import { createTable, INDICATOR_WIDTH } from "../common/table.js";
 import { iconClass } from "../common/icons/registry.js";
 import { openColumnChooser } from "../common/column-chooser.js";
@@ -50,9 +51,9 @@ export function cleanWidths(widths, fields) {
     return out;
   }
   for (const field of fields || []) {
-    const value = widths[field];
-    if (typeof value === "number" && Number.isFinite(value) && value >= 30 && value <= 1000) {
-      out[field] = Math.round(value);
+    const value = clampWidth(widths[field]);
+    if (value !== null) {
+      out[field] = value;
     }
   }
   return out;
@@ -128,7 +129,7 @@ function columnWidth(column) {
 }
 
 /* spec.ids, tableId, title, noun, searchId, searchLabel, empty, chooser,
-   chooserLabel, widthFields, columns(doc, hidden, widths), groupBy,
+   chooserLabel, widthFields, growFields, columns(doc, hidden, widths), groupBy,
    groupOrder(data), getRows(), match(row, query), getSelected(), onSelect(id),
    actions, footerEnd, onRefresh, onPaintNav, tableHidden, saveTableHidden,
    tableWidths, saveTableWidths, tableOrder, saveTableOrder. */
@@ -148,9 +149,21 @@ export function mountModuleTable(root, spec) {
     return cleanHidden(raw, spec.chooser);
   }
 
+  /* Two or more grow columns remember how they share the spare width.
+     One grow column stays the slack; the fixed column beside it is saved. */
+  function growFields() {
+    const fixed = new Set(spec.widthFields || []);
+    const listed = Array.isArray(spec.growFields) ? spec.growFields.filter((field) => !fixed.has(field)) : [];
+    return listed.length > 1 ? listed : [];
+  }
+
+  function widthKeys() {
+    return [...(spec.widthFields || []), ...growFields()];
+  }
+
   function savedWidths() {
     const raw = typeof spec.tableWidths === "function" ? spec.tableWidths(spec.tableId) : {};
-    return cleanWidths(raw, spec.widthFields || []);
+    return cleanWidths(raw, widthKeys());
   }
 
   function fieldOrder() {
@@ -205,8 +218,51 @@ export function mountModuleTable(root, spec) {
   }
 
   function onColumnResized(field, width) {
-    if ((spec.widthFields || []).includes(field) && typeof spec.saveTableWidths === "function") {
-      spec.saveTableWidths(spec.tableId, cleanWidths({ ...savedWidths(), [field]: width }, spec.widthFields));
+    const fixed = spec.widthFields || [];
+    const grown = growFields();
+    if (typeof spec.saveTableWidths === "function") {
+      const next = { ...savedWidths() };
+      let write = false;
+      if (fixed.includes(field)) {
+        const kept = clampWidth(width);
+        if (kept !== null) {
+          next[field] = kept;
+          write = true;
+        }
+      }
+      const live = table && typeof table.widths === "function" ? table.widths() : null;
+      let shared = false;
+      if (live && grown.includes(field)) {
+        const share = {};
+        shared = true;
+        for (const name of grown) {
+          const kept = clampWidth(live[name]);
+          if (kept === null) {
+            shared = false;
+            break;
+          }
+          share[name] = kept;
+        }
+        if (shared) {
+          Object.assign(next, share);
+          write = true;
+        }
+      }
+      if (live && !fixed.includes(field) && !shared) {
+        /* Dragging the only grow column moves the fixed column beside it.
+           That column does not get its own columnResized. A hidden partner
+           leaves the same situation: save the fixed widths that moved. */
+        for (const name of fixed) {
+          const kept = clampWidth(live[name]);
+          if (kept !== null && next[name] !== kept) {
+            next[name] = kept;
+            write = true;
+          }
+        }
+      }
+      if (write) {
+        spec.saveTableWidths(spec.tableId, cleanWidths(next, widthKeys()));
+      }
     }
     sizePane(currentColumns());
   }
@@ -229,10 +285,18 @@ export function mountModuleTable(root, spec) {
         if (field === null && typeof spec.saveTableWidths === "function") {
           spec.saveTableWidths(spec.tableId, {});
           if (table) {
-            for (const column of spec.columns(doc, [], {})) {
+            const fresh = spec.columns(doc, [], {});
+            const weights = {};
+            for (const column of fresh) {
               if ((spec.widthFields || []).includes(column.field) && Number.isFinite(column.width)) {
                 table.setColumnWidth(column.field, column.width);
               }
+              if (growFields().includes(column.field) && Number.isFinite(column.widthGrow)) {
+                weights[column.field] = column.widthGrow;
+              }
+            }
+            if (typeof table.setGrowWeights === "function") {
+              table.setGrowWeights(weights);
             }
           }
         }
@@ -271,6 +335,17 @@ export function mountModuleTable(root, spec) {
     paintNav();
   }
 
+  function savedScroll() {
+    if (typeof spec.tableScroll !== "function") {
+      return null;
+    }
+    return spec.tableScroll(spec.tableId);
+  }
+
+  function pinnedScroll(pos) {
+    return Boolean(pos && (pos.top > 0 || pos.left > 0));
+  }
+
   function navigate(action) {
     if (!table) {
       return;
@@ -298,6 +373,8 @@ export function mountModuleTable(root, spec) {
       return;
     }
     const rows = spec.getRows() || [];
+    let created = false;
+    let openingScroll = null;
     if (rows.length === 0) {
       if (table) {
         table.destroy();
@@ -312,6 +389,8 @@ export function mountModuleTable(root, spec) {
       return;
     }
     if (!table) {
+      created = true;
+      openingScroll = savedScroll();
       treeEl.replaceChildren();
       const columns = currentColumns();
       sizePane(columns);
@@ -336,6 +415,12 @@ export function mountModuleTable(root, spec) {
         onColumnResized,
         onColumnMoved,
         onWidths: () => sizePane(currentColumns()),
+        scroll: openingScroll,
+        onScroll(pos) {
+          if (typeof spec.saveTableScroll === "function") {
+            spec.saveTableScroll(spec.tableId, pos);
+          }
+        },
       });
       if (typeof table.setScale === "function") {
         table.setScale(tableScale.width, tableScale.font);
@@ -350,13 +435,13 @@ export function mountModuleTable(root, spec) {
     } else {
       table.setData(rows);
     }
-    table.select(spec.getSelected());
+    table.select(spec.getSelected(), { reveal: created ? !pinnedScroll(openingScroll) : false });
     paintNav();
   }
 
-  function reselect() {
+  function reselect(reveal = true) {
     if (table) {
-      table.select(spec.getSelected());
+      table.select(spec.getSelected(), { reveal: reveal !== false });
     }
     paintNav();
   }

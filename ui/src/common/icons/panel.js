@@ -4,6 +4,7 @@ import { dropIconPaint } from "../iconsan.js";
 import { REGISTRY, iconClass, iconNode, registryEntry, resolveIcon } from "./registry.js";
 import { dropOverride, iconFormat, iconFormatLabel, iconOverrideDocument, iconOverridesFromText, pushRecent, putOverride } from "./snippet.js";
 import { openIconWizard, utf8Base64 } from "./wizard.js";
+import { growWeights } from "../column-widths.js";
 import { ensureSplit, mountModuleTable } from "../../settings/split-table.js";
 
 const CHOOSER = [
@@ -160,10 +161,11 @@ export function mountIconsPanel(root, ctx) {
     });
   }
 
-  async function choose(id) {
+  async function choose(id, choice) {
+    const reveal = !choice || choice.reveal !== false;
     if (id === selectedId && editor) {
       if (view) {
-        view.reselect();
+        view.reselect(reveal);
       }
       return;
     }
@@ -185,8 +187,11 @@ export function mountIconsPanel(root, ctx) {
       editor.abandon();
     }
     selectedId = id;
+    if (typeof ctx.saveTableSelected === "function") {
+      ctx.saveTableSelected("icons", id);
+    }
     if (view) {
-      view.reselect();
+      view.reselect(reveal);
     }
     mountEditor(entryOf(id));
   }
@@ -211,11 +216,13 @@ export function mountIconsPanel(root, ctx) {
   function columns(documentRef, hidden, widths) {
     const off = new Set(hidden || []);
     const saved = widths || {};
+    const share = growWeights(saved, ["name", "key"], { name: 1, key: 1 });
     const defs = [
       {
         title: "Default",
         field: "fallback",
         width: saved.fallback || 72,
+        ...(saved.fallback ? { lockWidth: true } : {}),
         minWidth: 64,
         resizable: true,
         hozAlign: "center",
@@ -226,6 +233,7 @@ export function mountIconsPanel(root, ctx) {
         title: "Icon",
         field: "glyph",
         width: saved.glyph || 56,
+        ...(saved.glyph ? { lockWidth: true } : {}),
         minWidth: 40,
         resizable: true,
         headerSort: false,
@@ -250,7 +258,7 @@ export function mountIconsPanel(root, ctx) {
         title: "Name",
         field: "name",
         minWidth: 120,
-        widthGrow: 1,
+        widthGrow: share.name,
         resizable: true,
         formatter: (cell) => {
           const span = documentRef.createElement("span");
@@ -263,6 +271,7 @@ export function mountIconsPanel(root, ctx) {
         title: "Icon Format",
         field: "format",
         width: saved.format || 160,
+        ...(saved.format ? { lockWidth: true } : {}),
         minWidth: 96,
         resizable: true,
         formatter: (cell) => {
@@ -276,7 +285,7 @@ export function mountIconsPanel(root, ctx) {
         title: "Key",
         field: "key",
         minWidth: 80,
-        widthGrow: 1,
+        widthGrow: share.key,
         resizable: true,
         formatter: (cell) => {
           const span = documentRef.createElement("span");
@@ -405,6 +414,12 @@ export function mountIconsPanel(root, ctx) {
     mountEditor(entryOf(selectedId));
   }
 
+  const known = rows();
+  const savedId = typeof ctx.tableSelected === "function" ? ctx.tableSelected("icons") : "";
+  if (savedId && known.some((row) => row.id === savedId)) {
+    selectedId = savedId;
+  }
+
   view = mountModuleTable(root, {
     ids: {
       toolbar: "icons-toolbar",
@@ -422,6 +437,7 @@ export function mountIconsPanel(root, ctx) {
     chooserLabel: "Icon columns",
     chooser: CHOOSER,
     widthFields: WIDTH_FIELDS,
+    growFields: ["name", "key"],
     columns,
     groupBy: "set",
     groupOrder: sectionOrder,
@@ -475,11 +491,17 @@ export function mountIconsPanel(root, ctx) {
     saveTableWidths: ctx.saveTableWidths,
     tableOrder: ctx.tableOrder,
     saveTableOrder: ctx.saveTableOrder,
+    tableSelected: ctx.tableSelected,
+    saveTableSelected: ctx.saveTableSelected,
+    tableScroll: ctx.tableScroll,
+    saveTableScroll: ctx.saveTableScroll,
   });
 
-  const first = rows()[0];
-  if (first) {
-    void choose(first.id);
+  const openingScroll = typeof ctx.tableScroll === "function" ? ctx.tableScroll("icons") : null;
+  const pinned = Boolean(openingScroll && (openingScroll.top > 0 || openingScroll.left > 0));
+  const openId = selectedId || (known[0] && known[0].id);
+  if (openId) {
+    void choose(openId, { reveal: !pinned });
   }
 
   function paintRows() {

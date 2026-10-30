@@ -6,6 +6,7 @@
    A box is on when the stored capabilities (K-Q10) include it and the
    account syncs it.
    Files has no sync flag yet, so it shows the capability only. */
+import { clampWidth } from "../common/column-widths.js";
 import { iconClass } from "../common/icons/registry.js";
 import { formatInstant } from "../formats.js";
 import { accountSwatch } from "./account-icon.js";
@@ -219,17 +220,18 @@ function checkColumn(field, title, width, titleFormatter, documentRef, extraClas
   };
 }
 
-/* TABULATOR.md resizing: saved widths for resizable fixed columns only
-   (Name stretches and is not saved), whole px from 30 to 1000. */
+/* Saved widths for resizable fixed columns only. Name stretches and is not
+   saved: dragging it moves the fixed column beside it, and that width is
+   what is stored. Whole px from 30 to 4000. */
 export const WIDTH_FIELDS = ["number", ...PROTOCOLS.map((p) => p.key), ...FEATURES.map((f) => f.key)];
 
 export function cleanWidths(widths) {
   const out = {};
   if (widths && typeof widths === "object" && !Array.isArray(widths)) {
     for (const field of WIDTH_FIELDS) {
-      const value = widths[field];
-      if (typeof value === "number" && Number.isFinite(value) && value >= 30 && value <= 1000) {
-        out[field] = Math.round(value);
+      const value = clampWidth(widths[field]);
+      if (value !== null) {
+        out[field] = value;
       }
     }
   }
@@ -303,6 +305,7 @@ export function accountColumns(documentRef = globalThis.document, hidden = [], w
     }
     if (column.field in saved) {
       column.width = saved[column.field];
+      column.lockWidth = true;
     }
   }
   columns.push({ title: "Email", field: "email", visible: false, download: true });

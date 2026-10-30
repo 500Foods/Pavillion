@@ -34,6 +34,7 @@ import { createIconSearch } from "./common/icons/search.js";
 import { applyIconResultZoom, applyIconWizardZoom, openIconWizard } from "./common/icons/wizard.js";
 import { bindColorPicker, colorZoomOf } from "./common/coloris.js";
 import { DEFAULT_UI, FEATURE_KEYS, RAIL_KEYS, chordsOf, clampUi, railOf, snapZoom } from "./prefs.js";
+import { cleanPlace, cleanScroll, cleanSelected } from "./common/table-place.js";
 import {
   THEME_TEMPLATES,
   buildCatalog,
@@ -954,6 +955,10 @@ async function loadPrefs() {
   ui.files = stored.files;
   ui.help = stored.help;
   ui.accounts = stored.accounts; /* K-Q14: the split ratio was never restored */
+  /* bindSplit reads these before the Icons, Libraries, and Assets panels mount. */
+  ui.iconPane = stored.iconPane;
+  ui.libraryPane = stored.libraryPane;
+  ui.assetPane = stored.assetPane;
   ui.zoom = stored.zoom;
   ui.activity = stored.activity;
   ui.log = stored.log;
@@ -2097,31 +2102,83 @@ function bindSettings() {
   }
 }
 
+function tableEntry(id) {
+  const entry = ui.tables && ui.tables[id];
+  return entry && typeof entry === "object" ? entry : {};
+}
+
+function writeTableEntry(id, patch) {
+  ui.tables = { ...(ui.tables || {}), [id]: { ...tableEntry(id), ...patch } };
+  persistLayout();
+}
+
 function tableStore() {
   return {
     tableHidden(id) {
-      const entry = ui.tables && ui.tables[id];
-      return entry && Array.isArray(entry.hidden) ? entry.hidden : [];
+      const entry = tableEntry(id);
+      return Array.isArray(entry.hidden) ? entry.hidden : [];
     },
     saveTableHidden(id, hidden) {
-      ui.tables = { ...(ui.tables || {}), [id]: { ...((ui.tables && ui.tables[id]) || {}), hidden } };
-      persistLayout();
+      writeTableEntry(id, { hidden });
     },
     tableWidths(id) {
-      const entry = ui.tables && ui.tables[id];
-      return entry && entry.widths && typeof entry.widths === "object" ? entry.widths : {};
+      const entry = tableEntry(id);
+      return entry.widths && typeof entry.widths === "object" ? entry.widths : {};
     },
     saveTableWidths(id, widths) {
-      ui.tables = { ...(ui.tables || {}), [id]: { ...((ui.tables && ui.tables[id]) || {}), widths } };
-      persistLayout();
+      writeTableEntry(id, { widths });
     },
     tableOrder(id) {
-      const entry = ui.tables && ui.tables[id];
-      return entry && Array.isArray(entry.order) ? entry.order : [];
+      const entry = tableEntry(id);
+      return Array.isArray(entry.order) ? entry.order : [];
     },
     saveTableOrder(id, order) {
-      ui.tables = { ...(ui.tables || {}), [id]: { ...((ui.tables && ui.tables[id]) || {}), order } };
-      persistLayout();
+      writeTableEntry(id, { order });
+    },
+    /* Row id for a settings list. Empty when nothing is stored. */
+    tableSelected(id) {
+      return cleanSelected(tableEntry(id).selected);
+    },
+    saveTableSelected(id, selected) {
+      const next = cleanSelected(selected);
+      const entry = tableEntry(id);
+      const had = Object.prototype.hasOwnProperty.call(entry, "selected");
+      if (!had && next === "") {
+        return;
+      }
+      if (had && cleanSelected(entry.selected) === next) {
+        return;
+      }
+      writeTableEntry(id, { selected: next });
+    },
+    tableScroll(id) {
+      return cleanScroll(tableEntry(id).scroll);
+    },
+    saveTableScroll(id, scroll) {
+      const next = cleanScroll(scroll);
+      if (!next) {
+        return;
+      }
+      const prev = cleanScroll(tableEntry(id).scroll);
+      if (prev && prev.top === next.top && prev.left === next.left) {
+        return;
+      }
+      writeTableEntry(id, { scroll: next });
+    },
+    /* Mail keeps one folder place, not one id for every folder. */
+    tablePlace(id) {
+      return cleanPlace(tableEntry(id).place);
+    },
+    saveTablePlace(id, place) {
+      const next = cleanPlace(place);
+      if (!next) {
+        return;
+      }
+      const prev = cleanPlace(tableEntry(id).place);
+      if (prev && prev.mailbox === next.mailbox && prev.selected === next.selected && prev.top === next.top && prev.left === next.left) {
+        return;
+      }
+      writeTableEntry(id, { place: next });
     },
   };
 }
@@ -3253,6 +3310,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
   if (mailListEl) {
     mailList = createMailList(api, mailListEl, {
       keys,
+      ...tableStore(),
       mailboxOf(id) {
         if (!mailTree || typeof mailTree.getNode !== "function") {
           return { role: "", swatch: "" };

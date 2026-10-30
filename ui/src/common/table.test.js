@@ -84,7 +84,7 @@ vi.mock("tabulator-tables", () => {
 import { createTable, indicatorColumn, INDICATOR_FIELD, INDICATOR_WIDTH, modulesFor, sortIcon, tabulatorOptions } from "./table.js";
 import { accountColumns } from "../settings/accounts-table.js";
 
-test("a plain table registers only the base modules, fills its element, and loads data once", async () => {
+test("a plain table registers the shared modules, fills its element, and loads data once", async () => {
   const el = document.createElement("div");
   const clicks = [];
   const data = [{ id: "x" }];
@@ -93,7 +93,7 @@ test("a plain table registers only the base modules, fills its element, and load
   await vi.waitFor(() => expect(made.length).toBe(1));
   const t = made[0];
   const { Tabulator } = await import("tabulator-tables");
-  expect(Tabulator.registered).toEqual(["format", "interaction", "resizeTable"]);
+  expect(Tabulator.registered).toEqual(["format", "interaction", "resizeTable", "moveColumns", "resizeColumns"]);
   expect(Tabulator.registered).not.toContain("full");
   expect(t.options.layout).toBe("fitColumns");
   expect(t.options.height).toBe("100%");
@@ -128,7 +128,7 @@ test("the accounts options: tri-state FA sort, table calcs, single select, group
   });
   expect(modulesFor({ columns, groupBy: "g", select: true, download: true })).toEqual([
     "FormatModule", "InteractionModule", "ResizeTableModule", "GroupRowsModule", "SortModule",
-    "ColumnCalcsModule", "SelectRowModule", "ExportModule", "DownloadModule", "ResizeColumnsModule",
+    "ColumnCalcsModule", "SelectRowModule", "ExportModule", "DownloadModule", "MoveColumnsModule", "ResizeColumnsModule",
   ]);
   await vi.waitFor(() => expect(made.length).toBe(2));
   const t = made[1];
@@ -227,12 +227,12 @@ test("without the option there is no indicator column", () => {
   expect(cols.some((c) => c.field === INDICATOR_FIELD)).toBe(false);
 });
 
-test("resize round: columns default unresizable, indicator divider, resize events, fitted titles, widths", async () => {
+test("resize round: header handles by default, indicator divider, resize events, fitted titles, widths", async () => {
   const { tabulatorOptions, indicatorColumn } = await import("./table.js");
-  expect(tabulatorOptions({ columns: [{ field: "a", headerSort: false }] }, [], { open: false }).columnDefaults).toEqual({ resizable: false });
+  expect(tabulatorOptions({ columns: [{ field: "a", headerSort: false }] }, [], { open: false }).columnDefaults).toEqual({ resizable: "header" });
   expect(indicatorColumn(() => null).cssClass).toBe("pav-table-indicator pav-col-divider-right");
   expect(modulesFor({ columns: [{ field: "a", resizable: true }] })).toContain("ResizeColumnsModule");
-  expect(modulesFor({ columns: [{ field: "a" }] })).not.toContain("ResizeColumnsModule");
+  expect(modulesFor({ columns: [{ field: "a" }] })).toContain("ResizeColumnsModule");
   const el = document.createElement("div");
   document.body.append(el);
   const resized = [];
@@ -455,14 +455,15 @@ test("tabulatorOptions strips download keys unless the Download module is on", a
 
 test("movable columns register MoveColumns, keep the indicator fixed, and report field order", async () => {
   expect(modulesFor({ movable: true, indicator: true, columns: [{ field: "a", headerSort: false }] })).toEqual([
-    "FormatModule", "InteractionModule", "ResizeTableModule", "FrozenColumnsModule", "MoveColumnsModule",
+    "FormatModule", "InteractionModule", "ResizeTableModule", "FrozenColumnsModule", "MoveColumnsModule", "ResizeColumnsModule",
   ]);
-  expect(modulesFor({ columns: [{ field: "a", headerSort: false }] })).not.toContain("MoveColumnsModule");
+  expect(modulesFor({ movable: false, columns: [{ field: "a", headerSort: false }] })).not.toContain("MoveColumnsModule");
   const opts = tabulatorOptions({ movable: true, indicator: true, columns: [{ field: "a", resizable: true, headerSort: false }] }, [], { open: false });
   expect(opts.movableColumns).toBe(true);
   expect(opts.columns[0]).toMatchObject({ field: INDICATOR_FIELD, frozen: true, resizable: false });
   expect("movable" in opts.columns[0]).toBe(false);
-  expect(tabulatorOptions({ columns: [{ field: "a", headerSort: false }] }, [], { open: false }).movableColumns).toBeUndefined();
+  expect(tabulatorOptions({ movable: false, columns: [{ field: "a", headerSort: false }] }, [], { open: false }).movableColumns).toBeUndefined();
+  expect(tabulatorOptions({ columns: [{ field: "a", headerSort: false }] }, [], { open: false }).movableColumns).toBe(true);
   const el = document.createElement("div");
   const moved = [];
   const before = made.length;
@@ -487,4 +488,347 @@ test("movable columns register MoveColumns, keep the indicator fixed, and report
   handle.setColumnOrder(["b", "a"]);
   expect(calls).toEqual([["a", "b", true]]);
   handle.destroy();
+});
+
+test("column prep: widthGrow drops its width, lockWidth stays off the wire, and the last movable column grows", () => {
+  const prepared = tabulatorOptions({
+    columns: [
+      { field: "date", headerSort: false, lockWidth: true, resizable: true },
+      { field: "subject", width: 80, widthGrow: 2, minWidth: 48, headerSort: false },
+    ],
+  }, [], { open: false });
+  expect(prepared.columnDefaults).toEqual({ resizable: "header" });
+  expect(prepared.movableColumns).toBe(true);
+  expect(prepared.columns[0].lockWidth).toBeUndefined();
+  expect(prepared.columns[0]).toMatchObject({ field: "date", width: 40, resizable: "header" });
+  expect(prepared.columns[1].width).toBeUndefined();
+  expect(prepared.columns[1]).toMatchObject({ field: "subject", widthGrow: 2, minWidth: 48 });
+  const grown = tabulatorOptions({
+    columns: [
+      { field: "a", headerSort: false },
+      { field: "b", width: 80, minWidth: 30, headerSort: false },
+      { field: "c", width: 20, resizable: false, headerSort: false },
+    ],
+  }, [], { open: false });
+  expect(grown.columns[0]).toMatchObject({ field: "a", width: 40 });
+  expect(grown.columns[0].widthGrow).toBeUndefined();
+  expect(grown.columns[1].width).toBeUndefined();
+  expect(grown.columns[1]).toMatchObject({ field: "b", widthGrow: 1, minWidth: 30 });
+  expect(grown.columns[2]).toMatchObject({ field: "c", width: 20, resizable: false });
+  expect(modulesFor({ movable: false, columns: [{ field: "a", headerSort: false }] })).toEqual([
+    "FormatModule", "InteractionModule", "ResizeTableModule", "ResizeColumnsModule",
+  ]);
+});
+
+function headerCell(titleWidth) {
+  const colEl = document.createElement("div");
+  colEl.style.paddingLeft = "4px";
+  colEl.style.paddingRight = "4px";
+  const title = document.createElement("span");
+  title.className = "tabulator-col-title";
+  Object.defineProperty(title, "scrollWidth", { value: titleWidth });
+  const sorter = document.createElement("span");
+  sorter.className = "tabulator-col-sorter";
+  Object.defineProperty(sorter, "offsetWidth", { value: 10 });
+  colEl.append(title, sorter);
+  return colEl;
+}
+
+function textCell(px) {
+  const el = document.createElement("div");
+  el.style.paddingLeft = "4px";
+  el.style.paddingRight = "4px";
+  const child = document.createElement("span");
+  Object.defineProperty(child, "scrollWidth", { value: px });
+  el.append(child);
+  return { getElement: () => el };
+}
+
+function liveColumn(field, width, source, extra = {}) {
+  const column = {
+    width,
+    def: { ...source },
+    getField: () => field,
+    getDefinition() { return column.def; },
+    getElement: extra.getElement || (() => document.createElement("div")),
+    getWidth() { return column.width; },
+    setWidth(next) { column.width = next; },
+    isVisible: () => extra.visible !== false,
+    getCells: extra.getCells || (() => []),
+  };
+  delete column.def.lockWidth;
+  return column;
+}
+
+/* A holder of `holderWidth` and one fake column per field, installed before
+   tableBuilt so the first layout can fill it. */
+async function mountFilled(columns, specs, holderWidth) {
+  const el = document.createElement("div");
+  document.body.append(el);
+  const before = made.length;
+  const handle = createTable(el, { columns, data: [{ id: "x" }] });
+  await vi.waitFor(() => expect(made.length).toBe(before + 1));
+  const t = made.at(-1);
+  const cols = {};
+  for (const column of columns) {
+    const spec = specs[column.field] || {};
+    cols[column.field] = liveColumn(column.field, spec.width, column, spec);
+  }
+  t.getColumn = (field) => cols[field];
+  t.getColumns = () => columns.map((column) => cols[column.field]);
+  const holder = document.createElement("div");
+  holder.className = "tabulator-tableholder";
+  let width = holderWidth;
+  Object.defineProperty(holder, "clientWidth", { get: () => width });
+  el.append(holder);
+  t.handlers.tableBuilt();
+  return {
+    el,
+    t,
+    handle,
+    cols,
+    setHolder(next) { width = next; },
+    drag(field, next) {
+      const column = cols[field];
+      t.handlers.columnResizing(column);
+      column.width = next;
+      t.handlers.columnWidth(column);
+      t.handlers.columnResized(column);
+    },
+  };
+}
+
+test("fixed columns fit their contents once, then only widen, and the grow column takes the rest", async () => {
+  const dateHeader = headerCell(50);
+  let dateCells = [];
+  const view = await mountFilled(
+    [
+      { field: "date", title: "Date", width: 100, minWidth: 40, headerSort: false },
+      { field: "size", title: "Size", width: 90, minWidth: 40, lockWidth: true, headerSort: false },
+      { field: "subject", title: "Subject", widthGrow: 1, minWidth: 40, headerSort: false },
+    ],
+    {
+      date: { width: 100, getElement: () => dateHeader, getCells: () => dateCells },
+      size: { width: 90, getElement: () => headerCell(20) },
+      subject: { width: 50 },
+    },
+    400,
+  );
+  try {
+    expect(view.cols.date.width).toBe(72);
+    expect(view.cols.date.def.width).toBe(72);
+    expect(view.cols.size.width).toBe(90);
+    expect(view.cols.subject.width).toBe(238);
+    expect(view.cols.subject.def.width).toBeUndefined();
+    dateCells = [textCell(120)];
+    view.t.handlers.renderComplete();
+    expect(view.cols.date.width).toBe(130);
+    expect(view.cols.subject.width).toBe(180);
+    dateCells = [textCell(10)];
+    view.t.handlers.renderComplete();
+    expect(view.cols.date.width).toBe(130);
+    expect(view.cols.subject.width).toBe(180);
+  } finally {
+    view.handle.destroy();
+    view.el.remove();
+  }
+});
+
+test("resizing a column gives the difference to the widthGrow columns and keeps the holder full", async () => {
+  const view = await mountFilled(
+    [
+      { field: "date", title: "Date", width: 100, minWidth: 40, headerSort: false },
+      { field: "subject", title: "Subject", widthGrow: 1, minWidth: 80, headerSort: false },
+      { field: "from", title: "From", width: 80, minWidth: 40, headerSort: false },
+      { field: "size", title: "Size", width: 60, minWidth: 40, headerSort: false },
+    ],
+    {
+      date: { width: 100 },
+      subject: { width: 10 },
+      from: { width: 80 },
+      size: { width: 60 },
+    },
+    400,
+  );
+  try {
+    expect(view.cols.subject.width).toBe(160);
+    /* Size is not beside Subject. The spare still comes out of Subject. */
+    view.drag("size", 90);
+    expect(view.cols.size.width).toBe(90);
+    expect(view.cols.size.def.width).toBe(90);
+    expect(view.cols.from.width).toBe(80);
+    expect(view.cols.date.width).toBe(100);
+    expect(view.cols.subject.width).toBe(130);
+    view.t.handlers.renderComplete();
+    expect(view.cols.size.width).toBe(90);
+    expect(view.cols.subject.width).toBe(130);
+    /* The only grow column moves the fixed column on its other side. */
+    view.drag("subject", 150);
+    expect(view.cols.from.width).toBe(60);
+    expect(view.cols.from.def.width).toBe(60);
+    expect(view.cols.subject.width).toBe(150);
+    expect(view.cols.date.width).toBe(100);
+    expect(view.cols.size.width).toBe(90);
+    /* Past the neighbour's minimum, Subject is pulled back so the row still fills. */
+    view.drag("subject", 220);
+    expect(view.cols.from.width).toBe(40);
+    expect(view.cols.subject.width).toBe(170);
+    expect(view.cols.date.width + view.cols.subject.width + view.cols.from.width + view.cols.size.width).toBe(400);
+  } finally {
+    view.handle.destroy();
+    view.el.remove();
+  }
+});
+
+test("several widthGrow columns share the spare by weight, and a dragged one sticks until the pane changes", async () => {
+  const view = await mountFilled(
+    [
+      { field: "from", title: "From", widthGrow: 2, minWidth: 40, headerSort: false },
+      { field: "subject", title: "Subject", widthGrow: 3, minWidth: 40, headerSort: false },
+      { field: "preview", title: "Preview", widthGrow: 2, minWidth: 40, headerSort: false },
+      { field: "time", title: "Time", width: 100, minWidth: 40, headerSort: false },
+    ],
+    {
+      from: { width: 40 },
+      subject: { width: 40 },
+      preview: { width: 40 },
+      time: { width: 100 },
+    },
+    450,
+  );
+  try {
+    expect(view.cols.from.width).toBe(100);
+    expect(view.cols.subject.width).toBe(150);
+    expect(view.cols.preview.width).toBe(100);
+    expect(view.cols.time.width).toBe(100);
+    view.drag("subject", 180);
+    expect(view.cols.subject.width).toBe(180);
+    expect(view.cols.from.width).toBe(85);
+    expect(view.cols.preview.width).toBe(85);
+    expect(view.cols.time.width).toBe(100);
+    view.setHolder(500);
+    view.t.handlers.renderComplete();
+    expect(view.cols.from.width).toBe(114);
+    expect(view.cols.subject.width).toBe(171);
+    expect(view.cols.preview.width).toBe(115);
+    expect(view.cols.time.width).toBe(100);
+    view.handle.setGrowWeights({ from: 1, subject: 1, preview: 1 });
+    expect(view.cols.from.def.widthGrow).toBe(1);
+    expect(view.cols.subject.def.widthGrow).toBe(1);
+    expect(view.cols.preview.def.widthGrow).toBe(1);
+    expect(view.cols.from.def.width).toBeUndefined();
+    expect(view.cols.from.width).toBe(133);
+    expect(view.cols.subject.width).toBe(133);
+    expect(view.cols.preview.width).toBe(134);
+    expect(view.cols.time.width).toBe(100);
+  } finally {
+    view.handle.destroy();
+    view.el.remove();
+  }
+});
+
+test("a widthGrow column stays at its minimum when the fixed columns leave no spare", async () => {
+  const view = await mountFilled(
+    [
+      { field: "date", title: "Date", width: 100, minWidth: 40, headerSort: false },
+      { field: "subject", title: "Subject", widthGrow: 1, minWidth: 80, headerSort: false },
+      { field: "size", title: "Size", width: 80, minWidth: 40, headerSort: false },
+    ],
+    {
+      date: { width: 100 },
+      subject: { width: 40 },
+      size: { width: 80 },
+    },
+    200,
+  );
+  try {
+    expect(view.cols.subject.width).toBe(80);
+    expect(view.cols.date.width + view.cols.size.width + view.cols.subject.width).toBe(260);
+    view.drag("date", 120);
+    expect(view.cols.date.width).toBe(120);
+    expect(view.cols.subject.width).toBe(80);
+  } finally {
+    view.handle.destroy();
+    view.el.remove();
+  }
+});
+
+test("select can leave the scroll alone, and a saved scroll is restored once", async () => {
+  const el = document.createElement("div");
+  Object.defineProperty(el, "offsetWidth", { configurable: true, value: 300 });
+  Object.defineProperty(el, "offsetHeight", { configurable: true, value: 200 });
+  const scrolls = [];
+  const before = made.length;
+  const handle = createTable(el, {
+    columns: [{ field: "n", headerSort: false }],
+    data: [{ id: "a" }, { id: "b" }, { id: "c" }],
+    select: true,
+    scroll: { top: 40, left: 8 },
+    onScroll: (pos) => scrolls.push(pos),
+  });
+  await vi.waitFor(() => expect(made.length).toBe(before + 1));
+  const t = made[before];
+  expect(t.options.scroll).toBeUndefined();
+  const holder = document.createElement("div");
+  holder.className = "tabulator-tableholder";
+  el.append(holder);
+  handle.select("c", { reveal: false });
+  t.handlers.tableBuilt();
+  expect(holder.scrollTop).toBe(40);
+  expect(holder.scrollLeft).toBe(8);
+  expect(t.selected).toEqual(["c"]);
+  expect(t.calls.filter((call) => call[0] === "scrollToRow")).toEqual([]);
+  t.handlers.renderComplete();
+  expect(holder.scrollTop).toBe(40);
+  holder.scrollTop = 12;
+  holder.scrollLeft = 3;
+  holder.dispatchEvent(new Event("scroll"));
+  expect(scrolls).toContainEqual({ top: 12, left: 3 });
+  handle.select("a");
+  expect(t.calls).toContainEqual(["scrollToRow", "a"]);
+  handle.destroy();
+});
+
+test("a table built with no box redraws once it is shown", async () => {
+  let notify = null;
+  const RealObserver = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class {
+    constructor(fn) {
+      notify = fn;
+    }
+    observe() {}
+    disconnect() {}
+  };
+  try {
+    const el = document.createElement("div");
+    const before = made.length;
+    const handle = createTable(el, {
+      columns: [{ field: "n", headerSort: false }],
+      data: [{ id: "a" }, { id: "b" }],
+      select: true,
+      scroll: { top: 40, left: 8 },
+    });
+    await vi.waitFor(() => expect(made.length).toBe(before + 1));
+    const t = made[before];
+    const redraws = [];
+    t.redraw = (force) => redraws.push(force);
+    const holder = document.createElement("div");
+    holder.className = "tabulator-tableholder";
+    el.append(holder);
+    handle.select("b", { reveal: false });
+    t.handlers.tableBuilt();
+    expect(redraws).toEqual([]);
+    expect(holder.scrollTop).toBe(40);
+    Object.defineProperty(el, "offsetWidth", { configurable: true, value: 300 });
+    Object.defineProperty(el, "offsetHeight", { configurable: true, value: 120 });
+    notify();
+    expect(redraws).toEqual([true]);
+    expect(holder.scrollTop).toBe(40);
+    expect(t.selected).toEqual(["b"]);
+    notify();
+    expect(redraws).toEqual([true]);
+    handle.destroy();
+  } finally {
+    globalThis.ResizeObserver = RealObserver;
+  }
 });

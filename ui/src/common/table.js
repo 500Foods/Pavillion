@@ -4,15 +4,29 @@
    createTable(el, {columns, data, rowId, onRowClick, rowClass, groupBy,
    groupHeader, groupOrder, footerElement, select, onRender, download, filter,
    indicator, onIndicatorHeader, fitTitles, onColumnResized, onWidths, movable,
-   onColumnMoved}). Columns resize only when they set resizable:true
-   (TABULATOR.md Fitted titles, resizing). movable sets Tabulator
-   movableColumns and registers MoveColumnsModule. There is no column
-   movable flag in Tabulator 6.6.
-   The table fills el (height 100%, virtual rows) and ResizeTable redraws it
-   on resize and when a hidden panel is shown. The look is .pav-table on
-   --pav-* variables in theme.css; no Tabulator stylesheet is loaded.
-   Formatters, headers and the footer are DOM built with textContent. */
+   onColumnMoved, scroll, onScroll}).
+   scroll is {top, left} in pixels on the row holder, applied once when the
+   table is built. onScroll reports later movement of that holder.
+   select(id) scrolls that row into view. select(id, {reveal:false}) leaves
+   the scroll where it is, which is how a restored position stays put.
+   The table fills el (height 100%, layout fitColumns, virtual rows).
+   ResizeTable redraws it when the pane or a split changes size. A column
+   with widthGrow shares the spare width and is not given a fixed width
+   (fitColumns treats a missing widthGrow as 1, so every other column is
+   given a width). A table that names none grows its last movable column.
+   The fixed columns size to the header and the rendered cells. The first
+   real measure may shrink a coded width; after that a measure only widens.
+   lockWidth keeps a saved width. A column resize writes that width and the
+   difference comes out of the widthGrow columns, so the rows stay the width
+   of the pane. Dragging the only widthGrow column moves the fixed column
+   beside it. A horizontal bar appears only when the minimums do not fit.
+   Header handles are the default. Columns can be dragged; movable:false
+   opts out. There is no column movable flag in Tabulator 6.6.
+   The look is .pav-table on --pav-* variables in theme.css; no Tabulator
+   stylesheet is loaded. Formatters, headers and the footer are DOM built
+   with textContent. */
 import { iconClass } from "./icons/registry.js";
+import { cleanScroll } from "./table-place.js";
 
 let loading = null;
 const registered = new Set();
@@ -50,13 +64,11 @@ export function modulesFor(options) {
     names.push("FrozenColumnsModule");
   }
   /* After FrozenColumns, so a frozen indicator is already marked and is not
-     a drag source (TABULATOR.md Movable columns). */
-  if (options.movable) {
+     a drag source (TABULATOR.md). Moving and header resizing are the default. */
+  if (options.movable !== false) {
     names.push("MoveColumnsModule");
   }
-  if (columns.some((c) => c.resizable === true)) {
-    names.push("ResizeColumnsModule");
-  }
+  names.push("ResizeColumnsModule");
   return names;
 }
 
@@ -161,12 +173,56 @@ function withoutDownload(column) {
   return copy;
 }
 
+/* fitColumns gives every column without a width a share of the spare space
+   (widthGrow defaults to 1). A designated column keeps widthGrow and loses
+   any width. Every other column gets a width so it stays out of that share.
+   lockWidth is ours, not a Tabulator option. resizable:true becomes the
+   header handle so a row cell is not a resize target. */
+function prepareColumn(column) {
+  const copy = { ...column };
+  delete copy.lockWidth;
+  if (Number(copy.widthGrow) > 0) {
+    delete copy.width;
+  } else if (!Number.isFinite(copy.width)) {
+    copy.width = Number.isFinite(copy.minWidth) ? copy.minWidth : 40;
+  }
+  if (copy.resizable === true) {
+    copy.resizable = "header";
+  }
+  return copy;
+}
+
+/* A table that names no widthGrow column still fills: the last movable
+   column takes the spare width. */
+function ensureGrow(columns) {
+  if (columns.some((column) => Number(column.widthGrow) > 0 && column.visible !== false)) {
+    return columns;
+  }
+  for (let i = columns.length - 1; i >= 0; i -= 1) {
+    const column = columns[i];
+    if (column.visible === false || column.frozen || column.resizable === false) {
+      continue;
+    }
+    delete column.width;
+    column.widthGrow = 1;
+    if (!Number.isFinite(column.minWidth)) {
+      column.minWidth = 48;
+    }
+    break;
+  }
+  return columns;
+}
+
+function layoutColumns(columns) {
+  return ensureGrow(columns.map(prepareColumn));
+}
+
 /* The Tabulator options for a createTable call (exported for tests). */
 export function tabulatorOptions(options, data, gate, documentRef = globalThis.document) {
   const allColumns = options.indicator
     ? [indicatorColumn(gate.stateOf || (() => null), options.rowId || "id", documentRef, options.onIndicatorHeader), ...(options.columns || [])]
     : options.columns || [];
-  const columns = options.download ? allColumns : allColumns.map(withoutDownload);
+  const columns = layoutColumns(options.download ? allColumns : allColumns.map(withoutDownload));
   const sortable = (options.columns || []).some((c) => c.headerSort !== false);
   return {
     data,
@@ -177,7 +233,7 @@ export function tabulatorOptions(options, data, gate, documentRef = globalThis.d
     renderVertical: "virtual",
     autoResize: true,
     placeholder: options.placeholder || "",
-    columnDefaults: { resizable: false, ...(sortable ? { headerSortTristate: true } : {}) },
+    columnDefaults: { resizable: "header", ...(sortable ? { headerSortTristate: true } : {}) },
     ...(sortable ? { headerSortElement: (_column, dir) => sortIcon(dir, documentRef) } : {}),
     ...(options.groupBy ? { groupBy: options.groupBy, groupStartOpen: true, groupToggleElement: "header" } : {}),
     ...(typeof options.groupHeader === "function"
@@ -185,7 +241,7 @@ export function tabulatorOptions(options, data, gate, documentRef = globalThis.d
       : {}),
     ...((options.columns || []).some((c) => c.bottomCalc) ? { columnCalcs: "table" } : {}),
     ...(options.select ? { selectableRows: 1, selectableRowsCheck: () => gate.open } : {}),
-    ...(options.movable ? { movableColumns: true } : {}),
+    ...(options.movable !== false ? { movableColumns: true } : {}),
     ...(options.download ? { downloadRowRange: "all", downloadConfig: { rowGroups: false, columnCalcs: false } } : {}),
     ...(options.footerElement ? { footerElement: options.footerElement } : {}),
     ...(typeof options.rowClass === "function" ? { rowFormatter: (row) => markRow(row, options.rowClass) } : {}),
@@ -209,14 +265,195 @@ export function createTable(el, options) {
   let pending = Promise.resolve();
   let widthScale = 1;
   let fontScale = 1;
+  let dragField = null;
+  let dragStart = 0;
+  let neighborField = null;
+  let neighborStart = 0;
+  let adjusting = false;
+  let balancing = false;
+  let fitting = false;
+  let filledAt = -1;
+  let filledFixed = -1;
+  /* Saved widths (lockWidth) are not content-fitted. A resize this session
+     joins the same set so the next measure does not undo it. */
+  const lockedFields = new Set((options.columns || []).filter((column) => column.lockWidth && column.field).map((column) => column.field));
+  const userSized = new Set();
+  /* A field that has been measured, or set with setColumnWidth. The first
+     measure may shrink it. Later measures only widen. */
+  const fitted = new Set();
   const base = {};
+  /* A saved scroll is applied once per build. While it is pending, holder
+     scroll events are ignored so the initial 0 does not replace it.
+     pendingReveal is a select() that arrived before the table was built.
+     openingScroll is kept for the redraw that runs when a hidden pane is
+     shown: the hidden build can give up on the position before the holder
+     can scroll. */
+  const openingScroll = cleanScroll(options.scroll);
+  let scrollPending = openingScroll;
+  let scrollTries = 0;
+  let applyingScroll = false;
+  let pendingReveal = false;
+  let showObserver = null;
+  let showRedrawn = false;
   for (const column of options.columns || []) {
-    if (column.field && Number.isFinite(column.width)) {
+    if (column.field && Number.isFinite(column.width) && !(Number(column.widthGrow) > 0)) {
       base[column.field] = column.width;
     }
   }
   if (options.indicator) {
     base[INDICATOR_FIELD] = INDICATOR_WIDTH;
+  }
+
+  function columnDef(column) {
+    if (!column || typeof column.getDefinition !== "function") {
+      return null;
+    }
+    return column.getDefinition() || null;
+  }
+
+  function isGrow(def) {
+    return !!def && Number(def.widthGrow) > 0;
+  }
+
+  function columnsNow() {
+    if (!table || typeof table.getColumns !== "function") {
+      return [];
+    }
+    const list = table.getColumns();
+    return Array.isArray(list) ? list : [];
+  }
+
+  function visibleColumns() {
+    return columnsNow().filter((column) => typeof column.isVisible !== "function" || column.isVisible());
+  }
+
+  function holderEl() {
+    return el.querySelector(".tabulator-tableholder");
+  }
+
+  function holderWidth() {
+    const holder = holderEl();
+    const width = holder ? holder.clientWidth : 0;
+    return Number.isFinite(width) && width > 0 ? width : 0;
+  }
+
+  function scrollPinned(pos) {
+    return Boolean(pos && (pos.top > 0 || pos.left > 0));
+  }
+
+  function writeScroll(pos) {
+    const holder = holderEl();
+    if (!holder || !pos) {
+      return false;
+    }
+    applyingScroll = true;
+    try {
+      holder.scrollTop = pos.top;
+      holder.scrollLeft = pos.left;
+    } finally {
+      applyingScroll = false;
+    }
+    return holder.scrollTop === pos.top && holder.scrollLeft === pos.left;
+  }
+
+  function hasBox() {
+    return el.offsetWidth > 0 || el.offsetHeight > 0;
+  }
+
+  function onHolderScroll() {
+    if (applyingScroll || scrollPending || !hasBox() || typeof options.onScroll !== "function") {
+      return;
+    }
+    const holder = holderEl();
+    if (!holder) {
+      return;
+    }
+    const pos = cleanScroll({ top: holder.scrollTop, left: holder.scrollLeft });
+    if (pos) {
+      options.onScroll(pos);
+    }
+  }
+
+  function watchScroll() {
+    const holder = holderEl();
+    if (!holder || holder.dataset.pavScroll === "1") {
+      return;
+    }
+    holder.dataset.pavScroll = "1";
+    holder.addEventListener("scroll", onHolderScroll);
+  }
+
+  function revealRow(id) {
+    if (built && rowPresent(id) && table.getRow(id)) {
+      void table.scrollToRow(id, "nearest", false);
+    }
+  }
+
+  /* tableBuilt, then one renderComplete if the value did not stick. A short
+     list clamps the offset; after two tries the user's own scroll is saved. */
+  function settleScroll() {
+    if (destroyed) {
+      return;
+    }
+    watchScroll();
+    if (!scrollPending) {
+      if (pendingReveal) {
+        revealRow(current);
+      }
+      pendingReveal = false;
+      return;
+    }
+    const pinned = scrollPinned(scrollPending);
+    scrollTries += 1;
+    const stuck = writeScroll(scrollPending);
+    if (stuck || scrollTries >= 2 || !pinned) {
+      scrollPending = null;
+      if (!pinned && pendingReveal) {
+        revealRow(current);
+      }
+      pendingReveal = false;
+    }
+  }
+
+  /* Virtual rows are not drawn while the element has no box. WebKit's first
+     visibility callback says the element is already showing, so ResizeTable
+     does not force a redraw. Draw once when a box appears, and put the saved
+     scroll back. */
+  function redrawWhenShown() {
+    if (destroyed || !table || showRedrawn || !hasBox()) {
+      return;
+    }
+    showRedrawn = true;
+    if (showObserver) {
+      showObserver.disconnect();
+      showObserver = null;
+    }
+    if (scrollPinned(openingScroll)) {
+      scrollPending = openingScroll;
+      scrollTries = 0;
+      pendingReveal = false;
+    }
+    if (typeof table.redraw === "function") {
+      table.redraw(true);
+    }
+    markSelected();
+    relayout();
+    settleScroll();
+  }
+
+  function armShowRedraw() {
+    if (destroyed || hasBox() || typeof ResizeObserver !== "function") {
+      return;
+    }
+    showObserver = new ResizeObserver(() => {
+      redrawWhenShown();
+    });
+    showObserver.observe(el);
+  }
+
+  function minOf(def) {
+    const stated = def && Number(def.minWidth);
+    return Number.isFinite(stated) && stated > 0 ? stated : 40;
   }
 
   function applyScale() {
@@ -226,9 +463,17 @@ export function createTable(el, options) {
     }
     for (const [field, width] of Object.entries(base)) {
       const column = table.getColumn(field);
-      if (column) {
-        column.setWidth(Math.round(width * widthScale));
+      if (!column) {
+        continue;
       }
+      const px = Math.round(width * widthScale);
+      const def = columnDef(column);
+      /* fitColumns counts definition.width, not the live width. Keep them
+         equal or the spare-width columns are sized against a stale total. */
+      if (def && !isGrow(def)) {
+        def.width = px;
+      }
+      column.setWidth(px);
     }
   }
   const states = new Map();
@@ -272,6 +517,199 @@ export function createTable(el, options) {
     }
   }
 
+  /* Header width: title, sort icon, the 2 px gap, and the cell padding.
+     0 when the pane has no layout, so tests and hidden panes change nothing. */
+  function headerNeed(column) {
+    const colEl = column && typeof column.getElement === "function" ? column.getElement() : null;
+    const title = colEl && colEl.querySelector(".tabulator-col-title");
+    const view = documentRef.defaultView;
+    if (!title || !view || title.scrollWidth <= 0) {
+      return 0;
+    }
+    const sorter = colEl.querySelector(".tabulator-col-sorter");
+    const style = view.getComputedStyle(colEl);
+    const pad = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0)
+      + (parseFloat(style.borderLeftWidth) || 0) + (parseFloat(style.borderRightWidth) || 0);
+    return Math.ceil(title.scrollWidth + (sorter ? sorter.offsetWidth + 2 : 0) + pad + 2);
+  }
+
+  /* The widest rendered cell. Virtual rows only have the cells on screen.
+     A child scrollWidth is the text; the cell's own width is the column. */
+  function cellNeed(column) {
+    if (!column || typeof column.getCells !== "function" || !documentRef.defaultView) {
+      return 0;
+    }
+    const view = documentRef.defaultView;
+    let need = 0;
+    for (const cell of column.getCells()) {
+      const cellEl = cell && typeof cell.getElement === "function" ? cell.getElement() : null;
+      if (!cellEl) {
+        continue;
+      }
+      const style = view.getComputedStyle(cellEl);
+      const pad = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0)
+        + (parseFloat(style.borderLeftWidth) || 0) + (parseFloat(style.borderRightWidth) || 0);
+      const child = cellEl.firstElementChild;
+      const content = child && child.scrollWidth > 0 ? child.scrollWidth : 0;
+      if (content > 0) {
+        need = Math.max(need, Math.ceil(content + pad + 2));
+      }
+    }
+    return need;
+  }
+
+  function rememberFixed(column) {
+    const field = column.getField();
+    const def = columnDef(column);
+    const px = column.getWidth();
+    if (!def || !field || isGrow(def) || !Number.isFinite(px) || px <= 0) {
+      return;
+    }
+    def.width = px;
+    base[field] = px / widthScale;
+    userSized.add(field);
+  }
+
+  /* Share `free` across grow columns by widthGrow, honouring minWidth.
+     The last flexible column takes the leftover pixel so the sum matches. */
+  function assignFlex(pool, free) {
+    const widths = new Map();
+    let rest = pool.slice();
+    let space = free;
+    let guard = rest.length + 2;
+    while (rest.length > 0 && guard > 0) {
+      guard -= 1;
+      const units = rest.reduce((sum, item) => sum + item.grow, 0) || 1;
+      const share = space / units;
+      const stuck = rest.filter((item) => share * item.grow < item.min);
+      if (stuck.length === 0) {
+        let used = 0;
+        rest.forEach((item, index) => {
+          const width = index === rest.length - 1 ? space - used : Math.max(item.min, Math.floor(share * item.grow));
+          widths.set(item.column, width);
+          used += width;
+        });
+        break;
+      }
+      if (stuck.length === rest.length) {
+        for (const item of rest) {
+          widths.set(item.column, item.min);
+        }
+        break;
+      }
+      for (const item of stuck) {
+        widths.set(item.column, item.min);
+        space -= item.min;
+      }
+      const stuckSet = new Set(stuck);
+      rest = rest.filter((item) => !stuckSet.has(item));
+    }
+    return widths;
+  }
+
+  function widthOf(column) {
+    if (!column || typeof column.getWidth !== "function") {
+      return 0;
+    }
+    const width = column.getWidth();
+    return Number.isFinite(width) ? width : 0;
+  }
+
+  function fixedSum(excludeField) {
+    let sum = 0;
+    for (const column of visibleColumns()) {
+      const def = columnDef(column);
+      const field = typeof column.getField === "function" ? column.getField() : "";
+      if (isGrow(def) && field !== excludeField) {
+        continue;
+      }
+      sum += widthOf(column);
+    }
+    return sum;
+  }
+
+  /* Give the spare width to the widthGrow columns. excludeField is a grow
+     column the user is dragging: it keeps the dragged width and the other
+     grow columns take what remains. */
+  function balance(excludeField) {
+    if (balancing || !built) {
+      return;
+    }
+    const total = holderWidth();
+    if (total <= 0) {
+      return;
+    }
+    const columns = visibleColumns();
+    if (columns.length === 0) {
+      return;
+    }
+    const flex = [];
+    let fixed = 0;
+    for (const column of columns) {
+      const def = columnDef(column);
+      const field = typeof column.getField === "function" ? column.getField() : "";
+      if (isGrow(def) && field !== excludeField) {
+        flex.push({ column, grow: Number(def.widthGrow) || 1, min: minOf(def) });
+      } else {
+        fixed += widthOf(column);
+      }
+    }
+    if (flex.length === 0) {
+      return;
+    }
+    const widths = assignFlex(flex, total - fixed);
+    balancing = true;
+    adjusting = true;
+    try {
+      for (const [column, width] of widths) {
+        if (widthOf(column) !== width && typeof column.setWidth === "function") {
+          column.setWidth(width);
+        }
+      }
+    } finally {
+      adjusting = false;
+      balancing = false;
+    }
+    if (!excludeField) {
+      filledAt = total;
+      filledFixed = fixed;
+    }
+  }
+
+  function otherGrowCount(column) {
+    const field = column.getField();
+    return visibleColumns().filter((item) => {
+      const def = columnDef(item);
+      return isGrow(def) && item.getField() !== field;
+    }).length;
+  }
+
+  /* The column that shares the dragged edge. The handle sits on the right,
+     so the next fixed column is first. */
+  function neighborFixed(column) {
+    const list = visibleColumns();
+    const field = column.getField();
+    const index = list.findIndex((item) => item.getField() === field);
+    const ok = (item) => {
+      const def = columnDef(item);
+      return def && !isGrow(def) && def.resizable !== false;
+    };
+    if (index < 0) {
+      return null;
+    }
+    for (let i = index + 1; i < list.length; i += 1) {
+      if (ok(list[i])) {
+        return list[i];
+      }
+    }
+    for (let i = index - 1; i >= 0; i -= 1) {
+      if (ok(list[i])) {
+        return list[i];
+      }
+    }
+    return null;
+  }
+
   /* TABULATOR.md Fitted titles: widen a listed column whose rendered title,
      sort icon, gap and padding do not fit. Only widens; 0 in a DOM with no
      layout, so tests and hidden panes change nothing. */
@@ -279,23 +717,76 @@ export function createTable(el, options) {
     if (!built || !Array.isArray(options.fitTitles) || typeof table.getColumn !== "function") {
       return;
     }
-    const view = documentRef.defaultView;
     for (const field of options.fitTitles) {
       const column = table.getColumn(field);
-      const colEl = column && column.getElement();
-      const title = colEl && colEl.querySelector(".tabulator-col-title");
-      if (!title || !view) {
+      if (!column) {
         continue;
       }
-      const sorter = colEl.querySelector(".tabulator-col-sorter");
-      const style = view.getComputedStyle(colEl);
-      const pad = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0)
-        + (parseFloat(style.borderLeftWidth) || 0) + (parseFloat(style.borderRightWidth) || 0);
-      const need = Math.ceil(title.scrollWidth + (sorter ? sorter.offsetWidth + 2 : 0) + pad + 2);
-      if (title.scrollWidth > 0 && need > column.getWidth()) {
+      const need = headerNeed(column);
+      if (need > column.getWidth()) {
         column.setWidth(need);
         base[field] = need / widthScale;
+        const def = columnDef(column);
+        if (def && !isGrow(def)) {
+          def.width = need;
+        }
       }
+    }
+  }
+
+  /* Size fixed columns to the header and the cells on screen. The first
+     real measure may shrink a coded width. After that, only widen, so a
+     scroll does not jitter. Grow columns, unresizable columns, saved
+     widths, and a width the user just set are left alone. */
+  function fitContents() {
+    if (!built || fitting || balancing || dragField) {
+      return;
+    }
+    fitting = true;
+    try {
+      let changed = false;
+      for (const column of visibleColumns()) {
+        const def = columnDef(column);
+        const field = typeof column.getField === "function" ? column.getField() : "";
+        if (!def || !field || isGrow(def) || def.frozen || def.resizable === false || lockedFields.has(field) || userSized.has(field)) {
+          continue;
+        }
+        const measured = Math.max(headerNeed(column), cellNeed(column));
+        if (measured <= 0 || typeof column.getWidth !== "function") {
+          continue;
+        }
+        const current = column.getWidth();
+        if (!Number.isFinite(current)) {
+          continue;
+        }
+        const next = Math.max(minOf(def), measured);
+        if (fitted.has(field) && next <= current) {
+          if (def.width !== current) {
+            def.width = current;
+            base[field] = current / widthScale;
+          }
+          continue;
+        }
+        fitted.add(field);
+        if (current === next) {
+          if (def.width !== next) {
+            def.width = next;
+            base[field] = next / widthScale;
+          }
+          continue;
+        }
+        def.width = next;
+        base[field] = next / widthScale;
+        if (typeof column.setWidth === "function") {
+          column.setWidth(next);
+        }
+        changed = true;
+      }
+      if (changed) {
+        balance(null);
+      }
+    } finally {
+      fitting = false;
     }
   }
 
@@ -355,11 +846,19 @@ export function createTable(el, options) {
   }
 
   function relayout() {
-    if (!built) {
+    if (!built || balancing) {
       return;
     }
     tipHeaders();
     fitTitles();
+    fitContents();
+    const total = holderWidth();
+    if (!dragField && total > 0) {
+      const fixed = fixedSum(null);
+      if (total !== filledAt || fixed !== filledFixed) {
+        balance(null);
+      }
+    }
     paintDividers();
     if (typeof options.onWidths === "function") {
       options.onWidths();
@@ -398,17 +897,93 @@ export function createTable(el, options) {
       applyGroupOrder();
       markSelected();
       rendered();
+      settleScroll();
+      armShowRedraw();
     });
     table.on("dataSorted", () => queueMicrotask(rendered));
-    /* Redraws (a hidden pane shown, zoom), resizes and visibility changes. */
-    table.on("renderComplete", () => relayout());
-    table.on("columnVisibilityChanged", () => queueMicrotask(relayout));
-    table.on("columnResized", (column) => {
-      if (column.getField() in base) {
-        base[column.getField()] = column.getWidth() / widthScale;
+    /* Redraws (a hidden pane shown, zoom), resizes and visibility changes.
+       The saved scroll is applied once. A later renderComplete does not
+       put it back after the user has moved the list. */
+    table.on("renderComplete", () => {
+      relayout();
+      if (scrollPending) {
+        settleScroll();
+      } else {
+        watchScroll();
       }
-      if (typeof options.onColumnResized === "function") {
-        options.onColumnResized(column.getField(), Math.round(column.getWidth() / widthScale));
+    });
+    table.on("columnVisibilityChanged", () => queueMicrotask(relayout));
+    table.on("columnResizing", (column) => {
+      if (!column || typeof column.getField !== "function") {
+        return;
+      }
+      dragField = column.getField();
+      dragStart = column.getWidth();
+      neighborField = null;
+      neighborStart = 0;
+      const def = columnDef(column);
+      if (def && isGrow(def) && otherGrowCount(column) === 0) {
+        const neighbor = neighborFixed(column);
+        if (neighbor) {
+          neighborField = neighbor.getField();
+          neighborStart = neighbor.getWidth();
+        }
+      }
+    });
+    /* While the pointer moves, keep the pane full. A fixed column keeps the
+       dragged width and the widthGrow columns share what is left. The only
+       widthGrow column instead moves the fixed column beside it. */
+    table.on("columnWidth", (column) => {
+      if (adjusting || balancing || !dragField || !column || column.getField() !== dragField) {
+        return;
+      }
+      const def = columnDef(column);
+      if (!def) {
+        return;
+      }
+      if (!isGrow(def)) {
+        rememberFixed(column);
+        balance(null);
+        return;
+      }
+      if (otherGrowCount(column) > 0) {
+        balance(dragField);
+        return;
+      }
+      if (!neighborField || typeof table.getColumn !== "function") {
+        return;
+      }
+      const neighbor = table.getColumn(neighborField);
+      const neighborDef = columnDef(neighbor);
+      if (!neighbor || !neighborDef) {
+        return;
+      }
+      const delta = column.getWidth() - dragStart;
+      const next = Math.max(minOf(neighborDef), Math.round(neighborStart - delta));
+      adjusting = true;
+      try {
+        neighborDef.width = next;
+        base[neighborField] = next / widthScale;
+        userSized.add(neighborField);
+        if (neighbor.getWidth() !== next) {
+          neighbor.setWidth(next);
+        }
+      } finally {
+        adjusting = false;
+      }
+    });
+    table.on("columnResized", (column) => {
+      const field = column && typeof column.getField === "function" ? column.getField() : "";
+      const def = columnDef(column);
+      if (def && field && !isGrow(def)) {
+        rememberFixed(column);
+      } else if (field && Object.prototype.hasOwnProperty.call(base, field) && column) {
+        base[field] = column.getWidth() / widthScale;
+      }
+      dragField = null;
+      neighborField = null;
+      if (typeof options.onColumnResized === "function" && field) {
+        options.onColumnResized(field, Math.round(column.getWidth() / widthScale));
       }
       relayout();
     });
@@ -440,6 +1015,7 @@ export function createTable(el, options) {
           rendered();
         });
       }
+      return pending;
     },
     /* Zoom in place (TABULATOR.md): font scale on the element, fixed columns at
        base x width scale; the pane is not touched. */
@@ -493,13 +1069,45 @@ export function createTable(el, options) {
     },
     /* Set one column's width (Reset restores the coded widths). */
     setColumnWidth(field, width) {
-      const column = built ? table.getColumn(field) : null;
-      if (Number.isFinite(width)) {
-        base[field] = width;
-        if (column) {
-          column.setWidth(Math.round(width * widthScale));
-        }
+      const column = built && typeof table.getColumn === "function" ? table.getColumn(field) : null;
+      if (!Number.isFinite(width)) {
+        return;
       }
+      base[field] = width;
+      userSized.delete(field);
+      lockedFields.delete(field);
+      /* Reset restores a coded width. Count it as measured so the next
+         layout does not immediately shrink it back to the cells. */
+      fitted.add(field);
+      if (column) {
+        const px = Math.round(width * widthScale);
+        const def = columnDef(column);
+        if (def && !isGrow(def)) {
+          def.width = px;
+        }
+        column.setWidth(px);
+        balance(null);
+      }
+    },
+    /* Reset puts the coded widthGrow weights back. Those columns have no
+       fixed width, so the next balance shares the pane by the new weights. */
+    setGrowWeights(weights) {
+      if (!built || !weights || typeof weights !== "object" || typeof table.getColumn !== "function") {
+        return;
+      }
+      for (const [field, weight] of Object.entries(weights)) {
+        if (!Number.isFinite(weight) || weight <= 0) {
+          continue;
+        }
+        const column = table.getColumn(field);
+        const def = columnDef(column);
+        if (!def) {
+          continue;
+        }
+        def.widthGrow = weight;
+        delete def.width;
+      }
+      balance(null);
     },
     /* Current widths of the shown columns, by field (pane minimum). */
     widths() {
@@ -536,18 +1144,46 @@ export function createTable(el, options) {
         queueMicrotask(rendered);
       }
     },
-    /* Single selection, set only here; scrolls the row into view. */
-    select(id) {
+    /* Single selection, set only here. The default scrolls the row into
+       view. reveal:false leaves a restored pixel scroll alone. A pending
+       non-zero scroll wins over that scroll-into-view. */
+    select(id, opts) {
       const previous = current;
       current = id;
+      const reveal = !opts || opts.reveal !== false;
       reformat(previous);
       reformat(id);
-      if (built) {
-        markSelected();
-        if (rowPresent(id) && table.getRow(id)) {
-          void table.scrollToRow(id, "nearest", false);
-        }
+      if (!built) {
+        pendingReveal = reveal;
+        return;
       }
+      markSelected();
+      if (scrollPending && scrollPinned(scrollPending)) {
+        return;
+      }
+      if (reveal) {
+        revealRow(id);
+      }
+    },
+    /* Folder changes. replaceData keeps the previous scroll, so the caller
+       sets the position for the rows just loaded. */
+    setScroll(pos) {
+      const clean = cleanScroll(pos) || { top: 0, left: 0 };
+      pendingReveal = false;
+      scrollTries = 0;
+      if (!built) {
+        scrollPending = scrollPinned(clean) ? clean : null;
+        return;
+      }
+      const stuck = writeScroll(clean);
+      if (stuck || !scrollPinned(clean)) {
+        scrollPending = null;
+      } else {
+        /* The new rows may not have a scroll height yet. One renderComplete retries. */
+        scrollPending = clean;
+        scrollTries = 1;
+      }
+      watchScroll();
     },
     /* Row indicator: set "editing" (or null) on a row; current is automatic. */
     setRowState(id, state) {
@@ -579,6 +1215,10 @@ export function createTable(el, options) {
     },
     destroy() {
       destroyed = true;
+      if (showObserver) {
+        showObserver.disconnect();
+        showObserver = null;
+      }
       if (table) {
         table.destroy();
         table = null;

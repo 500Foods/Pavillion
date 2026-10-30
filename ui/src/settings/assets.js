@@ -125,6 +125,12 @@ export function mountAssetsPanel(root, ctx) {
       if (selectedId && !assets.some((asset) => asset.id === selectedId)) {
         selectedId = null;
       }
+      if (!selectedId && typeof ctx.tableSelected === "function") {
+        const savedId = ctx.tableSelected("assets");
+        if (savedId && assets.some((asset) => asset.id === savedId)) {
+          selectedId = savedId;
+        }
+      }
     } catch (err) {
       assets = [];
       failed = err instanceof Error ? err.message : "Could not list icon assets.";
@@ -163,6 +169,7 @@ export function mountAssetsPanel(root, ctx) {
         title: "Kind",
         field: "kindLabel",
         width: saved.kindLabel || 110,
+        ...(saved.kindLabel ? { lockWidth: true } : {}),
         minWidth: 80,
         resizable: true,
         formatter: (cell) => {
@@ -175,6 +182,7 @@ export function mountAssetsPanel(root, ctx) {
         title: "Size",
         field: "bytes",
         width: saved.bytes || 88,
+        ...(saved.bytes ? { lockWidth: true } : {}),
         minWidth: 72,
         resizable: true,
         hozAlign: "right",
@@ -241,6 +249,9 @@ export function mountAssetsPanel(root, ctx) {
     getSelected: () => selectedId,
     onSelect: (id) => {
       selectedId = id;
+      if (typeof ctx.saveTableSelected === "function") {
+        ctx.saveTableSelected("assets", id);
+      }
       if (view) {
         view.reselect();
       }
@@ -271,6 +282,10 @@ export function mountAssetsPanel(root, ctx) {
     saveTableWidths: ctx.saveTableWidths,
     tableOrder: ctx.tableOrder,
     saveTableOrder: ctx.saveTableOrder,
+    tableSelected: ctx.tableSelected,
+    saveTableSelected: ctx.saveTableSelected,
+    tableScroll: ctx.tableScroll,
+    saveTableScroll: ctx.saveTableScroll,
   });
 
   return {

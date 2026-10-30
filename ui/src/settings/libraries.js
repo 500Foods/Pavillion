@@ -12,6 +12,7 @@ import {
   libraryStyleLabel,
   libraryUrl,
 } from "../common/iconhosts.js";
+import { growWeights } from "../common/column-widths.js";
 import { ensureSplit, mountModuleTable } from "./split-table.js";
 
 const CHOOSER = [
@@ -315,11 +316,13 @@ export function mountLibrariesPanel(root, ctx) {
   function columns(documentRef, hidden, widths) {
     const off = new Set(hidden || []);
     const saved = widths || {};
+    const share = growWeights(saved, ["name", "url"], { name: 1, url: 1 });
     const defs = [
       {
         title: "On",
         field: "on",
         width: saved.on || 56,
+        ...(saved.on ? { lockWidth: true } : {}),
         minWidth: 40,
         resizable: true,
         hozAlign: "center",
@@ -339,7 +342,7 @@ export function mountLibrariesPanel(root, ctx) {
         title: "Name",
         field: "name",
         minWidth: 120,
-        widthGrow: 1,
+        widthGrow: share.name,
         resizable: true,
         formatter: (cell) => {
           const span = documentRef.createElement("span");
@@ -351,6 +354,7 @@ export function mountLibrariesPanel(root, ctx) {
         title: "Group",
         field: "set",
         width: saved.set || 148,
+        ...(saved.set ? { lockWidth: true } : {}),
         minWidth: 96,
         resizable: true,
         formatter: (cell) => {
@@ -363,6 +367,7 @@ export function mountLibrariesPanel(root, ctx) {
         title: "Style",
         field: "styleLabel",
         width: saved.styleLabel || 168,
+        ...(saved.styleLabel ? { lockWidth: true } : {}),
         minWidth: 96,
         resizable: true,
         formatter: (cell) => {
@@ -375,7 +380,7 @@ export function mountLibrariesPanel(root, ctx) {
         title: "URL",
         field: "url",
         minWidth: 160,
-        widthGrow: 1,
+        widthGrow: share.url,
         resizable: true,
         formatter: (cell) => {
           const span = documentRef.createElement("span");
@@ -405,8 +410,14 @@ export function mountLibrariesPanel(root, ctx) {
     void saveForm();
   });
 
-  if (!selectedId && list()[0]) {
-    selectedId = list()[0].id;
+  if (!selectedId) {
+    const savedId = typeof ctx.tableSelected === "function" ? ctx.tableSelected("libraries") : "";
+    const entries = list();
+    if (savedId && entries.some((entry) => entry.id === savedId)) {
+      selectedId = savedId;
+    } else if (entries[0]) {
+      selectedId = entries[0].id;
+    }
   }
 
   view = mountModuleTable(root, {
@@ -425,6 +436,7 @@ export function mountLibrariesPanel(root, ctx) {
     chooserLabel: "Library columns",
     chooser: CHOOSER,
     widthFields: WIDTH_FIELDS,
+    growFields: ["name", "url"],
     columns,
     groupBy: "set",
     groupOrder: (data) => {
@@ -446,6 +458,9 @@ export function mountLibrariesPanel(root, ctx) {
     onSelect: (id) => {
       drafting = false;
       selectedId = id;
+      if (typeof ctx.saveTableSelected === "function") {
+        ctx.saveTableSelected("libraries", id);
+      }
       paintForm();
       if (view) {
         view.reselect();
@@ -481,6 +496,10 @@ export function mountLibrariesPanel(root, ctx) {
     saveTableWidths: ctx.saveTableWidths,
     tableOrder: ctx.tableOrder,
     saveTableOrder: ctx.saveTableOrder,
+    tableSelected: ctx.tableSelected,
+    saveTableSelected: ctx.saveTableSelected,
+    tableScroll: ctx.tableScroll,
+    saveTableScroll: ctx.saveTableScroll,
   });
   paintForm();
 

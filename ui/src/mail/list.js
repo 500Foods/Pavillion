@@ -5,11 +5,20 @@
    keeps the selected id when that row is still there. Rows past the cap
    are not fetched. */
 
+import { clampWidth, growWeights } from "../common/column-widths.js";
+import { cleanPlace } from "../common/table-place.js";
 import { iconClass } from "../common/icons/registry.js";
 import { createTable } from "../common/table.js";
 import { formatInstant } from "../formats.js";
 
 const SWATCH = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+/* Fixed columns remember a user width. From, Subject, and the preview share
+   the spare width. A drag of one of them saves all three live widths, and
+   the next open uses those as widthGrow weights. The address column is
+   stored as "from" (To in Sent and Drafts uses the same slot). */
+const FIXED_FIELDS = ["receivedAt", "flags", "hasAttachment"];
+const GROW_FIELDS = ["from", "subject", "preview"];
+const GROW_FALLBACK = { from: 2, subject: 3, preview: 2 };
 
 /* Groups of three digits. Locale-independent, so 10000 is always 10,000. */
 function groupDigits(n) {
@@ -82,20 +91,69 @@ export function createMailList(api, pane, options = {}) {
   let mailboxId = "";
   let accountId = "";
   let selected = "";
+  let scrollMailbox = "";
   let addressField = "from";
   let addressTitle = "From";
   let folderSwatch = "";
   let stopEvents = null;
   const stops = [];
 
+  function readWidths(fields) {
+    const raw = typeof options.tableWidths === "function" ? options.tableWidths("mail") : {};
+    const out = {};
+    if (raw && typeof raw === "object") {
+      for (const field of fields) {
+        const value = clampWidth(raw[field]);
+        if (value !== null) {
+          out[field] = value;
+        }
+      }
+    }
+    return out;
+  }
+
+  function savedWidths() {
+    return readWidths(FIXED_FIELDS);
+  }
+
+  function savedGrow() {
+    return readWidths(GROW_FIELDS);
+  }
+
+  function applyOrder(cols) {
+    const raw = typeof options.tableOrder === "function" ? options.tableOrder("mail") : [];
+    if (!Array.isArray(raw) || raw.length === 0) {
+      return cols;
+    }
+    const rank = new Map();
+    raw.forEach((field, index) => {
+      const name = field === "from" || field === "to" ? addressField : field;
+      if (!rank.has(name)) {
+        rank.set(name, index);
+      }
+    });
+    return [...cols].sort((a, b) => (rank.has(a.field) ? rank.get(a.field) : 1000) - (rank.has(b.field) ? rank.get(b.field) : 1000));
+  }
+
   function columns() {
-    return [
+    const saved = savedWidths();
+    const share = growWeights(savedGrow(), GROW_FIELDS, GROW_FALLBACK);
+    const fixed = (field, width, minWidth, extra) => ({
+      headerSort: false,
+      field,
+      width: saved[field] || width,
+      minWidth,
+      ...(saved[field] ? { lockWidth: true } : {}),
+      ...extra,
+    });
+    return applyOrder([
       {
         title: "",
         field: "swatch",
         headerSort: false,
         width: 10,
         minWidth: 10,
+        resizable: false,
         hozAlign: "center",
         cssClass: "mail-col-swatch",
         formatter: () => {
@@ -111,41 +169,36 @@ export function createMailList(api, pane, options = {}) {
         title: addressTitle,
         field: addressField,
         headerSort: false,
-        widthGrow: 2,
+        widthGrow: share.from,
+        minWidth: 96,
         formatter: (cell) => textCell(cell, doc),
       },
       {
         title: "Subject",
         field: "subject",
         headerSort: false,
-        widthGrow: 3,
+        widthGrow: share.subject,
+        minWidth: 120,
         formatter: (cell) => textCell(cell, doc),
       },
       {
         title: "Preview",
         field: "preview",
         headerSort: false,
-        widthGrow: 2,
+        widthGrow: share.preview,
+        minWidth: 80,
         formatter: (cell) => textCell(cell, doc),
       },
-      {
+      fixed("receivedAt", 108, 72, {
         title: "Time",
-        field: "receivedAt",
-        headerSort: false,
-        width: 108,
-        minWidth: 72,
         formatter: (cell) => {
           const span = doc.createElement("span");
           span.textContent = formatInstant(cell.getValue(), "dateShort");
           return span;
         },
-      },
-      {
+      }),
+      fixed("flags", 84, 72, {
         title: "Flags",
-        field: "flags",
-        headerSort: false,
-        width: 84,
-        minWidth: 72,
         hozAlign: "center",
         formatter: (cell) => {
           const data = rowData(cell);
@@ -167,13 +220,9 @@ export function createMailList(api, pane, options = {}) {
           }
           return wrap;
         },
-      },
-      {
+      }),
+      fixed("hasAttachment", 36, 36, {
         title: "",
-        field: "hasAttachment",
-        headerSort: false,
-        width: 36,
-        minWidth: 28,
         hozAlign: "center",
         formatter: (cell) => {
           if (cell.getValue() !== true) {
@@ -181,8 +230,30 @@ export function createMailList(api, pane, options = {}) {
           }
           return icon(doc, "fa-paperclip", "mail-file");
         },
-      },
-    ];
+      }),
+    ]);
+  }
+
+  function readPlace() {
+    if (typeof options.tablePlace !== "function") {
+      return null;
+    }
+    return cleanPlace(options.tablePlace("mail"));
+  }
+
+  function savePlace(patch) {
+    if (mailboxId === "" || typeof options.saveTablePlace !== "function") {
+      return;
+    }
+    const prev = readPlace();
+    const base = prev && prev.mailbox === mailboxId
+      ? { mailbox: mailboxId, selected: prev.selected, top: prev.top, left: prev.left }
+      : { mailbox: mailboxId, selected: "", top: 0, left: 0 };
+    options.saveTablePlace("mail", { ...base, ...patch, mailbox: mailboxId });
+  }
+
+  function pinnedScroll(pos) {
+    return Boolean(pos && (pos.top > 0 || pos.left > 0));
   }
 
   function applyMailbox(id) {
@@ -194,6 +265,13 @@ export function createMailList(api, pane, options = {}) {
   }
 
   function show(rows) {
+    const switching = scrollMailbox !== mailboxId;
+    const place = readPlace();
+    const placeMatches = Boolean(place && place.mailbox === mailboxId);
+    if (switching && placeMatches && place.selected !== "" && rows.some((row) => row && row.id === place.selected)) {
+      selected = place.selected;
+    }
+    const scroll = placeMatches ? { top: place.top, left: place.left } : null;
     if (table && tableAddress !== addressField) {
       table.destroy();
       table = null;
@@ -205,28 +283,95 @@ export function createMailList(api, pane, options = {}) {
         data: rows,
         rowId: "id",
         select: true,
+        scroll: placeMatches ? scroll : null,
+        onScroll(pos) {
+          savePlace({ selected, top: pos.top, left: pos.left });
+        },
         rowClass(data) {
           return data && data.seen === false ? "pav-row-unread" : "";
         },
         onRowClick(data) {
           host.focus();
           selected = data && typeof data.id === "string" ? data.id : "";
+          savePlace({ selected });
           if (table && selected !== "") {
             table.select(selected);
           }
+        },
+        onColumnResized(field, width) {
+          if (typeof options.saveTableWidths !== "function") {
+            return;
+          }
+          const growKey = field === addressField ? "from" : field;
+          if (GROW_FIELDS.includes(growKey)) {
+            if (!table || typeof table.widths !== "function") {
+              return;
+            }
+            const live = table.widths();
+            const address = clampWidth(live[addressField]);
+            const subject = clampWidth(live.subject);
+            const preview = clampWidth(live.preview);
+            if (address === null || subject === null || preview === null) {
+              return;
+            }
+            options.saveTableWidths("mail", {
+              ...savedWidths(),
+              from: address,
+              subject,
+              preview,
+            });
+            return;
+          }
+          if (!FIXED_FIELDS.includes(field)) {
+            return;
+          }
+          const kept = clampWidth(width);
+          if (kept === null) {
+            return;
+          }
+          options.saveTableWidths("mail", { ...savedGrow(), ...savedWidths(), [field]: kept });
+        },
+        onColumnMoved(order) {
+          if (typeof options.saveTableOrder !== "function") {
+            return;
+          }
+          options.saveTableOrder("mail", order.map((field) => (field === addressField ? "from" : field)));
         },
       });
       if (typeof table.setScale === "function") {
         table.setScale(listScale.width, listScale.font);
       }
-    } else {
-      table.setData(rows);
+      scrollMailbox = mailboxId;
+      selectShown(rows, switching, scroll);
+      return Promise.resolve();
+    }
+    const stamp = mailboxId;
+    scrollMailbox = mailboxId;
+    const loading = table.setData(rows);
+    return Promise.resolve(loading).then(() => {
+      if (!table || mailboxId !== stamp) {
+        return;
+      }
+      if (switching && typeof table.setScroll === "function") {
+        table.setScroll(placeMatches && scroll ? scroll : { top: 0, left: 0 });
+      }
+      selectShown(rows, switching, scroll);
+    });
+  }
+
+  function selectShown(rows, switching, scroll) {
+    if (!table) {
+      return;
     }
     if (selected !== "" && rows.some((row) => row && row.id === selected)) {
-      table.select(selected);
+      table.select(selected, { reveal: switching ? !pinnedScroll(scroll) : false });
     } else {
+      const had = selected !== "";
       selected = "";
-      table.select(null);
+      table.select(null, { reveal: false });
+      if (had) {
+        savePlace({ selected: "" });
+      }
     }
   }
 
@@ -252,6 +397,7 @@ export function createMailList(api, pane, options = {}) {
     }
     selected = rows[next];
     table.select(selected);
+    savePlace({ selected });
     host.focus();
   }
 
@@ -261,6 +407,7 @@ export function createMailList(api, pane, options = {}) {
     if (selected === "" && rows.length > 0) {
       selected = rows[0];
       table.select(selected);
+      savePlace({ selected });
     }
     host.focus();
   }
@@ -277,6 +424,7 @@ export function createMailList(api, pane, options = {}) {
     if (mailboxId === "") {
       accountId = "";
       selected = "";
+      scrollMailbox = "";
       count.textContent = "Select a folder.";
       if (table) {
         table.select(null);
@@ -294,7 +442,7 @@ export function createMailList(api, pane, options = {}) {
         const total = data && Number.isInteger(data.total) && data.total >= 0 ? data.total : messages.length;
         accountId = data && typeof data.accountId === "string" ? data.accountId : "";
         count.textContent = formatListCount(messages.length, total);
-        show(messages);
+        return show(messages);
       })
       .catch(() => {
         if (mine !== generation) {
