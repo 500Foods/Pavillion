@@ -10,7 +10,7 @@ import { cleanOrder, orderColumns } from "./split-table.js";
 vi.mock("../common/table.js", async (importOriginal) => {
   const actual = await importOriginal();
   return {
-  INDICATOR_WIDTH: actual.INDICATOR_WIDTH,
+  ...actual,
   createTable(el, options) {
     el.pavTableOptions = options;
     let rowsNow = options.data;
