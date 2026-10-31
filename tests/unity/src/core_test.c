@@ -7029,6 +7029,50 @@ static int net_wait_done(struct NetDone *done, int timeout_sec) {
     return ok;
 }
 
+/* Caller holds g_net_test_mu. */
+static int net_hit_count(const NetDone *dones, int n) {
+    int i;
+    int count = 0;
+
+    for (i = 0; i < n; i++) {
+        if (dones[i].hit) count++;
+    }
+    return count;
+}
+
+/* Wait until `want` of `n` requests have finished, then a short settle so a
+   completion from the same wave can still land. The fixture holds ?slow=1 for
+   2s, so a request a cap is still holding cannot finish in that settle. A
+   wall clock of N times that delay races the queued request: on a fast runner
+   it finishes inside the window. Returns the hit count (mutex released). */
+static int net_wait_cap(NetDone *dones, int n, int want, int timeout_sec) {
+    struct timespec ts;
+    int count;
+
+    pthread_mutex_lock(&g_net_test_mu);
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += timeout_sec;
+    for (;;) {
+        count = net_hit_count(dones, n);
+        if (count >= want) break;
+        if (pthread_cond_timedwait(&g_net_test_cv, &g_net_test_mu, &ts) != 0) break;
+    }
+    if (count == want) {
+        struct timespec settle;
+
+        clock_gettime(CLOCK_REALTIME, &settle);
+        settle.tv_nsec += 250000000L;
+        if (settle.tv_nsec >= 1000000000L) {
+            settle.tv_sec++;
+            settle.tv_nsec -= 1000000000L;
+        }
+        pthread_cond_timedwait(&g_net_test_cv, &g_net_test_mu, &settle);
+        count = net_hit_count(dones, n);
+    }
+    pthread_mutex_unlock(&g_net_test_mu);
+    return count;
+}
+
 /* A failed wait leaves the request in flight, and its callback would write into
    this test's stack after Unity unwinds it. Stop the net thread first. */
 #define NET_CHECK(cond) \
@@ -7294,7 +7338,7 @@ void test_net_per_account_cap(void) {
     NetDone dones[PAV_NET_PER_ACCOUNT_CAP + 1];
     char full[512];
     int i;
-    int done_count = 0;
+    int count;
 
     TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
     TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
@@ -7317,24 +7361,13 @@ void test_net_per_account_cap(void) {
         TEST_ASSERT_EQUAL_INT(0, pav_net_request(&reqs[i]));
     }
 
-    /* Only PAV_NET_PER_ACCOUNT_CAP should complete within the slow response
-       window; the extra request must still be queued.      */
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    ts.tv_sec += 4;
-    for (i = 0; i <= PAV_NET_PER_ACCOUNT_CAP; i++) {
-        pthread_mutex_lock(&g_net_test_mu);
-        while (!dones[i].hit) {
-            if (pthread_cond_timedwait(&g_net_test_cv, &g_net_test_mu, &ts) != 0) break;
-        }
-        if (dones[i].hit) done_count++;
-        pthread_mutex_unlock(&g_net_test_mu);
-    }
-    NET_CHECK(done_count == PAV_NET_PER_ACCOUNT_CAP);
+    count = net_wait_cap(dones, PAV_NET_PER_ACCOUNT_CAP + 1,
+                         PAV_NET_PER_ACCOUNT_CAP, 15);
+    NET_CHECK(count == PAV_NET_PER_ACCOUNT_CAP);
 
-    /* Wait for the last one to complete. */
-    NET_CHECK(net_wait_done(&dones[PAV_NET_PER_ACCOUNT_CAP], 8));
-    TEST_ASSERT_EQUAL_INT(1, dones[PAV_NET_PER_ACCOUNT_CAP].hit);
+    for (i = 0; i <= PAV_NET_PER_ACCOUNT_CAP; i++) {
+        NET_CHECK(net_wait_done(&dones[i], 15));
+    }
 
     for (i = 0; i <= PAV_NET_PER_ACCOUNT_CAP; i++) {
         pav_net_free(reqs[i].body_out);
@@ -7350,7 +7383,7 @@ void test_net_per_server_cap(void) {
     NetDone dones[PAV_NET_PER_SERVER_CAP + 1];
     char full[512];
     int i;
-    int done_count = 0;
+    int count;
 
     TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
     TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
@@ -7373,20 +7406,13 @@ void test_net_per_server_cap(void) {
         TEST_ASSERT_EQUAL_INT(0, pav_net_request(&reqs[i]));
     }
 
-    struct timespec ts;
-     clock_gettime(CLOCK_REALTIME, &ts);
-     ts.tv_sec += 8;
-     for (i = 0; i <= PAV_NET_PER_SERVER_CAP; i++) {
-         pthread_mutex_lock(&g_net_test_mu);
-         while (!dones[i].hit) {
-             if (pthread_cond_timedwait(&g_net_test_cv, &g_net_test_mu, &ts) != 0) break;
-         }
-         if (dones[i].hit) done_count++;
-         pthread_mutex_unlock(&g_net_test_mu);
-     }
-     NET_CHECK(done_count == PAV_NET_PER_SERVER_CAP);
+    count = net_wait_cap(dones, PAV_NET_PER_SERVER_CAP + 1,
+                         PAV_NET_PER_SERVER_CAP, 20);
+    NET_CHECK(count == PAV_NET_PER_SERVER_CAP);
 
-    NET_CHECK(net_wait_done(&dones[PAV_NET_PER_SERVER_CAP], 8));
+    for (i = 0; i <= PAV_NET_PER_SERVER_CAP; i++) {
+        NET_CHECK(net_wait_done(&dones[i], 15));
+    }
     TEST_ASSERT_EQUAL_INT(1, dones[PAV_NET_PER_SERVER_CAP].hit);
 
     for (i = 0; i <= PAV_NET_PER_SERVER_CAP; i++) {
@@ -7547,7 +7573,7 @@ void test_net_overall_cap(void) {
     NetDone dones[3];
     char full[512];
     int i;
-    int done_count = 0;
+    int count;
 
     TEST_ASSERT_NOT_NULL_MESSAGE(url, "PAV_FIXTURE_URL must be set by make test");
     TEST_ASSERT_NOT_NULL_MESSAGE(ca, "PAV_FIXTURE_CA must be set by make test");
@@ -7572,20 +7598,12 @@ void test_net_overall_cap(void) {
         TEST_ASSERT_EQUAL_INT(0, pav_net_request(&reqs[i]));
     }
 
-     struct timespec ts;
-     clock_gettime(CLOCK_REALTIME, &ts);
-     ts.tv_sec += 4;
-     for (i = 0; i < 3; i++) {
-         pthread_mutex_lock(&g_net_test_mu);
-         while (!dones[i].hit) {
-             if (pthread_cond_timedwait(&g_net_test_cv, &g_net_test_mu, &ts) != 0) break;
-         }
-         if (dones[i].hit) done_count++;
-         pthread_mutex_unlock(&g_net_test_mu);
-     }
-     NET_CHECK(done_count == 2);
+    count = net_wait_cap(dones, 3, 2, 15);
+    NET_CHECK(count == 2);
 
-    NET_CHECK(net_wait_done(&dones[2], 8));
+    for (i = 0; i < 3; i++) {
+        NET_CHECK(net_wait_done(&dones[i], 15));
+    }
     for (i = 0; i < 3; i++) {
         pav_net_free(reqs[i].body_out);
     }
