@@ -34,7 +34,8 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 - Requires `urn:ietf:params:jmap:contacts`. S-1 verifies that the running Stalwart advertises it and which JSContact properties round-trip. If it's absent, contacts are local-only (stored with `ra_id` `local`) until S-5's CardDAV adapter can sync them.
 - The full JSContact card is stored in `contact.card_json`. The editor edits known fields and preserves unknown ones byte for byte. Known fields: name components, nicknames, emails (typed), phones, addresses, organizations and titles, notes, anniversaries (birthday), photo (blob), online services.
-- Address books: list, create, rename, delete, default book per account (`AddressBook/set`). Contacts can be in several books (`addressBookIds`).
+- Address books: list, create, rename, delete, default book per account (`AddressBook/set`). Contacts can be in several books (`addressBookIds`). A book has no trust flag. The user files people into whatever books they want, including ones they treat as trusted or not. Membership does not allow remote images.
+- Remote images for a sender who is already a contact (Andrew, 2026-10-30, N Lock): `contact.allow_remote` is a local integer, default 0. It is not a JSContact field, it is not stored in `card_json`, and sync does not send it. `contact.save` leaves it unchanged. The contact view has a switch. The mail banner's Remember, added here, calls `contact.allow_remote` for every contact whose email matches the message's first From address. N-4 builds Load only.
 - Search: `contact_fts` over full name, emails, org, notes; `contact.list {bookId?, query?, offset, limit}`.
 - Compose autocomplete merges contacts and `recent_address`, ranked by frequency × recency, each showing the account color.
 - Import: `.vcf` (vCard 3 and 4, multi-card files) and JSContact JSON; export the same. vCard mapping in `core/src/vcard.c` (libical's vCard support where it helps, else a small parser in that module). Migration: CardBook and Betterbird vCard exports import into a chosen book.
@@ -95,6 +96,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 **Work items:**
 
 - [ ] Editor for the known fields with add and remove of typed rows; photo pick and crop to 512 px.
+- [ ] Remote images switch on the contact. `contact.allow_remote {id, allow}` sets the local flag and does not write `card_json`. The mail banner offers Remember when the first From address matches a contact and that flag is off, and choosing it sets the flag on every match. No match, no Remember.
 - [ ] `contact.save`, `contact.delete`, `addressbook.create|rename|delete` through the op queue (`ContactCard/set`, `AddressBook/set`).
 - [ ] Unity: `test_contact_save_preserves_unknown`, `test_contact_save_conflict_reapplies`.
 
@@ -155,3 +157,4 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 - 2026-10-16 Opened from old plan §8 and §10. Decisions: local-only fallback, unknown-field preservation, `vcard.c`, the rolodex nav, autocomplete merge.
 - 2026-10-16 Andrew: CalDAV/CardDAV come after the JMAP contacts and calendars phases. Added S-5, a CardDAV adapter with the shared `dav.c` client, Basic auth over TLS, and a per-server net thread.
+- 2026-10-30 Lock only. Remote images are a local flag on the contact, default off. Remember on the mail banner is this phase, and only when the sender is already in a book. A book does not grant the flag. The flag is not synced. S-1 was not started.

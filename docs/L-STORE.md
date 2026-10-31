@@ -100,7 +100,7 @@ CREATE TABLE attachment (email_rowid INT REFERENCES email ON DELETE CASCADE, par
   PRIMARY KEY (email_rowid, part_id));
 CREATE VIRTUAL TABLE email_fts USING fts5(subject, from_text, to_text, body,
   content='', tokenize='unicode61 remove_diacritics 2');
-CREATE TABLE remote_allow (pattern TEXT PRIMARY KEY, kind TEXT NOT NULL);  -- address|domain
+CREATE TABLE remote_allow (pattern TEXT PRIMARY KEY, kind TEXT NOT NULL);  -- 002. Unused. Nothing writes it. L-3 drops it. Do not edit 002_mail.sql
 CREATE TABLE retention_rule (ra_id TEXT, mailbox_id TEXT, keep_newest INT, max_age_days INT,
   action TEXT NOT NULL DEFAULT 'trash', last_run INT, PRIMARY KEY (ra_id, mailbox_id));
 CREATE TABLE op_queue (id INTEGER PRIMARY KEY, ra_id TEXT, kind TEXT, payload TEXT,
@@ -117,7 +117,7 @@ CREATE TABLE recent_address (email TEXT PRIMARY KEY, name TEXT, last_used INT, c
 ```sql
 CREATE TABLE addressbook (ra_id TEXT, id TEXT, name TEXT, is_default INT, my_rights TEXT, PRIMARY KEY (ra_id, id));
 CREATE TABLE contact (rowid INTEGER PRIMARY KEY, ra_id TEXT, id TEXT, book_ids TEXT, uid TEXT,
-  full_name TEXT, sort_name TEXT, emails_json TEXT, card_json TEXT, updated INT, UNIQUE (ra_id, id));
+  full_name TEXT, sort_name TEXT, emails_json TEXT, card_json TEXT, allow_remote INT NOT NULL DEFAULT 0, updated INT, UNIQUE (ra_id, id));  -- allow_remote is local. It is not part of card_json and it is not synced
 CREATE VIRTUAL TABLE contact_fts USING fts5(full_name, emails, org, notes, content='');
 CREATE TABLE calendar (ra_id TEXT, id TEXT, name TEXT, color TEXT, tz TEXT, is_visible INT,
   is_default INT, my_rights TEXT, PRIMARY KEY (ra_id, id));
@@ -244,7 +244,7 @@ Do not touch the quit path. `lib.rs` stays a forwarder. Only `ui/src/transport/t
 
 **Work items:**
 
-- [ ] The PIM migration, numbered after V-2's `003_cli.sql` (so `004_pim.sql` if V-2 has landed, which it has by this phase). It does not create `bot_key` or `cli_audit`.
+- [ ] The PIM migration, numbered after V-2's `003_cli.sql` (so `004_pim.sql` if V-2 has landed, which it has by this phase). It does not create `bot_key` or `cli_audit`. `contact.allow_remote` defaults to 0. `DROP TABLE remote_allow`. Do not edit `002_mail.sql`.
 - [ ] Unity: `test_migrate_v2_to_v3`, `test_event_instance_cascade`, `test_contact_fts_contentless`.
 
 **Done means:** The v3 schema is in place.
@@ -276,3 +276,4 @@ None. L-Q1 was answered on 2026-10-21: keep 2048 MB of bodies and 4096 MB of blo
 - 2026-10-22 L-2 still in progress. Andrew accepted the Limits layout, including a blank Document count until Check sizes has counted attachment parts. Every work item is checked. Accomplished, Lessons learned, and Handoff are written. `make test` is 202 Unity tests, 2 Rust tests, and 363 Vitest tests, exit 0. The tree is uncommitted, and `origin/main` is one commit ahead (`72514e5`). The row stays In progress until that push is green on `fedora`, `macos-core`, and `windows-core`. The phase stamp stays `0.60.0`. Do not mark the row Done. Do not start M-4.
 - 2026-10-22 L-2 complete, step 55. Andrew asked to close it. CI on `abba579` (run 39797701301) is green for `fedora`, `macos-core`, and `windows-core`. `make test` on that close is 202 Unity tests, 2 Rust tests, and 363 Vitest tests, exit 0. The phase stamp is `0.61.0`. M-4 is next and is not started. The same sitting left an uncommitted startup change: the Font Awesome kit waits until after the first paint, and the mail tree is built only when Mail is showing. That window has not been accepted. Do not start M-4 until it is.
 - 2026-10-22 Andrew accepted the startup window. The cover shows the version for at least two seconds, fades the line in over 0.4 s, and fades out over 0.4 s after the restored tabs have painted. The kit script is still inserted after the first paint, and the shell does not wait on it. The mail tree is built only when Mail is showing. That diff is uncommitted and is not M-4. M-4's entry gate is met. M-4 was not started. The last full `make test` is still the L-2 run. File-scoped Vitest covered the nav defer, the contacts-only restore, the theme sheets, and Help. CI has not seen this diff or the stamp bump.
+- 2026-10-30 Lock only. `contact.allow_remote` is a local column on schema v3, default 0. `remote_allow` from `002_mail.sql` is unused and L-3 drops it. That file stays. L-3 was not started.

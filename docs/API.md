@@ -278,6 +278,12 @@ State: planned (T-4)
 
 Creates or updates one calendar.
 
+### contact.allow_remote
+
+State: planned (S-3)
+
+`{id, allow}`. `id` is a contact id. `allow` is boolean. Sets the local `contact.allow_remote` flag. The flag is not written into `card_json` and it is not sent to the server. `contact.save` does not change it. An unknown id is `not_found`.
+
 ### contact.autocomplete
 
 State: planned (S-4)
@@ -300,7 +306,7 @@ State: planned (S-4)
 
 State: planned (S-1)
 
-Returns one contact card, preserving unknown JSContact fields.
+Returns one contact card, preserving unknown JSContact fields. `allowRemote` is the local flag and is not part of the card.
 
 ### contact.import
 
@@ -318,7 +324,7 @@ Lists contacts for the current address-book view.
 
 State: planned (S-3)
 
-Creates or updates one contact through the op queue.
+Creates or updates one contact through the op queue. It does not change `allow_remote`.
 
 ### debug.activity_demo
 
@@ -983,12 +989,6 @@ The query syntax is `from:`, `to:`, `cc:`, `subject:`, `has:attachment`, `is:unr
 Result: the same shape as `message.list`: `{accountId, total, messages:[{id, from, to, subject, preview, receivedAt, seen, flagged, answered, forwarded, hasAttachment, accountId}]}`. `accountId` is the one profile account the search is pinned to, or null. Each row's `accountId` is that message's profile account. `total` is the full match count. A row whose keywords contain `$deleted` is omitted from the page and from `total`. `messages` is the first page, ranked by bm25, then `received_at` descending, then `email.rowid` descending, and also cut so the reply stays under 2 MB. Message ids are the stored email ids.
 
 Errors: `bad_args`, `not_found`, `not_ready`, `internal`, `too_large`.
-
-### sender.allow_remote
-
-State: planned (N-4)
-
-Remembers that remote images may load for a sender or a domain.
 
 ### signature.list
 
