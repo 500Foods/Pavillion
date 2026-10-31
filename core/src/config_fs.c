@@ -66,7 +66,7 @@ static const char k_default_profile[] =
     "      \"mail\": { \"split\": 0.5, \"min\": 0.25, \"max\": 0.75 },\n"
     "      \"contacts\": { \"split\": 0.5, \"min\": 0.25, \"max\": 0.75 },\n"
     "      \"files\": { \"split\": 0.5, \"min\": 0.25, \"max\": 0.75 },\n"
-    "      \"fontawesome_kit\": \"45801522ef\"\n"
+    "      \"fontawesome_kit\": \"4a6b47ce22\"\n"
     "    }\n"
     "  }\n"
     "}\n";

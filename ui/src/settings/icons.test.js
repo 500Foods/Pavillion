@@ -3,6 +3,7 @@
  */
 import { expect, test, vi } from "vitest";
 import { defaultLibraries, FA_KIT_URL, MATERIAL_URL } from "../common/iconhosts.js";
+import { setStatusPoster } from "../common/status.js";
 import { cleanOrder, orderColumns } from "./split-table.js";
 
 /* Tabulator does not lay out rows under jsdom. This fake draws one button per
@@ -283,10 +284,18 @@ test("Import and Export move the saved icon changes", async () => {
       },
     },
   }));
-  buttonNamed(host, "Export").click();
-  await flush();
-  const text = files.get("/tmp/pavillion-icons.json");
-  expect(text).toContain('"kind": "pavillion.icons"');
+  const posted = [];
+  setStatusPoster((line) => posted.push(line));
+  let text = "";
+  try {
+    buttonNamed(host, "Export").click();
+    await flush();
+    text = files.get("/tmp/pavillion-icons.json");
+    expect(text).toContain('"kind": "pavillion.icons"');
+    expect(posted).toEqual(["Exported"]);
+  } finally {
+    setStatusPoster(null);
+  }
   expect(text).toContain("nav.contacts");
   expect(text).toContain('"libraries"');
   expect(text).not.toContain("fa-gear");

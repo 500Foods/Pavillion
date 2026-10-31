@@ -6,7 +6,7 @@ export const FONT_HOSTS = hosts.fonts;
 export const LOADER_HOSTS = hosts.loader;
 export const CONNECT_HOSTS = hosts.connect;
 
-const FA_KIT = "45801522ef";
+const FA_KIT = "4a6b47ce22";
 
 /* Families Pavillion ships. A style changes the URL only for Material and Phosphor.
    Font Awesome style stays on the kit. Tabler and Remix share one stylesheet. */

@@ -50,7 +50,7 @@ Tasks, Notes, and Argent are icons and empty homes. GitHub is an icon. Do not bu
 - Outside data is `textContent` or the sandboxed pane (`ui/src/common/htmlpane.js`). That includes subjects, addresses, notes, descriptions, file names, server errors, log lines, and settings values. `innerHTML`, `outerHTML`, `insertAdjacentHTML`, and `document.write` need a `// html-ok:` comment naming the static string. A test greps for those names.
 - The message pane is `<iframe sandbox>` with no scripts, no same-origin, no forms, no popups, no top navigation. Remote images stay off until allowed for that message. No IPC in a child frame.
 - Do not widen `app.security.csp` in `src-tauri/tauri.conf.json` without changing the F Lock first. No `https:` on `img-src`, `frame-src`, or `navigate-to`. No `blob:`. JMAP is libcurl in the core, so `connect-src` never names a mail server. CSP failures show up in `make build`, not `make dev`.
-- Font Awesome Pro is the kit `45801522ef` only. Do not vendor Pro SVGs, CSS, or the loader. Do not self-host it to fix a CSP problem.
+- The shipped Font Awesome kit is the free kit `4a6b47ce22`. Do not vendor kit SVGs, CSS, or the loader. Do not self-host it to fix a CSP problem. A profile may turn on another kit id. Do not put a private kit id in the tree.
 - No password, token, `secret`, or `refresh_token` field in a profile. The keyring service is `pavillion`, user `<profile id>/<account id>`.
 - Index, profile, log, and database files are `0600`. Directories that hold them are `0700`. Writes are atomic (`name.tmp`, then rename).
 

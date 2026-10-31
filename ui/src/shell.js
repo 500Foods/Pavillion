@@ -2510,6 +2510,7 @@ function toggleUpdate() {
     }
     cancelRunningSync();
     paintUpdate();
+    showStatus("Update stopped");
     return;
   }
   stopRequested = false;

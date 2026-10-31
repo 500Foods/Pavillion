@@ -76,7 +76,7 @@ export const DEFAULT_UI = {
   icons: {},
   trees: {},
   features: defaultFeatures(),
-  fontawesome_kit: "45801522ef",
+  fontawesome_kit: "4a6b47ce22",
   fonts: {
     body: '"Vanadium Sans", system-ui, sans-serif',
     mono: "ui-monospace, monospace",

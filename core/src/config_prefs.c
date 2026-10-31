@@ -452,7 +452,7 @@ int pav_profile_read_kit(const PavProfile *profile, char *out, size_t out_len, c
     value = cfg_at(ui, "fontawesome_kit");
     kit = json_string_value(value);
     if (kit == NULL || kit[0] == '\0') {
-        kit = "45801522ef";
+        kit = "4a6b47ce22";
     }
     if (strlen(kit) >= out_len) {
         cfg_err(err, err_len, "kit id is too long");

@@ -781,7 +781,7 @@ static const char k_default_profile[] =
     "      \"mail\": { \"split\": 0.5, \"min\": 0.25, \"max\": 0.75 },\n"
     "      \"contacts\": { \"split\": 0.5, \"min\": 0.25, \"max\": 0.75 },\n"
     "      \"files\": { \"split\": 0.5, \"min\": 0.25, \"max\": 0.75 },\n"
-    "      \"fontawesome_kit\": \"45801522ef\"\n"
+    "      \"fontawesome_kit\": \"4a6b47ce22\"\n"
     "    }\n"
     "  }\n"
     "}\n";
@@ -1665,7 +1665,7 @@ void test_kit_and_icons_read_after_start(void) {
     err[0] = '\0';
     kit_buf[0] = '\0';
     TEST_ASSERT_EQUAL_INT(0, pavillion_kit_get(kit_buf, sizeof(kit_buf), err, sizeof(err)));
-    TEST_ASSERT_EQUAL_STRING("45801522ef", kit_buf);
+    TEST_ASSERT_EQUAL_STRING("4a6b47ce22", kit_buf);
 
     err[0] = '\0';
     TEST_ASSERT_EQUAL_INT(0, pavillion_icons_get(&icons_json, err, sizeof(err)));
@@ -1908,7 +1908,7 @@ void test_profile_read_kit_skips_zoom_window(void) {
 
     kit_buf[0] = '\0';
     TEST_ASSERT_EQUAL_INT(0, pav_profile_read_kit(profile, kit_buf, sizeof(kit_buf), err, sizeof(err)));
-    TEST_ASSERT_EQUAL_STRING("45801522ef", kit_buf);
+    TEST_ASSERT_EQUAL_STRING("4a6b47ce22", kit_buf);
 
     TEST_ASSERT_EQUAL_INT(0, pav_profile_read_icons(profile, &icons, err, sizeof(err)));
     TEST_ASSERT_NOT_NULL(icons);

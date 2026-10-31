@@ -84,7 +84,7 @@ function defaultUi() {
   return {
     nav: { width: 320 },
     zoom: { shell: 1 },
-    fontawesome_kit: "45801522ef",
+    fontawesome_kit: "4a6b47ce22",
   };
 }
 

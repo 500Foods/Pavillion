@@ -26,7 +26,7 @@ test("default theme files match the built-in sheets", () => {
   expect(light.get("color-scheme")).toBe("light");
   expect(dark.get("--pav-icon-mail")).toContain("pav-system:mark");
   expect(dark.get("--pav-mark")).toBe("none");
-  expect(dark.get("--pav-icon-kit")).toBe('"45801522ef"');
+  expect(dark.get("--pav-icon-kit")).toBe('"4a6b47ce22"');
 });
 
 test("the header is the title, and duplicate titles keep the filename", () => {

@@ -363,7 +363,7 @@ The 823-line plan (v0.4, §1–§17) is absorbed. Its text is in git history bef
 - **Op queue / held op:** local changes waiting to reach the server; a held op waits 5 s for undo (M).
 - **Activity:** a registered unit of long work with progress and cancel (I).
 - **Pane:** the sandboxed `srcdoc` iframe for outside HTML (F-4).
-- **Kit:** the Font Awesome Pro Plus kit `45801522ef`, loaded only from Font Awesome's hosts (F).
+- **Kit:** the Font Awesome free kit `4a6b47ce22`, loaded only from Font Awesome's hosts (F). A profile may enable another kit id.
 - **`P`:** the Lua host table, modeled on Hydrogen's `H` (R).
 - **Intent:** what a rule asks for (move, keyword), applied by the core through the op queue (R).
 - **Fixture server / container:** the recorded JMAP server in `tests/support` and the disposable Stalwart in `tests/stalwart` (W).

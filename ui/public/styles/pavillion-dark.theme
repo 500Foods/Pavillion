@@ -121,8 +121,8 @@
   /* Logo file beside this theme. none hides the image. The shell owns the img. To show a logo, use a file name such as logo.svg. https URLs are refused. */
   --pav-mark: none;
 
-  /* Font Awesome kit id already used by the shell. Nothing here is secret. The kit script is https://kit.fontawesome.com/45801522ef.js. Settings → Icons can override it. */
-  --pav-icon-kit: "45801522ef";
+  /* Font Awesome kit id already used by the shell. Nothing here is secret. The kit script is https://kit.fontawesome.com/4a6b47ce22.js. Settings → Icons can override it. */
+  --pav-icon-kit: "4a6b47ce22";
 
   /* Mail nav icon. A value may be an <i class='...'> element, a Font Awesome class string, or an image file name beside this theme. The shell reads the variable and uses that icon. */
   --pav-icon-mail: "<img src='pav-system:mark' alt=''>";

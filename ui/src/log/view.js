@@ -3,6 +3,7 @@ import { Decoration, EditorView, WidgetType } from "@codemirror/view";
 import { LOG_LEVELS, SESSIONS, VIEW_LEVEL_NAMES, countMatches, levelsAtOrAbove, lineVisible, normalizeFilter, queryArgs } from "./filter.js";
 import { fromLocalInput, inRange, normalizeRange, rangeBounds, rangeWidened, toLocalInput } from "./range.js";
 import { iconClass } from "../common/icons/registry.js";
+import { postStatus } from "../common/status.js";
 import { formatInstant } from "../formats.js";
 import { fileLine, parseFileLine, screenLine } from "./format.js";
 
@@ -784,6 +785,7 @@ export function createLogView(parent, api, options = {}) {
     if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
       try {
         await navigator.clipboard.writeText(text);
+        postStatus("Copied");
         return;
       } catch {
         /* The textarea path covers a webview that refuses the async clipboard. */
@@ -794,8 +796,11 @@ export function createLogView(parent, api, options = {}) {
     const sink = options.root instanceof Element ? options.root : document.body;
     sink.append(area);
     area.select();
-    document.execCommand("copy");
+    const copied = document.execCommand("copy");
     area.remove();
+    if (copied) {
+      postStatus("Copied");
+    }
   }
 
   async function saveVisible() {

@@ -3,6 +3,7 @@
 import { dropIconPaint } from "../iconsan.js";
 import { REGISTRY, iconClass, iconNode, registryEntry, resolveIcon } from "./registry.js";
 import { libraryLoadSignature } from "../iconhosts.js";
+import { postStatus } from "../status.js";
 import { dropOverride, iconFormat, iconFormatLabel, iconOverrideDocument, iconPackFromText, pushRecent, putOverride } from "./snippet.js";
 import { openIconWizard, utf8Base64 } from "./wizard.js";
 import { growWeights } from "../column-widths.js";
@@ -333,6 +334,7 @@ export function mountIconsPanel(root, ctx) {
     try {
       const libraries = Array.isArray(ui().iconLibraries) ? ui().iconLibraries : [];
       await write({ path: String(path), text: iconOverrideDocument(ui().icons, libraries) });
+      postStatus("Exported");
     } catch {
       toast("Could not export icons.");
     }

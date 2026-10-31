@@ -1,3 +1,4 @@
+import { postStatus } from "../common/status.js";
 import { createTable, INDICATOR_WIDTH } from "../common/table.js";
 import { iconClass } from "../common/icons/registry.js";
 import { storeSvgText } from "../common/icons/panel.js";
@@ -524,6 +525,7 @@ export function createAccountsView(api, root, options = {}) {
         return;
       }
       await api.exports.writeText({ path, text: accountsCsv(rows) });
+      postStatus("Exported");
     } catch (err) {
       showBanner(err);
       return;
@@ -834,6 +836,7 @@ export function createAccountsView(api, root, options = {}) {
       if (fresh) {
         selectAccount(fresh.id);
       }
+      postStatus("Account saved");
     } catch (err) {
       formError = err instanceof Error ? err.message : String(err ?? "");
       logFailure("account add", err);
@@ -876,6 +879,7 @@ export function createAccountsView(api, root, options = {}) {
           paintHeader();
           paintForm();
         }
+        postStatus("Account saved");
       } catch (err) {
         logFailure("account update", err);
         showBanner(err);

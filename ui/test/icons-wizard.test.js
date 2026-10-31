@@ -45,7 +45,7 @@ function waitSearch() {
 }
 
 test("a host outside the shipped list is refused", () => {
-  expect(libraryUrlError("script", "https://kit.fontawesome.com/45801522ef.js")).toBe("");
+  expect(libraryUrlError("script", "https://kit.fontawesome.com/4a6b47ce22.js")).toBe("");
   expect(libraryUrlError("stylesheet", "https://fonts.googleapis.com/css2?family=Material+Symbols+Sharp")).toBe("");
   expect(libraryUrlError("stylesheet", MATERIAL_URL)).toBe("");
   expect(libraryUrlError("script", "https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js")).toBe("");
@@ -78,7 +78,7 @@ test("a host outside the shipped list is refused", () => {
   expect(savedKept.find((entry) => entry.id === "fontawesome").enabled).toBe(false);
   expect(savedKept.find((entry) => entry.id === "font-awesome-2").enabled).toBe(true);
   expect(importedLibraries(twoKits).find((entry) => entry.enabled && entry.group === "fontawesome").id).toBe("fontawesome");
-  const legacy = [{ id: "fontawesome", name: "Font Awesome", type: "script", url: "https://kit.fontawesome.com/45801522ef.js", enabled: true }];
+  const legacy = [{ id: "fontawesome", name: "Font Awesome", type: "script", url: "https://kit.fontawesome.com/4a6b47ce22.js", enabled: true }];
   expect(mergeShippedLibraries(legacy).map((entry) => entry.id)).toEqual(["fontawesome", "material", "iconify", "bootstrap", "phosphor", "tabler", "remix"]);
   expect(mergeShippedLibraries([{ ...legacy[0], group: "fontawesome" }])).toHaveLength(1);
 });

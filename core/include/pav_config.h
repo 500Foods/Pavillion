@@ -141,7 +141,7 @@ int pav_profile_write_icons(PavProfile *profile, const char *json, char *err, si
 /* Writes preferences.ui.fontawesome_kit. Does not write the file. Returns 0, or -1. */
 int pav_profile_write_kit(PavProfile *profile, const char *kit, char *err, size_t err_len);
 
-/* Reads preferences.ui.fontawesome_kit into out (default "45801522ef" when missing).
+/* Reads preferences.ui.fontawesome_kit into out (default "4a6b47ce22" when missing).
    Returns 0, or -1. */
 int pav_profile_read_kit(const PavProfile *profile, char *out, size_t out_len, char *err, size_t err_len);
 

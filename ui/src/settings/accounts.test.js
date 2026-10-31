@@ -459,6 +459,7 @@ test("Save updates account details", async () => {
     await vi.waitFor(() => {
       expect(document.querySelector("#account-form-title").textContent).toBe("Renamed Account");
     });
+    expect(document.querySelector("#tabs-message").textContent).toBe("Account saved");
   } finally {
     unmount();
     el.remove();
@@ -1006,6 +1007,7 @@ test("the footer counts checked features, and the navigator and arrows move the 
     expect(lines[0]).toBe("Number,Name,Server,JMAP,IMAP,SMTP,Mail,Contacts,Calendars,Files,Email");
     expect(lines[1].slice(4)).toBe("Alpha,a.example,yes,no,no,no,no,no,no,alpha@example.com");
     expect(write.text).not.toContain("pw");
+    expect(document.querySelector("#tabs-message").textContent).toBe("Exported");
     await vi.waitFor(() => {
       const log = callSpy.mock.calls.filter(([cmd]) => cmd === "log.client").pop();
       expect(log[1]).toEqual({ subsystem: "accounts", level: "info", message: "exported 3 accounts to CSV" });

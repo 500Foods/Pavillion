@@ -115,7 +115,7 @@ test("stopping Update does not post Updated", async () => {
   update.click();
   transport.emit("activity.changed", { activity: { ...running("sync.mail"), state: "done" } });
   await Promise.resolve();
-  expect(message.textContent).toBe("Update Started");
+  expect(message.textContent).toBe("Update stopped");
   expect(root.querySelector("#banner").hidden).toBe(true);
 });
 
