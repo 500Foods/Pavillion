@@ -5,36 +5,36 @@
   "releases": [
     {
       "version": "0.69",
-      "build": "0.69.338",
-      "date": "2026-10-28",
-      "commit": "1ea251c151dae8ed61c6d668668edc2727382c86",
-      "commitUrl": "https://github.com/500Foods/Pavillion/commit/1ea251c151dae8ed61c6d668668edc2727382c86",
+      "build": "0.69.379",
+      "date": "2026-10-31",
+      "commit": "6fb6ede53f15822f59dd2b19a0d4383cb47b1461",
+      "commitUrl": "https://github.com/500Foods/Pavillion/commit/6fb6ede53f15822f59dd2b19a0d4383cb47b1461",
       "releaseUrl": "https://github.com/500Foods/Pavillion/releases/tag/v0.69",
-      "notes": "Windows curl native CA trust; curl double-free fix",
+      "notes": "Updated 0.69. Icon Wizard, icon export includes libraries, tables keep scroll and layout. Unsigned rpm, AppImage, and msi.",
       "assets": [
         {
           "platform": "linux-appimage",
           "arch": "x86_64",
           "filename": "Pavillion-0.69-x86_64.AppImage",
           "url": "https://github.com/500Foods/Pavillion/releases/download/v0.69/Pavillion-0.69-x86_64.AppImage",
-          "size": 84302328,
-          "sha256": "f6670e5da806b5a64c94a2f515faa6d2df56fb61dd3f012c928f20f2dbc287e5"
+          "size": 85158392,
+          "sha256": "234986fe823304058dab317eb347fa2d56124b29f5cba6ae1425db0bf73d720c"
         },
         {
           "platform": "windows-msi",
           "arch": "x86_64",
           "filename": "Pavillion-0.69-x86_64.msi",
           "url": "https://github.com/500Foods/Pavillion/releases/download/v0.69/Pavillion-0.69-x86_64.msi",
-          "size": 11755520,
-          "sha256": "32fb7eb15d4b9fab37d9a55314259c858225b5b1be449b308c4057778dd2dccf"
+          "size": 12566528,
+          "sha256": "7b57b1e9d579e70171544ebb2c682fef727de0395fbe9587cc9026e5e85f081b"
         },
         {
           "platform": "linux-rpm",
           "arch": "x86_64",
           "filename": "pavillion-0.69-1.fc44.x86_64.rpm",
           "url": "https://github.com/500Foods/Pavillion/releases/download/v0.69/pavillion-0.69-1.fc44.x86_64.rpm",
-          "size": 1869788,
-          "sha256": "3d7437266e0dfbaaa121bcd458335f406289d136d31245fc2949dda15c5c4d5f"
+          "size": 2691637,
+          "sha256": "1afe8c3e0fc12cf772a540e0de8cf70425333a958fe81025eec2457be7817faa"
         }
       ]
     }
