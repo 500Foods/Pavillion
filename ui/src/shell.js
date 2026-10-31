@@ -34,6 +34,7 @@ import { mountAssetsPanel } from "./settings/assets.js";
 import { createIconSearch } from "./common/icons/search.js";
 import { applyIconResultZoom, applyIconWizardZoom, openIconWizard } from "./common/icons/wizard.js";
 import { bindColorPicker, colorZoomOf } from "./common/coloris.js";
+import { setStatusPoster, shortDuration, STATUS_FADE_MS, STATUS_HOLD_MS, zoomStatus } from "./common/status.js";
 import { DEFAULT_UI, FEATURE_KEYS, RAIL_KEYS, chordsOf, clampUi, railOf, snapZoom } from "./prefs.js";
 import { cleanPlace, cleanScroll, cleanSelected } from "./common/table-place.js";
 import {
@@ -358,19 +359,91 @@ function wheelSteps(event) {
   return steps;
 }
 
+let statusTimer = 0;
+let statusFadeTimer = 0;
+
+function statusFadeMs() {
+  return reducedMotion() ? 0 : STATUS_FADE_MS;
+}
+
+function showStatus(text) {
+  if (!mountRoot) {
+    return;
+  }
+  const node = mountRoot.querySelector("#tabs-message");
+  if (!node) {
+    return;
+  }
+  node.textContent = text;
+  const shown = node.classList.contains("is-shown");
+  node.hidden = false;
+  if (statusFadeTimer) {
+    window.clearTimeout(statusFadeTimer);
+    statusFadeTimer = 0;
+  }
+  if (!shown) {
+    node.classList.remove("is-shown");
+    void node.offsetWidth;
+    node.classList.add("is-shown");
+  }
+  if (statusTimer) {
+    window.clearTimeout(statusTimer);
+  }
+  statusTimer = window.setTimeout(() => {
+    statusTimer = 0;
+    if (!node.isConnected) {
+      return;
+    }
+    node.classList.remove("is-shown");
+    const wait = statusFadeMs();
+    if (wait === 0) {
+      node.hidden = true;
+      node.textContent = "";
+      return;
+    }
+    statusFadeTimer = window.setTimeout(() => {
+      statusFadeTimer = 0;
+      if (!node.isConnected || node.classList.contains("is-shown")) {
+        return;
+      }
+      node.hidden = true;
+      node.textContent = "";
+    }, wait);
+  }, STATUS_HOLD_MS);
+}
+
+function clearStatusTimer() {
+  if (statusTimer) {
+    window.clearTimeout(statusTimer);
+    statusTimer = 0;
+  }
+  if (statusFadeTimer) {
+    window.clearTimeout(statusFadeTimer);
+    statusFadeTimer = 0;
+  }
+}
+
+function showZoomStatus(key, scale) {
+  if (!mountRoot) {
+    return;
+  }
+  const label = mountRoot.querySelector(`[data-zoom="${key}"] .zoom-label`);
+  zoomStatus(label ? label.textContent : "", scale);
+}
+
 function stepZoom(key, steps) {
   if (!steps || key === "shell" || !(key in ui.zoom)) {
     return;
   }
   const direction = ui.zoom.wheel === "toward" ? 1 : -1;
   const next = zoomClamp(key, ui.zoom[key] + direction * steps * 0.05);
-  if (next === ui.zoom[key]) {
-    return;
+  if (next !== ui.zoom[key]) {
+    ui.zoom[key] = next;
+    paintZoomSliders();
+    applyZoom();
+    persistLayout();
   }
-  ui.zoom[key] = next;
-  paintZoomSliders();
-  applyZoom();
-  persistLayout();
+  showZoomStatus(key, ui.zoom[key]);
 }
 
 function onWheelZoom(event) {
@@ -1303,6 +1376,7 @@ let syncing = 0;
 let syncTurn = null;
 let syncIds = [];
 let stopRequested = false;
+let updateStartedAt = 0;
 let updatePie = null;
 const cancelSent = new Set();
 let motionQuery = null;
@@ -2430,6 +2504,7 @@ function toggleUpdate() {
   const pieOn = updatePie && updatePie.shown();
   if (syncing > 0 || pieOn) {
     stopRequested = true;
+    updateStartedAt = 0;
     if (updatePie) {
       updatePie.hide();
     }
@@ -2439,10 +2514,13 @@ function toggleUpdate() {
   }
   stopRequested = false;
   cancelSent.clear();
+  updateStartedAt = Date.now();
+  showStatus("Update Started");
   if (updatePie) {
     updatePie.start();
   }
   api.sync.now({}).catch((err) => {
+    updateStartedAt = 0;
     if (!stopRequested && updatePie) {
       updatePie.hide();
     }
@@ -2641,6 +2719,7 @@ export function stopShell() {
   syncTurn = null;
   syncIds = [];
   stopRequested = false;
+  updateStartedAt = 0;
   cancelSent.clear();
   if (updatePie) {
     updatePie.destroy();
@@ -2654,6 +2733,16 @@ export function stopShell() {
     mountRoot.removeEventListener("click", onHelpJump);
   }
   wheelRemainder = 0;
+  clearStatusTimer();
+  if (mountRoot) {
+    const statusNode = mountRoot.querySelector("#tabs-message");
+    if (statusNode) {
+      statusNode.classList.remove("is-shown");
+      statusNode.hidden = true;
+      statusNode.textContent = "";
+    }
+  }
+  setStatusPoster(null);
   if (featureEditor) {
     featureEditor.destroy();
     featureEditor = null;
@@ -2687,6 +2776,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
   const mine = { isolationStop: null };
   session = mine;
   mountRoot = surface;
+  setStatusPoster(showStatus);
   onZoomWheel = onWheelZoom;
   mountRoot.addEventListener("wheel", onZoomWheel, { capture: true, passive: false });
   api = nextApi;
@@ -2717,7 +2807,7 @@ export async function startShell(surface, nextApi, nextHost, result) {
       openHome(section);
     },
     menu: widgets.menus,
-    strip: mountRoot.querySelector(".tabs"),
+    strip: mountRoot.querySelector(".tabs-main"),
     confirm(entry) {
       if (!widgets) {
         return Promise.resolve(false);
@@ -2822,8 +2912,16 @@ export async function startShell(surface, nextApi, nextHost, result) {
       syncTurn = snap.turn;
       syncIds = snap.ids;
       if (snap.count === 0) {
-        if (prev > 0 && !stopRequested && updatePie) {
-          updatePie.finish();
+        if (prev > 0 && !stopRequested) {
+          if (updatePie) {
+            updatePie.finish();
+          }
+          if (updateStartedAt) {
+            showStatus(`Updated in ${shortDuration(Date.now() - updateStartedAt)}`);
+            updateStartedAt = 0;
+          }
+        } else if (stopRequested) {
+          updateStartedAt = 0;
         }
         stopRequested = false;
         cancelSent.clear();

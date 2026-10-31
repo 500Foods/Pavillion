@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { createApi } from "../api.js";
 import { mount, unmount } from "../index.js";
 import { mockTransport } from "../transport/mock.js";
@@ -58,6 +58,89 @@ test("Update calls sync.now and shows the pie before a sync activity is running"
   const account = root.querySelector(".activity-account-name");
   expect(account.textContent).toBe("Pavillion");
   expect(root.querySelector(".activity-account-num").textContent).toBe("000");
+});
+
+test("a sync the Update button did not start leaves the status line empty", async () => {
+  const transport = mockTransport();
+  const el = document.createElement("div");
+  document.body.append(el);
+  await mount(el, createApi(transport), { hostServices: { setRootFontSize() {} } });
+  const message = el.querySelector("#tabs-message");
+  transport.emit("activity.changed", { activity: running("sync.mail") });
+  transport.emit("activity.changed", { activity: { ...running("sync.mail"), state: "done" } });
+  expect(message.hidden).toBe(true);
+  expect(message.textContent).toBe("");
+});
+
+test("Update posts started, then the elapsed time when that sync finishes", async () => {
+  const transport = mockTransport();
+  const el = document.createElement("div");
+  document.body.append(el);
+  await mount(el, createApi(transport), { hostServices: { setRootFontSize() {} } });
+  const root = el.querySelector(".pav-root");
+  const message = root.querySelector("#tabs-message");
+  const update = root.querySelector("#update");
+  const started = Date.now();
+  const clock = vi.spyOn(Date, "now").mockReturnValue(started);
+  try {
+    update.click();
+    await Promise.resolve();
+    expect(message.hidden).toBe(false);
+    expect(message.classList.contains("is-shown")).toBe(true);
+    expect(message.textContent).toBe("Update Started");
+
+    transport.emit("activity.changed", { activity: running("sync.mail") });
+    clock.mockReturnValue(started + 184000);
+    transport.emit("activity.changed", { activity: { ...running("sync.mail"), state: "done" } });
+    expect(message.textContent).toBe("Updated in 3m4s");
+    expect(message.classList.contains("is-shown")).toBe(true);
+  } finally {
+    clock.mockRestore();
+  }
+});
+
+test("stopping Update does not post Updated", async () => {
+  const transport = mockTransport();
+  const el = document.createElement("div");
+  document.body.append(el);
+  await mount(el, createApi(transport), { hostServices: { setRootFontSize() {} } });
+  const root = el.querySelector(".pav-root");
+  const message = root.querySelector("#tabs-message");
+  const update = root.querySelector("#update");
+
+  update.click();
+  await Promise.resolve();
+  expect(message.textContent).toBe("Update Started");
+  transport.emit("activity.changed", { activity: running("sync.mail") });
+  update.click();
+  transport.emit("activity.changed", { activity: { ...running("sync.mail"), state: "done" } });
+  await Promise.resolve();
+  expect(message.textContent).toBe("Update Started");
+  expect(root.querySelector("#banner").hidden).toBe(true);
+});
+
+test("a failed Update does not later say Updated", async () => {
+  const transport = mockTransport();
+  const call = transport.call;
+  transport.call = async (cmd, args) => {
+    if (cmd === "sync.now") {
+      throw new Error("offline");
+    }
+    return call(cmd, args);
+  };
+  const el = document.createElement("div");
+  document.body.append(el);
+  await mount(el, createApi(transport), { hostServices: { setRootFontSize() {} } });
+  const root = el.querySelector(".pav-root");
+  const message = root.querySelector("#tabs-message");
+  root.querySelector("#update").click();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(message.textContent).toBe("Update Started");
+  expect(root.querySelector("#banner").textContent).toBe("offline");
+  transport.emit("activity.changed", { activity: running("sync.mail") });
+  transport.emit("activity.changed", { activity: { ...running("sync.mail"), state: "done" } });
+  expect(message.textContent).toBe("Update Started");
 });
 
 test("the activity page uses action and account menus instead of the log filters", async () => {

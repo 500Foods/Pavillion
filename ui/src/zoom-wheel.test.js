@@ -1,8 +1,9 @@
 /**
  * @vitest-environment jsdom
  */
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { createApi } from "./api.js";
+import { STATUS_FADE_MS, STATUS_HOLD_MS } from "./common/status.js";
 import { mount, unmount } from "./index.js";
 import { mockTransport } from "./transport/mock.js";
 
@@ -58,6 +59,12 @@ test("ctrl wheel steps the pane under the pointer and the switch flips direction
     expect(direction.textContent).toBe("Away zooms in");
     expect(scale("shell").value).toBe("1");
     expect(scales.every((value) => value === 1)).toBe(true);
+    const message = document.querySelector("#tabs-message");
+    expect(message.hidden).toBe(true);
+    expect(message.textContent).toBe("");
+    expect(message.previousElementSibling.classList.contains("tabs-main")).toBe(true);
+    expect(message.hasAttribute("data-tauri-drag-region")).toBe(false);
+    expect(document.querySelector(".tabs-main .tabs-spacer").hasAttribute("data-tauri-drag-region")).toBe(true);
 
     const month = document.querySelector("#month");
     expect(wheel(month, { deltaY: -40 }).defaultPrevented).toBe(true);
@@ -66,6 +73,9 @@ test("ctrl wheel steps the pane under the pointer and the switch flips direction
     expect(scale("navBody").value).toBe("1");
     wheel(month, { deltaY: -30 });
     expect(scale("navBody")).toEqual({ value: "1.05", text: "105%" });
+    expect(message.hidden).toBe(false);
+    expect(message.classList.contains("is-shown")).toBe(true);
+    expect(message.textContent).toBe("Nav body: 105%");
 
     const bars = document.querySelector(".nav-buttons");
     expect(wheel(bars).defaultPrevented).toBe(true);
@@ -81,6 +91,7 @@ test("ctrl wheel steps the pane under the pointer and the switch flips direction
     const plain = wheel(bars, { ctrlKey: false });
     expect(plain.defaultPrevented).toBe(false);
     expect(scale("navButtons").value).toBe("1.1");
+    expect(message.textContent).toBe("Button bars: 110%");
 
     wheel(document.querySelector("#mini-cal"));
     expect(scale("navBody").value).toBe("1.1");
@@ -136,6 +147,7 @@ test("ctrl wheel steps the pane under the pointer and the switch flips direction
     const filterPanel = document.querySelector("#help-filter-panel");
     wheel(filterPanel);
     expect(scale("filters")).toEqual({ value: "1.05", text: "105%" });
+    expect(message.textContent).toBe("Filters: 105%");
     expect(filterPanel.style.getPropertyValue("--pav-filter-zoom")).toBe("1.05");
     expect(scale("navButtons").value).toBe("1.2");
 
@@ -178,3 +190,83 @@ test("ctrl wheel steps the pane under the pointer and the switch flips direction
     el.remove();
   }
 }, 20000);
+
+test("a zoom message replaces the previous one and fades out after 2.5 seconds", async () => {
+  const el = document.createElement("div");
+  document.body.append(el);
+  const api = createApi(mockTransport());
+  try {
+    await mount(el, api, {});
+    vi.useFakeTimers();
+    const message = document.querySelector("#tabs-message");
+    const filters = document.querySelector("#help-filter-panel");
+    wheel(filters);
+    expect(message.hidden).toBe(false);
+    expect(message.classList.contains("is-shown")).toBe(true);
+    expect(message.textContent).toBe("Filters: 105%");
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(message.hidden).toBe(false);
+    expect(message.classList.contains("is-shown")).toBe(true);
+    wheel(filters);
+    expect(message.textContent).toBe("Filters: 110%");
+    expect(message.classList.contains("is-shown")).toBe(true);
+    await vi.advanceTimersByTimeAsync(STATUS_HOLD_MS - 1);
+    expect(message.hidden).toBe(false);
+    expect(message.classList.contains("is-shown")).toBe(true);
+    expect(message.textContent).toBe("Filters: 110%");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(message.classList.contains("is-shown")).toBe(false);
+    expect(message.hidden).toBe(false);
+    expect(message.textContent).toBe("Filters: 110%");
+    wheel(filters);
+    expect(message.textContent).toBe("Filters: 115%");
+    expect(message.classList.contains("is-shown")).toBe(true);
+    expect(message.hidden).toBe(false);
+    await vi.advanceTimersByTimeAsync(STATUS_HOLD_MS);
+    expect(message.classList.contains("is-shown")).toBe(false);
+    expect(message.hidden).toBe(false);
+    await vi.advanceTimersByTimeAsync(STATUS_FADE_MS - 1);
+    expect(message.hidden).toBe(false);
+    expect(message.textContent).toBe("Filters: 115%");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(message.hidden).toBe(true);
+    expect(message.textContent).toBe("");
+  } finally {
+    vi.useRealTimers();
+    unmount();
+    el.remove();
+  }
+});
+
+test("reduced motion hides the status line as soon as the hold ends", async () => {
+  const previous = window.matchMedia;
+  window.matchMedia = (query) => ({
+    matches: query === "(prefers-reduced-motion: reduce)",
+    media: query,
+    addEventListener() {},
+    removeEventListener() {},
+  });
+  const el = document.createElement("div");
+  document.body.append(el);
+  const api = createApi(mockTransport());
+  try {
+    await mount(el, api, {});
+    vi.useFakeTimers();
+    const message = document.querySelector("#tabs-message");
+    wheel(document.querySelector("#help-filter-panel"));
+    expect(message.classList.contains("is-shown")).toBe(true);
+    await vi.advanceTimersByTimeAsync(STATUS_HOLD_MS);
+    expect(message.classList.contains("is-shown")).toBe(false);
+    expect(message.hidden).toBe(true);
+    expect(message.textContent).toBe("");
+  } finally {
+    vi.useRealTimers();
+    if (previous) {
+      window.matchMedia = previous;
+    } else {
+      delete window.matchMedia;
+    }
+    unmount();
+    el.remove();
+  }
+});

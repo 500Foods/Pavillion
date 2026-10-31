@@ -4,6 +4,7 @@
    colors saved on the profile. */
 
 import { colorTip } from "./colornames.js";
+import { zoomStatus } from "./status.js";
 
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 3;
@@ -209,6 +210,7 @@ function onPickerWheel(event) {
   }
   const toward = wheelToward ? wheelToward() : false;
   stepZoom(pickerZoomAfter(pickerZoom, steps, toward) - pickerZoom);
+  zoomStatus("Color picker", pickerZoom);
 }
 
 function themeRoot() {

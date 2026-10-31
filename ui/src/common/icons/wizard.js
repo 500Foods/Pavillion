@@ -1,5 +1,6 @@
 /* Icon Wizard. Its own dialog. Foundry text is never inserted as HTML. */
 import { colorZoomOf, mountColoris, pickerZoomAfter } from "../coloris.js";
+import { zoomStatus } from "../status.js";
 import { paintIcon, removedText, sanitizeIconHtml } from "../iconsan.js";
 import { SYSTEM_ICONS, iconNode } from "./registry.js";
 import {
@@ -1149,14 +1150,14 @@ export function openIconWizard(parent, options = {}) {
         }
         const toward = typeof options.toward === "function" && options.toward();
         const next = pickerZoomAfter(slot.resultZoom, steps, toward);
-        if (next === slot.resultZoom) {
-          return;
+        if (next !== slot.resultZoom) {
+          slot.resultZoom = next;
+          grid.style.setProperty("--pav-icon-hit-size", hitSize(next));
+          if (typeof options.onResultZoom === "function") {
+            options.onResultZoom(next);
+          }
         }
-        slot.resultZoom = next;
-        grid.style.setProperty("--pav-icon-hit-size", hitSize(next));
-        if (typeof options.onResultZoom === "function") {
-          options.onResultZoom(next);
-        }
+        zoomStatus("Icon results", next);
       }, { passive: false });
       foundryBtn.addEventListener("click", () => {
         edited = true;
@@ -1613,14 +1614,14 @@ export function openIconWizard(parent, options = {}) {
       }
       const toward = typeof options.toward === "function" && options.toward();
       const next = pickerZoomAfter(slot.zoom, steps, toward);
-      if (next === slot.zoom) {
-        return;
+      if (next !== slot.zoom) {
+        slot.zoom = next;
+        dialog.style.setProperty("--pav-wizard-zoom", String(slot.zoom));
+        if (typeof options.onZoom === "function") {
+          options.onZoom(slot.zoom);
+        }
       }
-      slot.zoom = next;
-      dialog.style.setProperty("--pav-wizard-zoom", String(slot.zoom));
-      if (typeof options.onZoom === "function") {
-        options.onZoom(slot.zoom);
-      }
+      zoomStatus("Icon Wizard", next);
     }, { capture: true, passive: false });
     showShelf(shelf);
     paintSquare(current || activeHtml(), true);

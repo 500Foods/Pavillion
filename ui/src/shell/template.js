@@ -109,9 +109,12 @@ export const shellMarkup = `<div class="shell">
         <button type="button" class="nav-resize" id="nav-resize" aria-label="Resize navigation"></button>
       </nav>
       <div class="workspace">
-        <div class="tabs button-bar" role="tablist" aria-label="Open views">
-          <div id="tablist"></div>
-          <div class="tabs-spacer" data-tauri-drag-region></div>
+        <div class="tabs button-bar">
+          <div class="tabs-main" role="tablist" aria-label="Open views">
+            <div id="tablist"></div>
+            <div class="tabs-spacer" data-tauri-drag-region></div>
+          </div>
+          <p class="tabs-message" id="tabs-message" role="status" aria-live="polite" hidden></p>
         </div>
         <p class="banner" id="banner" hidden></p>
         <div class="panel split" id="panel-mail" role="tabpanel">
@@ -246,7 +249,7 @@ export const shellMarkup = `<div class="shell">
                 <span class="zoom-value" aria-hidden="true"></span>
               </div>
             </div>
-            <p class="muted">Shell multiplies every row below except Color picker, Icon Wizard, and Icon results. Those three run from 100% to 300% and follow that control wherever it opens. Tables is the list on the left of Accounts, Icons, Libraries, and Assets. Details is the form on the right of Accounts, Libraries, and Assets. The Icons editor uses Icon Wizard. Icon results is the search grid inside that editor. Settings is the body of the other settings pages, including this one. Button bars covers the navigation, the main tabs, the log bars, the Help search bar, and the bars on settings pages. Hold Ctrl and roll the wheel over a button bar, the nav, the calendar, a mail pane, a table, a form, a settings page, the log, the Help index, or the Help page to change that row by 5%. The wheel leaves Shell alone. Away zooms in unless the switch says toward.</p>
+            <p class="muted">Shell multiplies every row below except Color picker, Icon Wizard, and Icon results. Those three run from 100% to 300% and follow that control wherever it opens. Tables is the list on the left of Accounts, Icons, Libraries, and Assets. Details is the form on the right of Accounts, Libraries, and Assets. The Icons editor uses Icon Wizard. Icon results is the search grid inside that editor. Settings is the body of the other settings pages, including this one. Button bars covers the navigation, the main tabs, the log bars, the Help search bar, and the bars on settings pages. Hold Ctrl and roll the wheel over a button bar, the nav, the calendar, a mail pane, a table, a form, a settings page, the log, the Help index, or the Help page to change that row by 5%. The wheel leaves Shell alone. The row name and the percent show at the right of the tab bar, for example Filters: 90%. The line fades in, stays a few seconds, and fades out. Away zooms in unless the switch says toward.</p>
             <p class="muted" id="profile-name"></p>
             </div>
           </div>

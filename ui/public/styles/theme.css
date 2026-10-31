@@ -323,12 +323,46 @@
   background: var(--pav-accent);
 }
 
+.pav-root .tabs-main {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  align-items: stretch;
+}
+
 .pav-root #tablist {
   display: contents;
 }
 
 .pav-root .tabs-spacer {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pav-root .tabs-message {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin: 0;
+  padding: 0 var(--pav-bar-pad-x) 0 calc(var(--pav-bar-pad-x) * 2);
+  white-space: nowrap;
+  color: inherit;
+  font-size: var(--pav-bar-font-size);
+  opacity: 0;
+  /* Keep in step with STATUS_FADE_MS in ui/src/common/status.js. */
+  transition: opacity 160ms ease-out;
+}
+
+.pav-root .tabs-message.is-shown {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pav-root .tabs-message {
+    transition: none;
+  }
 }
 
 .pav-root .banner {
