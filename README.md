@@ -123,7 +123,7 @@ The license is [MIT](LICENSE.md). Third-party notices (including LGPL runtimes i
 
 <!--CLOC-START -->
 ```cloc
-Last updated at 2026-10-31 07:29:20 UTC
+Last updated at 2026-11-10 22:56:13 UTC
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
