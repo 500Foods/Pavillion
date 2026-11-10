@@ -157,12 +157,12 @@ An account object in `accounts`:
 
 ```json
 {
-  "id": "a-500foods-andrew",
+  "id": "<account id>",
   "number": "001",
-  "name": "andrew@500foods.com",
+  "name": "<email address>",
   "kind": "jmap",
-  "session_url": "https://mail.500foods.com/.well-known/jmap",
-  "username": "andrew@500foods.com",
+  "session_url": "https://mail.example.com/.well-known/jmap",
+  "username": "<email address>",
   "auth": "basic",
   "color": "#2a7",
   "enabled": true,

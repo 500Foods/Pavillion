@@ -34,7 +34,7 @@ Leave Accomplished, Lessons learned, and Handoff off a phase that has not starte
 
 ```json
 { "id": "act-42", "kind": "sync.mail", "accountId": "a-500foods-andrew",
-  "title": "Sync andrew@500foods.com", "detail": "Inbox: headers 300 of 1,200",
+  "title": "Sync <email address>", "detail": "Inbox: headers 300 of 1,200",
   "state": "running", "startedMs": 1760630581452, "endedMs": null,
   "progress": { "done": 300, "total": 1200, "unit": "messages" },
   "etaMs": 4200, "cancellable": true, "error": null, "parentId": null,
