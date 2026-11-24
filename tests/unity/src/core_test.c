@@ -8247,14 +8247,37 @@ static void msg_watch_begin(const char *account_id) {
 static int msg_watch_end(void) {
     struct timespec ts;
     int hits;
+    int seen;
+    int quiet;
     int rc;
 
     pthread_mutex_lock(&g_ev_test_mu);
+    /* The page commit is visible to the test before the event thread
+       delivers mail.messages_changed. Wait out a quiet stretch so a page
+       still sitting in the queue is counted. */
     clock_gettime(CLOCK_REALTIME, &ts);
     ts.tv_sec += 2;
     while (g_msg_watch && g_msg_hits == 0) {
         rc = pthread_cond_timedwait(&g_ev_test_cv, &g_ev_test_mu, &ts);
         if (rc != 0) {
+            break;
+        }
+    }
+    for (quiet = 0; quiet < 20; quiet++) {
+        seen = g_msg_hits;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_nsec += 100000000L;
+        if (ts.tv_nsec >= 1000000000L) {
+            ts.tv_sec += 1;
+            ts.tv_nsec -= 1000000000L;
+        }
+        while (g_msg_watch && g_msg_hits == seen) {
+            rc = pthread_cond_timedwait(&g_ev_test_cv, &g_ev_test_mu, &ts);
+            if (rc != 0) {
+                break;
+            }
+        }
+        if (g_msg_hits == seen) {
             break;
         }
     }
@@ -8439,11 +8462,12 @@ void test_email_backfill_pages(void) {
     start_email_account("back", "?emails=2000", path, sizeof(path));
     snprintf(sql, sizeof(sql), "SELECT count(*) FROM email WHERE ra_id='back/a1'");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count_tries(path, sql, 2000, "back", got, sizeof(got), 1200), got);
-    hits = msg_watch_end();
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, wait_count(path,
         "SELECT count(*) FROM account_state WHERE account_id='back' AND state='idle'", 1, "back", got, sizeof(got)),
         got);
-    TEST_ASSERT_TRUE(hits >= 4);
+    hits = msg_watch_end();
+    snprintf(got, sizeof(got), "messages_changed hits %d", hits);
+    TEST_ASSERT_TRUE_MESSAGE(hits >= 4, got);
     TEST_ASSERT_EQUAL_INT(2000, scalar_int(path, "SELECT count(*) FROM email WHERE ra_id='back/a1'"));
     TEST_ASSERT_EQUAL_INT(0, scalar_int(path, "SELECT count(*) FROM email WHERE ra_id='back/a2'"));
     hi = scalar_i64(path, "SELECT received_at FROM email WHERE ra_id='back/a1' AND id='e1999'");
