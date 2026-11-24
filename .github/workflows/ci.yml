@@ -76,10 +76,9 @@ jobs:
   # Core and Unity only, like macos-core, under MSYS2 UCRT64. No window.
   # MinGW is the Windows toolchain (G-Q4, 2026-10-19). Required like macos-core (2026-10-20).
   # path-type inherit keeps the runner's Node on PATH for the Vitest half of make test.
-  # UCRT64 rust and libsodium are for the stronghold cargo test. The image's
-  # own rustc is MSVC, and libsodium-sys-stable then links a moving
-  # libsodium-*-stable-msvc zip built /MT. That zip started crashing the
-  # tests (0xc0000005) on 2026-11-23. run-test.sh prefers /ucrt64/bin.
+  # The image's Rust moved from 1.99.1 to 1.100.0 on 2026-11-17. 1.100 aborts
+  # the stronghold release tests at startup (0xc0000005) on Windows, MSVC and
+  # UCRT64 alike. The C build stays on UCRT64 gcc. Only cargo is pinned.
   windows-core:
     runs-on: windows-latest
     defaults:
@@ -109,8 +108,6 @@ jobs:
             mingw-w64-ucrt-x86_64-curl
             mingw-w64-ucrt-x86_64-gmime
             mingw-w64-ucrt-x86_64-jq
-            mingw-w64-ucrt-x86_64-libsodium
-            mingw-w64-ucrt-x86_64-rust
 
       - name: Test
         env:
@@ -118,4 +115,9 @@ jobs:
         run: |
           # The Unity tests use /tmp paths; a native exe reads that as <drive>:\tmp.
           mkdir -p "/$(pwd -W | cut -c1 | tr "[:upper:]" "[:lower:]")/tmp"
+          # Install before the pin. rustup refuses to run when RUSTUP_TOOLCHAIN
+          # names a toolchain that is not installed yet.
+          rustup toolchain install 1.99.1 --profile minimal
+          export RUSTUP_TOOLCHAIN=1.99.1
+          rustc --version
           make test CFLAGS="-I/ucrt64/include" LDFLAGS="-L/ucrt64/lib -lws2_32"
