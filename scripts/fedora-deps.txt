@@ -30,6 +30,11 @@ libuuid-devel
 gmime30-devel
 libical-devel
 
+# iconv CJK modules. mime.c passes the message charset to iconv_open, and
+# fedora:latest does not ship these. Without them every Shift-JIS byte
+# becomes U+FFFD and test_mime_shift_jis fails.
+glibc-gconv-extra
+
 # A-INIT Rust and Node, from Fedora. npm is the command dnf resolves.
 rust
 cargo

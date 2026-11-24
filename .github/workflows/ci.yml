@@ -76,6 +76,10 @@ jobs:
   # Core and Unity only, like macos-core, under MSYS2 UCRT64. No window.
   # MinGW is the Windows toolchain (G-Q4, 2026-10-19). Required like macos-core (2026-10-20).
   # path-type inherit keeps the runner's Node on PATH for the Vitest half of make test.
+  # UCRT64 rust and libsodium are for the stronghold cargo test. The image's
+  # own rustc is MSVC, and libsodium-sys-stable then links a moving
+  # libsodium-*-stable-msvc zip built /MT. That zip started crashing the
+  # tests (0xc0000005) on 2026-11-23. run-test.sh prefers /ucrt64/bin.
   windows-core:
     runs-on: windows-latest
     defaults:
@@ -105,6 +109,8 @@ jobs:
             mingw-w64-ucrt-x86_64-curl
             mingw-w64-ucrt-x86_64-gmime
             mingw-w64-ucrt-x86_64-jq
+            mingw-w64-ucrt-x86_64-libsodium
+            mingw-w64-ucrt-x86_64-rust
 
       - name: Test
         env:
